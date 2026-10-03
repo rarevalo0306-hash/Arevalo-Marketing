@@ -24,7 +24,6 @@ export type ChannelDef = {
 };
 
 export const SMS_FOOTER = "\nResponde STOP para no recibir más.";
-export const SEO_DESCRIPTION_LIMIT = 155;
 
 export const CHANNELS: ChannelDef[] = [
   {
@@ -85,16 +84,17 @@ export const CHANNELS: ChannelDef[] = [
   },
   {
     id: "seo",
-    name: "SEO / Blog",
-    mono: "SEO",
-    kind: "Página en tu sitio",
+    name: "Sitio web / SEO",
+    mono: "WEB",
+    kind: "Artículo en tu sitio",
     limit: 0,
-    what: "Un artículo nuevo en el sitio web (WordPress)",
-    need: "Un sitio WordPress y una contraseña de aplicación (Usuarios → Perfil → Contraseñas de aplicación).",
+    what: "Un artículo nuevo en tu sitio, en español e inglés",
+    need: "Tu sitio en GitHub (con Vercel) preparado para recibir artículos, y un token de GitHub con permiso para escribir en ese repositorio.",
     fields: [
-      { key: "siteUrl", label: "Dirección del sitio", placeholder: "https://tusitio.com" },
-      { key: "username", label: "Usuario de WordPress" },
-      { key: "appPassword", label: "Contraseña de aplicación", secret: true },
+      { key: "repo", label: "Repositorio en GitHub", placeholder: "rarevalo0306-hash/RicardoPA-Web" },
+      { key: "branch", label: "Rama que publica Vercel", placeholder: "main" },
+      { key: "siteUrl", label: "Dirección del sitio", placeholder: "https://ricardopa.com" },
+      { key: "githubToken", label: "Token de GitHub (fine-grained, permiso Contents: escritura)", secret: true },
     ],
   },
   {
@@ -154,11 +154,6 @@ export function smsBody(text: string): string {
   return text.trim() + SMS_FOOTER;
 }
 
-export function seoDescription(text: string): string {
-  const t = text.trim().replace(/\s+/g, " ");
-  return t.length > SEO_DESCRIPTION_LIMIT ? t.slice(0, SEO_DESCRIPTION_LIMIT - 1) + "…" : t;
-}
-
 /** Avisos para un canal. Los `blocking` impiden publicar en ese canal. */
 export function notesFor(channel: ChannelId, d: Draft): Note[] {
   const notes: Note[] = [];
@@ -172,7 +167,9 @@ export function notesFor(channel: ChannelId, d: Draft): Note[] {
   if (channel === "email" && !d.subject.trim())
     notes.push({ text: "Falta el asunto del email.", blocking: true });
   if (channel === "seo" && !d.seoTitle.trim())
-    notes.push({ text: "Falta el título de la página.", blocking: true });
+    notes.push({ text: "Falta el título del artículo.", blocking: true });
+  if (channel === "seo" && d.text.trim() && d.text.trim().length < 200)
+    notes.push({ text: "Para un buen artículo en Google conviene escribir al menos un par de párrafos.", blocking: false });
   if (channel === "sms") {
     const parts = smsSegments(smsBody(d.text));
     if (parts > 1)
@@ -181,8 +178,6 @@ export function notesFor(channel: ChannelId, d: Draft): Note[] {
         blocking: false,
       });
   }
-  if (channel === "seo" && len > SEO_DESCRIPTION_LIMIT)
-    notes.push({ text: "Para Google se usan los primeros 155 caracteres como descripción.", blocking: false });
   if (def.limit && channel !== "sms" && len > def.limit)
     notes.push({
       text: `Muy largo para ${def.name}: máximo ${def.limit.toLocaleString("es")} caracteres.`,

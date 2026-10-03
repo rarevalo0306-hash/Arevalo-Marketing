@@ -7,7 +7,7 @@ import { CHANNEL_IDS, channelDef, type ChannelId } from "@/lib/channels";
 import { decryptJson, encryptJson } from "@/lib/crypto";
 import { normalizePhone, parseContactsCsv } from "@/lib/contacts";
 import { db } from "@/lib/db";
-import { saveUpload } from "@/lib/media";
+import { createSignedUpload, saveUpload } from "@/lib/media";
 import { publishPost, retryPost } from "@/lib/publish";
 import { PUBLISHERS } from "@/lib/publishers";
 import { safeEqual, SESSION_COOKIE, sessionToken } from "@/lib/session";
@@ -150,6 +150,12 @@ export async function deleteContact(businessId: string, contactId: string) {
 }
 
 // ---------- Publicaciones ----------
+
+/** Dirección para que el navegador suba la foto o el video directo a Supabase Storage. */
+export async function getUploadUrl(businessId: string, contentType: string) {
+  await business(businessId);
+  return createSignedUpload(contentType, businessId);
+}
 
 export async function createPost(businessId: string, f: FormData) {
   await business(businessId);

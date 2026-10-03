@@ -7,7 +7,6 @@ import {
   CHANNELS,
   isBlocked,
   notesFor,
-  seoDescription,
   smsBody,
   type ChannelId,
   type Draft,
@@ -21,6 +20,8 @@ type Props = {
   connected: ChannelId[];
   contactCounts: { email: number; sms: number };
   action: (f: FormData) => Promise<void>;
+  /** Con Supabase Storage: pide una dirección para subir el archivo directo desde el navegador. */
+  upload: ((contentType: string) => Promise<{ uploadUrl: string; publicUrl: string }>) | null;
 };
 
 function SubmitButton({ disabled, label }: { disabled: boolean; label: string }) {
@@ -32,7 +33,7 @@ function SubmitButton({ disabled, label }: { disabled: boolean; label: string })
   );
 }
 
-export function Composer({ businessId, businessName, color, connected, contactCounts, action }: Props) {
+export function Composer({ businessId, businessName, color, connected, contactCounts, action, upload }: Props) {
   const [text, setText] = useState("");
   const [subject, setSubject] = useState("");
   const [seoTitle, setSeoTitle] = useState("");
@@ -43,6 +44,26 @@ export function Composer({ businessId, businessName, color, connected, contactCo
   const [preview, setPreview] = useState<ChannelId | null>(null);
   const [when, setWhen] = useState<"now" | "later">("now");
   const [localDate, setLocalDate] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+
+  async function onFile(f: File | undefined) {
+    setFileUrl(f ? URL.createObjectURL(f) : "");
+    setUploadError("");
+    if (!f || !upload) return;
+    setUploading(true);
+    try {
+      const { uploadUrl, publicUrl } = await upload(f.type);
+      const res = await fetch(uploadUrl, { method: "PUT", headers: { "Content-Type": f.type }, body: f });
+      if (!res.ok) throw new Error(await res.text());
+      setMediaLink(publicUrl);
+    } catch (e) {
+      setUploadError(`No se pudo subir el archivo: ${(e as Error).message}`);
+      setMediaLink("");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   useEffect(() => () => { if (fileUrl) URL.revokeObjectURL(fileUrl); }, [fileUrl]);
 
@@ -51,7 +72,7 @@ export function Composer({ businessId, businessName, color, connected, contactCo
   const pv = selected.find((c) => c.id === preview) ?? selected[0];
   const ready = selected.filter((c) => !isBlocked(c.id, draft)).length;
   const scheduledIso = useMemo(() => (localDate ? new Date(localDate).toISOString() : ""), [localDate]);
-  const cant = !selected.length || !text.trim() || (when === "later" && !scheduledIso);
+  const cant = uploading || !selected.length || !text.trim() || (when === "later" && !scheduledIso);
   const n = selected.length;
   const label = `${when === "later" ? "Programar en" : "Publicar en"} ${n} ${n === 1 ? "canal" : "canales"}`;
   const mediaSrc = fileUrl || mediaLink;
@@ -68,7 +89,7 @@ export function Composer({ businessId, businessName, color, connected, contactCo
   let headLabel = "";
   let body = text || "Tu mensaje aparecerá aquí.";
   if (pv?.id === "sms") body = smsBody(text || "Tu mensaje aparecerá aquí.");
-  if (pv?.id === "seo") { head = seoTitle || "[Título de la página]"; headLabel = "Artículo y resultado en Google"; }
+  if (pv?.id === "seo") { head = seoTitle || "[Título del artículo]"; headLabel = "Artículo en tu sitio (se redacta en español e inglés)"; }
   if (pv?.id === "email") { head = subject || "[Asunto del email]"; headLabel = "Asunto"; }
 
   return (
@@ -93,14 +114,13 @@ export function Composer({ businessId, businessName, color, connected, contactCo
               <label htmlFor="file" className="small" style={{ fontWeight: 500 }}>Sube el archivo desde tu computadora o celular</label>
               <input
                 id="file"
-                name="file"
+                name={upload ? undefined : "file"}
                 type="file"
                 accept={mediaType === "video" ? "video/mp4,video/quicktime,video/webm" : "image/jpeg,image/png,image/webp,image/gif"}
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  setFileUrl(f ? URL.createObjectURL(f) : "");
-                }}
+                onChange={(e) => onFile(e.target.files?.[0])}
               />
+              {uploading && <p className="small muted" role="status">Subiendo archivo…</p>}
+              {uploadError && <p className="note error" role="alert">{uploadError}</p>}
               <label htmlFor="mediaLink" className="small muted">o pega un enlace público al archivo</label>
               <input id="mediaLink" name="mediaLink" type="url" className="field" placeholder="https://…" value={mediaLink} onChange={(e) => setMediaLink(e.target.value)} />
             </div>
@@ -148,7 +168,7 @@ export function Composer({ businessId, businessName, color, connected, contactCo
             )}
             {on.has("seo") && (
               <div className="stack">
-                <label htmlFor="seoTitle" className="small" style={{ fontWeight: 500 }}>Título del artículo (para Google)</label>
+                <label htmlFor="seoTitle" className="small" style={{ fontWeight: 500 }}>Título del artículo para tu sitio (en español)</label>
                 <input id="seoTitle" name="seoTitle" className="field" value={seoTitle} onChange={(e) => setSeoTitle(e.target.value)} placeholder="Ej.: Ajustador público en [tu ciudad]" />
               </div>
             )}
@@ -172,7 +192,7 @@ export function Composer({ businessId, businessName, color, connected, contactCo
         </div>
 
         <div className="row" style={{ borderTop: "1px solid var(--line)", paddingTop: 16, gap: 16 }}>
-          <SubmitButton disabled={cant} label={label} />
+          <SubmitButton disabled={cant} label={uploading ? "Esperando a que suba el archivo…" : label} />
           <span className="small muted">{!text.trim() ? "Escribe tu mensaje para empezar" : `${ready} de ${n} listos`}</span>
         </div>
       </section>
@@ -203,7 +223,7 @@ export function Composer({ businessId, businessName, color, connected, contactCo
                 <div style={{ padding: "14px 16px 0" }}>
                   <div className="small muted" style={{ fontWeight: 500 }}>{headLabel}</div>
                   <div style={{ fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>{head}</div>
-                  {pv.id === "seo" && <div className="small" style={{ color: "var(--teal-text)", marginTop: 4 }}>{seoDescription(text) || "Descripción para Google"}</div>}
+                  {pv.id === "seo" && <div className="small muted" style={{ marginTop: 4 }}>Claude ordena tu texto en secciones, lo traduce al inglés y elige una foto de tu sitio. No agrega datos que no escribiste.</div>}
                 </div>
               )}
               {mediaType !== "none" && pv.id !== "sms" && (

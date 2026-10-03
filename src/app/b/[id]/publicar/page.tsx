@@ -1,8 +1,12 @@
-import { createPost } from "@/app/actions";
+import { createPost, getUploadUrl } from "@/app/actions";
 import { Composer } from "@/components/Composer";
 import { PageHead } from "@/components/PageHead";
 import type { ChannelId } from "@/lib/channels";
 import { db } from "@/lib/db";
+import { usesSupabaseStorage } from "@/lib/media";
+
+// Publicar en varios canales (y esperar a que Instagram procese un video) puede tardar.
+export const maxDuration = 300;
 
 export default async function PublicarPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -27,6 +31,7 @@ export default async function PublicarPage({ params }: { params: Promise<{ id: s
         connected={b.connections.map((c) => c.channel as ChannelId)}
         contactCounts={{ email, sms }}
         action={createPost.bind(null, id)}
+        upload={usesSupabaseStorage() ? getUploadUrl.bind(null, id) : null}
       />
     </>
   );

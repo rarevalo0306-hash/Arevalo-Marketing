@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isBlocked, notesFor, seoDescription, smsBody, smsSegments } from "@/lib/channels";
+import { isBlocked, notesFor, smsBody, smsSegments } from "@/lib/channels";
 
 const draft = { text: "Hola", subject: "", seoTitle: "", mediaType: "none" as const };
 
@@ -40,12 +40,5 @@ describe("SMS", () => {
   });
   it("agrega la instrucción para darse de baja", () => {
     expect(smsBody("Hola ")).toBe("Hola\nResponde STOP para no recibir más.");
-  });
-});
-
-describe("SEO", () => {
-  it("recorta la descripción a 155", () => {
-    expect(seoDescription("a".repeat(300)).length).toBe(155);
-    expect(seoDescription("corto")).toBe("corto");
   });
 });

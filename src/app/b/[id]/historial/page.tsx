@@ -18,6 +18,9 @@ const TARGET_STATUS: Record<string, string> = {
   skipped: "Saltado",
 };
 
+// Reintentar o "Publicar ya" publica en el momento.
+export const maxDuration = 300;
+
 const fmt = new Intl.DateTimeFormat("es", { dateStyle: "medium", timeStyle: "short" });
 
 export default async function HistorialPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ nuevo?: string }> }) {

@@ -2,7 +2,8 @@
 // revisa cada minuto si hay publicaciones programadas cuya hora ya llegó.
 import { publishDue } from "@/lib/publish";
 
-if (process.env.SCHEDULER !== "off") {
+// En Vercel no hay un proceso encendido todo el tiempo: ahí lo hace Vercel Cron (vercel.json → /api/cron).
+if (process.env.SCHEDULER !== "off" && !process.env.VERCEL) {
   let running = false;
   setInterval(async () => {
     if (running) return;

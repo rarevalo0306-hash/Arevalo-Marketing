@@ -4,14 +4,14 @@ import { facebook, instagram } from "./meta";
 import { email, sms } from "./messaging";
 import { tiktok } from "./tiktok";
 import type { Publisher } from "./types";
-import { wordpress } from "./wordpress";
+import { website } from "./website";
 
 export const PUBLISHERS: Record<ChannelId, Publisher> = {
   facebook,
   instagram,
   tiktok,
   google,
-  seo: wordpress,
+  seo: website,
   email,
   sms,
 };
