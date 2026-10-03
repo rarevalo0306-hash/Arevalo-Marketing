@@ -1,0 +1,79 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Business {
+  id          String       @id @default(cuid())
+  name        String
+  color       String       @default("#126BBC")
+  website     String       @default("")
+  createdAt   DateTime     @default(now())
+  connections Connection[]
+  contacts    Contact[]
+  posts       Post[]
+}
+
+/// Credenciales de un canal para un negocio. `secret` va cifrado (AES-256-GCM).
+model Connection {
+  id         String   @id @default(cuid())
+  businessId String
+  channel    String
+  label      String   @default("")
+  secret     String
+  updatedAt  DateTime @updatedAt
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, channel])
+}
+
+model Contact {
+  id          String   @id @default(cuid())
+  businessId  String
+  name        String   @default("")
+  email       String   @default("")
+  phone       String   @default("")
+  emailOptIn  Boolean  @default(true)
+  smsOptIn    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+}
+
+model Post {
+  id          String       @id @default(cuid())
+  businessId  String
+  text        String
+  subject     String       @default("")
+  seoTitle    String       @default("")
+  mediaUrl    String       @default("")
+  /// none | photo | video
+  mediaType   String       @default("none")
+  /// scheduled | publishing | done | partial | failed
+  status      String       @default("scheduled")
+  scheduledAt DateTime     @default(now())
+  createdAt   DateTime     @default(now())
+  business    Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  targets     PostTarget[]
+
+  @@index([status, scheduledAt])
+}
+
+model PostTarget {
+  id          String    @id @default(cuid())
+  postId      String
+  channel     String
+  /// pending | sent | failed | skipped
+  status      String    @default("pending")
+  externalUrl String    @default("")
+  detail      String    @default("")
+  sentAt      DateTime?
+  post        Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+}
