@@ -18,7 +18,7 @@ describe("toPostFields", () => {
   it("reparte la respuesta de la IA por canal", () => {
     const f = toPostFields({
       facebook: "fb", instagram: "ig", tiktok: "tt", google: "g", sms: "s",
-      emailSubject: "asunto", email: "cuerpo", seoTitle: "titulo", imageIdea: "a house",
+      emailSubject: "asunto", email: "cuerpo", seoTitle: "titulo", imageHeadline: "Titular", imageIdea: "a house",
     });
     expect(f.text).toBe("fb");
     expect(f.subject).toBe("asunto");

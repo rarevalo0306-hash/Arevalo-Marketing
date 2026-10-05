@@ -31,6 +31,10 @@ type Props = {
     image: (description: string, shape: string) => Promise<MediaResult>;
     /** Los videos solo se hacen con fal.ai. */
     video: boolean;
+    /** Pone logo, color, titular y teléfono del negocio sobre la foto. */
+    design: (photoUrl: string, headline: string, shape: string) => Promise<MediaResult>;
+    /** Si la marca se aplica sola a las fotos que crea la IA. */
+    autoBrand: boolean;
     videoStart: (imageUrl: string, motion: string) => Promise<VideoStart>;
     videoCheck: (job: VideoJob) => Promise<VideoCheck>;
   } | null;
@@ -65,6 +69,24 @@ export function Composer({ businessId, businessName, color, connected, contactCo
   const [aiError, setAiError] = useState("");
   const [imageIdea, setImageIdea] = useState("");
   const [mediaBusy, setMediaBusy] = useState("");
+  // Foto original (sin diseño), para poder volver a diseñarla con otro titular o tamaño.
+  const [basePhoto, setBasePhoto] = useState("");
+  const [headline, setHeadline] = useState("");
+  const [shape, setShape] = useState("square");
+
+  async function runDesign(photo = basePhoto) {
+    if (!aiMedia || !photo) return;
+    setMediaError("");
+    setMediaBusy("Diseñando con tu marca…");
+    try {
+      const r = await aiMedia.design(photo, headline, shape);
+      if (!r.ok) return setMediaError(r.error);
+      setMediaType("photo");
+      setMediaLink(r.url);
+    } finally {
+      setMediaBusy("");
+    }
+  }
   const [mediaError, setMediaError] = useState("");
 
   /** Foto con IA. Para video: primero una foto vertical y luego la IA le da movimiento (1-3 minutos). */
@@ -79,6 +101,13 @@ export function Composer({ businessId, businessName, color, connected, contactCo
       if (kind === "photo") {
         setMediaType("photo");
         setMediaLink(img.url);
+        setBasePhoto(img.url);
+        if (aiMedia.autoBrand && headline.trim()) {
+          setMediaBusy("Diseñando con tu marca…");
+          const d = await aiMedia.design(img.url, headline, shape);
+          if (d.ok) setMediaLink(d.url);
+          else setMediaError(d.error);
+        }
         return;
       }
       setMediaBusy("Creando el video… tarda de 1 a 3 minutos, no cierres esta página");
@@ -114,6 +143,7 @@ export function Composer({ businessId, businessName, color, connected, contactCo
       setSubject(p.emailSubject);
       setSeoTitle(p.seoTitle);
       setImageIdea(p.imageIdea);
+      setHeadline(p.imageHeadline);
       setVariants({ facebook: p.facebook, instagram: p.instagram, tiktok: p.tiktok, google: p.google, sms: p.sms, email: p.email });
     } catch (e) {
       setAiError((e as Error).message);
@@ -132,6 +162,7 @@ export function Composer({ businessId, businessName, color, connected, contactCo
       const res = await fetch(uploadUrl, { method: "PUT", headers: { "Content-Type": f.type }, body: f });
       if (!res.ok) throw new Error(await res.text());
       setMediaLink(publicUrl);
+      if (f.type.startsWith("image/")) setBasePhoto(publicUrl);
     } catch (e) {
       setUploadError(`No se pudo subir el archivo: ${(e as Error).message}`);
       setMediaLink("");
@@ -213,7 +244,26 @@ export function Composer({ businessId, businessName, color, connected, contactCo
               </div>
               {mediaBusy && <p className="small muted" role="status">{mediaBusy}</p>}
               {mediaError && <p className="note error" role="alert">{mediaError}</p>}
-              <p className="small muted">La IA no escribe bien letras: el teléfono y el nombre van en el texto de la publicación.</p>
+            </div>
+          )}
+          {aiMedia && mediaType === "photo" && (basePhoto || /^https:\/\//.test(mediaLink)) && (
+            <div className="stack" style={{ gap: 10, padding: 16, borderRadius: 12, border: "1.5px solid var(--line)" }}>
+              <div className="lbl">✦ Diseño con tu marca</div>
+              <p className="small muted">Pone tu logo, tu color, un titular y tu teléfono sobre la foto, con letras perfectas.</p>
+              <label htmlFor="headline" className="small" style={{ fontWeight: 600 }}>Titular en la foto</label>
+              <input id="headline" className="field" maxLength={80} placeholder="Ej.: ¿Daños en tu techo después de la tormenta?" value={headline} onChange={(e) => setHeadline(e.target.value)} />
+              <div className="row">
+                <label htmlFor="shape" className="sr-only">Tamaño</label>
+                <select id="shape" className="field" style={{ width: "auto" }} value={shape} onChange={(e) => setShape(e.target.value)}>
+                  <option value="square">Cuadrado · Facebook e Instagram</option>
+                  <option value="portrait">Vertical 4:5 · Instagram</option>
+                  <option value="story">Historia / Reel 9:16</option>
+                </select>
+                <button type="button" className="btn on" disabled={!!mediaBusy || !headline.trim()} onClick={() => runDesign(basePhoto || mediaLink)}>Diseñar</button>
+                {basePhoto && mediaLink !== basePhoto && (
+                  <button type="button" className="btn link" onClick={() => setMediaLink(basePhoto)}>Usar la foto sin diseño</button>
+                )}
+              </div>
             </div>
           )}
           <input type="hidden" name="mediaType" value={mediaType} />
