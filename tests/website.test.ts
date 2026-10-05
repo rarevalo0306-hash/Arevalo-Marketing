@@ -29,3 +29,10 @@ describe("artículos para el sitio", () => {
     expect(article.en.slug).toBe("hurricane-2");
   });
 });
+
+describe("fecha del artículo", () => {
+  it("guarda la fecha de publicación que muestra el sitio", () => {
+    const { article } = addArticle([], gen("lluvia", "rain"), "p", "2026-10-05");
+    expect(article.published).toBe("2026-10-05");
+  });
+});

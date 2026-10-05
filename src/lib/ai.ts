@@ -95,7 +95,10 @@ async function askGemini<T extends z.ZodTypeAny>(schema: T, system: string, user
     generationConfig: { responseMimeType: "application/json", responseJsonSchema: z.toJSONSchema(schema), maxOutputTokens: maxTokens },
   });
   let res: Response | null = null;
-  for (const model of GEMINI_MODELS()) {
+  // Dos vueltas por los modelos: si todos están saturados, se espera unos segundos y se reintenta.
+  const attempts = [...GEMINI_MODELS(), ...GEMINI_MODELS()];
+  for (const [i, model] of attempts.entries()) {
+    if (i === GEMINI_MODELS().length) await new Promise((r) => setTimeout(r, 4000));
     res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: "POST",
       headers: { "x-goog-api-key": process.env.GEMINI_API_KEY!, "Content-Type": "application/json" },
@@ -162,7 +165,8 @@ async function askClaude<T extends z.ZodTypeAny>(schema: T, system: string, user
   return response.parsed_output;
 }
 
-async function ask<T extends z.ZodTypeAny>(pref: string, schema: T, system: string, user: string, maxTokens = 16000): Promise<z.infer<T>> {
+/** Pide a la IA elegida (o la primera disponible) una respuesta con la forma de `schema`. */
+export async function ask<T extends z.ZodTypeAny>(pref: string, schema: T, system: string, user: string, maxTokens = 16000): Promise<z.infer<T>> {
   const provider = pickText(pref);
   if (provider === "gemini") return askGemini(schema, system, user, maxTokens);
   if (provider === "openai") return askOpenAI(schema, system, user, maxTokens);
