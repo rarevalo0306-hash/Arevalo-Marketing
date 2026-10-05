@@ -14,7 +14,7 @@ export async function Sidebar({ activeId }: { activeId?: string }) {
         {businesses.map((b) => (
           <Link
             key={b.id}
-            href={`/b/${b.id}/publicar`}
+            href={`/b/${b.id}/inicio`}
             className={b.id === activeId ? "biz on" : "biz"}
             aria-current={b.id === activeId ? "true" : undefined}
           >

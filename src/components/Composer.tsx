@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import type { AiWriteResult, MediaResult, VideoCheck, VideoStart } from "@/app/actions";
+import type { AiPost } from "@/lib/ai";
 import type { VideoJob } from "@/lib/fal";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import {
   CHANNELS,
@@ -38,7 +39,13 @@ type Props = {
     videoStart: (imageUrl: string, motion: string) => Promise<VideoStart>;
     videoCheck: (job: VideoJob) => Promise<VideoCheck>;
   } | null;
+  /** Idea que viene del Inicio ("¿Qué quieres publicar hoy?"). */
+  initialIdea?: string;
+  /** Si es true, al abrir la página la IA hace todo: texto, foto y diseño. */
+  autoMagic?: boolean;
 };
+
+const MAGIC_STEPS = ["Escribiendo para cada red", "Creando la foto", "Poniendo tu marca", "Listo para revisar"];
 
 function SubmitButton({ disabled, label }: { disabled: boolean; label: string }) {
   const { pending } = useFormStatus();
@@ -49,7 +56,7 @@ function SubmitButton({ disabled, label }: { disabled: boolean; label: string })
   );
 }
 
-export function Composer({ businessId, businessName, color, connected, contactCounts, action, upload, aiWrite, aiMedia }: Props) {
+export function Composer({ businessId, businessName, color, connected, contactCounts, action, upload, aiWrite, aiMedia, initialIdea = "", autoMagic = false }: Props) {
   const [text, setText] = useState("");
   const [subject, setSubject] = useState("");
   const [seoTitle, setSeoTitle] = useState("");
@@ -63,7 +70,10 @@ export function Composer({ businessId, businessName, color, connected, contactCo
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [variants, setVariants] = useState<Partial<Record<ChannelId, string>>>({});
-  const [idea, setIdea] = useState("");
+  const [idea, setIdea] = useState(initialIdea);
+  // Paso del modo mágico (-1 = apagado).
+  const [magicStep, setMagicStep] = useState(-1);
+  const magicStarted = useRef(false);
   const [lang, setLang] = useState("es");
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState("");
@@ -90,21 +100,22 @@ export function Composer({ businessId, businessName, color, connected, contactCo
   const [mediaError, setMediaError] = useState("");
 
   /** Foto con IA. Para video: primero una foto vertical y luego la IA le da movimiento (1-3 minutos). */
-  async function runMedia(kind: "photo" | "video") {
+  async function runMedia(kind: "photo" | "video", description = imageIdea, head = headline, onBrand?: () => void) {
     if (!aiMedia) return;
     setMediaError("");
     setFileUrl("");
     try {
       setMediaBusy("Creando la imagen…");
-      const img = await aiMedia.image(imageIdea, kind === "video" ? "vertical" : "square");
+      const img = await aiMedia.image(description, kind === "video" ? "vertical" : "square");
       if (!img.ok) return setMediaError(img.error);
       if (kind === "photo") {
         setMediaType("photo");
         setMediaLink(img.url);
         setBasePhoto(img.url);
-        if (aiMedia.autoBrand && headline.trim()) {
+        if (aiMedia.autoBrand && head.trim()) {
           setMediaBusy("Diseñando con tu marca…");
-          const d = await aiMedia.design(img.url, headline, shape);
+          onBrand?.();
+          const d = await aiMedia.design(img.url, head, shape);
           if (d.ok) setMediaLink(d.url);
           else setMediaError(d.error);
         }
@@ -131,13 +142,16 @@ export function Composer({ businessId, businessName, color, connected, contactCo
     }
   }
 
-  async function runAi() {
-    if (!aiWrite) return;
+  async function runAi(theIdea = idea): Promise<AiPost | null> {
+    if (!aiWrite) return null;
     setAiBusy(true);
     setAiError("");
     try {
-      const r = await aiWrite(idea, lang);
-      if (!r.ok) return setAiError(r.error);
+      const r = await aiWrite(theIdea, lang);
+      if (!r.ok) {
+        setAiError(r.error);
+        return null;
+      }
       const p = r.post;
       setText(p.facebook);
       setSubject(p.emailSubject);
@@ -145,12 +159,36 @@ export function Composer({ businessId, businessName, color, connected, contactCo
       setImageIdea(p.imageIdea);
       setHeadline(p.imageHeadline);
       setVariants({ facebook: p.facebook, instagram: p.instagram, tiktok: p.tiktok, google: p.google, sms: p.sms, email: p.email });
+      return p;
     } catch (e) {
       setAiError((e as Error).message);
+      return null;
     } finally {
       setAiBusy(false);
     }
   }
+
+  /** Modo mágico: la IA escribe para cada red, crea la foto y le pone la marca. Tú solo revisas y publicas. */
+  async function runMagic(theIdea = idea) {
+    if (!aiWrite || !theIdea.trim()) return;
+    setMagicStep(0);
+    const p = await runAi(theIdea);
+    if (!p) return setMagicStep(-1);
+    if (aiMedia && p.imageIdea.trim()) {
+      setMagicStep(1);
+      await runMedia("photo", p.imageIdea, p.imageHeadline, () => setMagicStep(2));
+    }
+    setMagicStep(3);
+  }
+
+  useEffect(() => {
+    if (autoMagic && initialIdea.trim() && !magicStarted.current) {
+      magicStarted.current = true;
+      void runMagic(initialIdea);
+    }
+    // Solo una vez, al abrir la página desde el Inicio.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function onFile(f: File | undefined) {
     setFileUrl(f ? URL.createObjectURL(f) : "");
@@ -207,9 +245,9 @@ export function Composer({ businessId, businessName, color, connected, contactCo
         <input type="hidden" name="variants" value={JSON.stringify(variants)} />
         <input type="hidden" name="source" value={Object.keys(variants).length ? "ai" : "manual"} />
         {aiWrite && (
-          <div className="ai-box">
-            <label htmlFor="idea" className="lbl" style={{ color: "var(--brand)" }}>✦ Escribir con IA</label>
-            <textarea id="idea" className="field" rows={2} style={{ minHeight: 64 }} placeholder="Ej.: qué hacer si se filtra el techo después de una tormenta en Miami" value={idea} onChange={(e) => setIdea(e.target.value)} />
+          <div className={aiBusy || magicStep >= 0 && magicStep < 3 ? "ai-box glow busy" : "ai-box glow"}>
+            <label htmlFor="idea" className="lbl ai-title">✦ Crea con IA</label>
+            <textarea id="idea" className="field" rows={2} style={{ minHeight: 64 }} placeholder="¿Sobre qué quieres publicar? Ej.: qué hacer si se filtra el techo después de una tormenta en Miami" value={idea} onChange={(e) => setIdea(e.target.value)} />
             <div className="row">
               <label htmlFor="lang" className="sr-only">Idioma</label>
               <select id="lang" className="field" style={{ width: "auto" }} value={lang} onChange={(e) => setLang(e.target.value)}>
@@ -217,11 +255,25 @@ export function Composer({ businessId, businessName, color, connected, contactCo
                 <option value="en">English</option>
                 <option value="both">Español + English</option>
               </select>
-              <button type="button" className="btn on" disabled={aiBusy || !idea.trim()} onClick={runAi}>
-                {aiBusy ? "Escribiendo… (unos segundos)" : "Escribir publicación"}
+              {aiMedia && (
+                <button type="button" className="btn ai" disabled={aiBusy || !!mediaBusy || !idea.trim()} onClick={() => runMagic()}>
+                  ✦ Hacer todo con IA
+                </button>
+              )}
+              <button type="button" className={aiMedia ? "btn" : "btn ai"} disabled={aiBusy || !!mediaBusy || !idea.trim()} onClick={() => runAi()}>
+                {aiBusy && magicStep < 0 ? "Escribiendo…" : aiMedia ? "Solo el texto" : "Escribir publicación"}
               </button>
             </div>
-            <p className="small muted">La IA escribe una versión para cada canal. Revísala antes de publicar; puedes cambiar cualquier texto.</p>
+            {magicStep >= 0 && (
+              <ol className="magic-steps" aria-live="polite">
+                {MAGIC_STEPS.map((step, i) => {
+                  if (i > 0 && i < 3 && !aiMedia) return null;
+                  const state = i < magicStep || magicStep === 3 ? "done" : i === magicStep ? "now" : "next";
+                  return <li key={step} className={state}>{step}</li>;
+                })}
+              </ol>
+            )}
+            {magicStep < 0 && <p className="small muted">La IA escribe una versión para cada red{aiMedia ? ", crea la foto y le pone tu marca" : ""}. Tú revisas y publicas.</p>}
             {aiError && <p className="note error" role="alert">{aiError}</p>}
             {imageIdea && !aiMedia && <p className="small"><strong>Idea de foto:</strong> {imageIdea}</p>}
           </div>
@@ -236,7 +288,7 @@ export function Composer({ businessId, businessName, color, connected, contactCo
           <div className="lbl">Foto o video</div>
           {aiMedia && (
             <div className="ai-box">
-              <label htmlFor="imageIdea" className="lbl" style={{ color: "var(--brand)" }}>✦ Crear foto o video con IA</label>
+              <label htmlFor="imageIdea" className="lbl ai-title">✦ Crear foto o video con IA</label>
               <textarea id="imageIdea" className="field" rows={2} style={{ minHeight: 64 }} placeholder="Describe la imagen. Ej.: casa en Miami con el techo reparado, día soleado" value={imageIdea} onChange={(e) => setImageIdea(e.target.value)} />
               <div className="row">
                 <button type="button" className="btn on" disabled={!!mediaBusy || !imageIdea.trim()} onClick={() => runMedia("photo")}>Crear foto</button>

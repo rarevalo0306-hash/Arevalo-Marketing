@@ -5,5 +5,5 @@ export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const first = await db.business.findFirst({ orderBy: { createdAt: "asc" } });
-  redirect(first ? `/b/${first.id}/publicar` : "/negocios/nuevo");
+  redirect(first ? `/b/${first.id}/inicio` : "/negocios/nuevo");
 }
