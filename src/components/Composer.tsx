@@ -207,7 +207,7 @@ export function Composer({ businessId, businessName, color, connected, contactCo
         <input type="hidden" name="variants" value={JSON.stringify(variants)} />
         <input type="hidden" name="source" value={Object.keys(variants).length ? "ai" : "manual"} />
         {aiWrite && (
-          <div className="stack" style={{ gap: 10, padding: 16, borderRadius: 10, background: "#e3eef9" }}>
+          <div className="ai-box">
             <label htmlFor="idea" className="lbl" style={{ color: "var(--brand)" }}>✦ Escribir con IA</label>
             <textarea id="idea" className="field" rows={2} style={{ minHeight: 64 }} placeholder="Ej.: qué hacer si se filtra el techo después de una tormenta en Miami" value={idea} onChange={(e) => setIdea(e.target.value)} />
             <div className="row">
@@ -235,7 +235,7 @@ export function Composer({ businessId, businessName, color, connected, contactCo
         <div className="stack">
           <div className="lbl">Foto o video</div>
           {aiMedia && (
-            <div className="stack" style={{ gap: 10, padding: 16, borderRadius: 10, background: "#e3eef9" }}>
+            <div className="ai-box">
               <label htmlFor="imageIdea" className="lbl" style={{ color: "var(--brand)" }}>✦ Crear foto o video con IA</label>
               <textarea id="imageIdea" className="field" rows={2} style={{ minHeight: 64 }} placeholder="Describe la imagen. Ej.: casa en Miami con el techo reparado, día soleado" value={imageIdea} onChange={(e) => setImageIdea(e.target.value)} />
               <div className="row">

@@ -58,7 +58,7 @@ export default async function NegocioPage({ params }: { params: Promise<{ id: st
               </select>
             </div>
           </div>
-          <label className="row" style={{ gap: 8, alignItems: "flex-start" }}>
+          <label className="check">
             <input type="checkbox" name="aiAutopublish" defaultChecked={b.aiAutopublish} style={{ marginTop: 4 }} />
             <span>
               <strong>Publicar automáticamente lo que planee la IA</strong>
