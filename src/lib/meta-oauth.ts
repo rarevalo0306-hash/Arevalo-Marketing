@@ -48,9 +48,11 @@ export function authUrl(businessId: string): string {
     client_id: process.env.META_APP_ID!,
     redirect_uri: redirectUri(),
     state: makeState(businessId),
-    scope: META_SCOPES.join(","),
     response_type: "code",
   });
+  // Apps con "Facebook Login for Business" pueden usar una configuración (config_id) en vez de la lista de permisos.
+  if (process.env.META_CONFIG_ID) q.set("config_id", process.env.META_CONFIG_ID);
+  else q.set("scope", META_SCOPES.join(","));
   return `https://www.facebook.com/v21.0/dialog/oauth?${q}`;
 }
 

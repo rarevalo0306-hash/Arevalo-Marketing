@@ -27,4 +27,12 @@ describe("conectar con Facebook", () => {
     expect(u.searchParams.get("redirect_uri")).toBe("https://app.example.com/api/meta/callback");
     expect(u.searchParams.get("scope")).toContain("instagram_content_publish");
   });
+  it("usa config_id cuando hay una configuración de Facebook Login for Business", async () => {
+    process.env.META_CONFIG_ID = "999";
+    const { authUrl } = await import("@/lib/meta-oauth");
+    const u = new URL(authUrl("biz1"));
+    expect(u.searchParams.get("config_id")).toBe("999");
+    expect(u.searchParams.get("scope")).toBeNull();
+    delete process.env.META_CONFIG_ID;
+  });
 });
