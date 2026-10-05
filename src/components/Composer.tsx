@@ -29,6 +29,8 @@ type Props = {
   /** Fotos y videos con IA (fal.ai). */
   aiMedia: {
     image: (description: string, shape: string) => Promise<MediaResult>;
+    /** Los videos solo se hacen con fal.ai. */
+    video: boolean;
     videoStart: (imageUrl: string, motion: string) => Promise<VideoStart>;
     videoCheck: (job: VideoJob) => Promise<VideoCheck>;
   } | null;
@@ -207,7 +209,7 @@ export function Composer({ businessId, businessName, color, connected, contactCo
               <textarea id="imageIdea" className="field" rows={2} style={{ minHeight: 64 }} placeholder="Describe la imagen. Ej.: casa en Miami con el techo reparado, día soleado" value={imageIdea} onChange={(e) => setImageIdea(e.target.value)} />
               <div className="row">
                 <button type="button" className="btn on" disabled={!!mediaBusy || !imageIdea.trim()} onClick={() => runMedia("photo")}>Crear foto</button>
-                <button type="button" className="btn outline" disabled={!!mediaBusy || !imageIdea.trim()} onClick={() => runMedia("video")}>Crear video (5 seg)</button>
+                {aiMedia.video && <button type="button" className="btn outline" disabled={!!mediaBusy || !imageIdea.trim()} onClick={() => runMedia("video")}>Crear video (5 seg)</button>}
               </div>
               {mediaBusy && <p className="small muted" role="status">{mediaBusy}</p>}
               {mediaError && <p className="note error" role="alert">{mediaError}</p>}

@@ -17,6 +17,10 @@ model Business {
   aiProfile     String     @default("")
   /// Si es true, lo que planea la IA se programa solo; si es false, queda como borrador para aprobar.
   aiAutopublish Boolean    @default(false)
+  /// IA para textos: gemini | claude | openai ("" = la primera disponible)
+  aiText        String     @default("")
+  /// IA para fotos: flux | openai | gemini ("" = la primera disponible)
+  aiImage       String     @default("")
   createdAt   DateTime     @default(now())
   connections Connection[]
   contacts    Contact[]

@@ -85,8 +85,12 @@ export async function storeRemote(sourceUrl: string, folder: string): Promise<{ 
   const res = await fetch(sourceUrl);
   if (!res.ok) throw new Error(`No se pudo descargar el archivo creado por la IA (${res.status}).`);
   const contentType = (res.headers.get("content-type") || "").split(";")[0].trim() || (sourceUrl.endsWith(".mp4") ? "video/mp4" : "image/jpeg");
+  return storeBuffer(Buffer.from(await res.arrayBuffer()), contentType, folder);
+}
+
+/** Guarda un archivo (por ejemplo una imagen que la IA devolvió directamente) en tu almacenamiento. */
+export async function storeBuffer(data: Buffer, contentType: string, folder: string): Promise<{ url: string; type: "photo" | "video" }> {
   const name = newName(contentType);
-  const data = Buffer.from(await res.arrayBuffer());
   const type = contentType.startsWith("video/") ? "video" : "photo";
   const sb = supabase();
   if (!sb) {
@@ -99,7 +103,7 @@ export async function storeRemote(sourceUrl: string, folder: string): Promise<{ 
   const up = await fetch(`${sb.url}/storage/v1/object/${BUCKET}/${objectPath}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${sb.key}`, apikey: sb.key, "Content-Type": contentType },
-    body: data,
+    body: new Uint8Array(data),
   });
   if (!up.ok) throw new Error(`No se pudo guardar el archivo en Supabase: ${await up.text()}`);
   return { url: `${sb.url}/storage/v1/object/public/${BUCKET}/${objectPath}`, type };

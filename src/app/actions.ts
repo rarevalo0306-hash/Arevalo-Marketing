@@ -3,12 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { aiEnabled, planWeek, toPostFields, writePost, type AiPost, type Lang } from "@/lib/ai";
+import { aiEnabled, planWeek, TEXT_PROVIDERS, toPostFields, writePost, type AiPost, type Lang } from "@/lib/ai";
 import { CHANNEL_IDS, channelDef, type ChannelId } from "@/lib/channels";
 import { decryptJson, encryptJson } from "@/lib/crypto";
 import { normalizePhone, parseContactsCsv } from "@/lib/contacts";
 import { db } from "@/lib/db";
-import { falEnabled, generateImage, startVideo, videoResult, type Shape, type VideoJob } from "@/lib/fal";
+import { falEnabled, startVideo, videoResult, type Shape, type VideoJob } from "@/lib/fal";
+import { createImage, IMAGE_PROVIDERS, imagesEnabled } from "@/lib/imagegen";
 import { createSignedUpload, saveUpload, storeRemote } from "@/lib/media";
 import { listPages, META_COOKIE, saveMetaPage } from "@/lib/meta-oauth";
 import { publishPost, retryPost } from "@/lib/publish";
@@ -277,7 +278,12 @@ export async function updateAiSettings(businessId: string, f: FormData) {
   await business(businessId);
   await db.business.update({
     where: { id: businessId },
-    data: { aiProfile: str(f, "aiProfile").slice(0, 4000), aiAutopublish: f.get("aiAutopublish") === "on" },
+    data: {
+      aiProfile: str(f, "aiProfile").slice(0, 4000),
+      aiAutopublish: f.get("aiAutopublish") === "on",
+      aiText: TEXT_PROVIDERS.some((p) => p.id === str(f, "aiText")) ? str(f, "aiText") : "",
+      aiImage: IMAGE_PROVIDERS.some((p) => p.id === str(f, "aiImage")) ? str(f, "aiImage") : "",
+    },
   });
   revalidatePath(`/b/${businessId}`, "layout");
 }
@@ -295,8 +301,8 @@ export async function generatePlan(businessId: string, _prev: PlanResult, f: For
   try {
     const plan = await planWeek(b, { startDate, count, themes: str(f, "themes").slice(0, 1000), lang: lang(str(f, "lang")) });
     // Una foto para cada publicación (si fal.ai está configurado). Si una falla, esa publicación queda sin foto.
-    const images = falEnabled()
-      ? await Promise.all(plan.posts.map((p) => makeImage(businessId, p.post.imageIdea, "square").catch(() => null)))
+    const images = imagesEnabled()
+      ? await Promise.all(plan.posts.map((p) => createImage(b.aiImage, p.post.imageIdea, "square", businessId).catch(() => null)))
       : plan.posts.map(() => null);
     const now = new Date();
     for (const [i, item] of plan.posts.entries()) {
@@ -356,20 +362,16 @@ export async function approveDraft(businessId: string, postId: string, f: FormDa
 
 const SHAPES: Shape[] = ["square", "vertical", "horizontal"];
 
-async function makeImage(businessId: string, description: string, shape: Shape): Promise<string> {
-  const temp = await generateImage(description.slice(0, 1000), shape);
-  return (await storeRemote(temp, businessId)).url;
-}
 
 export type MediaResult = { ok: true; url: string } | { ok: false; error: string };
 
 /** Crea una foto con IA y la guarda en tu almacenamiento. */
 export async function aiImage(businessId: string, description: string, shape: string): Promise<MediaResult> {
-  await business(businessId);
-  if (!falEnabled()) return { ok: false, error: "Falta la clave de fal.ai (FAL_KEY) en la configuración del servidor." };
+  const b = await business(businessId);
+  if (!imagesEnabled()) return { ok: false, error: "Falta una clave para crear imágenes en la configuración del servidor." };
   if (!description.trim()) return { ok: false, error: "Describe la imagen que quieres." };
   try {
-    return { ok: true, url: await makeImage(businessId, description, SHAPES.includes(shape as Shape) ? (shape as Shape) : "square") };
+    return { ok: true, url: await createImage(b.aiImage, description, SHAPES.includes(shape as Shape) ? (shape as Shape) : "square", businessId) };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }

@@ -1,6 +1,8 @@
 import { deleteBusiness, updateAiSettings, updateBusiness } from "@/app/actions";
 import { PageHead } from "@/components/PageHead";
+import { availableText } from "@/lib/ai";
 import { db } from "@/lib/db";
+import { availableImage } from "@/lib/imagegen";
 
 export default async function NegocioPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -29,6 +31,22 @@ export default async function NegocioPage({ params }: { params: Promise<{ id: st
               defaultValue={b.aiProfile}
               placeholder="Ej.: Somos ajustadores públicos con licencia en Florida. Ayudamos a dueños de casa con reclamos por huracán, agua, fuego y techo. Hablamos español e inglés. Teléfono: … Evaluación inicial gratis. Zona: Miami-Dade y Broward."
             />
+          </div>
+          <div className="row" style={{ gap: 16 }}>
+            <div className="stack" style={{ gap: 4 }}>
+              <label className="lbl" htmlFor="aiText">IA para escribir</label>
+              <select id="aiText" name="aiText" className="field" defaultValue={b.aiText}>
+                <option value="">Automático</option>
+                {availableText().map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+            <div className="stack" style={{ gap: 4 }}>
+              <label className="lbl" htmlFor="aiImage">IA para fotos</label>
+              <select id="aiImage" name="aiImage" className="field" defaultValue={b.aiImage}>
+                <option value="">Automático</option>
+                {availableImage().map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
           </div>
           <label className="row" style={{ gap: 8, alignItems: "flex-start" }}>
             <input type="checkbox" name="aiAutopublish" defaultChecked={b.aiAutopublish} style={{ marginTop: 4 }} />
