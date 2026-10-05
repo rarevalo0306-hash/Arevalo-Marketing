@@ -391,3 +391,23 @@ html[data-theme="vidrio"] .sidebar { background: rgba(11, 18, 32, 0.78); backdro
 /* App instalada en el iPhone: deja espacio para la barra de estado */
 @media (max-width: 900px) { .sidebar { padding-top: calc(10px + env(safe-area-inset-top)); } }
 @media (display-mode: standalone) { .content { padding-top: calc(36px + env(safe-area-inset-top)); } }
+
+/* ---------- Marca ---------- */
+.logo-box { height: 120px; border-radius: 16px; border: 1.5px dashed var(--line-strong); display: grid; place-items: center; padding: 12px; }
+.logo-box img { max-width: 85%; max-height: 90px; object-fit: contain; }
+.swatches { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 12px; }
+.swatch { position: relative; display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 16px; border: 1.5px solid var(--line); cursor: pointer; }
+.swatch input[type="color"] { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; cursor: pointer; }
+.swatch-chip { width: 46px; height: 46px; border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08); flex-shrink: 0; }
+.brand-bar { height: 14px; border-radius: 7px; }
+.font-preview { font-size: 26px; font-weight: 800; line-height: 1.15; padding: 14px 16px; border-radius: 14px; background: var(--surface-2); }
+.tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: 16px; }
+.tpl { margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.tpl img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 16px; background: var(--surface-2); box-shadow: var(--shadow); }
+.tpl figcaption { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+@media (max-width: 900px) {
+  /* 8 secciones: la barra de abajo se desliza de lado */
+  .navlinks { justify-content: flex-start; overflow-x: auto; scrollbar-width: none; }
+  .navlinks::-webkit-scrollbar { display: none; }
+  .navlinks .navlink { flex: 0 0 66px; }
+}

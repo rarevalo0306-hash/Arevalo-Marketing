@@ -4,6 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import type { ChannelId } from "@/lib/channels";
+import { TemplateSpec } from "@/lib/design-shapes";
 
 export const TEXT_PROVIDERS = [
   { id: "gemini", name: "Google Gemini", env: "GEMINI_API_KEY" },
@@ -38,6 +39,7 @@ const PostSchema = z.object({
   emailSubject: z.string().describe("Email subject line under 60 characters"),
   email: z.string().describe("Email body: friendly, 2-4 short paragraphs, plain text"),
   seoTitle: z.string().describe("Website article title under 60 characters, in Spanish"),
+  imageSteps: z.array(z.string()).describe("If the post is a how-to, up to 3 very short steps (max 6 words each) for a list image, in the post's main language; otherwise an empty list"),
   imageHeadline: z.string().describe("Headline printed on the post image: 3 to 7 words, in the post's main language (Spanish if bilingual), no hashtags, no emoji, no phone numbers"),
   imageIdea: z.string().describe("In English: a one-sentence description of a photo that would fit this post (no text in the image, no logos, no real people's faces)"),
 });
@@ -55,7 +57,7 @@ const PlanSchema = z.object({
 });
 export type AiPlan = z.infer<typeof PlanSchema>;
 
-type BusinessAi = { name: string; website: string; aiProfile: string; aiText?: string };
+type BusinessAi = { name: string; website: string; aiProfile: string; aiText?: string; brandVoice?: string; hashtags?: string };
 
 function rules(business: BusinessAi, lang: Lang): string {
   return `You are the social media manager for "${business.name}"${business.website ? ` (${business.website})` : ""}.
@@ -64,7 +66,7 @@ What the business told you about itself (the ONLY facts you may state about it):
 <business_profile>
 ${business.aiProfile.trim() || "(no profile yet — keep statements about the business generic)"}
 </business_profile>
-
+${business.brandVoice?.trim() ? `\nBrand voice (follow it):\n<brand_voice>\n${business.brandVoice.trim()}\n</brand_voice>\n` : ""}${business.hashtags?.trim() ? `\nBrand hashtags (use some of them where hashtags fit): ${business.hashtags.trim()}\n` : ""}
 Rules:
 - Never invent facts about the business: no prices, discounts, statistics, years of experience, awards, license numbers, phone numbers, addresses or results unless they appear in the business profile.
 - If the business is a public adjuster or insurance-related: never promise or imply a result, a payout, a percentage or "more money"; do not give legal advice; say "free initial evaluation" only if the profile says so; keep claims general and educational.
@@ -212,4 +214,22 @@ export function toPostFields(p: AiPost): { text: string; subject: string; seoTit
       seo: p.facebook,
     },
   };
+}
+
+const TemplatesSchema = z.object({ templates: z.array(TemplateSpec).describe("Between 4 and 6 different templates") });
+
+/** La IA diseña plantillas para la marca: variadas, legibles y con los colores y el estilo del negocio. */
+export async function designTemplates(business: BusinessAi & { color: string; color2: string; color3: string; fontHeading: string }): Promise<TemplateSpec[]> {
+  const system = `You are a senior graphic designer creating reusable social media post templates for the brand "${business.name}".
+Brand colors: color1 ${business.color}, color2 ${business.color2 || "(same as color1)"}, color3 ${business.color3 || "(same as color2)"}. Heading font: ${business.fontHeading}.
+About the business: ${business.aiProfile.trim().slice(0, 1500) || "(no profile)"}
+${business.brandVoice?.trim() ? `Brand voice: ${business.brandVoice.trim().slice(0, 800)}` : ""}
+Rules:
+- Make 4 to 6 clearly different templates that fit this brand and still look like one family.
+- Include at least one "color-solido" (for questions or quick facts, no photo) and one "lista" (for step-by-step tips). The rest use a photo.
+- Keep text readable: on "foto-completa" use overlay "suave" or "fuerte"; never put a white background behind white text.
+- Prefer a professional, trustworthy look for service businesses; avoid uppercase on long headlines.
+- Give each template a short Spanish name that says what it is for (for example "Consejo", "Pregunta", "Pasos", "Aviso").`;
+  const r = await ask(business.aiText ?? "", TemplatesSchema, system, "Design the templates.", 8000);
+  return r.templates.slice(0, 6);
 }
