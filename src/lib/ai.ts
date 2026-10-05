@@ -198,6 +198,27 @@ Write the full post for each one, with a version for each channel.`;
   return ask(business.aiText ?? "", PlanSchema, rules(business, opts.lang), user, 32000);
 }
 
+const StormSchema = z.object({
+  posts: z.array(
+    z.object({
+      phase: z.enum(["seguridad", "oferta"]).describe("seguridad = safety and help only, no offer of services; oferta = invites people to contact the business"),
+      hoursAfter: z.number().int().min(1).max(336).describe("Hours after the event to publish"),
+      topic: z.string().describe("Short topic label in Spanish"),
+      post: PostSchema,
+    }),
+  ),
+});
+export type AiStormPlan = z.infer<typeof StormSchema>;
+
+/** Campaña de tormenta: primero ayuda (sin vender) y, pasadas 48 horas, la invitación a contactar. */
+export async function stormPlan(business: BusinessAi, opts: { event: string; zone: string; lang: Lang }): Promise<AiStormPlan> {
+  const user = `A ${opts.event} just hit ${opts.zone.trim() || "the area the business serves"}. Write a 6-post campaign for the days after it.
+- Posts 1-3, phase "seguridad", within the first 48 hours (hoursAfter 2 to 40): safety first, how to protect the home from more damage, how to document the damage with photos and videos, keep receipts, do not throw away damaged items before documenting, report the claim to the insurer. Do NOT offer the business's services, do not ask people to call or hire the business in these posts; only helpful information and the business name.
+- Posts 4-6, phase "oferta", from hoursAfter 50 to 240: a direct, confident invitation to contact the business for help with the claim (for example: the insurer has its own adjuster, who works for you?; do not accept the first offer without understanding your policy; a denied or underpaid claim can be reviewed). Strong and urgent in tone, but never promise results, money or percentages, and never say people will lose their claim.
+- Mention the area by name when it fits.`;
+  return ask(business.aiText ?? "", StormSchema, rules(business, opts.lang), user, 20000);
+}
+
 /** Convierte la respuesta de la IA en texto base + variantes por canal + asunto y título. */
 export function toPostFields(p: AiPost): { text: string; subject: string; seoTitle: string; variants: Partial<Record<ChannelId, string>> } {
   return {

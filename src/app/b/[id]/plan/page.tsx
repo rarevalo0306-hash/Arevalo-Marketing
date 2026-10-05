@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { approveDraft, deletePost, generatePlan } from "@/app/actions";
+import { approveDraft, deletePost, generatePlan, stormCampaign } from "@/app/actions";
 import { PageHead } from "@/components/PageHead";
 import { PlanForm } from "@/components/PlanForm";
+import { StormForm } from "@/components/StormForm";
 import { aiEnabled } from "@/lib/ai";
 import { CHANNELS, channelDef } from "@/lib/channels";
 import { db } from "@/lib/db";
@@ -18,6 +19,8 @@ export default async function PlanPage({ params }: { params: Promise<{ id: strin
   const drafts = await db.post.findMany({ where: { businessId: id, status: "draft" }, include: { targets: true }, orderBy: { scheduledAt: "asc" } });
   const connected = new Set(b.connections.map((c) => c.channel));
   const today = new Date().toLocaleDateString("en-CA", { timeZone: BUSINESS_TZ });
+  const nowLocal = `${today}T${new Date().toLocaleTimeString("en-GB", { timeZone: BUSINESS_TZ, hour: "2-digit", minute: "2-digit" })}`;
+  const channelList = CHANNELS.map((c) => ({ id: c.id, name: c.name, connected: connected.has(c.id) }));
 
   return (
     <>
@@ -33,10 +36,11 @@ export default async function PlanPage({ params }: { params: Promise<{ id: strin
           )}
           <PlanForm
             action={generatePlan.bind(null, id)}
-            channels={CHANNELS.map((c) => ({ id: c.id, name: c.name, connected: connected.has(c.id) }))}
+            channels={channelList}
             today={today}
             autopublish={b.aiAutopublish}
           />
+          <StormForm action={stormCampaign.bind(null, id)} channels={channelList} now={nowLocal} />
           <h2 style={{ marginTop: 8 }}>Borradores por aprobar ({drafts.length})</h2>
           {drafts.length === 0 && <div className="card empty">No hay borradores. Crea un plan arriba.</div>}
           {drafts.map((p) => {
