@@ -5,6 +5,7 @@ import { channelDef } from "@/lib/channels";
 import { db } from "@/lib/db";
 
 const POST_STATUS: Record<string, string> = {
+  draft: "Borrador (por aprobar)",
   scheduled: "Programado",
   publishing: "Publicando…",
   done: "Publicado en todo",

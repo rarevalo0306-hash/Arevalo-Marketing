@@ -77,6 +77,38 @@ export async function createSignedUpload(contentType: string, folder: string): P
   };
 }
 
+/**
+ * Copia a tu almacenamiento un archivo creado por la IA (las URLs de fal.ai son temporales).
+ * Devuelve la dirección pública para guardar en la publicación.
+ */
+export async function storeRemote(sourceUrl: string, folder: string): Promise<{ url: string; type: "photo" | "video" }> {
+  const res = await fetch(sourceUrl);
+  if (!res.ok) throw new Error(`No se pudo descargar el archivo creado por la IA (${res.status}).`);
+  const contentType = (res.headers.get("content-type") || "").split(";")[0].trim() || (sourceUrl.endsWith(".mp4") ? "video/mp4" : "image/jpeg");
+  return storeBuffer(Buffer.from(await res.arrayBuffer()), contentType, folder);
+}
+
+/** Guarda un archivo (por ejemplo una imagen que la IA devolvió directamente) en tu almacenamiento. */
+export async function storeBuffer(data: Buffer, contentType: string, folder: string): Promise<{ url: string; type: "photo" | "video" }> {
+  const name = newName(contentType);
+  const type = contentType.startsWith("video/") ? "video" : "photo";
+  const sb = supabase();
+  if (!sb) {
+    await mkdir(UPLOAD_DIR, { recursive: true });
+    await writeFile(path.join(UPLOAD_DIR, name), data);
+    return { url: `/media/${name}`, type };
+  }
+  await ensureBucket(sb);
+  const objectPath = `${folder}/${name}`;
+  const up = await fetch(`${sb.url}/storage/v1/object/${BUCKET}/${objectPath}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${sb.key}`, apikey: sb.key, "Content-Type": contentType },
+    body: new Uint8Array(data),
+  });
+  if (!up.ok) throw new Error(`No se pudo guardar el archivo en Supabase: ${await up.text()}`);
+  return { url: `${sb.url}/storage/v1/object/public/${BUCKET}/${objectPath}`, type };
+}
+
 /** Sin Supabase: guarda en disco y devuelve la ruta pública relativa (/media/…). */
 export async function saveUpload(file: File): Promise<{ path: string; type: "photo" | "video" }> {
   const name = newName(file.type);
