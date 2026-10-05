@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { aiEnabled, designTemplates, planWeek, TEXT_PROVIDERS, toPostFields, writePost, type AiPost, type Lang } from "@/lib/ai";
+import { aiEnabled, designTemplates, planWeek, stormPlan, TEXT_PROVIDERS, toPostFields, writePost, type AiPost, type Lang } from "@/lib/ai";
 import { brevoDomains, brevoEnvKey } from "@/lib/brevo";
 import { CHANNEL_IDS, channelDef, type ChannelId } from "@/lib/channels";
 import { decryptJson, encryptJson } from "@/lib/crypto";
@@ -19,6 +19,7 @@ import { listPages, META_COOKIE, saveMetaPage } from "@/lib/meta-oauth";
 import { publishPost, retryPost } from "@/lib/publish";
 import { PUBLISHERS } from "@/lib/publishers";
 import { safeEqual, SESSION_COOKIE, sessionToken } from "@/lib/session";
+import { stormEvent, stormSchedule } from "@/lib/storm";
 import { localToUtc } from "@/lib/time";
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
@@ -340,45 +341,16 @@ export async function generatePlan(businessId: string, _prev: PlanResult, f: For
   const b = await business(businessId);
   if (!aiEnabled()) return { ok: false, message: "Falta la clave de la IA (GEMINI_API_KEY) en la configuración del servidor." };
   const startDate = /^\d{4}-\d{2}-\d{2}$/.test(str(f, "startDate")) ? str(f, "startDate") : new Date().toISOString().slice(0, 10);
-  const count = Math.min(14, Math.max(1, Number(str(f, "count")) || 5));
+  const count = Math.min(14, Math.max(1, Number(str(f, "count")) || 7));
   const channels = f.getAll("channels").map(String).filter((c): c is ChannelId => CHANNEL_IDS.includes(c as ChannelId));
   if (!channels.length) return { ok: false, message: "Elige al menos un canal." };
   try {
     const plan = await planWeek(b, { startDate, count, themes: str(f, "themes").slice(0, 1000), lang: lang(str(f, "lang")) });
-    // Una foto para cada publicación (si fal.ai está configurado). Si una falla, esa publicación queda sin foto.
-    const images = imagesEnabled()
-      ? await Promise.all(
-          plan.posts.map(async (p, i) => {
-            try {
-              const photo = await createImage(b.aiImage, p.post.imageIdea, "square", businessId);
-              // Con la marca activada, la foto sale con logo, titular y teléfono; si el diseño falla, queda la foto sola.
-              return b.brandImages && p.post.imageHeadline.trim()
-                ? await brandPhoto(b, { photoUrl: photo, headline: p.post.imageHeadline, steps: p.post.imageSteps, seed: i }).catch(() => photo)
-                : photo;
-            } catch {
-              return null;
-            }
-          }),
-        )
-      : plan.posts.map(() => null);
     const now = new Date();
-    for (const [i, item] of plan.posts.entries()) {
-      const fields = toPostFields(item.post);
-      const image = images[i];
-      let scheduledAt = localToUtc(startDate, item.day, item.time);
-      if (scheduledAt < now) scheduledAt = new Date(now.getTime() + 60 * 60 * 1000);
-      await db.post.create({
-        data: {
-          businessId,
-          ...fields,
-          ...(image ? { mediaUrl: image, mediaType: "photo" } : {}),
-          source: "ai",
-          status: b.aiAutopublish ? "scheduled" : "draft",
-          scheduledAt,
-          targets: { create: channels.map((channel) => ({ channel })) },
-        },
-      });
-    }
+    await savePlanPosts(b, businessId, channels, plan.posts.map((item) => {
+      const at = localToUtc(startDate, item.day, item.time);
+      return { post: item.post, scheduledAt: at < now ? new Date(now.getTime() + 60 * 60 * 1000) : at };
+    }));
     revalidatePath(`/b/${businessId}/plan`);
     const n = plan.posts.length;
     return {
@@ -386,6 +358,78 @@ export async function generatePlan(businessId: string, _prev: PlanResult, f: For
       message: b.aiAutopublish
         ? `Listo: ${n} publicaciones programadas. Saldrán solas a su hora.`
         : `Listo: ${n} borradores. Revísalos abajo y aprueba los que te gusten.`,
+    };
+  } catch (e) {
+    return { ok: false, message: (e as Error).message };
+  }
+}
+
+/** Guarda las publicaciones de un plan: una foto con la marca para cada una y su hora. */
+async function savePlanPosts(
+  b: Awaited<ReturnType<typeof business>>,
+  businessId: string,
+  channels: ChannelId[],
+  items: { post: AiPost; scheduledAt: Date }[],
+) {
+  // Una foto para cada publicación (si hay clave de imágenes). Si una falla, esa publicación queda sin foto.
+  const images = imagesEnabled()
+    ? await Promise.all(
+        items.map(async ({ post }, i) => {
+          try {
+            const photo = await createImage(b.aiImage, post.imageIdea, "square", businessId);
+            // Con la marca activada, la foto sale con logo, titular y teléfono; si el diseño falla, queda la foto sola.
+            return b.brandImages && post.imageHeadline.trim()
+              ? await brandPhoto(b, { photoUrl: photo, headline: post.imageHeadline, steps: post.imageSteps, seed: i }).catch(() => photo)
+              : photo;
+          } catch {
+            return null;
+          }
+        }),
+      )
+    : items.map(() => null);
+  for (const [i, { post, scheduledAt }] of items.entries()) {
+    const image = images[i];
+    await db.post.create({
+      data: {
+        businessId,
+        ...toPostFields(post),
+        ...(image ? { mediaUrl: image, mediaType: "photo" } : {}),
+        source: "ai",
+        status: b.aiAutopublish ? "scheduled" : "draft",
+        scheduledAt,
+        targets: { create: channels.map((channel) => ({ channel })) },
+      },
+    });
+  }
+}
+
+/** Campaña de tormenta: 6 publicaciones listas, las de ofrecer servicios después de 48 horas. */
+export async function stormCampaign(businessId: string, _prev: PlanResult, f: FormData): Promise<PlanResult> {
+  const b = await business(businessId);
+  if (!aiEnabled()) return { ok: false, message: "Falta la clave de la IA (GEMINI_API_KEY) en la configuración del servidor." };
+  const event = stormEvent(str(f, "event"));
+  if (!event) return { ok: false, message: "Elige qué tipo de tormenta fue." };
+  const channels = f.getAll("channels").map(String).filter((c): c is ChannelId => CHANNEL_IDS.includes(c as ChannelId));
+  if (!channels.length) return { ok: false, message: "Elige al menos un canal." };
+  const [date, time] = str(f, "eventAt").split("T");
+  const eventAt = /^\d{4}-\d{2}-\d{2}$/.test(date ?? "") ? localToUtc(date, 0, time ?? "") : new Date();
+  if (Date.now() - eventAt.getTime() > 10 * 24 * 3600000) return { ok: false, message: "La tormenta fue hace más de 10 días. Usa el plan de la semana normal." };
+  try {
+    const plan = await stormPlan(b, { event: event.en, zone: str(f, "zone").slice(0, 300), lang: lang(str(f, "lang")) });
+    const now = new Date();
+    const sinceEvent = Math.max(0, (now.getTime() - eventAt.getTime()) / 3600000);
+    await savePlanPosts(b, businessId, channels, plan.posts.map((item, i) => {
+      // Si la hora que pidió la IA ya pasó, sale en las próximas horas permitidas, una cada 3 horas.
+      const hours = Math.max(item.hoursAfter, sinceEvent + 1 + i * 3);
+      return { post: item.post, scheduledAt: stormSchedule(eventAt, hours, item.phase) };
+    }));
+    revalidatePath(`/b/${businessId}/plan`);
+    const n = plan.posts.length;
+    return {
+      ok: true,
+      message: b.aiAutopublish
+        ? `Listo: campaña de ${n} publicaciones programada. Las que ofrecen tus servicios salen después de 48 horas.`
+        : `Listo: campaña de ${n} borradores abajo. Las que ofrecen tus servicios están programadas después de 48 horas.`,
     };
   } catch (e) {
     return { ok: false, message: (e as Error).message };

@@ -3,54 +3,47 @@
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import type { PlanResult } from "@/app/actions";
+import { STORM_EVENTS } from "@/lib/storm";
 
 type Props = {
   action: (prev: PlanResult, f: FormData) => Promise<PlanResult>;
   channels: { id: string; name: string; connected: boolean }[];
-  today: string;
-  autopublish: boolean;
+  now: string;
 };
-
-const COUNTS = [
-  [3, "3 publicaciones"],
-  [5, "5 publicaciones"],
-  [7, "7: una al día"],
-  [10, "10 publicaciones"],
-  [14, "14: dos al día (agresivo)"],
-] as const;
 
 function Submit() {
   const { pending } = useFormStatus();
   return (
     <button className="btn on" type="submit" disabled={pending}>
-      {pending ? "La IA está escribiendo… (puede tardar 1-2 minutos)" : "✦ Crear plan de la semana"}
+      {pending ? "La IA está preparando la campaña… (1-2 minutos)" : "⚡ Crear campaña de tormenta"}
     </button>
   );
 }
 
-export function PlanForm({ action, channels, today, autopublish }: Props) {
+export function StormForm({ action, channels, now }: Props) {
   const [result, run] = useActionState(action, null);
   return (
     <form action={run} className="card">
-      <h2>Plan de la semana con IA</h2>
+      <h2>Campaña de tormenta</h2>
       <p className="small muted">
-        La IA escribe varias publicaciones, cada una adaptada a cada red, y les pone día y hora.{" "}
-        {autopublish ? "Este negocio tiene la publicación automática ENCENDIDA: saldrán solas." : "Quedan como borradores para que las revises y apruebes."}
+        Cuando pasa una tormenta, la IA prepara 6 publicaciones con foto. Las primeras ayudan a la gente (seguridad y cómo documentar el daño) y no
+        ofrecen tus servicios. Las que invitan a contactarte salen después de 48 horas, entre 9 am y 7 pm y nunca en domingo, como piden las reglas de
+        Florida para public adjusters.
       </p>
       <div className="row" style={{ gap: 16, alignItems: "flex-end" }}>
         <div className="stack" style={{ gap: 4 }}>
-          <label className="lbl" htmlFor="startDate">Empieza el</label>
-          <input id="startDate" name="startDate" type="date" className="field" defaultValue={today} min={today} required />
-        </div>
-        <div className="stack" style={{ gap: 4 }}>
-          <label className="lbl" htmlFor="count">Cuántas</label>
-          <select id="count" name="count" className="field" defaultValue="7">
-            {COUNTS.map(([n, label]) => <option key={n} value={n}>{label}</option>)}
+          <label className="lbl" htmlFor="event">Qué pasó</label>
+          <select id="event" name="event" className="field" defaultValue="huracan">
+            {STORM_EVENTS.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
         </div>
         <div className="stack" style={{ gap: 4 }}>
-          <label className="lbl" htmlFor="lang">Idioma</label>
-          <select id="lang" name="lang" className="field" defaultValue="es">
+          <label className="lbl" htmlFor="eventAt">Cuándo pasó</label>
+          <input id="eventAt" name="eventAt" type="datetime-local" className="field" defaultValue={now} required />
+        </div>
+        <div className="stack" style={{ gap: 4 }}>
+          <label className="lbl" htmlFor="storm-lang">Idioma</label>
+          <select id="storm-lang" name="lang" className="field" defaultValue="both">
             <option value="es">Español</option>
             <option value="en">Inglés</option>
             <option value="both">Los dos</option>
@@ -58,15 +51,15 @@ export function PlanForm({ action, channels, today, autopublish }: Props) {
         </div>
       </div>
       <div className="stack" style={{ gap: 4 }}>
-        <label className="lbl" htmlFor="themes">Temas que quieres (opcional)</label>
-        <textarea id="themes" name="themes" className="field" style={{ minHeight: 80 }} placeholder="Ej.: temporada de huracanes, qué hacer si tienes una filtración, cómo funciona un reclamo" />
+        <label className="lbl" htmlFor="zone">Zonas afectadas</label>
+        <input id="zone" name="zone" className="field" placeholder="Ej.: Miami-Dade, Broward y Palm Beach" />
       </div>
       <fieldset className="stack" style={{ gap: 6, border: 0, padding: 0 }}>
         <legend className="lbl">Dónde publicar</legend>
         <div className="row" style={{ gap: 14 }}>
           {channels.map((c) => (
             <label key={c.id} className="row" style={{ gap: 6 }}>
-              <input type="checkbox" name="channels" value={c.id} defaultChecked={c.connected} />
+              <input type="checkbox" name="channels" value={c.id} defaultChecked={c.connected && c.id !== "sms" && c.id !== "email"} />
               {c.name}{!c.connected && <span className="small muted">(no conectado)</span>}
             </label>
           ))}
