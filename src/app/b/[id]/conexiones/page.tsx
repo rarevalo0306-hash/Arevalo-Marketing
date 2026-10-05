@@ -4,6 +4,7 @@ import { PageHead } from "@/components/PageHead";
 import { CHANNELS } from "@/lib/channels";
 import { decryptJson } from "@/lib/crypto";
 import { db } from "@/lib/db";
+import { googleEnabled } from "@/lib/google-oauth";
 import { metaEnabled } from "@/lib/meta-oauth";
 
 export default async function ConexionesPage({
@@ -11,11 +12,12 @@ export default async function ConexionesPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ meta?: string; msg?: string; page?: string; ig?: string }>;
+  searchParams: Promise<{ meta?: string; google?: string; place?: string; msg?: string; page?: string; ig?: string }>;
 }) {
   const { id } = await params;
   const q = await searchParams;
   const metaUrl = metaEnabled() ? `/api/meta/start?b=${id}` : null;
+  const googleUrl = googleEnabled() ? `/api/google/start?b=${id}` : null;
   const b = await db.business.findUniqueOrThrow({ where: { id }, include: { connections: true } });
   const connected = b.connections.length;
   return (
@@ -32,6 +34,8 @@ export default async function ConexionesPage({
           {q.ig ? `Instagram también quedó conectado (@${q.ig}).` : "Esa página no tiene una cuenta de Instagram profesional vinculada, así que Instagram no se conectó."}
         </p>
       )}
+      {q.google === "ok" && <p className="note ok" role="status">Listo: Google quedó conectado con el perfil &quot;{q.place}&quot;.</p>}
+      {q.google === "error" && <p className="note error" role="alert">{q.msg || "No se pudo conectar con Google."}</p>}
       {q.meta === "error" && <p className="note error" role="alert">{q.msg || "No se pudo conectar con Facebook."}</p>}
       <div className="card" style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 16, padding: "18px 22px" }}>
         <div style={{ fontFamily: "var(--display)", fontSize: 28, fontWeight: 700 }}>{connected} de {CHANNELS.length}</div>
@@ -59,7 +63,8 @@ export default async function ConexionesPage({
               save={saveConnection.bind(null, id, c.id)}
               remove={deleteConnection.bind(null, id, c.id)}
               test={testConnection.bind(null, id, c.id)}
-              oauthUrl={c.id === "facebook" || c.id === "instagram" ? metaUrl : null}
+              oauthUrl={c.id === "facebook" || c.id === "instagram" ? metaUrl : c.id === "google" ? googleUrl : null}
+              oauthName={c.id === "google" ? "Google" : "Facebook"}
             />
           );
         })}

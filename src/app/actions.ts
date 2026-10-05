@@ -11,6 +11,7 @@ import { db } from "@/lib/db";
 import { falEnabled, startVideo, videoResult, type Shape, type VideoJob } from "@/lib/fal";
 import { createImage, IMAGE_PROVIDERS, imagesEnabled } from "@/lib/imagegen";
 import { createSignedUpload, saveUpload, storeRemote } from "@/lib/media";
+import { GOOGLE_COOKIE, saveGoogleLocation, type GoogleLocation } from "@/lib/google-oauth";
 import { listPages, META_COOKIE, saveMetaPage } from "@/lib/meta-oauth";
 import { publishPost, retryPost } from "@/lib/publish";
 import { PUBLISHERS } from "@/lib/publishers";
@@ -110,6 +111,21 @@ export async function chooseMetaPage(businessId: string, pageId: string) {
   jar.delete(META_COOKIE);
   revalidatePath(`/b/${businessId}/conexiones`);
   redirect(`/b/${businessId}/conexiones?${new URLSearchParams({ meta: "ok", page: page.name, ig: instagram ?? "" })}`);
+}
+
+/** Después de "Conectar con Google", cuando la cuenta administra varios perfiles. */
+export async function chooseGoogleLocation(businessId: string, locationId: string) {
+  await business(businessId);
+  const jar = await cookies();
+  const raw = jar.get(GOOGLE_COOKIE)?.value;
+  const saved = raw ? decryptJson<{ refreshToken: string; businessId: string; locations: GoogleLocation[] }>(raw) : null;
+  if (!saved || saved.businessId !== businessId) redirect(`/b/${businessId}/conexiones?google=error&msg=${encodeURIComponent("La conexión venció. Vuelve a intentarlo.")}`);
+  const loc = saved.locations.find((l) => l.locationId === locationId);
+  if (!loc) throw new Error("Ese perfil ya no está disponible");
+  await saveGoogleLocation(businessId, saved.refreshToken, loc);
+  jar.delete(GOOGLE_COOKIE);
+  revalidatePath(`/b/${businessId}/conexiones`);
+  redirect(`/b/${businessId}/conexiones?${new URLSearchParams({ google: "ok", place: loc.title })}`);
 }
 
 export async function deleteConnection(businessId: string, channel: ChannelId) {
