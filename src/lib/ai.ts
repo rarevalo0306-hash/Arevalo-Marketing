@@ -38,6 +38,7 @@ const PostSchema = z.object({
   emailSubject: z.string().describe("Email subject line under 60 characters"),
   email: z.string().describe("Email body: friendly, 2-4 short paragraphs, plain text"),
   seoTitle: z.string().describe("Website article title under 60 characters, in Spanish"),
+  imageHeadline: z.string().describe("Headline printed on the post image: 3 to 7 words, in the post's main language (Spanish if bilingual), no hashtags, no emoji, no phone numbers"),
   imageIdea: z.string().describe("In English: a one-sentence description of a photo that would fit this post (no text in the image, no logos, no real people's faces)"),
 });
 export type AiPost = z.infer<typeof PostSchema>;

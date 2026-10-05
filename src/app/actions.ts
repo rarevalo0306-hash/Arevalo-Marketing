@@ -10,8 +10,9 @@ import { decryptJson, encryptJson } from "@/lib/crypto";
 import { normalizePhone, parseContactsCsv } from "@/lib/contacts";
 import { db } from "@/lib/db";
 import { falEnabled, startVideo, videoResult, type Shape, type VideoJob } from "@/lib/fal";
+import { DESIGN_SHAPES, renderDesign, type DesignShape } from "@/lib/design";
 import { createImage, IMAGE_PROVIDERS, imagesEnabled } from "@/lib/imagegen";
-import { createSignedUpload, saveUpload, storeRemote } from "@/lib/media";
+import { createSignedUpload, saveUpload, storeBuffer, storeRemote } from "@/lib/media";
 import { GOOGLE_COOKIE, saveGoogleLocation, type GoogleLocation } from "@/lib/google-oauth";
 import { listPages, META_COOKIE, saveMetaPage } from "@/lib/meta-oauth";
 import { publishPost, retryPost } from "@/lib/publish";
@@ -345,7 +346,17 @@ export async function generatePlan(businessId: string, _prev: PlanResult, f: For
     const plan = await planWeek(b, { startDate, count, themes: str(f, "themes").slice(0, 1000), lang: lang(str(f, "lang")) });
     // Una foto para cada publicación (si fal.ai está configurado). Si una falla, esa publicación queda sin foto.
     const images = imagesEnabled()
-      ? await Promise.all(plan.posts.map((p) => createImage(b.aiImage, p.post.imageIdea, "square", businessId).catch(() => null)))
+      ? await Promise.all(
+          plan.posts.map(async (p) => {
+            try {
+              const photo = await createImage(b.aiImage, p.post.imageIdea, "square", businessId);
+              // Con la marca activada, la foto sale con logo, titular y teléfono; si el diseño falla, queda la foto sola.
+              return b.brandImages && p.post.imageHeadline.trim() ? await brandPhoto(b, photo, p.post.imageHeadline).catch(() => photo) : photo;
+            } catch {
+              return null;
+            }
+          }),
+        )
       : plan.posts.map(() => null);
     const now = new Date();
     for (const [i, item] of plan.posts.entries()) {
@@ -446,4 +457,43 @@ export async function aiVideoCheck(businessId: string, job: VideoJob): Promise<V
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
+}
+
+// ---------- Diseño con la marca ----------
+
+/** Pone logo, color, titular y teléfono del negocio sobre una foto y guarda el resultado. */
+async function brandPhoto(
+  b: { id: string; name: string; color: string; website: string; logoUrl: string; phone: string },
+  photoUrl: string,
+  headline: string,
+  shape: DesignShape = "square",
+): Promise<string> {
+  const jpg = await renderDesign({ photoUrl, headline, businessName: b.name, color: b.color, logoUrl: b.logoUrl, phone: b.phone, website: b.website, shape });
+  return (await storeBuffer(jpg, "image/jpeg", b.id)).url;
+}
+
+export async function aiDesign(businessId: string, photoUrl: string, headline: string, shape: string): Promise<MediaResult> {
+  const b = await business(businessId);
+  if (!/^https:\/\//.test(photoUrl)) return { ok: false, error: "Primero crea o sube una foto (con dirección pública)." };
+  if (!headline.trim()) return { ok: false, error: "Escribe el titular que va en la foto." };
+  try {
+    return { ok: true, url: await brandPhoto(b, photoUrl, headline, shape in DESIGN_SHAPES ? (shape as DesignShape) : "square") };
+  } catch (e) {
+    return { ok: false, error: `No se pudo diseñar la imagen: ${(e as Error).message}` };
+  }
+}
+
+/** Logo, teléfono y si la marca se aplica sola a las fotos de la IA. */
+export async function updateBranding(businessId: string, f: FormData) {
+  await business(businessId);
+  const logoUrl = str(f, "logoUrl");
+  await db.business.update({
+    where: { id: businessId },
+    data: {
+      logoUrl: /^https:\/\//.test(logoUrl) || logoUrl === "" ? logoUrl : undefined,
+      phone: str(f, "phone").slice(0, 40),
+      brandImages: f.get("brandImages") === "on",
+    },
+  });
+  revalidatePath(`/b/${businessId}`, "layout");
 }

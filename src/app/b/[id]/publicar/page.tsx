@@ -1,4 +1,4 @@
-import { aiImage, aiVideoCheck, aiVideoStart, aiWrite, createPost, getUploadUrl } from "@/app/actions";
+import { aiDesign, aiImage, aiVideoCheck, aiVideoStart, aiWrite, createPost, getUploadUrl } from "@/app/actions";
 import { Composer } from "@/components/Composer";
 import { PageHead } from "@/components/PageHead";
 import type { ChannelId } from "@/lib/channels";
@@ -36,7 +36,7 @@ export default async function PublicarPage({ params }: { params: Promise<{ id: s
         action={createPost.bind(null, id)}
         upload={usesSupabaseStorage() ? getUploadUrl.bind(null, id) : null}
         aiWrite={aiEnabled() ? aiWrite.bind(null, id) : null}
-        aiMedia={imagesEnabled() ? { image: aiImage.bind(null, id), video: falEnabled(), videoStart: aiVideoStart.bind(null, id), videoCheck: aiVideoCheck.bind(null, id) } : null}
+        aiMedia={imagesEnabled() ? { image: aiImage.bind(null, id), video: falEnabled(), videoStart: aiVideoStart.bind(null, id), videoCheck: aiVideoCheck.bind(null, id), design: aiDesign.bind(null, id), autoBrand: b.brandImages } : null}
       />
     </>
   );

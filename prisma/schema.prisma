@@ -21,6 +21,10 @@ model Business {
   aiText        String     @default("")
   /// IA para fotos: flux | openai | gemini ("" = la primera disponible)
   aiImage       String     @default("")
+  /// Marca para los diseños: logo (URL pública, PNG), teléfono, y si se aplica sola a las fotos de la IA.
+  logoUrl       String     @default("")
+  phone         String     @default("")
+  brandImages   Boolean    @default(true)
   createdAt   DateTime     @default(now())
   connections Connection[]
   contacts    Contact[]
