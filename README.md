@@ -19,7 +19,7 @@ Escribe una publicación una vez y sale en Facebook, Instagram, TikTok, Google, 
 | Instagram | Meta Graph API | Se conecta junto con Facebook si la cuenta profesional de Instagram está vinculada a la página |
 | TikTok | Content Posting API | App en developers.tiktok.com con `video.publish` (client key, client secret, refresh token). Mientras TikTok no audite tu app, los videos salen en privado. |
 | Google | Business Profile API | Perfil de Negocio verificado y credenciales OAuth (client ID, secret, refresh token) |
-| Sitio web / SEO | GitHub + Vercel + Claude | Tu sitio en GitHub preparado para recibir artículos (`content/articles.json`) y un token de GitHub con permiso de escritura en ese repositorio. Claude redacta el artículo en español e inglés a partir de tu publicación, sin agregar datos que no escribiste. |
+| Sitio web / SEO | GitHub + Vercel + la IA de la app | Tu sitio en GitHub preparado para recibir artículos (`content/articles.json`) y un token de GitHub con permiso de escritura en ese repositorio. La IA de la app (Gemini, ChatGPT o Claude) redacta el artículo en español e inglés a partir de tu publicación, sin agregar datos que no escribiste. |
 | Email | Resend | API key y remitente con dominio verificado |
 | Texto (SMS) | Twilio | Account SID, auth token y número que envía (en EE. UU. requiere registro A2P 10DLC) |
 
