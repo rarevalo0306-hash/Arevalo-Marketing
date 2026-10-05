@@ -71,6 +71,7 @@ Rules:
 - No fake urgency, no fear-mongering, no medical or legal claims.
 - Use plain words a homeowner understands. Emoji are fine on Facebook, Instagram and TikTok, sparingly.
 - Do not use markdown (no **bold**, no # headings): social networks show the symbols literally.
+- Spanish text must always use correct accents and punctuation (después, inspección, daño, ¿…?, ¡…!), including the image headline.
 - ${LANG_TEXT[lang]}`;
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addArticle, slugify, type GeneratedArticle, type SiteArticle } from "@/lib/publishers/website";
+import { addArticle, sitePhotoPath, slugify, type GeneratedArticle, type SiteArticle } from "@/lib/publishers/website";
 
 const copy = (slug: string) => ({
   slug,
@@ -34,5 +34,11 @@ describe("fecha del artículo", () => {
   it("guarda la fecha de publicación que muestra el sitio", () => {
     const { article } = addArticle([], gen("lluvia", "rain"), "p", "2026-10-05");
     expect(article.published).toBe("2026-10-05");
+  });
+});
+
+describe("foto del artículo", () => {
+  it("se guarda en la carpeta de fotos de marketing del sitio", () => {
+    expect(sitePhotoPath("post-abc")).toBe("public/images/marketing/post-abc.webp");
   });
 });

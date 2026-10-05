@@ -1,5 +1,6 @@
 // Canal "Sitio web": convierte la publicación en un artículo bilingüe para el sitio
 // (Next.js en GitHub + Vercel) y lo agrega a content/articles.json. Vercel lo publica solo.
+import sharp from "sharp";
 import { z } from "zod";
 import { aiEnabled, ask } from "@/lib/ai";
 import { BUSINESS_TZ } from "@/lib/time";
@@ -30,8 +31,18 @@ const Generated = z.object({
   en: copy("en"),
 });
 export type GeneratedArticle = z.infer<typeof Generated>;
-/** `published` (AAAA-MM-DD) es la fecha que el sitio muestra en el artículo. */
-export type SiteArticle = GeneratedArticle & { id: string; published: string };
+/** `published` (AAAA-MM-DD) es la fecha que el sitio muestra en el artículo. `image` es la foto del post guardada en el sitio. */
+export type SiteArticle = GeneratedArticle & { id: string; published: string; image?: string };
+
+/** Dónde guarda el sitio las fotos de los posts (el sitio solo acepta esta carpeta). */
+export const sitePhotoPath = (id: string) => `public/images/marketing/${id}.webp`;
+
+/** Convierte la foto del post a WEBP (máximo 1600 px de ancho) para el sitio. */
+export async function photoForSite(url: string): Promise<Buffer> {
+  const res = await fetch(url);
+  if (!res.ok) throw new PublishError(`No se pudo descargar la foto del post (${res.status}).`);
+  return sharp(Buffer.from(await res.arrayBuffer())).rotate().resize({ width: 1600, withoutEnlargement: true }).webp({ quality: 82 }).toBuffer();
+}
 
 const SYSTEM = `You turn a business's social media post into a short article for its bilingual (Spanish and English) website.
 Rules:
@@ -122,6 +133,22 @@ export const website: Publisher = {
 
     const generated = await generateArticle(input);
     const { list, article } = addArticle(existing, generated, `post-${Date.now().toString(36)}`);
+
+    // La misma foto del post (la que salió en Facebook e Instagram) va también en el artículo.
+    if (input.mediaType === "photo" && input.mediaUrl) {
+      try {
+        const photo = await photoForSite(input.mediaUrl);
+        const photoUrl = `https://api.github.com/repos/${repo}/contents/${sitePhotoPath(article.id)}`;
+        await fetchJson(photoUrl, {
+          method: "PUT",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({ message: `Foto del artículo: ${article.es.title}`, content: photo.toString("base64"), branch }),
+        });
+        article.image = `/${sitePhotoPath(article.id).replace(/^public\//, "")}`;
+      } catch {
+        // Si la foto falla, el artículo sale igual con la foto del tema.
+      }
+    }
 
     await fetchJson(url, {
       method: "PUT",
