@@ -8,6 +8,7 @@ import { decryptJson, encryptJson } from "@/lib/crypto";
 import { normalizePhone, parseContactsCsv } from "@/lib/contacts";
 import { db } from "@/lib/db";
 import { createSignedUpload, saveUpload } from "@/lib/media";
+import { listPages, META_COOKIE, saveMetaPage } from "@/lib/meta-oauth";
 import { publishPost, retryPost } from "@/lib/publish";
 import { PUBLISHERS } from "@/lib/publishers";
 import { safeEqual, SESSION_COOKIE, sessionToken } from "@/lib/session";
@@ -90,6 +91,21 @@ export async function saveConnection(businessId: string, channel: ChannelId, f: 
     update: { secret, label },
   });
   revalidatePath(`/b/${businessId}/conexiones`);
+}
+
+/** Después de "Conectar con Facebook", cuando la cuenta administra varias páginas. */
+export async function chooseMetaPage(businessId: string, pageId: string) {
+  await business(businessId);
+  const jar = await cookies();
+  const raw = jar.get(META_COOKIE)?.value;
+  const saved = raw ? decryptJson<{ userToken: string; businessId: string }>(raw) : null;
+  if (!saved || saved.businessId !== businessId) redirect(`/b/${businessId}/conexiones?meta=error&msg=${encodeURIComponent("La conexión venció. Vuelve a intentarlo.")}`);
+  const page = (await listPages(saved.userToken)).find((p) => p.id === pageId);
+  if (!page) throw new Error("Esa página ya no está disponible");
+  const { instagram } = await saveMetaPage(businessId, page);
+  jar.delete(META_COOKIE);
+  revalidatePath(`/b/${businessId}/conexiones`);
+  redirect(`/b/${businessId}/conexiones?${new URLSearchParams({ meta: "ok", page: page.name, ig: instagram ?? "" })}`);
 }
 
 export async function deleteConnection(businessId: string, channel: ChannelId) {

@@ -12,9 +12,11 @@ type Props = {
   save: (f: FormData) => Promise<void>;
   remove: () => Promise<void>;
   test: () => Promise<TestResult>;
+  /** Si existe, el canal se conecta iniciando sesión (Facebook/Instagram). */
+  oauthUrl?: string | null;
 };
 
-export function ConnectionCard({ channel, connected, values, secretSet, save, remove, test }: Props) {
+export function ConnectionCard({ channel, connected, values, secretSet, save, remove, test, oauthUrl }: Props) {
   const [open, setOpen] = useState(false);
   const [result, setResult] = useState<TestResult>(null);
   const [pending, start] = useTransition();
@@ -83,7 +85,13 @@ export function ConnectionCard({ channel, connected, values, secretSet, save, re
             </button>
           </>
         )}
-        {!open && (
+        {!open && oauthUrl && (
+          <>
+            <button className="btn link" type="button" onClick={() => setOpen(true)}>Pegar datos a mano</button>
+            <a className="btn on" href={oauthUrl}>{connected ? "Volver a conectar con Facebook" : "Conectar con Facebook"}</a>
+          </>
+        )}
+        {!open && !oauthUrl && (
           <button className="btn outline" type="button" onClick={() => setOpen(true)}>
             {connected ? "Editar datos" : `Conectar ${channel.name}`}
           </button>
