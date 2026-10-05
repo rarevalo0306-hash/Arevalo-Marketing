@@ -1,10 +1,12 @@
 // Agente de IA: escribe publicaciones adaptadas a cada canal y arma planes semanales.
+// Usa Google Gemini si hay GEMINI_API_KEY (más barato); si no, Claude con ANTHROPIC_API_KEY.
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import type { ChannelId } from "@/lib/channels";
 
-export const aiEnabled = () => Boolean(process.env.ANTHROPIC_API_KEY);
+const geminiOn = () => Boolean(process.env.GEMINI_API_KEY);
+export const aiEnabled = () => geminiOn() || Boolean(process.env.ANTHROPIC_API_KEY);
 
 export type Lang = "es" | "en" | "both";
 const LANG_TEXT: Record<Lang, string> = {
@@ -59,8 +61,50 @@ function client() {
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 }
 
+// Si un modelo está saturado, se prueba el siguiente.
+const GEMINI_MODELS = () => [...new Set([process.env.GEMINI_MODEL || "gemini-flash-latest", "gemini-2.5-flash", "gemini-flash-lite-latest"])];
+
+async function askGemini<T extends z.ZodTypeAny>(schema: T, system: string, user: string, maxTokens: number): Promise<z.infer<T>> {
+  const payload = JSON.stringify({
+    systemInstruction: { parts: [{ text: system }] },
+    contents: [{ role: "user", parts: [{ text: user }] }],
+    generationConfig: { responseMimeType: "application/json", responseJsonSchema: z.toJSONSchema(schema), maxOutputTokens: maxTokens },
+  });
+  let res: Response | null = null;
+  for (const model of GEMINI_MODELS()) {
+    res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: "POST",
+      headers: { "x-goog-api-key": process.env.GEMINI_API_KEY!, "Content-Type": "application/json" },
+      body: payload,
+    });
+    if (res.status !== 503 && res.status !== 500 && res.status !== 404) break;
+  }
+  if (!res) throw new Error("No se pudo llamar a Gemini.");
+  const body = await res.text();
+  if (!res.ok) {
+    if (res.status === 503) throw new Error("Gemini está muy ocupado en este momento. Intenta de nuevo en un minuto.");
+    if (res.status === 429) throw new Error("Gemini llegó a su límite por ahora. Espera un minuto o activa la facturación en Google AI Studio.");
+    if (res.status === 400 && body.includes("API key")) throw new Error("Google rechazó la clave de Gemini (GEMINI_API_KEY).");
+    throw new Error(`Gemini respondió ${res.status}: ${body.slice(0, 300)}`);
+  }
+  const data = JSON.parse(body) as { candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[] };
+  const c = data.candidates?.[0];
+  if (c?.finishReason === "SAFETY" || c?.finishReason === "PROHIBITED_CONTENT") throw new Error("La IA no quiso escribir sobre ese tema. Prueba con otra idea.");
+  const text = c?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new Error("La IA no devolvió una respuesta válida. Intenta de nuevo.");
+  }
+  const parsed = schema.safeParse(json);
+  if (!parsed.success) throw new Error("La IA no devolvió una respuesta completa. Intenta de nuevo.");
+  return parsed.data;
+}
+
 async function ask<T extends z.ZodTypeAny>(schema: T, system: string, user: string, maxTokens = 16000): Promise<z.infer<T>> {
-  if (!aiEnabled()) throw new Error("Falta ANTHROPIC_API_KEY en la configuración del servidor.");
+  if (geminiOn()) return askGemini(schema, system, user, maxTokens);
+  if (!aiEnabled()) throw new Error("Falta la clave de la IA (GEMINI_API_KEY) en la configuración del servidor.");
   const response = await client().beta.messages.parse({
     model: "claude-opus-5-5",
     max_tokens: maxTokens,

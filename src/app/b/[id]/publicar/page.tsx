@@ -1,9 +1,10 @@
-import { aiWrite, createPost, getUploadUrl } from "@/app/actions";
+import { aiImage, aiVideoCheck, aiVideoStart, aiWrite, createPost, getUploadUrl } from "@/app/actions";
 import { Composer } from "@/components/Composer";
 import { PageHead } from "@/components/PageHead";
 import type { ChannelId } from "@/lib/channels";
 import { aiEnabled } from "@/lib/ai";
 import { db } from "@/lib/db";
+import { falEnabled } from "@/lib/fal";
 import { usesSupabaseStorage } from "@/lib/media";
 
 // Publicar en varios canales (y esperar a que Instagram procese un video) puede tardar.
@@ -34,6 +35,7 @@ export default async function PublicarPage({ params }: { params: Promise<{ id: s
         action={createPost.bind(null, id)}
         upload={usesSupabaseStorage() ? getUploadUrl.bind(null, id) : null}
         aiWrite={aiEnabled() ? aiWrite.bind(null, id) : null}
+        aiMedia={falEnabled() ? { image: aiImage.bind(null, id), videoStart: aiVideoStart.bind(null, id), videoCheck: aiVideoCheck.bind(null, id) } : null}
       />
     </>
   );

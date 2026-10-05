@@ -8,7 +8,8 @@ import { CHANNEL_IDS, channelDef, type ChannelId } from "@/lib/channels";
 import { decryptJson, encryptJson } from "@/lib/crypto";
 import { normalizePhone, parseContactsCsv } from "@/lib/contacts";
 import { db } from "@/lib/db";
-import { createSignedUpload, saveUpload } from "@/lib/media";
+import { falEnabled, generateImage, startVideo, videoResult, type Shape, type VideoJob } from "@/lib/fal";
+import { createSignedUpload, saveUpload, storeRemote } from "@/lib/media";
 import { listPages, META_COOKIE, saveMetaPage } from "@/lib/meta-oauth";
 import { publishPost, retryPost } from "@/lib/publish";
 import { PUBLISHERS } from "@/lib/publishers";
@@ -286,22 +287,28 @@ export type PlanResult = { ok: boolean; message: string } | null;
 /** Genera las publicaciones de una semana: borradores para aprobar, o programadas si el negocio tiene publicación automática. */
 export async function generatePlan(businessId: string, _prev: PlanResult, f: FormData): Promise<PlanResult> {
   const b = await business(businessId);
-  if (!aiEnabled()) return { ok: false, message: "Falta ANTHROPIC_API_KEY en la configuración del servidor." };
+  if (!aiEnabled()) return { ok: false, message: "Falta la clave de la IA (GEMINI_API_KEY) en la configuración del servidor." };
   const startDate = /^\d{4}-\d{2}-\d{2}$/.test(str(f, "startDate")) ? str(f, "startDate") : new Date().toISOString().slice(0, 10);
   const count = Math.min(14, Math.max(1, Number(str(f, "count")) || 5));
   const channels = f.getAll("channels").map(String).filter((c): c is ChannelId => CHANNEL_IDS.includes(c as ChannelId));
   if (!channels.length) return { ok: false, message: "Elige al menos un canal." };
   try {
     const plan = await planWeek(b, { startDate, count, themes: str(f, "themes").slice(0, 1000), lang: lang(str(f, "lang")) });
+    // Una foto para cada publicación (si fal.ai está configurado). Si una falla, esa publicación queda sin foto.
+    const images = falEnabled()
+      ? await Promise.all(plan.posts.map((p) => makeImage(businessId, p.post.imageIdea, "square").catch(() => null)))
+      : plan.posts.map(() => null);
     const now = new Date();
-    for (const item of plan.posts) {
+    for (const [i, item] of plan.posts.entries()) {
       const fields = toPostFields(item.post);
+      const image = images[i];
       let scheduledAt = localToUtc(startDate, item.day, item.time);
       if (scheduledAt < now) scheduledAt = new Date(now.getTime() + 60 * 60 * 1000);
       await db.post.create({
         data: {
           businessId,
           ...fields,
+          ...(image ? { mediaUrl: image, mediaType: "photo" } : {}),
           source: "ai",
           status: b.aiAutopublish ? "scheduled" : "draft",
           scheduledAt,
@@ -343,4 +350,55 @@ export async function approveDraft(businessId: string, postId: string, f: FormDa
   });
   revalidatePath(`/b/${businessId}/plan`);
   revalidatePath(`/b/${businessId}/historial`);
+}
+
+// ---------- Imágenes y videos con IA ----------
+
+const SHAPES: Shape[] = ["square", "vertical", "horizontal"];
+
+async function makeImage(businessId: string, description: string, shape: Shape): Promise<string> {
+  const temp = await generateImage(description.slice(0, 1000), shape);
+  return (await storeRemote(temp, businessId)).url;
+}
+
+export type MediaResult = { ok: true; url: string } | { ok: false; error: string };
+
+/** Crea una foto con IA y la guarda en tu almacenamiento. */
+export async function aiImage(businessId: string, description: string, shape: string): Promise<MediaResult> {
+  await business(businessId);
+  if (!falEnabled()) return { ok: false, error: "Falta la clave de fal.ai (FAL_KEY) en la configuración del servidor." };
+  if (!description.trim()) return { ok: false, error: "Describe la imagen que quieres." };
+  try {
+    return { ok: true, url: await makeImage(businessId, description, SHAPES.includes(shape as Shape) ? (shape as Shape) : "square") };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+export type VideoStart = { ok: true; job: VideoJob } | { ok: false; error: string };
+
+/** Empieza a convertir una foto en video (5 segundos). */
+export async function aiVideoStart(businessId: string, imageUrl: string, motion: string): Promise<VideoStart> {
+  await business(businessId);
+  if (!falEnabled()) return { ok: false, error: "Falta la clave de fal.ai (FAL_KEY) en la configuración del servidor." };
+  if (!/^https:\/\//.test(imageUrl)) return { ok: false, error: "Primero crea o sube una foto para el video." };
+  try {
+    return { ok: true, job: await startVideo(imageUrl, motion.slice(0, 500)) };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+export type VideoCheck = { ok: true; done: false } | { ok: true; done: true; url: string } | { ok: false; error: string };
+
+/** Pregunta si el video ya está listo; si lo está, lo guarda en tu almacenamiento. */
+export async function aiVideoCheck(businessId: string, job: VideoJob): Promise<VideoCheck> {
+  await business(businessId);
+  try {
+    const r = await videoResult(job);
+    if (!r.done) return { ok: true, done: false };
+    return { ok: true, done: true, url: (await storeRemote(r.url, businessId)).url };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
 }

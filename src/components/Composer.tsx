@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import type { AiWriteResult } from "@/app/actions";
+import type { AiWriteResult, MediaResult, VideoCheck, VideoStart } from "@/app/actions";
+import type { VideoJob } from "@/lib/fal";
 import { useEffect, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 import {
@@ -25,6 +26,12 @@ type Props = {
   upload: ((contentType: string) => Promise<{ uploadUrl: string; publicUrl: string }>) | null;
   /** Agente de IA: escribe la publicación y sus versiones por canal a partir de una idea. */
   aiWrite: ((idea: string, lang: string) => Promise<AiWriteResult>) | null;
+  /** Fotos y videos con IA (fal.ai). */
+  aiMedia: {
+    image: (description: string, shape: string) => Promise<MediaResult>;
+    videoStart: (imageUrl: string, motion: string) => Promise<VideoStart>;
+    videoCheck: (job: VideoJob) => Promise<VideoCheck>;
+  } | null;
 };
 
 function SubmitButton({ disabled, label }: { disabled: boolean; label: string }) {
@@ -36,7 +43,7 @@ function SubmitButton({ disabled, label }: { disabled: boolean; label: string })
   );
 }
 
-export function Composer({ businessId, businessName, color, connected, contactCounts, action, upload, aiWrite }: Props) {
+export function Composer({ businessId, businessName, color, connected, contactCounts, action, upload, aiWrite, aiMedia }: Props) {
   const [text, setText] = useState("");
   const [subject, setSubject] = useState("");
   const [seoTitle, setSeoTitle] = useState("");
@@ -55,6 +62,43 @@ export function Composer({ businessId, businessName, color, connected, contactCo
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState("");
   const [imageIdea, setImageIdea] = useState("");
+  const [mediaBusy, setMediaBusy] = useState("");
+  const [mediaError, setMediaError] = useState("");
+
+  /** Foto con IA. Para video: primero una foto vertical y luego la IA le da movimiento (1-3 minutos). */
+  async function runMedia(kind: "photo" | "video") {
+    if (!aiMedia) return;
+    setMediaError("");
+    setFileUrl("");
+    try {
+      setMediaBusy("Creando la imagen…");
+      const img = await aiMedia.image(imageIdea, kind === "video" ? "vertical" : "square");
+      if (!img.ok) return setMediaError(img.error);
+      if (kind === "photo") {
+        setMediaType("photo");
+        setMediaLink(img.url);
+        return;
+      }
+      setMediaBusy("Creando el video… tarda de 1 a 3 minutos, no cierres esta página");
+      const start = await aiMedia.videoStart(img.url, "");
+      if (!start.ok) return setMediaError(start.error);
+      for (let i = 0; i < 60; i++) {
+        await new Promise((r) => setTimeout(r, 6000));
+        const r = await aiMedia.videoCheck(start.job);
+        if (!r.ok) return setMediaError(r.error);
+        if (r.done) {
+          setMediaType("video");
+          setMediaLink(r.url);
+          return;
+        }
+      }
+      setMediaError("El video está tardando demasiado. Intenta de nuevo más tarde.");
+    } catch (e) {
+      setMediaError((e as Error).message);
+    } finally {
+      setMediaBusy("");
+    }
+  }
 
   async function runAi() {
     if (!aiWrite) return;
@@ -103,7 +147,7 @@ export function Composer({ businessId, businessName, color, connected, contactCo
   const pv = selected.find((c) => c.id === preview) ?? selected[0];
   const ready = selected.filter((c) => !isBlocked(c.id, draftFor(c.id))).length;
   const scheduledIso = useMemo(() => (localDate ? new Date(localDate).toISOString() : ""), [localDate]);
-  const cant = uploading || !selected.length || !text.trim() || (when === "later" && !scheduledIso);
+  const cant = uploading || !!mediaBusy || !selected.length || !text.trim() || (when === "later" && !scheduledIso);
   const n = selected.length;
   const label = `${when === "later" ? "Programar en" : "Publicar en"} ${n} ${n === 1 ? "canal" : "canales"}`;
   const mediaSrc = fileUrl || mediaLink;
@@ -146,7 +190,7 @@ export function Composer({ businessId, businessName, color, connected, contactCo
             </div>
             <p className="small muted">La IA escribe una versión para cada canal. Revísala antes de publicar; puedes cambiar cualquier texto.</p>
             {aiError && <p className="note error" role="alert">{aiError}</p>}
-            {imageIdea && <p className="small"><strong>Idea de foto:</strong> {imageIdea}</p>}
+            {imageIdea && !aiMedia && <p className="small"><strong>Idea de foto:</strong> {imageIdea}</p>}
           </div>
         )}
         <div className="stack">
@@ -157,6 +201,19 @@ export function Composer({ businessId, businessName, color, connected, contactCo
 
         <div className="stack">
           <div className="lbl">Foto o video</div>
+          {aiMedia && (
+            <div className="stack" style={{ gap: 10, padding: 16, borderRadius: 10, background: "#e3eef9" }}>
+              <label htmlFor="imageIdea" className="lbl" style={{ color: "var(--brand)" }}>✦ Crear foto o video con IA</label>
+              <textarea id="imageIdea" className="field" rows={2} style={{ minHeight: 64 }} placeholder="Describe la imagen. Ej.: casa en Miami con el techo reparado, día soleado" value={imageIdea} onChange={(e) => setImageIdea(e.target.value)} />
+              <div className="row">
+                <button type="button" className="btn on" disabled={!!mediaBusy || !imageIdea.trim()} onClick={() => runMedia("photo")}>Crear foto</button>
+                <button type="button" className="btn outline" disabled={!!mediaBusy || !imageIdea.trim()} onClick={() => runMedia("video")}>Crear video (5 seg)</button>
+              </div>
+              {mediaBusy && <p className="small muted" role="status">{mediaBusy}</p>}
+              {mediaError && <p className="note error" role="alert">{mediaError}</p>}
+              <p className="small muted">La IA no escribe bien letras: el teléfono y el nombre van en el texto de la publicación.</p>
+            </div>
+          )}
           <input type="hidden" name="mediaType" value={mediaType} />
           <div className="row" role="group" aria-label="Tipo de archivo">
             {([["none", "Sin archivo"], ["photo", "Foto"], ["video", "Video"]] as const).map(([v, l]) => (

@@ -23,7 +23,7 @@ export default async function PlanPage({ params }: { params: Promise<{ id: strin
     <>
       <PageHead business={b} prefix="Plan con IA para" title="Plan con IA" subtitle="La IA prepara tus publicaciones de la semana. Tú revisas, cambias lo que quieras y apruebas." />
       {!aiEnabled() ? (
-        <div className="card empty">Falta la clave de la IA (ANTHROPIC_API_KEY) en Vercel.</div>
+        <div className="card empty">Falta la clave de la IA (GEMINI_API_KEY) en Vercel.</div>
       ) : (
         <div className="stack" style={{ gap: 16 }}>
           {!b.aiProfile.trim() && (
@@ -50,6 +50,10 @@ export default async function PlanPage({ params }: { params: Promise<{ id: strin
                       <span className="small muted">Saldría el {fmt.format(p.scheduledAt)}</span>
                     </div>
                   </div>
+                  {p.mediaUrl && p.mediaType === "photo" && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={p.mediaUrl} alt="Foto creada por la IA para esta publicación" style={{ width: 220, borderRadius: 10 }} />
+                  )}
                   {p.targets.some((t) => t.channel === "email") && (
                     <div className="stack" style={{ gap: 4 }}>
                       <label className="small" style={{ fontWeight: 600 }} htmlFor={`${p.id}-subject`}>Asunto del email</label>
