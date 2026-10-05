@@ -70,7 +70,7 @@ export function BrandForm({ logoUrl, phone, brandImages, color, save, upload }: 
             <label className="lbl" htmlFor="phone">Teléfono que sale en las fotos</label>
             <input id="phone" name="phone" className="field" defaultValue={phone} placeholder="305-394-8090" />
           </div>
-          <label className="row" style={{ gap: 8, alignItems: "flex-start" }}>
+          <label className="check">
             <input type="checkbox" name="brandImages" defaultChecked={brandImages} style={{ marginTop: 4 }} />
             <span>
               <strong>Diseñar solas las fotos de la IA</strong>

@@ -12,26 +12,28 @@ const ICONS: Record<string, React.ReactNode> = {
   negocio: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" /></>,
 };
 
+// [ruta, nombre, nombre corto para la barra de abajo en el celular]
 const LINKS = [
-  ["publicar", "Publicar"],
-  ["plan", "Plan con IA"],
-  ["historial", "Historial"],
-  ["contactos", "Contactos"],
-  ["conexiones", "Conexiones"],
-  ["negocio", "Ajustes del negocio"],
+  ["publicar", "Publicar", "Publicar"],
+  ["plan", "Plan con IA", "Plan IA"],
+  ["historial", "Historial", "Historial"],
+  ["contactos", "Contactos", "Contactos"],
+  ["conexiones", "Conexiones", "Cuentas"],
+  ["negocio", "Ajustes del negocio", "Ajustes"],
 ] as const;
 
 export function NavLinks({ businessId }: { businessId: string }) {
   const path = usePathname();
   return (
-    <div className="stack" style={{ gap: 2 }}>
-      {LINKS.map(([slug, label]) => {
+    <div className="navlinks">
+      {LINKS.map(([slug, label, short]) => {
         const href = `/b/${businessId}/${slug}`;
         const on = path === href;
         return (
           <Link key={slug} href={href} className={on ? "navlink on" : "navlink"} aria-current={on ? "page" : undefined}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{ICONS[slug]}</svg>
-            {label}
+            <span className="nav-long">{label}</span>
+            <span className="nav-short">{short}</span>
           </Link>
         );
       })}
