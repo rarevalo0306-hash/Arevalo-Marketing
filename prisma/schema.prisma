@@ -25,10 +25,32 @@ model Business {
   logoUrl       String     @default("")
   phone         String     @default("")
   brandImages   Boolean    @default(true)
+  /// Kit de marca: logo para fondos oscuros, colores secundario y de acento, letras, tono de voz y plantilla.
+  logoLightUrl  String     @default("")
+  color2        String     @default("")
+  color3        String     @default("")
+  fontHeading   String     @default("montserrat")
+  fontBody      String     @default("")
+  brandVoice    String     @default("")
+  hashtags      String     @default("")
+  template      String     @default("auto")
   createdAt   DateTime     @default(now())
   connections Connection[]
   contacts    Contact[]
   posts       Post[]
+  templates   Template[]
+}
+
+/// Plantilla de diseño de un negocio (la crea la IA con su marca). `spec` sigue TemplateSpec (src/lib/design-shapes.ts).
+model Template {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name       String
+  spec       Json
+  createdAt  DateTime @default(now())
+
+  @@index([businessId])
 }
 
 /// Credenciales de un canal para un negocio. `secret` va cifrado (AES-256-GCM).

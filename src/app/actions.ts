@@ -3,14 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { aiEnabled, planWeek, TEXT_PROVIDERS, toPostFields, writePost, type AiPost, type Lang } from "@/lib/ai";
+import { aiEnabled, designTemplates, planWeek, TEXT_PROVIDERS, toPostFields, writePost, type AiPost, type Lang } from "@/lib/ai";
 import { brevoDomains, brevoEnvKey } from "@/lib/brevo";
 import { CHANNEL_IDS, channelDef, type ChannelId } from "@/lib/channels";
 import { decryptJson, encryptJson } from "@/lib/crypto";
 import { normalizePhone, parseContactsCsv } from "@/lib/contacts";
 import { db } from "@/lib/db";
 import { falEnabled, startVideo, videoResult, type Shape, type VideoJob } from "@/lib/fal";
-import { DESIGN_SHAPES, renderDesign, type DesignShape } from "@/lib/design";
+import { DESIGN_SHAPES, renderDesign, type Brand, type DesignShape } from "@/lib/design";
+import { BUILTIN_TEMPLATES, FONTS, hexOr, pickTemplate, TemplateSpec } from "@/lib/design-shapes";
 import { createImage, IMAGE_PROVIDERS, imagesEnabled } from "@/lib/imagegen";
 import { createSignedUpload, saveUpload, storeBuffer, storeRemote } from "@/lib/media";
 import { GOOGLE_COOKIE, saveGoogleLocation, type GoogleLocation } from "@/lib/google-oauth";
@@ -347,11 +348,13 @@ export async function generatePlan(businessId: string, _prev: PlanResult, f: For
     // Una foto para cada publicación (si fal.ai está configurado). Si una falla, esa publicación queda sin foto.
     const images = imagesEnabled()
       ? await Promise.all(
-          plan.posts.map(async (p) => {
+          plan.posts.map(async (p, i) => {
             try {
               const photo = await createImage(b.aiImage, p.post.imageIdea, "square", businessId);
               // Con la marca activada, la foto sale con logo, titular y teléfono; si el diseño falla, queda la foto sola.
-              return b.brandImages && p.post.imageHeadline.trim() ? await brandPhoto(b, photo, p.post.imageHeadline).catch(() => photo) : photo;
+              return b.brandImages && p.post.imageHeadline.trim()
+                ? await brandPhoto(b, { photoUrl: photo, headline: p.post.imageHeadline, steps: p.post.imageSteps, seed: i }).catch(() => photo)
+                : photo;
             } catch {
               return null;
             }
@@ -461,39 +464,81 @@ export async function aiVideoCheck(businessId: string, job: VideoJob): Promise<V
 
 // ---------- Diseño con la marca ----------
 
-/** Pone logo, color, titular y teléfono del negocio sobre una foto y guarda el resultado. */
+type BrandRow = { id: string; name: string; color: string; color2: string; color3: string; website: string; logoUrl: string; logoLightUrl: string; phone: string; fontHeading: string };
+const brandOf = (b: BrandRow): Brand => ({ name: b.name, color: b.color, color2: b.color2, color3: b.color3, logoUrl: b.logoUrl, logoLightUrl: b.logoLightUrl, phone: b.phone, website: b.website, fontHeading: b.fontHeading });
+
+/** Plantillas del negocio (las que creó la IA), o las de fábrica si todavía no tiene. */
+async function templatesOf(businessId: string): Promise<TemplateSpec[]> {
+  const rows = await db.template.findMany({ where: { businessId }, orderBy: { createdAt: "asc" } });
+  const list = rows.map((r) => TemplateSpec.safeParse(r.spec)).filter((r) => r.success).map((r) => r.data!);
+  return list.length ? list : BUILTIN_TEMPLATES;
+}
+
+/** Diseña un post con la marca del negocio y una plantilla, y guarda el resultado. */
 async function brandPhoto(
-  b: { id: string; name: string; color: string; website: string; logoUrl: string; phone: string },
-  photoUrl: string,
-  headline: string,
-  shape: DesignShape = "square",
+  b: BrandRow,
+  opts: { photoUrl?: string; headline: string; steps?: string[]; template?: number; shape?: DesignShape; seed?: number },
 ): Promise<string> {
-  const jpg = await renderDesign({ photoUrl, headline, businessName: b.name, color: b.color, logoUrl: b.logoUrl, phone: b.phone, website: b.website, shape });
+  const list = await templatesOf(b.id);
+  const template = pickTemplate(list, opts.template ?? -1, { headline: opts.headline, steps: opts.steps, hasPhoto: !!opts.photoUrl, seed: opts.seed });
+  const jpg = await renderDesign({ brand: brandOf(b), template, headline: opts.headline, photoUrl: opts.photoUrl, steps: opts.steps, shape: opts.shape });
   return (await storeBuffer(jpg, "image/jpeg", b.id)).url;
 }
 
-export async function aiDesign(businessId: string, photoUrl: string, headline: string, shape: string): Promise<MediaResult> {
+export async function aiDesign(businessId: string, photoUrl: string, headline: string, shape: string, template = -1, steps: string[] = []): Promise<MediaResult> {
   const b = await business(businessId);
-  if (!/^https:\/\//.test(photoUrl)) return { ok: false, error: "Primero crea o sube una foto (con dirección pública)." };
+  if (photoUrl && !/^https:\/\//.test(photoUrl)) return { ok: false, error: "La foto necesita una dirección pública." };
   if (!headline.trim()) return { ok: false, error: "Escribe el titular que va en la foto." };
   try {
-    return { ok: true, url: await brandPhoto(b, photoUrl, headline, shape in DESIGN_SHAPES ? (shape as DesignShape) : "square") };
+    const url = await brandPhoto(b, { photoUrl: photoUrl || undefined, headline, steps: steps.slice(0, 3), template, shape: shape in DESIGN_SHAPES ? (shape as DesignShape) : "square" });
+    return { ok: true, url };
   } catch (e) {
     return { ok: false, error: `No se pudo diseñar la imagen: ${(e as Error).message}` };
   }
 }
 
-/** Logo, teléfono y si la marca se aplica sola a las fotos de la IA. */
-export async function updateBranding(businessId: string, f: FormData) {
-  await business(businessId);
-  const logoUrl = str(f, "logoUrl");
+const safeUrl = (v: string) => (/^https:\/\//.test(v) || v === "" ? v : undefined);
+
+/** Kit de marca: logos, colores, letras, tono de voz, hashtags, teléfono y diseño automático. */
+export async function updateBrandKit(businessId: string, f: FormData) {
+  const b = await business(businessId);
+  const font = str(f, "fontHeading");
   await db.business.update({
     where: { id: businessId },
     data: {
-      logoUrl: /^https:\/\//.test(logoUrl) || logoUrl === "" ? logoUrl : undefined,
+      logoUrl: safeUrl(str(f, "logoUrl")),
+      logoLightUrl: safeUrl(str(f, "logoLightUrl")),
+      color: hexOr(str(f, "color"), b.color),
+      color2: str(f, "color2") === "" ? "" : hexOr(str(f, "color2"), b.color2),
+      color3: str(f, "color3") === "" ? "" : hexOr(str(f, "color3"), b.color3),
+      fontHeading: font in FONTS ? font : b.fontHeading,
+      fontBody: str(f, "fontBody").slice(0, 60),
+      brandVoice: str(f, "brandVoice").slice(0, 2000),
+      hashtags: str(f, "hashtags").slice(0, 300),
       phone: str(f, "phone").slice(0, 40),
       brandImages: f.get("brandImages") === "on",
     },
   });
   revalidatePath(`/b/${businessId}`, "layout");
+}
+
+export type TemplatesResult = { ok: boolean; message: string } | null;
+
+/** La IA diseña plantillas nuevas con la marca del negocio y las guarda. */
+export async function generateTemplates(businessId: string): Promise<TemplatesResult> {
+  const b = await business(businessId);
+  if (!aiEnabled()) return { ok: false, message: "Falta la clave de la IA en la configuración del servidor." };
+  try {
+    const specs = await designTemplates(b);
+    await db.template.createMany({ data: specs.map((spec) => ({ businessId, name: spec.name.slice(0, 40), spec })) });
+    revalidatePath(`/b/${businessId}/marca`);
+    return { ok: true, message: `Listo: la IA creó ${specs.length} plantillas con tu marca.` };
+  } catch (e) {
+    return { ok: false, message: (e as Error).message };
+  }
+}
+
+export async function deleteTemplate(businessId: string, templateId: string) {
+  await db.template.deleteMany({ where: { id: templateId, businessId } });
+  revalidatePath(`/b/${businessId}/marca`);
 }

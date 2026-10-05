@@ -33,7 +33,9 @@ type Props = {
     /** Los videos solo se hacen con fal.ai. */
     video: boolean;
     /** Pone logo, color, titular y teléfono del negocio sobre la foto. */
-    design: (photoUrl: string, headline: string, shape: string) => Promise<MediaResult>;
+    design: (photoUrl: string, headline: string, shape: string, template: number, steps: string[]) => Promise<MediaResult>;
+    /** Plantillas de la marca (en orden); -1 = la IA elige. */
+    templates: { name: string; list: boolean; photo: boolean }[];
     /** Si la marca se aplica sola a las fotos que crea la IA. */
     autoBrand: boolean;
     videoStart: (imageUrl: string, motion: string) => Promise<VideoStart>;
@@ -83,13 +85,15 @@ export function Composer({ businessId, businessName, color, connected, contactCo
   const [basePhoto, setBasePhoto] = useState("");
   const [headline, setHeadline] = useState("");
   const [shape, setShape] = useState("square");
+  const [template, setTemplate] = useState(-1);
+  const [steps, setSteps] = useState<string[]>([]);
 
   async function runDesign(photo = basePhoto) {
     if (!aiMedia || !photo) return;
     setMediaError("");
     setMediaBusy("Diseñando con tu marca…");
     try {
-      const r = await aiMedia.design(photo, headline, shape);
+      const r = await aiMedia.design(photo, headline, shape, template, steps);
       if (!r.ok) return setMediaError(r.error);
       setMediaType("photo");
       setMediaLink(r.url);
@@ -100,7 +104,7 @@ export function Composer({ businessId, businessName, color, connected, contactCo
   const [mediaError, setMediaError] = useState("");
 
   /** Foto con IA. Para video: primero una foto vertical y luego la IA le da movimiento (1-3 minutos). */
-  async function runMedia(kind: "photo" | "video", description = imageIdea, head = headline, onBrand?: () => void) {
+  async function runMedia(kind: "photo" | "video", description = imageIdea, head = headline, onBrand?: () => void, theSteps = steps) {
     if (!aiMedia) return;
     setMediaError("");
     setFileUrl("");
@@ -115,7 +119,7 @@ export function Composer({ businessId, businessName, color, connected, contactCo
         if (aiMedia.autoBrand && head.trim()) {
           setMediaBusy("Diseñando con tu marca…");
           onBrand?.();
-          const d = await aiMedia.design(img.url, head, shape);
+          const d = await aiMedia.design(img.url, head, shape, template, theSteps);
           if (d.ok) setMediaLink(d.url);
           else setMediaError(d.error);
         }
@@ -158,6 +162,7 @@ export function Composer({ businessId, businessName, color, connected, contactCo
       setSeoTitle(p.seoTitle);
       setImageIdea(p.imageIdea);
       setHeadline(p.imageHeadline);
+      setSteps(p.imageSteps ?? []);
       setVariants({ facebook: p.facebook, instagram: p.instagram, tiktok: p.tiktok, google: p.google, sms: p.sms, email: p.email });
       return p;
     } catch (e) {
@@ -176,7 +181,7 @@ export function Composer({ businessId, businessName, color, connected, contactCo
     if (!p) return setMagicStep(-1);
     if (aiMedia && p.imageIdea.trim()) {
       setMagicStep(1);
-      await runMedia("photo", p.imageIdea, p.imageHeadline, () => setMagicStep(2));
+      await runMedia("photo", p.imageIdea, p.imageHeadline, () => setMagicStep(2), p.imageSteps ?? []);
     }
     setMagicStep(3);
   }
@@ -305,6 +310,11 @@ export function Composer({ businessId, businessName, color, connected, contactCo
               <label htmlFor="headline" className="small" style={{ fontWeight: 600 }}>Titular en la foto</label>
               <input id="headline" className="field" maxLength={80} placeholder="Ej.: ¿Daños en tu techo después de la tormenta?" value={headline} onChange={(e) => setHeadline(e.target.value)} />
               <div className="row">
+                <label htmlFor="template" className="sr-only">Plantilla</label>
+                <select id="template" className="field" style={{ width: "auto" }} value={template} onChange={(e) => setTemplate(Number(e.target.value))}>
+                  <option value={-1}>✦ La IA elige la plantilla</option>
+                  {aiMedia.templates.map((t, i) => <option key={i} value={i}>{t.name}</option>)}
+                </select>
                 <label htmlFor="shape" className="sr-only">Tamaño</label>
                 <select id="shape" className="field" style={{ width: "auto" }} value={shape} onChange={(e) => setShape(e.target.value)}>
                   <option value="square">Cuadrado · Facebook e Instagram</option>
@@ -312,6 +322,14 @@ export function Composer({ businessId, businessName, color, connected, contactCo
                   <option value="story">Historia / Reel 9:16</option>
                 </select>
                 <button type="button" className="btn on" disabled={!!mediaBusy || !headline.trim()} onClick={() => runDesign(basePhoto || mediaLink)}>Diseñar</button>
+              </div>
+              {(template === -1 ? steps.length > 0 : aiMedia.templates[template]?.list) && (
+                <div className="stack" style={{ gap: 6 }}>
+                  <label htmlFor="steps" className="small" style={{ fontWeight: 600 }}>Pasos para la plantilla de lista (uno por línea, máximo 3)</label>
+                  <textarea id="steps" className="field" style={{ minHeight: 84 }} value={steps.join("\n")} onChange={(e) => setSteps(e.target.value.split("\n").slice(0, 3))} />
+                </div>
+              )}
+              <div className="row">
                 {basePhoto && mediaLink !== basePhoto && (
                   <button type="button" className="btn link" onClick={() => setMediaLink(basePhoto)}>Usar la foto sin diseño</button>
                 )}

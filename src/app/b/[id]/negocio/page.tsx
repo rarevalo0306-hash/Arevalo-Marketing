@@ -1,6 +1,5 @@
-import { deleteBusiness, getUploadUrl, updateAiSettings, updateBranding, updateBusiness } from "@/app/actions";
-import { BrandForm } from "@/components/BrandForm";
-import { usesSupabaseStorage } from "@/lib/media";
+import Link from "next/link";
+import { deleteBusiness, updateAiSettings, updateBusiness } from "@/app/actions";
 import { PageHead } from "@/components/PageHead";
 import { availableText } from "@/lib/ai";
 import { db } from "@/lib/db";
@@ -20,14 +19,10 @@ export default async function NegocioPage({ params }: { params: Promise<{ id: st
           <div className="stack"><label className="lbl" htmlFor="color">Color</label><input id="color" name="color" type="color" defaultValue={b.color} style={{ width: 80, height: 44, border: 0, padding: 0, background: "none" }} /></div>
           <div><button className="btn on" type="submit">Guardar</button></div>
         </form>
-        <BrandForm
-          logoUrl={b.logoUrl}
-          phone={b.phone}
-          brandImages={b.brandImages}
-          color={b.color}
-          save={updateBranding.bind(null, id)}
-          upload={usesSupabaseStorage() ? getUploadUrl.bind(null, id) : null}
-        />
+        <Link href={`/b/${id}/marca`} className="card brand-link" style={{ gridColumn: "1 / -1", textDecoration: "none", color: "inherit" }}>
+          <h2>Identidad de la marca →</h2>
+          <p className="small muted">Logos, colores, letras, voz y plantillas de diseño ahora están en la sección Marca.</p>
+        </Link>
         <form action={updateAiSettings.bind(null, id)} className="card" style={{ gridColumn: "1 / -1" }}>
           <h2>Agente de IA</h2>
           <p className="small muted">Cuéntale a la IA sobre tu negocio. Solo usará estos datos: no inventa precios, teléfonos ni resultados.</p>

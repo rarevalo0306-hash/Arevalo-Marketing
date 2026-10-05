@@ -4,6 +4,7 @@ import { PageHead } from "@/components/PageHead";
 import type { ChannelId } from "@/lib/channels";
 import { aiEnabled } from "@/lib/ai";
 import { db } from "@/lib/db";
+import { BUILTIN_TEMPLATES, needsPhoto, TemplateSpec } from "@/lib/design-shapes";
 import { falEnabled } from "@/lib/fal";
 import { imagesEnabled } from "@/lib/imagegen";
 import { usesSupabaseStorage } from "@/lib/media";
@@ -20,7 +21,9 @@ export default async function PublicarPage({
 }) {
   const { id } = await params;
   const q = await searchParams;
-  const b = await db.business.findUniqueOrThrow({ where: { id }, include: { connections: { select: { channel: true } } } });
+  const b = await db.business.findUniqueOrThrow({ where: { id }, include: { connections: { select: { channel: true } }, templates: { orderBy: { createdAt: "asc" } } } });
+  const specs = b.templates.map((t) => TemplateSpec.safeParse(t.spec)).filter((r) => r.success).map((r) => r.data!);
+  const templates = (specs.length ? specs : BUILTIN_TEMPLATES).map((t) => ({ name: t.name, list: t.layout === "lista", photo: needsPhoto(t) }));
   const [email, sms] = await Promise.all([
     db.contact.count({ where: { businessId: id, emailOptIn: true, NOT: { email: "" } } }),
     db.contact.count({ where: { businessId: id, smsOptIn: true, NOT: { phone: "" } } }),
@@ -45,7 +48,7 @@ export default async function PublicarPage({
         aiWrite={aiEnabled() ? aiWrite.bind(null, id) : null}
         initialIdea={(q.idea ?? "").slice(0, 2000)}
         autoMagic={q.magic === "1"}
-        aiMedia={imagesEnabled() ? { image: aiImage.bind(null, id), video: falEnabled(), videoStart: aiVideoStart.bind(null, id), videoCheck: aiVideoCheck.bind(null, id), design: aiDesign.bind(null, id), autoBrand: b.brandImages } : null}
+        aiMedia={imagesEnabled() ? { image: aiImage.bind(null, id), video: falEnabled(), videoStart: aiVideoStart.bind(null, id), videoCheck: aiVideoCheck.bind(null, id), design: aiDesign.bind(null, id), autoBrand: b.brandImages, templates } : null}
       />
     </>
   );
