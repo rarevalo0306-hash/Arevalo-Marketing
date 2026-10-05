@@ -104,9 +104,9 @@ export const CHANNELS: ChannelDef[] = [
     kind: "Boletín",
     limit: 0,
     what: "Email a los contactos que aceptaron recibirlos",
-    need: "Una cuenta de Resend (resend.com) con tu dominio verificado y una API key.",
+    need: "Una cuenta de Brevo (brevo.com, 300 correos al día gratis) o de Resend (resend.com) con tu dominio verificado, y su API key.",
     fields: [
-      { key: "apiKey", label: "API key de Resend", secret: true },
+      { key: "apiKey", label: "API key de Brevo (xkeysib-…) o de Resend (re_…)", secret: true },
       { key: "from", label: "Remitente", placeholder: "Tu Negocio <info@tunegocio.com>" },
     ],
   },
