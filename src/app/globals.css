@@ -103,6 +103,7 @@ textarea.field { resize: vertical; min-height: 150px; }
 .pill.sent, .pill.done, .pill.connected { background: var(--teal-soft); color: var(--teal-text); }
 .pill.failed { background: var(--err-bg); color: var(--err-text); }
 .pill.partial, .pill.skipped { background: var(--warn-bg); color: var(--warn-text); }
+.pill.draft { background: #efe7fb; color: #5b3a99; }
 .pill.scheduled, .pill.publishing { background: #e3eef9; color: var(--brand); }
 
 .table-wrap { overflow-x: auto; }

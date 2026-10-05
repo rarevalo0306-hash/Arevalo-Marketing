@@ -32,8 +32,13 @@ export async function publishPost(postId: string): Promise<void> {
     contacts: post.business.contacts,
   };
 
+  const variants = (post.variants ?? {}) as Partial<Record<ChannelId, string>>;
+
   for (const target of post.targets.filter((t) => t.status === "pending")) {
     const channel = target.channel as ChannelId;
+    // Cada canal puede tener su propio texto (por ejemplo, el que escribió la IA para Instagram o SMS).
+    const text = variants[channel]?.trim() || post.text;
+    const channelDraft = { ...draft, text };
     const def = channelDef(channel);
     const conn = post.business.connections.find((c) => c.channel === channel);
     let status = "failed";
@@ -45,12 +50,12 @@ export async function publishPost(postId: string): Promise<void> {
       status = "skipped";
       detail = `${def.name} no está conectado para este negocio`;
     } else {
-      const blocking = notesFor(channel, draft).filter((n) => n.blocking);
+      const blocking = notesFor(channel, channelDraft).filter((n) => n.blocking);
       if (blocking.length) {
         detail = blocking.map((n) => n.text).join(" ");
       } else {
         try {
-          const res = await PUBLISHERS[channel].publish(input, decryptJson(conn.secret));
+          const res = await PUBLISHERS[channel].publish({ ...input, text }, decryptJson(conn.secret));
           status = "sent";
           detail = res.detail;
           externalUrl = res.url ?? "";

@@ -1,7 +1,8 @@
-import { createPost, getUploadUrl } from "@/app/actions";
+import { aiWrite, createPost, getUploadUrl } from "@/app/actions";
 import { Composer } from "@/components/Composer";
 import { PageHead } from "@/components/PageHead";
 import type { ChannelId } from "@/lib/channels";
+import { aiEnabled } from "@/lib/ai";
 import { db } from "@/lib/db";
 import { usesSupabaseStorage } from "@/lib/media";
 
@@ -32,6 +33,7 @@ export default async function PublicarPage({ params }: { params: Promise<{ id: s
         contactCounts={{ email, sms }}
         action={createPost.bind(null, id)}
         upload={usesSupabaseStorage() ? getUploadUrl.bind(null, id) : null}
+        aiWrite={aiEnabled() ? aiWrite.bind(null, id) : null}
       />
     </>
   );

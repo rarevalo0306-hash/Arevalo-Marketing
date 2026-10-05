@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { aiEnabled, planWeek, toPostFields, writePost, type AiPost, type Lang } from "@/lib/ai";
 import { CHANNEL_IDS, channelDef, type ChannelId } from "@/lib/channels";
 import { decryptJson, encryptJson } from "@/lib/crypto";
 import { normalizePhone, parseContactsCsv } from "@/lib/contacts";
@@ -12,6 +13,7 @@ import { listPages, META_COOKIE, saveMetaPage } from "@/lib/meta-oauth";
 import { publishPost, retryPost } from "@/lib/publish";
 import { PUBLISHERS } from "@/lib/publishers";
 import { safeEqual, SESSION_COOKIE, sessionToken } from "@/lib/session";
+import { localToUtc } from "@/lib/time";
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -200,10 +202,23 @@ export async function createPost(businessId: string, f: FormData) {
     if (isNaN(scheduledAt.getTime())) throw new Error("Elige la fecha y hora para programar");
   }
 
+  let variants: Partial<Record<ChannelId, string>> | undefined;
+  try {
+    const raw = JSON.parse(str(f, "variants") || "{}") as Record<string, unknown>;
+    const clean = Object.fromEntries(
+      Object.entries(raw).filter(([k, v]) => CHANNEL_IDS.includes(k as ChannelId) && typeof v === "string" && v.trim()),
+    ) as Partial<Record<ChannelId, string>>;
+    if (Object.keys(clean).length) variants = clean;
+  } catch {
+    variants = undefined;
+  }
+
   const post = await db.post.create({
     data: {
       businessId,
       text,
+      variants,
+      source: str(f, "source") === "ai" ? "ai" : "manual",
       subject: str(f, "subject"),
       seoTitle: str(f, "seoTitle"),
       mediaUrl,
@@ -235,5 +250,97 @@ export async function publishNow(businessId: string, postId: string) {
 
 export async function deletePost(businessId: string, postId: string) {
   await db.post.deleteMany({ where: { id: postId, businessId, status: { not: "publishing" } } });
+  revalidatePath(`/b/${businessId}/historial`);
+  revalidatePath(`/b/${businessId}/plan`);
+}
+
+// ---------- Agente de IA ----------
+
+const LANGS: Lang[] = ["es", "en", "both"];
+const lang = (v: string): Lang => (LANGS.includes(v as Lang) ? (v as Lang) : "es");
+
+export type AiWriteResult = { ok: true; post: AiPost } | { ok: false; error: string };
+
+/** El compositor pide un texto a la IA a partir de una idea. */
+export async function aiWrite(businessId: string, idea: string, language: string): Promise<AiWriteResult> {
+  const b = await business(businessId);
+  if (!idea.trim()) return { ok: false, error: "Escribe una idea o tema." };
+  try {
+    return { ok: true, post: await writePost(b, idea.slice(0, 2000), lang(language)) };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+export async function updateAiSettings(businessId: string, f: FormData) {
+  await business(businessId);
+  await db.business.update({
+    where: { id: businessId },
+    data: { aiProfile: str(f, "aiProfile").slice(0, 4000), aiAutopublish: f.get("aiAutopublish") === "on" },
+  });
+  revalidatePath(`/b/${businessId}`, "layout");
+}
+
+export type PlanResult = { ok: boolean; message: string } | null;
+
+/** Genera las publicaciones de una semana: borradores para aprobar, o programadas si el negocio tiene publicación automática. */
+export async function generatePlan(businessId: string, _prev: PlanResult, f: FormData): Promise<PlanResult> {
+  const b = await business(businessId);
+  if (!aiEnabled()) return { ok: false, message: "Falta ANTHROPIC_API_KEY en la configuración del servidor." };
+  const startDate = /^\d{4}-\d{2}-\d{2}$/.test(str(f, "startDate")) ? str(f, "startDate") : new Date().toISOString().slice(0, 10);
+  const count = Math.min(14, Math.max(1, Number(str(f, "count")) || 5));
+  const channels = f.getAll("channels").map(String).filter((c): c is ChannelId => CHANNEL_IDS.includes(c as ChannelId));
+  if (!channels.length) return { ok: false, message: "Elige al menos un canal." };
+  try {
+    const plan = await planWeek(b, { startDate, count, themes: str(f, "themes").slice(0, 1000), lang: lang(str(f, "lang")) });
+    const now = new Date();
+    for (const item of plan.posts) {
+      const fields = toPostFields(item.post);
+      let scheduledAt = localToUtc(startDate, item.day, item.time);
+      if (scheduledAt < now) scheduledAt = new Date(now.getTime() + 60 * 60 * 1000);
+      await db.post.create({
+        data: {
+          businessId,
+          ...fields,
+          source: "ai",
+          status: b.aiAutopublish ? "scheduled" : "draft",
+          scheduledAt,
+          targets: { create: channels.map((channel) => ({ channel })) },
+        },
+      });
+    }
+    revalidatePath(`/b/${businessId}/plan`);
+    const n = plan.posts.length;
+    return {
+      ok: true,
+      message: b.aiAutopublish
+        ? `Listo: ${n} publicaciones programadas. Saldrán solas a su hora.`
+        : `Listo: ${n} borradores. Revísalos abajo y aprueba los que te gusten.`,
+    };
+  } catch (e) {
+    return { ok: false, message: (e as Error).message };
+  }
+}
+
+/** Guarda los cambios del borrador y lo programa. */
+export async function approveDraft(businessId: string, postId: string, f: FormData) {
+  const post = await db.post.findFirst({ where: { id: postId, businessId, status: "draft" }, include: { targets: true } });
+  if (!post) return;
+  const variants = { ...((post.variants ?? {}) as Record<string, string>) };
+  for (const t of post.targets) {
+    const v = f.get(`v_${t.channel}`);
+    if (typeof v === "string") variants[t.channel] = v.trim();
+  }
+  const subject = f.get("subject");
+  await db.post.update({
+    where: { id: postId },
+    data: {
+      variants,
+      text: variants.facebook || post.text,
+      subject: typeof subject === "string" ? subject.trim() : post.subject,
+      status: "scheduled",
+    },
+  });
+  revalidatePath(`/b/${businessId}/plan`);
   revalidatePath(`/b/${businessId}/historial`);
 }

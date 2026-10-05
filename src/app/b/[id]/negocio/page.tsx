@@ -1,4 +1,4 @@
-import { deleteBusiness, updateBusiness } from "@/app/actions";
+import { deleteBusiness, updateAiSettings, updateBusiness } from "@/app/actions";
 import { PageHead } from "@/components/PageHead";
 import { db } from "@/lib/db";
 
@@ -14,6 +14,29 @@ export default async function NegocioPage({ params }: { params: Promise<{ id: st
           <div className="stack"><label className="lbl" htmlFor="name">Nombre</label><input id="name" name="name" className="field" defaultValue={b.name} required /></div>
           <div className="stack"><label className="lbl" htmlFor="website">Sitio web</label><input id="website" name="website" type="url" className="field" defaultValue={b.website} placeholder="https://" /></div>
           <div className="stack"><label className="lbl" htmlFor="color">Color</label><input id="color" name="color" type="color" defaultValue={b.color} style={{ width: 80, height: 44, border: 0, padding: 0, background: "none" }} /></div>
+          <div><button className="btn on" type="submit">Guardar</button></div>
+        </form>
+        <form action={updateAiSettings.bind(null, id)} className="card" style={{ gridColumn: "1 / -1" }}>
+          <h2>Agente de IA</h2>
+          <p className="small muted">Cuéntale a la IA sobre tu negocio. Solo usará estos datos: no inventa precios, teléfonos ni resultados.</p>
+          <div className="stack">
+            <label className="lbl" htmlFor="aiProfile">Sobre el negocio</label>
+            <textarea
+              id="aiProfile"
+              name="aiProfile"
+              className="field"
+              maxLength={4000}
+              defaultValue={b.aiProfile}
+              placeholder="Ej.: Somos ajustadores públicos con licencia en Florida. Ayudamos a dueños de casa con reclamos por huracán, agua, fuego y techo. Hablamos español e inglés. Teléfono: … Evaluación inicial gratis. Zona: Miami-Dade y Broward."
+            />
+          </div>
+          <label className="row" style={{ gap: 8, alignItems: "flex-start" }}>
+            <input type="checkbox" name="aiAutopublish" defaultChecked={b.aiAutopublish} style={{ marginTop: 4 }} />
+            <span>
+              <strong>Publicar automáticamente lo que planee la IA</strong>
+              <span className="small muted" style={{ display: "block" }}>Si lo activas, el plan semanal sale solo, sin que lo revises. Recomendado: déjalo apagado hasta que confíes en lo que escribe.</span>
+            </span>
+          </label>
           <div><button className="btn on" type="submit">Guardar</button></div>
         </form>
         <form action={deleteBusiness.bind(null, id)} className="card">

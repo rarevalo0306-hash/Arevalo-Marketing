@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 const ICONS: Record<string, React.ReactNode> = {
   publicar: <><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></>,
+  plan: <><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8Z" /><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8Z" /></>,
   historial: <><path d="M3 3v18h18" /><path d="M7 15l4-4 3 3 5-6" /></>,
   contactos: <><circle cx="9" cy="8" r="4" /><path d="M2 21a7 7 0 0 1 14 0" /><path d="M17 11a3 3 0 1 0 0-6M22 21a6 6 0 0 0-4-5.6" /></>,
   conexiones: <><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" /><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" /></>,
@@ -13,6 +14,7 @@ const ICONS: Record<string, React.ReactNode> = {
 
 const LINKS = [
   ["publicar", "Publicar"],
+  ["plan", "Plan con IA"],
   ["historial", "Historial"],
   ["contactos", "Contactos"],
   ["conexiones", "Conexiones"],

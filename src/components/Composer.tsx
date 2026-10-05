@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { AiWriteResult } from "@/app/actions";
 import { useEffect, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 import {
@@ -22,6 +23,8 @@ type Props = {
   action: (f: FormData) => Promise<void>;
   /** Con Supabase Storage: pide una dirección para subir el archivo directo desde el navegador. */
   upload: ((contentType: string) => Promise<{ uploadUrl: string; publicUrl: string }>) | null;
+  /** Agente de IA: escribe la publicación y sus versiones por canal a partir de una idea. */
+  aiWrite: ((idea: string, lang: string) => Promise<AiWriteResult>) | null;
 };
 
 function SubmitButton({ disabled, label }: { disabled: boolean; label: string }) {
@@ -33,7 +36,7 @@ function SubmitButton({ disabled, label }: { disabled: boolean; label: string })
   );
 }
 
-export function Composer({ businessId, businessName, color, connected, contactCounts, action, upload }: Props) {
+export function Composer({ businessId, businessName, color, connected, contactCounts, action, upload, aiWrite }: Props) {
   const [text, setText] = useState("");
   const [subject, setSubject] = useState("");
   const [seoTitle, setSeoTitle] = useState("");
@@ -46,6 +49,32 @@ export function Composer({ businessId, businessName, color, connected, contactCo
   const [localDate, setLocalDate] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [variants, setVariants] = useState<Partial<Record<ChannelId, string>>>({});
+  const [idea, setIdea] = useState("");
+  const [lang, setLang] = useState("es");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const [imageIdea, setImageIdea] = useState("");
+
+  async function runAi() {
+    if (!aiWrite) return;
+    setAiBusy(true);
+    setAiError("");
+    try {
+      const r = await aiWrite(idea, lang);
+      if (!r.ok) return setAiError(r.error);
+      const p = r.post;
+      setText(p.facebook);
+      setSubject(p.emailSubject);
+      setSeoTitle(p.seoTitle);
+      setImageIdea(p.imageIdea);
+      setVariants({ facebook: p.facebook, instagram: p.instagram, tiktok: p.tiktok, google: p.google, sms: p.sms, email: p.email });
+    } catch (e) {
+      setAiError((e as Error).message);
+    } finally {
+      setAiBusy(false);
+    }
+  }
 
   async function onFile(f: File | undefined) {
     setFileUrl(f ? URL.createObjectURL(f) : "");
@@ -68,9 +97,11 @@ export function Composer({ businessId, businessName, color, connected, contactCo
   useEffect(() => () => { if (fileUrl) URL.revokeObjectURL(fileUrl); }, [fileUrl]);
 
   const draft: Draft = { text, subject, seoTitle, mediaType };
+  const textFor = (id: ChannelId) => variants[id]?.trim() || text;
+  const draftFor = (id: ChannelId): Draft => ({ ...draft, text: textFor(id) });
   const selected = CHANNELS.filter((c) => on.has(c.id));
   const pv = selected.find((c) => c.id === preview) ?? selected[0];
-  const ready = selected.filter((c) => !isBlocked(c.id, draft)).length;
+  const ready = selected.filter((c) => !isBlocked(c.id, draftFor(c.id))).length;
   const scheduledIso = useMemo(() => (localDate ? new Date(localDate).toISOString() : ""), [localDate]);
   const cant = uploading || !selected.length || !text.trim() || (when === "later" && !scheduledIso);
   const n = selected.length;
@@ -87,14 +118,37 @@ export function Composer({ businessId, businessName, color, connected, contactCo
 
   let head = "";
   let headLabel = "";
-  let body = text || "Tu mensaje aparecerá aquí.";
-  if (pv?.id === "sms") body = smsBody(text || "Tu mensaje aparecerá aquí.");
+  const pvText = pv ? textFor(pv.id) : text;
+  let body = pvText || "Tu mensaje aparecerá aquí.";
+  if (pv?.id === "sms") body = smsBody(pvText || "Tu mensaje aparecerá aquí.");
   if (pv?.id === "seo") { head = seoTitle || "[Título del artículo]"; headLabel = "Artículo en tu sitio (se redacta en español e inglés)"; }
   if (pv?.id === "email") { head = subject || "[Asunto del email]"; headLabel = "Asunto"; }
 
   return (
     <form action={action} className="grid-2">
       <section className="card" aria-labelledby="h-msg">
+        <input type="hidden" name="variants" value={JSON.stringify(variants)} />
+        <input type="hidden" name="source" value={Object.keys(variants).length ? "ai" : "manual"} />
+        {aiWrite && (
+          <div className="stack" style={{ gap: 10, padding: 16, borderRadius: 10, background: "#e3eef9" }}>
+            <label htmlFor="idea" className="lbl" style={{ color: "var(--brand)" }}>✦ Escribir con IA</label>
+            <textarea id="idea" className="field" rows={2} style={{ minHeight: 64 }} placeholder="Ej.: qué hacer si se filtra el techo después de una tormenta en Miami" value={idea} onChange={(e) => setIdea(e.target.value)} />
+            <div className="row">
+              <label htmlFor="lang" className="sr-only">Idioma</label>
+              <select id="lang" className="field" style={{ width: "auto" }} value={lang} onChange={(e) => setLang(e.target.value)}>
+                <option value="es">Español</option>
+                <option value="en">English</option>
+                <option value="both">Español + English</option>
+              </select>
+              <button type="button" className="btn on" disabled={aiBusy || !idea.trim()} onClick={runAi}>
+                {aiBusy ? "Escribiendo… (unos segundos)" : "Escribir publicación"}
+              </button>
+            </div>
+            <p className="small muted">La IA escribe una versión para cada canal. Revísala antes de publicar; puedes cambiar cualquier texto.</p>
+            {aiError && <p className="note error" role="alert">{aiError}</p>}
+            {imageIdea && <p className="small"><strong>Idea de foto:</strong> {imageIdea}</p>}
+          </div>
+        )}
         <div className="stack">
           <label id="h-msg" htmlFor="text" className="lbl">Tu mensaje</label>
           <textarea id="text" name="text" className="field" rows={6} required placeholder="¿Qué quieres decirle a tus clientes hoy?" value={text} onChange={(e) => setText(e.target.value)} />
@@ -240,15 +294,27 @@ export function Composer({ businessId, businessName, color, connected, contactCo
               )}
               <div className="preview-body">{body}</div>
             </div>
+            {variants[pv.id] !== undefined && (
+              <div className="stack">
+                <label htmlFor="variant" className="small" style={{ fontWeight: 600 }}>Texto solo para {pv.name}</label>
+                <textarea
+                  id="variant"
+                  className="field"
+                  rows={5}
+                  value={variants[pv.id]}
+                  onChange={(e) => setVariants((v) => ({ ...v, [pv.id]: e.target.value }))}
+                />
+              </div>
+            )}
             <div className="stack">
-              {notesFor(pv.id, draft).filter((x) => x.text !== "Escribe tu mensaje.").map((x) => (
+              {notesFor(pv.id, draftFor(pv.id)).filter((x) => x.text !== "Escribe tu mensaje.").map((x) => (
                 <p key={x.text} className="note">{x.text}</p>
               ))}
             </div>
             <div className="stack" style={{ gap: 0 }}>
               <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Estado de cada canal</div>
               {selected.map((c) => {
-                const bad = isBlocked(c.id, draft);
+                const bad = isBlocked(c.id, draftFor(c.id));
                 return (
                   <div key={c.id} className="target">
                     <span>{c.name}</span>
