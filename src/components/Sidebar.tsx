@@ -2,6 +2,7 @@ import Link from "next/link";
 import { logout } from "@/app/actions";
 import { db } from "@/lib/db";
 import { NavLinks } from "./NavLinks";
+import { ThemePicker } from "./ThemePicker";
 
 export async function Sidebar({ activeId }: { activeId?: string }) {
   const businesses = await db.business.findMany({ orderBy: { createdAt: "asc" } });
@@ -35,7 +36,11 @@ export async function Sidebar({ activeId }: { activeId?: string }) {
         </>
       )}
 
-      <form action={logout} style={{ marginTop: "auto" }}>
+      <div className="stack" style={{ marginTop: "auto", gap: 8 }}>
+        <div className="side-label">Estilo</div>
+        <ThemePicker />
+      </div>
+      <form action={logout}>
         <button type="submit" className="navlink" style={{ width: "100%", background: "none", border: 0, cursor: "pointer", font: "inherit" }}>
           Salir
         </button>
