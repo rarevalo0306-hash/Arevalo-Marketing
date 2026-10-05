@@ -411,3 +411,5 @@ html[data-theme="vidrio"] .sidebar { background: rgba(11, 18, 32, 0.78); backdro
   .navlinks::-webkit-scrollbar { display: none; }
   .navlinks .navlink { flex: 0 0 66px; }
 }
+
+.source-option { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); }

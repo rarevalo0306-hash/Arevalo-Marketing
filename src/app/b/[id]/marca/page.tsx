@@ -1,4 +1,4 @@
-import { deleteTemplate, generateTemplates, getUploadUrl, updateBrandKit } from "@/app/actions";
+import { brandFromAi, brandFromBook, deleteTemplate, generateTemplates, getBrandBookUploadUrl, getUploadUrl, updateBrandKit } from "@/app/actions";
 import { BrandKitForm } from "@/components/BrandKitForm";
 import { PageHead } from "@/components/PageHead";
 import { TemplatesButton } from "@/components/TemplatesButton";
@@ -32,6 +32,12 @@ export default async function MarcaPage({ params }: { params: Promise<{ id: stri
         kit={{ name: b.name, logoUrl: b.logoUrl, logoLightUrl: b.logoLightUrl, color: b.color, color2: b.color2, color3: b.color3, fontHeading: b.fontHeading, fontBody: b.fontBody, brandVoice: b.brandVoice, hashtags: b.hashtags, phone: b.phone, brandImages: b.brandImages }}
         save={updateBrandKit.bind(null, id)}
         upload={usesSupabaseStorage() ? getUploadUrl.bind(null, id) : null}
+        brandBook={{
+          url: b.brandBookUrl,
+          upload: usesSupabaseStorage() ? getBrandBookUploadUrl.bind(null, id) : null,
+          read: brandFromBook.bind(null, id),
+          suggest: aiEnabled() ? brandFromAi.bind(null, id) : null,
+        }}
       />
 
       <section className="card">

@@ -32,6 +32,7 @@ model Business {
   fontHeading   String     @default("montserrat")
   fontBody      String     @default("")
   brandVoice    String     @default("")
+  brandBookUrl  String     @default("")
   hashtags      String     @default("")
   template      String     @default("auto")
   createdAt   DateTime     @default(now())

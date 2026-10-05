@@ -32,7 +32,15 @@ function supabase() {
 
 export const usesSupabaseStorage = () => supabase() !== null;
 
-function newName(contentType: string): string {
+// Documentos que se guardan como referencia (por ejemplo, el manual de marca). No se publican.
+const DOC_TYPES: Record<string, string> = { "application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+
+function newName(contentType: string, kind: "media" | "document" = "media"): string {
+  if (kind === "document") {
+    const ext = DOC_TYPES[contentType];
+    if (!ext) throw new Error("Formato no permitido. Usa PDF, JPG, PNG o WEBP.");
+    return `${randomBytes(12).toString("hex")}.${ext}`;
+  }
   const ext = TYPES[contentType];
   if (!ext) throw new Error("Formato no permitido. Usa JPG, PNG, WEBP, GIF, MP4, MOV o WEBM.");
   return `${randomBytes(12).toString("hex")}.${ext}`;
@@ -60,11 +68,11 @@ async function ensureBucket(sb: { url: string; key: string }) {
  * Dirección temporal para que el navegador suba el archivo directo a Supabase
  * (sin pasar por el servidor, que en Vercel tiene un límite de 4.5 MB por petición).
  */
-export async function createSignedUpload(contentType: string, folder: string): Promise<{ uploadUrl: string; publicUrl: string }> {
+export async function createSignedUpload(contentType: string, folder: string, kind: "media" | "document" = "media"): Promise<{ uploadUrl: string; publicUrl: string }> {
   const sb = supabase();
   if (!sb) throw new Error("Supabase Storage no está configurado.");
   await ensureBucket(sb);
-  const objectPath = `${folder}/${newName(contentType)}`;
+  const objectPath = `${folder}/${newName(contentType, kind)}`;
   const res = await fetch(`${sb.url}/storage/v1/object/upload/sign/${BUCKET}/${objectPath}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${sb.key}`, apikey: sb.key },
@@ -75,6 +83,12 @@ export async function createSignedUpload(contentType: string, folder: string): P
     uploadUrl: `${sb.url}/storage/v1${url}`,
     publicUrl: `${sb.url}/storage/v1/object/public/${BUCKET}/${objectPath}`,
   };
+}
+
+/** true si la dirección es un archivo de la carpeta del negocio en tu almacenamiento. */
+export function isOwnFile(url: string, folder: string): boolean {
+  const sb = supabase();
+  return Boolean(sb) && url.startsWith(`${sb!.url}/storage/v1/object/public/${BUCKET}/${folder}/`) && !url.includes("..");
 }
 
 /**
