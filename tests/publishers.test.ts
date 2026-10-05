@@ -52,6 +52,14 @@ describe("Email y SMS solo a contactos con permiso", () => {
     expect(body.messageVersions).toEqual([{ to: [{ email: "a@x.com", name: "A" }] }]);
     expect(r.detail).toContain("1 contacto");
   });
+  it("email sin clave propia usa la clave de Brevo de la app", async () => {
+    process.env.BREVO_API_KEY = "xkeysib-app";
+    const calls = mockFetch([{ messageIds: ["m1"] }]);
+    await email.publish({ ...base, contacts }, { apiKey: "", from: "Ricardo PA <claims@ricardopa.com>" });
+    delete process.env.BREVO_API_KEY;
+    expect(calls[0].url).toBe("https://api.brevo.com/v3/smtp/email");
+    expect((calls[0].init.headers as Record<string, string>)["api-key"]).toBe("xkeysib-app");
+  });
   it("sms: solo a quien aceptó y con STOP", async () => {
     const calls = mockFetch([{ sid: "SM1" }]);
     await sms.publish({ ...base, contacts }, { accountSid: "AC1", authToken: "t", from: "+15559999999" });

@@ -1,6 +1,7 @@
-import { deleteConnection, saveConnection, testConnection } from "@/app/actions";
+import { connectBrevo, deleteConnection, saveConnection, testConnection } from "@/app/actions";
 import { ConnectionCard } from "@/components/ConnectionCard";
 import { PageHead } from "@/components/PageHead";
+import { brevoDomains, brevoEnvKey } from "@/lib/brevo";
 import { CHANNELS } from "@/lib/channels";
 import { decryptJson } from "@/lib/crypto";
 import { db } from "@/lib/db";
@@ -20,6 +21,7 @@ export default async function ConexionesPage({
   const googleUrl = googleEnabled() ? `/api/google/start?b=${id}` : null;
   const b = await db.business.findUniqueOrThrow({ where: { id }, include: { connections: true } });
   const connected = b.connections.length;
+  const brevo = brevoEnvKey() ? { domains: await brevoDomains(), defaultName: b.name, connect: connectBrevo.bind(null, id) } : null;
   return (
     <>
       <PageHead
@@ -65,6 +67,7 @@ export default async function ConexionesPage({
               test={testConnection.bind(null, id, c.id)}
               oauthUrl={c.id === "facebook" || c.id === "instagram" ? metaUrl : c.id === "google" ? googleUrl : null}
               oauthName={c.id === "google" ? "Google" : "Facebook"}
+              brevo={c.id === "email" ? brevo : null}
             />
           );
         })}

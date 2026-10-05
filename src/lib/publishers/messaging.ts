@@ -1,3 +1,4 @@
+import { brevoEnvKey } from "@/lib/brevo";
 import { smsBody } from "@/lib/channels";
 import { escapeHtml, paragraphs } from "@/lib/text";
 import { fetchJson, form, PublishError, required } from "./http";
@@ -12,8 +13,12 @@ export function parseFrom(from: string): { name: string; email: string } {
   return m ? { name: m[1].trim(), email: m[2].trim() } : { name: "", email: from.trim() };
 }
 
+/** Sin clave propia, el negocio usa la clave de Brevo de la app (BREVO_API_KEY). */
+const withKey = (creds: Record<string, string>): Record<string, string> => ({ ...creds, apiKey: creds.apiKey?.trim() || brevoEnvKey() });
+
 export const email: Publisher = {
-  async publish(input, creds) {
+  async publish(input, rawCreds) {
+    const creds = withKey(rawCreds);
     required(creds, ["apiKey", "from"]);
     const to = input.contacts.filter((c) => c.emailOptIn && c.email.includes("@"));
     if (!to.length) throw new PublishError("No hay contactos con email que hayan aceptado recibir correos.");
@@ -64,7 +69,8 @@ export const email: Publisher = {
     }
     return { detail: `Email enviado a ${sent} ${sent === 1 ? "contacto" : "contactos"}` };
   },
-  async test(creds) {
+  async test(rawCreds) {
+    const creds = withKey(rawCreds);
     required(creds, ["apiKey", "from"]);
     if (isBrevo(creds.apiKey)) {
       const headers = { "api-key": creds.apiKey.trim(), Accept: "application/json" };
