@@ -4,6 +4,7 @@ import { aiEnabled } from "@/lib/ai";
 import { CHANNELS, channelDef } from "@/lib/channels";
 import { db } from "@/lib/db";
 import { ideasFor } from "@/lib/ideas";
+import { studyIdeas } from "@/lib/study-shape";
 import { BUSINESS_TZ } from "@/lib/time";
 
 const STATUS: Record<string, string> = {
@@ -44,7 +45,7 @@ export default async function InicioPage({ params }: { params: Promise<{ id: str
         </div>
         <h1>{greeting()}. ¿Qué quieres publicar hoy?</h1>
         <p className="hero-sub">Escribe una idea. La IA escribe para cada red, crea la foto con tu marca y tú solo apruebas.</p>
-        <MagicPrompt businessId={id} ideas={ideasFor(b.aiProfile, b.name)} enabled={ai} />
+        <MagicPrompt businessId={id} ideas={[...studyIdeas(b.study, 3), ...ideasFor(b.aiProfile, b.name)].slice(0, 5)} enabled={ai} />
       </section>
 
       <div className="stats">
@@ -76,6 +77,13 @@ export default async function InicioPage({ params }: { params: Promise<{ id: str
             <h2>Atajos</h2>
           </div>
           <div className="actions">
+            <Link href={`/b/${id}/estudio`} className="action">
+              <span className="action-icon">⌕</span>
+              <span>
+                <strong>{b.studyAt ? "Estudio del negocio" : "Haz el estudio de tu negocio"}</strong>
+                <span className="small muted">{b.studyAt ? "Tu público, palabras clave e ideas de campaña" : "La IA investiga tu mercado y aprende qué anunciar"}</span>
+              </span>
+            </Link>
             <Link href={`/b/${id}/plan`} className="action">
               <span className="action-icon">✦</span>
               <span><strong>Plan de la semana</strong><span className="small muted">La IA prepara varias publicaciones con foto</span></span>

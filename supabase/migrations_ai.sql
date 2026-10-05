@@ -26,3 +26,6 @@ CREATE TABLE IF NOT EXISTS "Template" (
 CREATE INDEX IF NOT EXISTS "Template_businessId_idx" ON "Template"("businessId");
 ALTER TABLE "Template" ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON "Template" FROM anon, authenticated;
+ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "study" JSONB;
+ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "studyInput" JSONB;
+ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "studyAt" TIMESTAMP(3);

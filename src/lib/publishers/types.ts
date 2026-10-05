@@ -10,6 +10,8 @@ export type PublishInput = {
   /** URL pública y absoluta del archivo, o "" si no hay. */
   mediaUrl: string;
   businessName: string;
+  /** Palabras clave del estudio del negocio, para el artículo del sitio. */
+  keywords?: string[];
   contacts: { name: string; email: string; phone: string; emailOptIn: boolean; smsOptIn: boolean }[];
 };
 

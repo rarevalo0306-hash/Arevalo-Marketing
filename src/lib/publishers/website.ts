@@ -58,7 +58,10 @@ export async function generateArticle(input: PublishInput): Promise<GeneratedArt
   const title = input.seoTitle.trim()
     ? `Spanish title from the author: ${input.seoTitle}`
     : "The author gave no title: write a clear Spanish title for search results.";
-  return ask("", Generated, SYSTEM, `Business: ${input.businessName}\n${title}\n\nPost:\n${input.text}`, 16000);
+  const keywords = input.keywords?.length
+    ? `\nSEO keywords people search for this business (use the ones that fit the topic naturally in the titles, description and headings; never add facts to fit them): ${input.keywords.join(", ")}`
+    : "";
+  return ask("", Generated, SYSTEM, `Business: ${input.businessName}\n${title}${keywords}\n\nPost:\n${input.text}`, 16000);
 }
 
 export function slugify(s: string): string {

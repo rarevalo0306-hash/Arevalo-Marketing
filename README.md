@@ -4,6 +4,7 @@ Escribe una publicación una vez y sale en Facebook, Instagram, TikTok, Google, 
 
 ## Qué hace
 
+- **Estudio del negocio con IA.** Un botón: la IA lee tu negocio y tu página web, investiga tu mercado local en internet (con Gemini o Claude) y arma el perfil del negocio, tu cliente ideal, las palabras clave para Google (SEO), el público para anuncios e ideas de campaña con foto y video. Todo lo que la IA escribe y diseña después sigue ese estudio. Los volúmenes de búsqueda son estimados de la IA, no datos de Google.
 - **Varios negocios.** Cada negocio tiene su color, sus cuentas conectadas, sus contactos y su historial.
 - **Publicar en todos lados.** Un solo texto, con foto o video opcional. Ves cómo queda en cada canal antes de publicar y la app avisa si falta algo (TikTok necesita video, el email necesita asunto, etc.).
 - **Programar.** Elige fecha y hora; la app lo publica sola.

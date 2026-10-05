@@ -29,9 +29,9 @@ export default async function PlanPage({ params }: { params: Promise<{ id: strin
         <div className="card empty">Falta la clave de la IA (GEMINI_API_KEY) en Vercel.</div>
       ) : (
         <div className="stack" style={{ gap: 16 }}>
-          {!b.aiProfile.trim() && (
+          {!b.aiProfile.trim() && !b.studyAt && (
             <p className="note">
-              Antes de empezar, cuéntale a la IA sobre tu negocio en <Link href={`/b/${id}/negocio`}>Ajustes del negocio</Link>. Así no escribe cosas genéricas.
+              Antes de empezar, haz el <Link href={`/b/${id}/estudio`}>Estudio del negocio</Link> para que la IA sepa qué anunciar y a quién. Así no escribe cosas genéricas.
             </p>
           )}
           <PlanForm

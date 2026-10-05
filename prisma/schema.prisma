@@ -35,6 +35,10 @@ model Business {
   brandBookUrl  String     @default("")
   hashtags      String     @default("")
   template      String     @default("auto")
+  /// Estudio del negocio hecho por la IA (StudySchema en src/lib/study-shape.ts), las respuestas del dueño y cuándo se hizo.
+  study         Json?
+  studyInput    Json?
+  studyAt       DateTime?
   createdAt   DateTime     @default(now())
   connections Connection[]
   contacts    Contact[]
