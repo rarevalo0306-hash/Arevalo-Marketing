@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const ICONS: Record<string, React.ReactNode> = {
+  inicio: <><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5" /></>,
   publicar: <><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></>,
   plan: <><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8Z" /><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8Z" /></>,
   historial: <><path d="M3 3v18h18" /><path d="M7 15l4-4 3 3 5-6" /></>,
@@ -14,6 +15,7 @@ const ICONS: Record<string, React.ReactNode> = {
 
 // [ruta, nombre, nombre corto para la barra de abajo en el celular]
 const LINKS = [
+  ["inicio", "Inicio", "Inicio"],
   ["publicar", "Publicar", "Publicar"],
   ["plan", "Plan con IA", "Plan IA"],
   ["historial", "Historial", "Historial"],

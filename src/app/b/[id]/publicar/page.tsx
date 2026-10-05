@@ -11,8 +11,15 @@ import { usesSupabaseStorage } from "@/lib/media";
 // Publicar en varios canales (y esperar a que Instagram procese un video) puede tardar.
 export const maxDuration = 300;
 
-export default async function PublicarPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PublicarPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ idea?: string; magic?: string }>;
+}) {
   const { id } = await params;
+  const q = await searchParams;
   const b = await db.business.findUniqueOrThrow({ where: { id }, include: { connections: { select: { channel: true } } } });
   const [email, sms] = await Promise.all([
     db.contact.count({ where: { businessId: id, emailOptIn: true, NOT: { email: "" } } }),
@@ -36,6 +43,8 @@ export default async function PublicarPage({ params }: { params: Promise<{ id: s
         action={createPost.bind(null, id)}
         upload={usesSupabaseStorage() ? getUploadUrl.bind(null, id) : null}
         aiWrite={aiEnabled() ? aiWrite.bind(null, id) : null}
+        initialIdea={(q.idea ?? "").slice(0, 2000)}
+        autoMagic={q.magic === "1"}
         aiMedia={imagesEnabled() ? { image: aiImage.bind(null, id), video: falEnabled(), videoStart: aiVideoStart.bind(null, id), videoCheck: aiVideoCheck.bind(null, id), design: aiDesign.bind(null, id), autoBrand: b.brandImages } : null}
       />
     </>
