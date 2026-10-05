@@ -73,7 +73,7 @@ export const CHANNELS: ChannelDef[] = [
     kind: "Perfil de Negocio",
     limit: 1500,
     what: "Novedades en el Perfil de Negocio (Maps)",
-    need: "Perfil de Negocio verificado y credenciales OAuth de Google Cloud con acceso a Business Profile API.",
+    need: "Perfil de Negocio verificado. Presiona \"Conectar con Google\" y entra con la cuenta dueña del perfil.",
     fields: [
       { key: "accountId", label: "ID de la cuenta", placeholder: "accounts/123… → solo el número" },
       { key: "locationId", label: "ID de la ubicación", placeholder: "solo el número" },
