@@ -4,7 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import type { ChannelId } from "@/lib/channels";
-import { TemplateSpec } from "@/lib/design-shapes";
+import { FONTS, TemplateSpec } from "@/lib/design-shapes";
 
 export const TEXT_PROVIDERS = [
   { id: "gemini", name: "Google Gemini", env: "GEMINI_API_KEY" },
@@ -92,10 +92,12 @@ function parseJson<T extends z.ZodTypeAny>(schema: T, text: string): z.infer<T> 
 // Si un modelo está saturado, se prueba el siguiente.
 const GEMINI_MODELS = () => [...new Set([process.env.GEMINI_MODEL || "gemini-flash-latest", "gemini-2.5-flash", "gemini-flash-lite-latest"])];
 
-async function askGemini<T extends z.ZodTypeAny>(schema: T, system: string, user: string, maxTokens: number): Promise<z.infer<T>> {
+type GeminiPart = { text: string } | { inlineData: { mimeType: string; data: string } };
+
+async function askGemini<T extends z.ZodTypeAny>(schema: T, system: string, user: string, maxTokens: number, files: GeminiPart[] = []): Promise<z.infer<T>> {
   const payload = JSON.stringify({
     systemInstruction: { parts: [{ text: system }] },
-    contents: [{ role: "user", parts: [{ text: user }] }],
+    contents: [{ role: "user", parts: [...files, { text: user }] }],
     generationConfig: { responseMimeType: "application/json", responseJsonSchema: z.toJSONSchema(schema), maxOutputTokens: maxTokens },
   });
   let res: Response | null = null;
@@ -253,4 +255,42 @@ Rules:
 - Give each template a short Spanish name that says what it is for (for example "Consejo", "Pregunta", "Pasos", "Aviso").`;
   const r = await ask(business.aiText ?? "", TemplatesSchema, system, "Design the templates.", 8000);
   return r.templates.slice(0, 6);
+}
+
+const HEX = /^#[0-9a-fA-F]{6}$/;
+const BrandKitSchema = z.object({
+  color: z.string().describe("Main brand color as #RRGGBB"),
+  color2: z.string().describe("Secondary brand color as #RRGGBB"),
+  color3: z.string().describe("Accent color as #RRGGBB"),
+  fontHeading: z.enum(Object.keys(FONTS) as [string, ...string[]]).describe("Of the available heading fonts, the one closest to the brand's heading typeface"),
+  fontBody: z.string().describe("Name of the brand's body typeface, or a good match"),
+  brandVoice: z.string().describe("How the brand speaks, in Spanish, 3-6 sentences: tone, how it addresses people (tú/usted), phrases it uses and things it never says"),
+  hashtags: z.string().describe("3-6 brand hashtags separated by spaces"),
+  summary: z.string().describe("One or two sentences in Spanish for the owner: what you found or proposed"),
+});
+export type BrandKitSuggestion = z.infer<typeof BrandKitSchema>;
+
+function cleanKit(k: BrandKitSuggestion): BrandKitSuggestion {
+  const hex = (v: string, fb: string) => (HEX.test(v.trim()) ? v.trim().toLowerCase() : fb);
+  const color = hex(k.color, "#1d4ed8");
+  return { ...k, color, color2: hex(k.color2, color), color3: hex(k.color3, hex(k.color2, color)), fontBody: k.fontBody.slice(0, 60), brandVoice: k.brandVoice.slice(0, 2000), hashtags: k.hashtags.slice(0, 300) };
+}
+
+/** Lee el manual de marca (PDF o imagen) y saca colores, letras, voz y hashtags. Solo con Gemini, que lee PDF. */
+export async function readBrandBook(business: BusinessAi, file: { mimeType: string; data: Buffer }): Promise<BrandKitSuggestion> {
+  if (!process.env.GEMINI_API_KEY) throw new Error("Para leer el manual de marca hace falta la clave de Gemini (GEMINI_API_KEY).");
+  const system = `You are a brand designer. Read the brand guidelines document of "${business.name}" and extract its identity exactly as written: the main, secondary and accent colors (HEX), the heading and body typefaces, the voice and tone, and hashtags if any. If something is missing, propose a value that fits the rest of the guide and say so in the summary. Spanish text must use correct accents.`;
+  const kit = await askGemini(BrandKitSchema, system, "Extract the brand identity from this document.", 4000, [{ inlineData: { mimeType: file.mimeType, data: file.data.toString("base64") } }]);
+  return cleanKit(kit);
+}
+
+/** Propone una identidad de marca completa a partir de lo que el negocio contó de sí mismo. */
+export async function suggestBrandKit(business: BusinessAi): Promise<BrandKitSuggestion> {
+  const system = `You are a senior brand designer creating a brand identity for "${business.name}"${business.website ? ` (${business.website})` : ""}.
+About the business: ${business.aiProfile.trim().slice(0, 2000) || "(no profile)"}
+Rules:
+- Colors must look professional and trustworthy for this kind of business, with strong contrast for white text on the main color.
+- The voice must fit the business and its customers; for public adjusters or insurance: never promise results or money.
+- Spanish text must use correct accents.`;
+  return cleanKit(await ask(business.aiText ?? "", BrandKitSchema, system, "Create the brand identity.", 4000));
 }

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { aiEnabled, designTemplates, planWeek, stormPlan, TEXT_PROVIDERS, toPostFields, writePost, type AiPost, type Lang } from "@/lib/ai";
+import { aiEnabled, designTemplates, planWeek, readBrandBook, stormPlan, suggestBrandKit, type BrandKitSuggestion, TEXT_PROVIDERS, toPostFields, writePost, type AiPost, type Lang } from "@/lib/ai";
 import { brevoDomains, brevoEnvKey } from "@/lib/brevo";
 import { CHANNEL_IDS, channelDef, type ChannelId } from "@/lib/channels";
 import { decryptJson, encryptJson } from "@/lib/crypto";
@@ -13,7 +13,7 @@ import { falEnabled, startVideo, videoResult, type Shape, type VideoJob } from "
 import { DESIGN_SHAPES, renderDesign, type Brand, type DesignShape } from "@/lib/design";
 import { BUILTIN_TEMPLATES, FONTS, hexOr, pickTemplate, TemplateSpec } from "@/lib/design-shapes";
 import { createImage, IMAGE_PROVIDERS, imagesEnabled } from "@/lib/imagegen";
-import { createSignedUpload, saveUpload, storeBuffer, storeRemote } from "@/lib/media";
+import { createSignedUpload, isOwnFile, saveUpload, storeBuffer, storeRemote } from "@/lib/media";
 import { GOOGLE_COOKIE, saveGoogleLocation, type GoogleLocation } from "@/lib/google-oauth";
 import { listPages, META_COOKIE, saveMetaPage } from "@/lib/meta-oauth";
 import { publishPost, retryPost } from "@/lib/publish";
@@ -564,6 +564,42 @@ export async function updateBrandKit(businessId: string, f: FormData) {
     },
   });
   revalidatePath(`/b/${businessId}`, "layout");
+}
+
+export type BrandKitResult = { ok: true; kit: BrandKitSuggestion } | { ok: false; message: string };
+
+export async function getBrandBookUploadUrl(businessId: string, contentType: string) {
+  await business(businessId);
+  return createSignedUpload(contentType, businessId, "document");
+}
+
+/** Guarda el manual de marca subido y la IA lo lee para llenar la identidad (el dueño revisa y guarda). */
+export async function brandFromBook(businessId: string, url: string): Promise<BrandKitResult> {
+  const b = await business(businessId);
+  if (!isOwnFile(url, businessId)) return { ok: false, message: "El archivo no es de este negocio." };
+  await db.business.update({ where: { id: businessId }, data: { brandBookUrl: url } });
+  revalidatePath(`/b/${businessId}/marca`);
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`No se pudo leer el archivo (${res.status}).`);
+    const data = Buffer.from(await res.arrayBuffer());
+    if (data.length > 18 * 1024 * 1024) return { ok: false, message: "Se guardó el manual, pero es muy grande para que la IA lo lea (máximo 18 MB)." };
+    const mimeType = (res.headers.get("content-type") || "").split(";")[0].trim() || (url.endsWith(".pdf") ? "application/pdf" : "image/png");
+    return { ok: true, kit: await readBrandBook(b, { mimeType, data }) };
+  } catch (e) {
+    return { ok: false, message: `Se guardó el manual, pero la IA no pudo leerlo: ${(e as Error).message}` };
+  }
+}
+
+/** La IA propone una identidad de marca completa (el dueño revisa y guarda). */
+export async function brandFromAi(businessId: string): Promise<BrandKitResult> {
+  const b = await business(businessId);
+  if (!aiEnabled()) return { ok: false, message: "Falta la clave de la IA en la configuración del servidor." };
+  try {
+    return { ok: true, kit: await suggestBrandKit(b) };
+  } catch (e) {
+    return { ok: false, message: (e as Error).message };
+  }
 }
 
 export type TemplatesResult = { ok: boolean; message: string } | null;
