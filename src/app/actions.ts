@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { aiEnabled, planWeek, TEXT_PROVIDERS, toPostFields, writePost, type AiPost, type Lang } from "@/lib/ai";
+import { brevoDomains, brevoEnvKey } from "@/lib/brevo";
 import { CHANNEL_IDS, channelDef, type ChannelId } from "@/lib/channels";
 import { decryptJson, encryptJson } from "@/lib/crypto";
 import { normalizePhone, parseContactsCsv } from "@/lib/contacts";
@@ -89,13 +90,39 @@ export async function saveConnection(businessId: string, channel: ChannelId, f: 
     values[field.key] = v || (field.secret ? previous[field.key] ?? "" : "");
   }
   const secret = encryptJson(values);
-  const label = values[def.fields[0].key] ?? "";
+  // El nombre visible nunca es un dato secreto (va sin cifrar).
+  const labelField = def.fields.find((x) => !x.secret);
+  const label = labelField ? values[labelField.key] ?? "" : "";
   await db.connection.upsert({
     where: { businessId_channel: { businessId, channel } },
     create: { businessId, channel, secret, label },
     update: { secret, label },
   });
   revalidatePath(`/b/${businessId}/conexiones`);
+}
+
+/** Email con la clave de Brevo de la app: el negocio solo pone el nombre y el email que envía. */
+export async function connectBrevo(businessId: string, f: FormData): Promise<TestResult> {
+  const b = await business(businessId);
+  if (!brevoEnvKey()) return { ok: false, message: "Falta BREVO_API_KEY en la configuración del servidor." };
+  const name = (str(f, "name") || b.name).replace(/[<>"]/g, "").slice(0, 80);
+  const address = str(f, "email").toLowerCase();
+  if (!/^[^\s@<>]+@[^\s@<>]+\.[a-z]{2,}$/.test(address)) return { ok: false, message: "Escribe un email válido, por ejemplo info@tunegocio.com" };
+  const domains = await brevoDomains();
+  const domain = address.split("@")[1];
+  if (!domains.includes(domain))
+    return {
+      ok: false,
+      message: `El dominio ${domain} no está autenticado en Brevo.${domains.length ? ` Dominios listos: ${domains.join(", ")}.` : ""} Autentícalo en Brevo → Remitentes y dominios.`,
+    };
+  const from = `${name} <${address}>`;
+  await db.connection.upsert({
+    where: { businessId_channel: { businessId, channel: "email" } },
+    create: { businessId, channel: "email", secret: encryptJson({ apiKey: "", from }), label: from },
+    update: { secret: encryptJson({ apiKey: "", from }), label: from },
+  });
+  revalidatePath(`/b/${businessId}/conexiones`);
+  return { ok: true, message: `Listo: los emails de ${b.name} saldrán desde ${from}.` };
 }
 
 /** Después de "Conectar con Facebook", cuando la cuenta administra varias páginas. */
