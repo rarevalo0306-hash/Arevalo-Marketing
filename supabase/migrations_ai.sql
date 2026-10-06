@@ -39,3 +39,8 @@ CREATE TABLE IF NOT EXISTS "SeoReport" (
 CREATE INDEX IF NOT EXISTS "SeoReport_businessId_kind_createdAt_idx" ON "SeoReport"("businessId", "kind", "createdAt");
 ALTER TABLE "SeoReport" ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON "SeoReport" FROM anon, authenticated;
+ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "seoLocationCode" INTEGER;
+ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "seoLocationName" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "seoLanguage" TEXT NOT NULL DEFAULT 'es';
+ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "seoKeywords" JSONB;
+ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "seoDaily" BOOLEAN NOT NULL DEFAULT false;

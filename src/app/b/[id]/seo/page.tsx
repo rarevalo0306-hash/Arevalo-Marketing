@@ -1,5 +1,9 @@
 import { PageHead } from "@/components/PageHead";
 import { AuditPanel } from "@/components/seo/AuditPanel";
+import { CompetitorsPanel } from "@/components/seo/CompetitorsPanel";
+import { DfsSettingsPanel } from "@/components/seo/DfsSettingsPanel";
+import { KeywordsPanel } from "@/components/seo/KeywordsPanel";
+import { RankPanel } from "@/components/seo/RankPanel";
 import { SearchConsolePanel } from "@/components/seo/SearchConsolePanel";
 import { VisibilityPanel } from "@/components/seo/VisibilityPanel";
 import { db } from "@/lib/db";
@@ -24,6 +28,10 @@ export default async function SeoPage({ params }: { params: Promise<{ id: string
         )}
       />
       <div className="stack" style={{ gap: 22 }}>
+        <DfsSettingsPanel businessId={id} />
+        <KeywordsPanel businessId={id} />
+        <RankPanel businessId={id} />
+        <CompetitorsPanel businessId={id} />
         <AuditPanel businessId={id} />
         <VisibilityPanel businessId={id} />
         <SearchConsolePanel businessId={id} />
