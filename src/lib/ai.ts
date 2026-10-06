@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { ChannelId } from "@/lib/channels";
 import { FONTS, TemplateSpec } from "@/lib/design-shapes";
 import { bi, errorText, type UiLang } from "@/lib/i18n";
+import { finishReply, firstName, type GbpReview, replyLanguage, replySignature } from "@/lib/seo/gbp-shared";
 import { GOALS, htmlToText, type Interview, InterviewSchema, type SavedStudy, type StudyInput, StudySchema, type StudySource, studyContext } from "@/lib/study-shape";
 
 export const TEXT_PROVIDERS = [
@@ -840,4 +841,89 @@ ${list(brief.serpTitles.slice(0, 8))}
 
 Write a better SEO title, meta description, H1 and 3 to 5 H2 subheadings for this page.`;
   return ask(business.aiText ?? "", OnPageFixSchema, system, user, 8000);
+}
+
+// ---------- Respuestas a reseñas de Google ----------
+
+const ReviewReplySchema = z.object({
+  reply: z.string().describe("The reply to the review: 2 to 4 short sentences, plain text, no signature (it is added afterwards)"),
+});
+
+/** Lo que la IA sabe del negocio para contestar reseñas. */
+export type ReplyBusiness = { name: string; website: string; phone?: string; aiProfile: string; aiText?: string; brandVoice?: string };
+/** La reseña a contestar (lo mínimo de GbpReview). */
+export type ReplyReview = Pick<GbpReview, "name" | "rating" | "text" | "originalText" | "language" | "timeAgo">;
+
+/** Instrucciones para contestar una reseña (sin red: se prueba en tests). */
+export function reviewReplyPrompt(business: ReplyBusiness, review: ReplyReview, language: "es" | "en"): { system: string; user: string } {
+  const phone = business.phone?.trim();
+  const low = review.rating !== null && review.rating <= 3;
+  const name = firstName(review.name);
+  const system = `You are the owner of "${business.name}"${business.website ? ` (${business.website})` : ""} replying to a customer review on Google.
+
+What the business told you about itself (the ONLY facts you may state about it):
+<business_profile>
+${business.aiProfile.trim() || "(no profile yet — keep statements about the business generic)"}
+</business_profile>
+${business.brandVoice?.trim() ? `\nBrand voice (follow it):\n<brand_voice>\n${business.brandVoice.trim()}\n</brand_voice>\n` : ""}
+Business phone for the invitation to talk: ${phone || "(none given — invite them to write or call the business without inventing a phone, email or address)"}
+
+Rules:
+- ${language === "es" ? "Write in Spanish, with correct accents and opening punctuation (¿…?, ¡…!). Use the same form of address (tú or usted) the brand voice uses; if unsure, use usted." : "Write in natural US English."}
+- 2 to 4 short sentences. Warm, human and specific, never generic or robotic. No hashtags, no markdown, no links, at most one emoji and only for 4-5 stars.
+- ${name ? `Thank the reviewer by their first name: ${name}. Never use their last name.` : "Thank the reviewer without using a name."}
+- Mention one concrete thing from the review, in your own words. If the review has no text, thank them for the rating and do not guess what they liked.
+- Never invent facts: no prices, discounts, promises, results, timelines, employee names or details that are not in the review or the business profile.
+${
+  low
+    ? `- This is a ${review.rating}-star review: apologize sincerely for the experience without admitting fault, negligence or legal liability, and without arguing or contradicting the customer. Do not discuss any claim, case, amounts, payments, insurance coverage, policy numbers or other private details in public. Invite them to contact the business privately${phone ? ` at ${phone}` : ""} so you can understand what happened and help.`
+    : "- Invite them to come back or to reach out whenever they need the business again."
+}
+- If the business is a public adjuster or insurance-related: never promise or imply a result, a payout or "more money", and give no legal advice.
+- Do not add a signature or a closing like "Saludos" / "Best regards": it is added afterwards.`;
+  const original = review.originalText.trim();
+  const user = `Review (${review.rating ?? "?"} stars${review.timeAgo ? `, ${review.timeAgo}` : ""}) by ${review.name || "a customer"}:
+<review>
+${(original || review.text).trim() || "(no text, only stars)"}
+</review>
+${original && review.text.trim() && original !== review.text.trim() ? `\nGoogle's translation, for reference:\n<translation>\n${review.text.trim()}\n</translation>\n` : ""}
+Write the reply.`;
+  return { system, user };
+}
+
+/**
+ * Escribe la respuesta del dueño a una reseña de Google, en el idioma de la reseña (o el del negocio si no se sabe),
+ * con la firma "— Equipo <negocio>" al final.
+ */
+export async function draftReviewReply(input: { business: ReplyBusiness; review: ReplyReview; lang: "es" | "en" }): Promise<string> {
+  const language = replyLanguage(input.review, input.lang);
+  const { system, user } = reviewReplyPrompt(input.business, input.review, language);
+  const r = await ask(input.business.aiText ?? "", ReviewReplySchema, system, user, 4000);
+  const text = finishReply(r.reply, replySignature(input.business.name, language));
+  if (text.length <= replySignature(input.business.name, language).length + 5) throw invalidReply();
+  return text;
+}
+
+/** Escribe las respuestas de varias reseñas (máximo `limit`, de a 3 a la vez). Las que fallan vuelven con su error. */
+export async function draftReviewReplies(input: {
+  business: ReplyBusiness;
+  reviews: (ReplyReview & { id: string })[];
+  lang: "es" | "en";
+  limit?: number;
+}): Promise<{ id: string; text?: string; error?: { es: string; en: string } }[]> {
+  const list = input.reviews.slice(0, input.limit ?? 10);
+  const out: { id: string; text?: string; error?: { es: string; en: string } }[] = [];
+  for (let i = 0; i < list.length; i += 3) {
+    const chunk = await Promise.all(
+      list.slice(i, i + 3).map(async (review) => {
+        try {
+          return { id: review.id, text: await draftReviewReply({ business: input.business, review, lang: input.lang }) };
+        } catch (e) {
+          return { id: review.id, error: { es: errorText(e, "es"), en: errorText(e, "en") } };
+        }
+      }),
+    );
+    out.push(...chunk);
+  }
+  return out;
 }

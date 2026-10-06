@@ -1,7 +1,8 @@
 import { fetchJson, form, required } from "./http";
 import type { Creds, Publisher } from "./types";
 
-async function accessToken(creds: Creds): Promise<string> {
+/** Un access token nuevo a partir de las credenciales guardadas de la conexión de Google (refresh token). */
+export async function googleAccessToken(creds: Creds): Promise<string> {
   required(creds, ["clientId", "clientSecret", "refreshToken"]);
   const t = await fetchJson<{ access_token: string }>("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -15,14 +16,14 @@ async function accessToken(creds: Creds): Promise<string> {
   return t.access_token;
 }
 
-const strip = (id: string, prefix: string) => id.trim().replace(new RegExp(`^${prefix}/`), "");
+export const stripGoogleId = (id: string, prefix: string) => id.trim().replace(new RegExp(`^${prefix}/`), "");
 
 export const google: Publisher = {
   async publish(input, creds) {
     required(creds, ["accountId", "locationId"]);
-    const token = await accessToken(creds);
-    const account = strip(creds.accountId, "accounts");
-    const location = strip(creds.locationId, "locations");
+    const token = await googleAccessToken(creds);
+    const account = stripGoogleId(creds.accountId, "accounts");
+    const location = stripGoogleId(creds.locationId, "locations");
     const body: Record<string, unknown> = {
       languageCode: "es",
       summary: input.text.slice(0, 1500),
@@ -41,8 +42,8 @@ export const google: Publisher = {
   },
   async test(creds) {
     required(creds, ["accountId", "locationId"]);
-    const token = await accessToken(creds);
-    const location = strip(creds.locationId, "locations");
+    const token = await googleAccessToken(creds);
+    const location = stripGoogleId(creds.locationId, "locations");
     const l = await fetchJson<{ title?: string }>(
       `https://mybusinessbusinessinformation.googleapis.com/v1/locations/${location}?readMask=title`,
       { headers: { Authorization: `Bearer ${token}` } },

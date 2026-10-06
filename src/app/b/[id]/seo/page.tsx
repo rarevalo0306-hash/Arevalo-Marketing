@@ -4,6 +4,7 @@ import { AuditPanel } from "@/components/seo/AuditPanel";
 import { CompetitorsPanel } from "@/components/seo/CompetitorsPanel";
 import { DfsSettingsPanel } from "@/components/seo/DfsSettingsPanel";
 import { GapPanel } from "@/components/seo/GapPanel";
+import { GbpPanel } from "@/components/seo/GbpPanel";
 import { KeywordsPanel } from "@/components/seo/KeywordsPanel";
 import { MapRankPanel } from "@/components/seo/MapRankPanel";
 import { OnPagePanel } from "@/components/seo/OnPagePanel";
@@ -39,6 +40,7 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
         <WriterCard businessId={id} />
         <RankPanel businessId={id} />
         <MapRankPanel businessId={id} mapId={mapa} />
+        <GbpPanel businessId={id} />
         <AlertsPanel businessId={id} />
         <CompetitorsPanel businessId={id} />
         <GapPanel businessId={id} />

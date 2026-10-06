@@ -10,6 +10,7 @@ import { fetchJson } from "@/lib/publishers/http";
 import { escapeHtml } from "@/lib/text";
 import { BUSINESS_TZ } from "@/lib/time";
 import { readAuditReport } from "@/lib/seo/audit";
+import { readReviewsReport } from "@/lib/seo/gbp";
 import { readZones, zoneLabel } from "@/lib/seo/dataforseo";
 import { asGscReport } from "@/lib/seo/gsc";
 import { readKeywordsReport } from "@/lib/seo/keywords";
@@ -315,7 +316,33 @@ export type WeeklyData = {
   audit: { score: number; date: string } | null;
   gsc: { clicks: number; impressions: number; prevClicks: number; prevImpressions: number; start: string; end: string } | null;
   recommendations: Recommendation[];
+  /** Tu Perfil de Google: solo si ya se trajeron las reseñas (opcional, los resúmenes de antes no lo tienen). */
+  gbp?: WeeklyGbp | null;
 };
+
+/** Lo del Perfil de Google que va en el resumen semanal. */
+export type WeeklyGbp = {
+  rating: number | null;
+  /** Reseñas en total en Google. */
+  total: number | null;
+  /** Reseñas nuevas en los 7 días antes del resumen. */
+  newLast7: number;
+  unanswered: number;
+  /** Cuándo se trajeron las reseñas (ISO). */
+  date: string;
+};
+
+/** Lo del Perfil de Google para el resumen, desde el último reporte de reseñas. null si no sirve. */
+export function weeklyGbp(json: unknown, now = new Date()): WeeklyGbp | null {
+  const r = readReviewsReport(json);
+  if (!r) return null;
+  const from = now.getTime() - 7 * DAY_MS;
+  const newLast7 = r.reviews.filter((x) => {
+    const at = x.timestamp ? Date.parse(x.timestamp) : NaN;
+    return at >= from && at <= now.getTime() + DAY_MS;
+  }).length;
+  return { rating: r.rating ?? r.stats.average, total: r.total, newLast7, unanswered: r.stats.unanswered, date: r.createdAt };
+}
 
 export type Mover = { keyword: string; zone: string; from: number | null; to: number | null; delta: number };
 
@@ -480,6 +507,35 @@ export function buildWeeklyEmail(business: EmailBusiness, data: WeeklyData, lang
       });
   }
 
+  // Tu Perfil de Google (reseñas).
+  if (data.gbp) {
+    const g = data.gbp;
+    const int = new Intl.NumberFormat(intlLocale(lang));
+    blocks.push({ kind: "h", text: t("Tu perfil de Google", "Your Google Business Profile") });
+    const items: { text: string; tone?: Tone }[] = [];
+    if (g.rating !== null)
+      items.push({
+        text:
+          t(`Calificación: ${nf.format(g.rating)} ★`, `Rating: ${nf.format(g.rating)} ★`) +
+          (g.total !== null ? t(` (${int.format(g.total)} reseñas)`, ` (${int.format(g.total)} reviews)`) : ""),
+      });
+    items.push({
+      tone: g.newLast7 > 0 ? "good" : "neutral",
+      text: g.newLast7
+        ? t(`Reseñas nuevas en los últimos 7 días: ${g.newLast7}`, `New reviews in the last 7 days: ${g.newLast7}`)
+        : t("No hubo reseñas nuevas en los últimos 7 días.", "No new reviews in the last 7 days."),
+    });
+    items.push({
+      tone: g.unanswered > 0 ? "bad" : "good",
+      text: g.unanswered
+        ? t(`Reseñas sin contestar: ${g.unanswered}. En la app la IA te escribe las respuestas.`, `Unanswered reviews: ${g.unanswered}. In the app the AI writes the replies for you.`)
+        : t("Todas tus reseñas están contestadas.", "All your reviews are answered."),
+    });
+    blocks.push({ kind: "list", items });
+    const when = day(g.date);
+    if (when) blocks.push({ kind: "p", muted: true, text: t(`Según tus reseñas traídas el ${when}.`, `Based on your reviews fetched on ${when}.`) });
+  }
+
   // Recomendaciones.
   if (data.recommendations.length) {
     const int = new Intl.NumberFormat(intlLocale(lang));
@@ -558,7 +614,7 @@ export async function gatherWeekly(businessId: string, now = new Date()): Promis
   const zones = readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName);
   const latest = (kind: string, take = 1) => db.seoReport.findMany({ where: { businessId, kind }, orderBy: { createdAt: "desc" }, take, select: { data: true, createdAt: true } });
 
-  const [rankRows, aiRows, auditRows, gscRows, gapRows, kwRows] = await Promise.all([
+  const [rankRows, aiRows, auditRows, gscRows, gapRows, kwRows, reviewRows] = await Promise.all([
     db.seoReport.findMany({
       where: { businessId, kind: "rank", createdAt: { gte: new Date(now.getTime() - 21 * DAY_MS) } },
       orderBy: { createdAt: "desc" },
@@ -570,6 +626,7 @@ export async function gatherWeekly(businessId: string, now = new Date()): Promis
     latest("gsc"),
     latest("gap"),
     latest("keywords"),
+    latest("reviews"),
   ]);
 
   const ranks = rankRows
@@ -610,6 +667,7 @@ export async function gatherWeekly(businessId: string, now = new Date()): Promis
       ? { clicks: gsc.totals.clicks, impressions: gsc.totals.impressions, prevClicks: gsc.previous.clicks, prevImpressions: gsc.previous.impressions, start: gsc.range.start, end: gsc.range.end }
       : null,
     recommendations,
+    gbp: reviewRows[0] ? weeklyGbp(reviewRows[0].data, now) : null,
   };
 }
 

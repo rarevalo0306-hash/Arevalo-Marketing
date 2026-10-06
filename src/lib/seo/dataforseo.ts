@@ -12,7 +12,7 @@ type Envelope<T> = {
   status_code: number;
   status_message: string;
   cost?: number;
-  tasks?: { status_code: number; status_message: string; cost?: number; result?: T[] | null }[];
+  tasks?: { id?: string; status_code: number; status_message: string; cost?: number; result?: T[] | null }[];
 };
 
 /** Lo que devuelve una llamada: los resultados de la primera tarea y lo que costó (USD). */
@@ -28,7 +28,7 @@ function explain(code: number, message: string): Error {
   return bi(`DataForSEO respondió: ${message} (${code})`, `DataForSEO responded: ${message} (${code})`);
 }
 
-async function call<T>(method: "GET" | "POST", path: string, body?: unknown, timeoutMs = 60_000): Promise<DfsResult<T>> {
+async function envelope<T>(method: "GET" | "POST", path: string, body?: unknown, timeoutMs = 60_000): Promise<Envelope<T>> {
   if (!dataForSeoEnabled()) throw bi("Falta conectar DataForSEO (DATAFORSEO_LOGIN y DATAFORSEO_PASSWORD en Vercel).", "DataForSEO isn't connected yet (DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD in Vercel).");
   let res: Response;
   try {
@@ -48,10 +48,37 @@ async function call<T>(method: "GET" | "POST", path: string, body?: unknown, tim
     throw explain(res.status, res.statusText || "respuesta inválida");
   }
   if (!res.ok || data.status_code !== 20000) throw explain(data.status_code || res.status, data.status_message || res.statusText);
+  return data;
+}
+
+async function call<T>(method: "GET" | "POST", path: string, body?: unknown, timeoutMs = 60_000): Promise<DfsResult<T>> {
+  const data = await envelope<T>(method, path, body, timeoutMs);
   const task = data.tasks?.[0];
   if (task && task.status_code !== 20000) throw explain(task.status_code, task.status_message);
   return { result: task?.result ?? [], cost: data.cost ?? task?.cost ?? 0 };
 }
+
+/** La primera tarea de una llamada tal cual (con su código), para las APIs por tareas (task_post / task_get). */
+export type DfsTask<T> = { id: string; statusCode: number; statusMessage: string; cost: number; result: T[] };
+
+/**
+ * Como dfsPost/dfsGet, pero no lanza error por el código de la tarea: task_post responde 20100 ("Task Created")
+ * y task_get responde 40601/40602 mientras la tarea sigue en la cola. Sí lanza los errores de la cuenta o la red.
+ */
+export async function dfsTask<T>(method: "GET" | "POST", path: string, task?: Record<string, unknown>, timeoutMs?: number): Promise<DfsTask<T>> {
+  const data = await envelope<T>(method, path, task === undefined ? undefined : [task], timeoutMs);
+  const first = data.tasks?.[0];
+  return {
+    id: first?.id ?? "",
+    statusCode: first?.status_code ?? 0,
+    statusMessage: first?.status_message ?? "",
+    cost: data.cost ?? first?.cost ?? 0,
+    result: first?.result ?? [],
+  };
+}
+
+/** El error (en los dos idiomas) que corresponde a un código de DataForSEO. */
+export const dfsError = (code: number, message: string): Error => explain(code, message);
 
 /** POST con una sola tarea (las llamadas "live" de DataForSEO aceptan una tarea por llamada). */
 export const dfsPost = <T>(path: string, task: Record<string, unknown>, timeoutMs?: number) => call<T>("POST", path, [task], timeoutMs);
