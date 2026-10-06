@@ -3,6 +3,9 @@
 // Precio (desde sept. 2025, https://dataforseo.com/update/important-serp-api-remains-fully-operational-pricing-update):
 // modo live = US$0.002 la primera página de 10 resultados + US$0.0015 cada página extra. Con depth 20 → US$0.0035 por palabra.
 // Con varias zonas se revisa cada palabra en cada zona (palabras × zonas × US$0.0035) y se guarda un reporte por zona.
+// Las preguntas de "La gente también pregunta" (people_also_ask) y las "Búsquedas relacionadas" (related_searches)
+// vienen gratis en la misma respuesta: se guardan sin pedir clics extra (people_also_ask_click_depth cobra
+// US$0.00015 por clic, no se usa).
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { BiError, bi } from "@/lib/i18n";
@@ -35,8 +38,15 @@ export type RankRow = {
   top: RankTop[];
   /** Qué más muestra Google en la página: local_pack, people_also_ask, featured_snippet, ads, ai_overview… */
   features: string[];
+  /** Preguntas de "La gente también pregunta" (sin repetir, máx. 8). Las revisiones viejas no las tienen. */
+  questions?: string[];
+  /** "Búsquedas relacionadas" del pie de Google (sin repetir, máx. 8). Las revisiones viejas no las tienen. */
+  related?: string[];
   error?: { es: string; en: string };
 };
+
+/** Máximo de preguntas y de búsquedas relacionadas que se guardan por palabra clave. */
+export const RANK_MAX_QUESTIONS = 8;
 
 export type RankReport = {
   location: string;
@@ -107,7 +117,7 @@ export function nameMatches(title: string, businessName: string): boolean {
 
 // ---------- Lectura de la respuesta de Google ----------
 
-type SerpItem = {
+export type SerpItem = {
   type?: string;
   rank_group?: number;
   rank_absolute?: number;
@@ -121,6 +131,51 @@ export type SerpResult = { keyword?: string; item_types?: string[] | null; items
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+/** Textos sin repetir (sin importar mayúsculas, acentos ni signos), limpios y hasta `max`. */
+export function uniqueTexts(list: unknown[], max = RANK_MAX_QUESTIONS): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of list) {
+    const s = str(raw).replace(/\s+/g, " ").trim().slice(0, 200);
+    const k = s
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .trim();
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    out.push(s);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+/** Los elementos de adentro de un bloque (preguntas, búsquedas relacionadas), sin confiar en su forma. */
+const inner = (i: SerpItem): unknown[] => {
+  const v = (i as { items?: unknown }).items;
+  return Array.isArray(v) ? v : [];
+};
+
+/**
+ * Las preguntas de "La gente también pregunta": cada bloque people_also_ask trae people_also_ask_element con
+ * la pregunta en `title` (sin clics extra Google muestra unas 4).
+ */
+export function serpQuestions(items: SerpItem[]): string[] {
+  return uniqueTexts(
+    items.filter((i) => i.type === "people_also_ask").flatMap((i) => inner(i).map((q) => (q && typeof q === "object" ? (q as { title?: unknown }).title : null))),
+  );
+}
+
+/** Las "Búsquedas relacionadas": en related_searches `items` es una lista de textos. */
+export function serpRelated(items: SerpItem[]): string[] {
+  return uniqueTexts(
+    items
+      .filter((i) => i.type === "related_searches")
+      .flatMap((i) => inner(i).map((q) => (typeof q === "string" ? q : q && typeof q === "object" ? (q as { title?: unknown }).title : null))),
+  );
+}
 
 /** Convierte un resultado de la SERP API en una fila del reporte. */
 export function parseSerp(keyword: string, result: SerpResult | null | undefined, domain: string, businessName: string): RankRow {
@@ -150,6 +205,9 @@ export function parseSerp(keyword: string, result: SerpResult | null | undefined
     .map((x) => (x === "paid" ? "ads" : x))
     .filter((x, i, all) => all.indexOf(x) === i);
 
+  const questions = serpQuestions(items);
+  const related = serpRelated(items);
+
   return {
     keyword,
     position: mine ? (num(mine.rank_group) as number) : null,
@@ -157,6 +215,9 @@ export function parseSerp(keyword: string, result: SerpResult | null | undefined
     localPack,
     top: organic.slice(0, 5).map((i) => ({ position: i.rank_group as number, domain: siteDomain(i.domain || i.url) || str(i.domain), title: str(i.title), url: str(i.url) })),
     features,
+    // Siempre se guardan (aunque vengan vacías) para distinguir "Google no mostró preguntas" de una revisión vieja.
+    questions,
+    related,
   };
 }
 
@@ -245,6 +306,9 @@ export function readRankReport(json: unknown): RankReport | null {
         : err && typeof err === "object" && typeof (err as { es?: unknown }).es === "string"
           ? { es: (err as { es: string }).es, en: str((err as { en?: unknown }).en) || (err as { es: string }).es }
           : undefined;
+    // Las revisiones viejas no traen preguntas ni búsquedas relacionadas.
+    const questions = Array.isArray(r.questions) ? uniqueTexts(r.questions) : null;
+    const related = Array.isArray(r.related) ? uniqueTexts(r.related) : null;
     rows.push({
       keyword,
       position: position !== null && position >= 1 ? position : null,
@@ -263,6 +327,8 @@ export function readRankReport(json: unknown): RankReport | null {
             .slice(0, 5)
         : [],
       features: Array.isArray(r.features) ? r.features.filter((f): f is string => typeof f === "string") : [],
+      ...(questions ? { questions } : {}),
+      ...(related ? { related } : {}),
       ...(error ? { error } : {}),
     });
   }

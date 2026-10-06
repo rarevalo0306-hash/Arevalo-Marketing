@@ -1,0 +1,28 @@
+/* "Pedir enlace" (correos y pasos para conseguir enlaces). Pensado primero para pantallas de 390 px. */
+.top { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.row { display: flex; flex-direction: column; gap: 8px; min-width: 0; margin-top: 4px; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; min-width: 0; }
+.actions > a { overflow-wrap: anywhere; max-width: 100%; }
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  min-width: 0;
+}
+.panelHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.panelHead strong { font-size: 14.5px; }
+.panelHead :global(.btn.link) { min-height: 32px; }
+.meta { margin: 0; font-size: 13.5px; line-height: 1.45; overflow-wrap: anywhere; }
+.meta a { font-weight: 600; }
+.body { min-height: 220px; font-size: 14.5px; }
+.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 1.45; }
+.steps li { overflow-wrap: anywhere; }
+
+@media (max-width: 480px) {
+  .panel { padding: 10px; }
+  .actions > :global(.btn) { flex: 1 1 auto; }
+}
