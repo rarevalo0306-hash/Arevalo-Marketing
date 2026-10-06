@@ -1,6 +1,7 @@
 import { after } from "next/server";
 import { getT } from "@/lib/i18n-server";
 import { publishDue } from "@/lib/publish";
+import { runWeeklyReports } from "@/lib/seo/alerts";
 import { runDueRankChecks } from "@/lib/seo/rank";
 import { safeEqual } from "@/lib/session";
 
@@ -24,6 +25,13 @@ export async function GET(req: Request) {
       if (rank) console.log("[posiciones] revisión diaria:", JSON.stringify(rank));
     } catch (e) {
       console.error("[posiciones] error en la revisión diaria:", e);
+    }
+    // Resumen SEO de cada lunes: como mucho UN negocio por llamada.
+    try {
+      const weekly = await runWeeklyReports();
+      if (weekly?.ok) console.log("[reporte-semanal] enviado:", weekly.businessId);
+    } catch (e) {
+      console.error("[reporte-semanal] error:", e instanceof Error ? e.message : e);
     }
   });
   return Response.json({ published });

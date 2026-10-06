@@ -453,7 +453,16 @@ export async function runDueRankChecks(now = new Date()): Promise<{ businessId: 
       zones: setup.zones,
       language: b.seoLanguage === "en" ? "en" : "es",
     });
-    for (const report of reports) await saveReport(b.id, "rank", report as unknown as Prisma.InputJsonValue);
+    const saved: string[] = [];
+    for (const report of reports) saved.push((await saveReport(b.id, "rank", report as unknown as Prisma.InputJsonValue)).id);
+    // Aviso por email si bajó algo (solo en esta revisión automática). Un fallo del email nunca rompe la revisión.
+    try {
+      const { notifyRankAlerts } = await import("@/lib/seo/alerts");
+      const alert = await notifyRankAlerts(b.id, saved);
+      if (alert.sent) console.log(`[alertas] ${b.id}: aviso enviado (${alert.bad} cambios)`);
+    } catch (e) {
+      console.error(`[alertas] ${b.id}: no se pudo enviar el aviso:`, e instanceof Error ? e.message : e);
+    }
     const cost = Math.round(reports.reduce((s, r) => s + r.cost, 0) * 10000) / 10000;
     return { businessId: b.id, ok: true, cost, ...(failed.length ? { error: `zonas sin revisar: ${failed.map((f) => f.zone.code).join(", ")}` } : {}) };
   } catch (e) {

@@ -652,3 +652,128 @@ export async function searchAnswer(provider: TextProvider, question: string, opt
     ctrl.abort();
   }
 }
+
+// ---------- Artículos para Google (SEO) ----------
+
+/** Lo que hacen los que ganan en Google para una búsqueda (lo arma src/lib/seo/writer.ts). */
+export type SeoBrief = {
+  /** Zona de Google ("Miami,Florida,United States"). */
+  zone: string;
+  wordCount: number;
+  /** Temas que repiten los subtítulos de los que ganan. */
+  headings: string[];
+  /** "La gente también pregunta". */
+  questions: string[];
+  /** Palabras y frases que usan los que ganan. */
+  terms: string[];
+  relatedSearches: string[];
+  competitors: { title: string; h1: string; headings: string[]; words: number }[];
+  serpTitles: string[];
+  localPack: boolean;
+  aiOverview: boolean;
+};
+
+const SeoArticleSchema = z.object({
+  title: z.string().describe("SEO title for Google: at most 60 characters, the keyword near the start, no business name unless it fits"),
+  metaDescription: z.string().describe("Meta description: between 120 and 160 characters, includes the keyword, invites the click"),
+  slug: z.string().describe("URL slug: lowercase ASCII words joined by hyphens, no accents, 3 to 7 words, includes the keyword"),
+  h1: z.string().describe("Main heading (H1) shown on the page: includes the keyword, different from the SEO title"),
+  outline: z.array(z.string()).describe("The ## headings of the article, in order"),
+  markdown: z
+    .string()
+    .describe(
+      "The full article body in Markdown, WITHOUT the H1: intro paragraphs, ## sections and ### subsections, short lists where useful, a FAQ section answering the people-also-ask questions (each question as a ### heading), and a closing call to action",
+    ),
+  socialPost: z.string().describe("Short Facebook/Instagram post (2-4 short paragraphs, 0-3 hashtags) promoting the article, plain text, no markdown"),
+});
+export type SeoArticle = z.infer<typeof SeoArticleSchema>;
+
+type SeoBusiness = BusinessAi & { phone?: string };
+
+function seoWriterRules(business: SeoBusiness, keyword: string, language: "es" | "en", brief: SeoBrief): string {
+  const study = studyContext(business.study);
+  const place = brief.zone.split(",").map((p) => p.trim()).filter((p, i, all) => p && all.indexOf(p) === i).slice(0, 2).join(", ");
+  return `You are a senior SEO content writer for local small businesses. You write one article for the website of "${business.name}"${business.website ? ` (${business.website})` : ""} that should rank on Google for the search "${keyword}"${place ? ` in ${place}` : ""}.
+
+What the business told you about itself (the ONLY facts you may state about it):
+<business_profile>
+${business.aiProfile.trim() || "(no profile yet — keep statements about the business generic)"}
+</business_profile>
+Contact details for the call to action (use them exactly as written, and only these): ${[business.phone?.trim() && `phone ${business.phone.trim()}`, business.website.trim() && `website ${business.website.trim()}`].filter(Boolean).join(", ") || "(none given — invite readers to contact the business without inventing a phone, email or address)"}
+${study ? `\nMarketing study of this business (strategy only, NOT a source of facts about the business):\n<marketing_study>\n${study}\n</marketing_study>\n` : ""}${business.brandVoice?.trim() ? `\nBrand voice (follow it):\n<brand_voice>\n${business.brandVoice.trim()}\n</brand_voice>\n` : ""}
+Rules:
+- Never invent facts about the business: no prices, discounts, statistics, percentages, years of experience, awards, licenses, guarantees, reviews or results unless they appear in the business profile.
+- Do not invent general facts either: no made-up statistics, studies, laws, regulations, deadlines or costs. When something depends on the case (price, time, coverage), say so and invite readers to ask.
+- If the business is a public adjuster or insurance-related: never promise or imply a result, a payout or "more money"; do not give legal advice.
+- Be genuinely useful: explain clearly what a customer needs to know, step by step where it helps. Cover the topics the top-ranking pages cover, in your own words; never copy their text or mention them.
+- Use the keyword naturally: in the SEO title, the H1, the first 100 words, at least one ## heading and a few more times in the text. No keyword stuffing; vary with the related terms.
+- Mention the area (${place || "the area the business serves"}) where it reads naturally${brief.localPack ? " — Google shows a map for this search, so local mentions matter" : ""}.
+- Readability: short paragraphs (2-4 sentences, never over 120 words), sentences under 20 words on average, plain words a homeowner understands.
+- Markdown only: ## and ### headings, **bold** for key phrases, "-" lists. No H1 (#) in the body, no tables, no images, no HTML, no links except to the business website.
+- End with a short closing section that invites readers to contact the business, with the contact details above.
+- ${language === "es" ? "Write everything in Spanish (the language customers search in), with correct accents, ñ and opening punctuation (después, inspección, daño, ¿…?, ¡…!). Only the slug is plain ASCII." : "Write everything in natural US English."}`;
+}
+
+function seoBriefText(keyword: string, brief: SeoBrief): string {
+  const list = (items: string[]) => (items.length ? items.map((x) => `- ${x}`).join("\n") : "(none)");
+  return `Search to rank for: "${keyword}"
+Target length: about ${brief.wordCount} words (stay within 10% of it).
+
+Topics the top-ranking pages cover (use the ones that fit as sections, with your own headings):
+${list(brief.headings)}
+
+Questions people ask on Google (answer them in the FAQ section, each as a ### heading using the question's words):
+${list(brief.questions.slice(0, 6))}
+
+Related terms to use naturally where they fit:
+${brief.terms.join(", ") || "(none)"}
+
+Related searches:
+${brief.relatedSearches.join(", ") || "(none)"}
+
+Titles of the current top 10 on Google:
+${list(brief.serpTitles.slice(0, 10))}
+
+How the top pages are organized:
+${brief.competitors.length ? brief.competitors.map((c, i) => `${i + 1}. "${c.h1 || c.title}" (${c.words} words): ${c.headings.slice(0, 12).join(" | ") || "no subheadings"}`).join("\n") : "(couldn't read them)"}
+${brief.aiOverview ? "\nGoogle shows an AI overview for this search: give clear, direct answers right under each heading." : ""}`;
+}
+
+/** Escribe un artículo para el sitio pensado para salir en Google con esa búsqueda. Puede tardar 1 a 2 minutos. */
+export async function writeSeoArticle(input: { business: SeoBusiness; keyword: string; language: "es" | "en"; brief: SeoBrief }): Promise<SeoArticle> {
+  const { business, keyword, language, brief } = input;
+  return ask(business.aiText ?? "", SeoArticleSchema, seoWriterRules(business, keyword, language, brief), `${seoBriefText(keyword, brief)}\n\nWrite the article.`, 24000);
+}
+
+/** Reescribe el artículo para arreglar lo que falta en la revisión, sin cambiar lo que ya está bien. */
+export async function improveSeoArticle(input: {
+  business: SeoBusiness;
+  keyword: string;
+  language: "es" | "en";
+  brief: SeoBrief;
+  draft: SeoArticle;
+  /** Lo que falta, en inglés (failingForAi). */
+  failing: string[];
+}): Promise<SeoArticle> {
+  const { business, keyword, language, brief, draft, failing } = input;
+  const user = `${seoBriefText(keyword, brief)}
+
+Current draft:
+<draft>
+SEO title: ${draft.title}
+Meta description: ${draft.metaDescription}
+Slug: ${draft.slug}
+H1: ${draft.h1}
+
+${draft.markdown}
+
+Social post:
+${draft.socialPost}
+</draft>
+
+An SEO check found these problems:
+${failing.map((f) => `- ${f}`).join("\n") || "- (none: just polish it)"}
+
+Rewrite the article to fix every problem above. Keep what already works, the same facts and the same language. Return all fields.`;
+  return ask(business.aiText ?? "", SeoArticleSchema, seoWriterRules(business, keyword, language, brief), user, 24000);
+}
