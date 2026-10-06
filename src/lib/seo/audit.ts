@@ -24,6 +24,7 @@ export const ISSUE_IDS = [
   "missing-title",
   "no-https",
   "no-viewport",
+  "http-no-redirect",
   "noindex",
   "duplicate-title",
   "title-too-long",
@@ -50,6 +51,7 @@ export const ISSUE_SEVERITY: Record<IssueId, Severity> = {
   "broken-links": "error",
   "missing-title": "error",
   "no-https": "error",
+  "http-no-redirect": "warning",
   "no-viewport": "error",
   noindex: "warning",
   "duplicate-title": "warning",
@@ -71,7 +73,7 @@ export const ISSUE_SEVERITY: Record<IssueId, Severity> = {
 };
 
 /** Problemas de todo el sitio (no de páginas sueltas): restan el peso completo. */
-const SITE_LEVEL = new Set<IssueId>(["no-sitemap", "no-robots", "no-structured-data"]);
+const SITE_LEVEL = new Set<IssueId>(["no-sitemap", "no-robots", "no-structured-data", "http-no-redirect"]);
 
 export type Issue = { id: IssueId; severity: Severity; pages: string[]; count: number };
 
@@ -357,9 +359,10 @@ export function findIssues(pages: AuditPage[], site: SiteInfo): Issue[] {
   dupes("duplicate-title", (p) => p.title);
   dupes("duplicate-description", (p) => p.description);
 
+  // Si la página ya abre con https, que http no redirija es otro problema (menor) que no tener https.
   if (site.httpRedirects === false) {
     try {
-      add("no-https", `http://${new URL(site.home).host}/`);
+      add(site.https ? "http-no-redirect" : "no-https", `http://${new URL(site.home).host}/`);
     } catch {
       /* sin inicio válido */
     }
@@ -902,6 +905,10 @@ export const ISSUE_TEXT: Record<IssueId, { es: IssueCopy; en: IssueCopy }> = {
   "no-https": {
     es: { title: "Sin conexión segura (https)", fix: "Tu página debe abrir con https (el candado). Pídele a quien maneja tu hosting que active el certificado SSL gratis y que http mande siempre a https." },
     en: { title: "No secure connection (https)", fix: "Your site should open with https (the padlock). Ask whoever runs your hosting to turn on a free SSL certificate and send all http visits to https." },
+  },
+  "http-no-redirect": {
+    es: { title: "La versión http no manda a https", fix: "Tu página abre con https, pero si alguien entra por http se queda en la versión sin candado. Pídele a quien maneja tu hosting que mande siempre http a https." },
+    en: { title: "http doesn't redirect to https", fix: "Your site opens with https, but anyone who comes in through http stays on the version without the padlock. Ask whoever runs your hosting to always send http to https." },
   },
   "no-viewport": {
     es: { title: "No se adapta al celular", fix: "Falta la etiqueta que hace que la página se vea bien en el celular. Pídele a tu diseñador que agregue la etiqueta «viewport»; Google da prioridad a las páginas que se ven bien en el teléfono." },

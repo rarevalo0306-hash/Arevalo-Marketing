@@ -159,11 +159,21 @@ describe("findIssues", () => {
       { ...site, sitemap: false, robots: false, localBusinessSchema: false, httpRedirects: false, brokenLinks: [{ url: "https://x.com/viejo", status: 404, from: ["https://x.com/"] }] },
     );
     const ids = issues.map((i) => i.id);
-    expect(ids).toEqual(expect.arrayContaining(["page-errors", "broken-links", "no-https", "no-sitemap", "no-robots", "no-structured-data", "no-og-image"]));
+    expect(ids).toEqual(expect.arrayContaining(["page-errors", "broken-links", "http-no-redirect", "no-sitemap", "no-robots", "no-structured-data", "no-og-image"]));
+    expect(ids).not.toContain("no-https");
     const rank = { error: 0, warning: 1, notice: 2 };
     const ranks = issues.map((i) => rank[i.severity]);
     expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
-    expect(issues.find((i) => i.id === "no-https")!.pages).toEqual(["http://x.com/"]);
+    expect(issues.find((i) => i.id === "http-no-redirect")!.pages).toEqual(["http://x.com/"]);
+  });
+
+  it("sin https es un error; con https pero sin redirigir http es una advertencia", () => {
+    const sinHttps = findIssues([page({ https: false, url: "http://x.com/" })], { ...site, https: false, httpRedirects: false });
+    expect(sinHttps.find((i) => i.id === "no-https")?.severity).toBe("error");
+    expect(sinHttps.find((i) => i.id === "http-no-redirect")).toBeUndefined();
+    const conHttps = findIssues([page({})], { ...site, https: true, httpRedirects: false });
+    expect(conHttps.find((i) => i.id === "http-no-redirect")?.severity).toBe("warning");
+    expect(conHttps.find((i) => i.id === "no-https")).toBeUndefined();
   });
 
   it("limita la lista a 10 páginas pero cuenta todas", () => {
