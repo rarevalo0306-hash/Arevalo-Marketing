@@ -12,6 +12,8 @@ export type AuditResult = { ok: boolean; message: string } | null;
 
 /** Revisa la página web del negocio (gratis, sin claves) y guarda el reporte. */
 export async function runSiteAudit(businessId: string, _prev: AuditResult, _f: FormData): Promise<AuditResult> {
+  void _prev;
+  void _f;
   const { lang, t } = await getT();
   const b = await db.business.findUnique({ where: { id: businessId }, select: { website: true } });
   if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
