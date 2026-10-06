@@ -1,4 +1,4 @@
-// Fotos con IA: FLUX (fal.ai, la más barata), ChatGPT (OpenAI) o Google Gemini.
+// Fotos con IA: FLUX (fal.ai, la más barata), Recraft, ChatGPT (OpenAI) o Google Gemini.
 import { generateImage as fluxImage, type Shape } from "@/lib/fal";
 import { storeBuffer, storeRemote } from "@/lib/media";
 import { bi } from "@/lib/i18n";
@@ -6,6 +6,7 @@ import { bi } from "@/lib/i18n";
 export const IMAGE_PROVIDERS = [
   // name en español, nameEn en inglés: la pantalla elige según el idioma de la app.
   { id: "flux", name: "FLUX (fal.ai) — la más barata", nameEn: "FLUX (fal.ai) — the cheapest", env: "FAL_KEY" },
+  { id: "recraft", name: "Recraft", nameEn: "Recraft", env: "RECRAFT_API_KEY" },
   { id: "openai", name: "ChatGPT (OpenAI)", nameEn: "ChatGPT (OpenAI)", env: "OPENAI_API_KEY" },
   { id: "gemini", name: "Google Gemini", nameEn: "Google Gemini", env: "GEMINI_API_KEY" },
 ] as const;
@@ -21,6 +22,31 @@ export function pickImage(pref: string): ImageProvider | null {
 
 const STYLE =
   "Photorealistic, natural light, professional marketing photo. No text, no letters, no logos, no watermarks. No recognizable real people.";
+
+async function recraftImage(description: string, shape: Shape): Promise<string> {
+  const size = shape === "vertical" ? "1024x1820" : shape === "horizontal" ? "1820x1024" : "1024x1024";
+  const res = await fetch("https://external.api.recraft.ai/v1/images/generations", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${process.env.RECRAFT_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      // Recraft acepta hasta 1000 caracteres en la descripción.
+      prompt: `${description.slice(0, 1000 - STYLE.length - 2)}. ${STYLE}`,
+      model: process.env.RECRAFT_MODEL || "recraftv3",
+      style: process.env.RECRAFT_STYLE || "realistic_image",
+      size,
+      n: 1,
+    }),
+  });
+  const body = await res.text();
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) throw bi("Recraft rechazó la clave (RECRAFT_API_KEY). Revisa que esté bien copiada.", "Recraft rejected the key (RECRAFT_API_KEY). Check that it was copied correctly.");
+    if (res.status === 402 || res.status === 429 || body.includes("credit")) throw bi("Tu cuenta de Recraft no tiene créditos o llegó a su límite.", "Your Recraft account is out of credits or has hit its limit.");
+    throw bi(`Recraft respondió ${res.status}: ${body.slice(0, 300)}`, `Recraft responded ${res.status}: ${body.slice(0, 300)}`);
+  }
+  const url = (JSON.parse(body) as { data?: { url?: string }[] }).data?.[0]?.url;
+  if (!url) throw bi("Recraft no devolvió la imagen. Intenta de nuevo.", "Recraft didn't return the image. Try again.");
+  return url;
+}
 
 async function openaiImage(description: string, shape: Shape): Promise<Buffer> {
   const size = shape === "vertical" ? "1024x1536" : shape === "horizontal" ? "1536x1024" : "1024x1024";
@@ -76,10 +102,11 @@ export async function createImage(pref: string, description: string, shape: Shap
   const provider = pickImage(pref);
   const d = description.trim().slice(0, 1000);
   if (provider === "flux") return (await storeRemote(await fluxImage(d, shape), folder)).url;
+  if (provider === "recraft") return (await storeRemote(await recraftImage(d, shape), folder)).url;
   if (provider === "openai") return (await storeBuffer(await openaiImage(d, shape), "image/jpeg", folder)).url;
   if (provider === "gemini") {
     const img = await geminiImage(d, shape);
     return (await storeBuffer(img.data, img.type, folder)).url;
   }
-  throw bi("Falta una clave para crear imágenes (FAL_KEY, OPENAI_API_KEY o GEMINI_API_KEY).", "An image key is missing (FAL_KEY, OPENAI_API_KEY or GEMINI_API_KEY).");
+  throw bi("Falta una clave para crear imágenes (FAL_KEY, RECRAFT_API_KEY, OPENAI_API_KEY o GEMINI_API_KEY).", "An image key is missing (FAL_KEY, RECRAFT_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY).");
 }
