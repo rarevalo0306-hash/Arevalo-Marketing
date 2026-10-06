@@ -413,3 +413,18 @@ html[data-theme="vidrio"] .sidebar { background: rgba(11, 18, 32, 0.78); backdro
 }
 
 .source-option { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); }
+
+/* ---------- Estudio del negocio ---------- */
+.study-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.study-tile { display: flex; flex-direction: column; gap: 8px; padding: 18px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface-hover); }
+.study-hook { font-weight: 700; font-size: 15px; color: var(--brand); }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag { font-size: 13px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: var(--brand-soft); color: var(--brand); }
+.tag.neg { background: var(--err-bg); color: var(--err-text); }
+details > summary { list-style: none; }
+details > summary::-webkit-details-marker { display: none; }
+html[data-theme="noche"] .study-hook { color: #8fb6ff; }
+html[data-theme="noche"] .tag { background: rgba(47, 128, 255, 0.18); color: #b9d2ff; }
+html[data-theme="noche"] .tag.neg { background: rgba(255, 90, 90, 0.16); color: #ffb3b3; }
+/* En el celular la barra de abajo no tiene espacio para todo: el Estudio se abre desde el Inicio. */
+@media (max-width: 900px) { .navlinks .navlink.nav-desk { display: none; } }

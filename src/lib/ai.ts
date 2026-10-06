@@ -5,6 +5,7 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import type { ChannelId } from "@/lib/channels";
 import { FONTS, TemplateSpec } from "@/lib/design-shapes";
+import { GOALS, htmlToText, type SavedStudy, type StudyInput, StudySchema, type StudySource, studyContext } from "@/lib/study-shape";
 
 export const TEXT_PROVIDERS = [
   { id: "gemini", name: "Google Gemini", env: "GEMINI_API_KEY" },
@@ -57,16 +58,17 @@ const PlanSchema = z.object({
 });
 export type AiPlan = z.infer<typeof PlanSchema>;
 
-type BusinessAi = { name: string; website: string; aiProfile: string; aiText?: string; brandVoice?: string; hashtags?: string };
+type BusinessAi = { name: string; website: string; aiProfile: string; aiText?: string; brandVoice?: string; hashtags?: string; study?: unknown };
 
 function rules(business: BusinessAi, lang: Lang): string {
+  const study = studyContext(business.study);
   return `You are the social media manager for "${business.name}"${business.website ? ` (${business.website})` : ""}.
 
 What the business told you about itself (the ONLY facts you may state about it):
 <business_profile>
 ${business.aiProfile.trim() || "(no profile yet — keep statements about the business generic)"}
 </business_profile>
-${business.brandVoice?.trim() ? `\nBrand voice (follow it):\n<brand_voice>\n${business.brandVoice.trim()}\n</brand_voice>\n` : ""}${business.hashtags?.trim() ? `\nBrand hashtags (use some of them where hashtags fit): ${business.hashtags.trim()}\n` : ""}
+${study ? `\nMarketing study of this business (strategy: who to talk to, which words people search, which areas and what the photos look like; use it to choose angles, keywords and image ideas, but it is NOT a source of facts about the business):\n<marketing_study>\n${study}\n</marketing_study>\n` : ""}${business.brandVoice?.trim() ? `\nBrand voice (follow it):\n<brand_voice>\n${business.brandVoice.trim()}\n</brand_voice>\n` : ""}${business.hashtags?.trim() ? `\nBrand hashtags (use some of them where hashtags fit): ${business.hashtags.trim()}\n` : ""}
 Rules:
 - Never invent facts about the business: no prices, discounts, statistics, years of experience, awards, license numbers, phone numbers, addresses or results unless they appear in the business profile.
 - If the business is a public adjuster or insurance-related: never promise or imply a result, a payout, a percentage or "more money"; do not give legal advice; say "free initial evaluation" only if the profile says so; keep claims general and educational.
@@ -94,12 +96,16 @@ const GEMINI_MODELS = () => [...new Set([process.env.GEMINI_MODEL || "gemini-fla
 
 type GeminiPart = { text: string } | { inlineData: { mimeType: string; data: string } };
 
-async function askGemini<T extends z.ZodTypeAny>(schema: T, system: string, user: string, maxTokens: number, files: GeminiPart[] = []): Promise<z.infer<T>> {
-  const payload = JSON.stringify({
-    systemInstruction: { parts: [{ text: system }] },
-    contents: [{ role: "user", parts: [...files, { text: user }] }],
-    generationConfig: { responseMimeType: "application/json", responseJsonSchema: z.toJSONSchema(schema), maxOutputTokens: maxTokens },
-  });
+type GeminiResponse = {
+  candidates?: {
+    content?: { parts?: { text?: string }[] };
+    finishReason?: string;
+    groundingMetadata?: { groundingChunks?: { web?: { uri?: string; title?: string } }[] };
+  }[];
+};
+
+/** Llama a Gemini probando varios modelos si uno está saturado, y traduce los errores para el dueño. */
+async function geminiFetch(payload: string): Promise<GeminiResponse> {
   let res: Response | null = null;
   // Dos vueltas por los modelos: si todos están saturados, se espera unos segundos y se reintenta.
   const attempts = [...GEMINI_MODELS(), ...GEMINI_MODELS()];
@@ -120,10 +126,23 @@ async function askGemini<T extends z.ZodTypeAny>(schema: T, system: string, user
     if (res.status === 400 && body.includes("API key")) throw new Error("Google rechazó la clave de Gemini (GEMINI_API_KEY).");
     throw new Error(`Gemini respondió ${res.status}: ${body.slice(0, 300)}`);
   }
-  const data = JSON.parse(body) as { candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[] };
+  const data = JSON.parse(body) as GeminiResponse;
   const c = data.candidates?.[0];
   if (c?.finishReason === "SAFETY" || c?.finishReason === "PROHIBITED_CONTENT") throw new Error("La IA no quiso escribir sobre ese tema. Prueba con otra idea.");
-  return parseJson(schema, c?.content?.parts?.map((p) => p.text ?? "").join("") ?? "");
+  return data;
+}
+
+const geminiText = (data: GeminiResponse) => data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+
+async function askGemini<T extends z.ZodTypeAny>(schema: T, system: string, user: string, maxTokens: number, files: GeminiPart[] = []): Promise<z.infer<T>> {
+  const data = await geminiFetch(
+    JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents: [{ role: "user", parts: [...files, { text: user }] }],
+      generationConfig: { responseMimeType: "application/json", responseJsonSchema: z.toJSONSchema(schema), maxOutputTokens: maxTokens },
+    }),
+  );
+  return parseJson(schema, geminiText(data));
 }
 
 function plainSchema(schema: z.ZodTypeAny): Record<string, unknown> {
@@ -293,4 +312,141 @@ Rules:
 - The voice must fit the business and its customers; for public adjusters or insurance: never promise results or money.
 - Spanish text must use correct accents.`;
   return cleanKit(await ask(business.aiText ?? "", BrandKitSchema, system, "Create the brand identity.", 4000));
+}
+
+// ---------- Estudio del negocio ----------
+
+/** Qué IA puede investigar en internet: Claude (búsqueda web) o Gemini (Google Search). */
+export function researchProvider(pref: string): "claude" | "gemini" | null {
+  const list = availableText().map((p) => p.id).filter((id): id is "claude" | "gemini" => id === "claude" || id === "gemini");
+  return list.find((id) => id === pref) ?? list[0] ?? null;
+}
+
+type Research = { notes: string; sources: StudySource[] };
+
+async function researchClaude(system: string, user: string): Promise<Research> {
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const content: Anthropic.Beta.BetaContentBlock[] = [];
+  // La búsqueda corre en los servidores de Anthropic; si hace muchas búsquedas, la respuesta llega en pausa y se continúa.
+  for (let i = 0; i < 4; i++) {
+    const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: user }];
+    if (content.length) messages.push({ role: "assistant", content });
+    const response = await client.beta.messages.create({
+      model: "claude-opus-5-5",
+      max_tokens: 16000,
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+      output_config: { effort: "medium" },
+      system,
+      tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 8 }],
+      messages,
+    });
+    if (response.stop_reason === "refusal") throw new Error("La IA no quiso investigar ese tema.");
+    content.push(...response.content);
+    if (response.stop_reason !== "pause_turn") break;
+  }
+  const sources: StudySource[] = [];
+  for (const block of content) {
+    if (block.type === "web_search_tool_result" && Array.isArray(block.content)) {
+      for (const r of block.content) if (r.type === "web_search_result") sources.push({ url: r.url, title: r.title });
+    }
+  }
+  const notes = content.map((b) => (b.type === "text" ? b.text : "")).join("");
+  return { notes, sources };
+}
+
+async function researchGemini(system: string, user: string): Promise<Research> {
+  const data = await geminiFetch(
+    JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents: [{ role: "user", parts: [{ text: user }] }],
+      tools: [{ google_search: {} }],
+      generationConfig: { maxOutputTokens: 8000 },
+    }),
+  );
+  const sources = (data.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [])
+    .map((c) => ({ url: c.web?.uri ?? "", title: c.web?.title ?? "" }))
+    .filter((s) => /^https?:\/\//.test(s.url));
+  return { notes: geminiText(data), sources };
+}
+
+/** Investiga el mercado local en internet: competidores, cómo busca la gente, temporadas. */
+async function researchMarket(business: BusinessAi, input: StudyInput, provider: "claude" | "gemini"): Promise<Research> {
+  const system = `You are a local marketing and SEO researcher. Search the web and write research notes in English (keep search phrases in the language people use). Be factual and cite what you found; say "not found" instead of guessing.`;
+  const user = `Research the local market for this business:
+Business: ${business.name}${business.website ? ` (${business.website})` : ""}
+What it sells: ${input.services || business.aiProfile.slice(0, 1500)}
+Area served: ${input.zone || "(not given)"}
+Customers: ${input.customers || "(not given)"}
+Competitors the owner named: ${input.competitors || "(none)"}
+
+Find and report:
+1. Main local competitors in that area (names, what they emphasize).
+2. The exact phrases people in that area search on Google for these services, in Spanish and English, including "near me" and city versions; which look competitive.
+3. Seasonality and local events or risks that change demand.
+4. Facts about the area useful for marketing (main cities or neighborhoods, Spanish-speaking population if relevant).
+5. What this business's own website says about it, if it has one.`;
+  const r = provider === "claude" ? await researchClaude(system, user) : await researchGemini(system, user);
+  const seen = new Set<string>();
+  const sources = r.sources.filter((s) => !seen.has(s.url) && seen.add(s.url)).slice(0, 15);
+  return { notes: r.notes.slice(0, 20000), sources };
+}
+
+/** Lee el texto de la página web del negocio (si falla, sigue sin él). */
+async function websiteText(url: string): Promise<string> {
+  if (!/^https?:\/\//.test(url)) return "";
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000), headers: { "User-Agent": "Mozilla/5.0 (compatible; ArevaloMarketing/1.0)" } });
+    if (!res.ok || !(res.headers.get("content-type") ?? "").includes("html")) return "";
+    return htmlToText(await res.text());
+  } catch {
+    return "";
+  }
+}
+
+/** Estudio del negocio: perfil, público, mercado local, palabras clave SEO, anuncios e ideas de campaña. */
+export async function studyBusiness(business: BusinessAi, input: StudyInput, opts: { research: boolean }): Promise<SavedStudy> {
+  const provider = opts.research ? researchProvider(business.aiText ?? "") : null;
+  const [site, research] = await Promise.all([
+    websiteText(business.website),
+    provider ? researchMarket(business, input, provider).catch(() => null) : Promise.resolve(null),
+  ]);
+  const goal = GOALS.find((g) => g[0] === input.goal)?.[1] ?? input.goal;
+  const langs = { es: "Spanish", en: "English", both: "Spanish and English" }[input.lang];
+  const system = `You are a senior local marketing strategist and SEO specialist. You study a small business and write the strategy its AI marketing assistant will follow to write posts and create photos and videos.
+Rules:
+- Facts about the business (services, area, contact details, offers, credentials) come ONLY from the owner's answers, the current profile and the business's own website. Never invent prices, years of experience, reviews, licenses or results.
+- Market facts (competitors, seasons, search phrases) come from the research notes when there are any; otherwise use your general knowledge and keep it general.
+- Search volumes and difficulty are your estimates: be realistic for a local business.
+- If the business is a public adjuster or insurance-related: never promise or imply a payout, a percentage or "more money", and do not give legal advice.
+- Customers speak ${langs}: keywords and ideas must be in the language customers search in.
+- Spanish text must use correct accents and punctuation. No markdown.`;
+  const user = `Business: ${business.name}${business.website ? ` (${business.website})` : ""}
+Main goal: ${goal}
+
+Owner's answers:
+- What it sells: ${input.services || "(not answered)"}
+- Ideal customers: ${input.customers || "(not answered)"}
+- Area served: ${input.zone || "(not answered)"}
+- Competitors: ${input.competitors || "(not answered)"}
+- What makes it different: ${input.different || "(not answered)"}
+
+Current profile:
+<profile>
+${business.aiProfile.trim() || "(empty)"}
+</profile>
+
+The business's website text:
+<website>
+${site || "(not available)"}
+</website>
+
+Research notes:
+<research>
+${research?.notes || "(no web research)"}
+</research>
+
+Write the full marketing study.`;
+  const study = await ask(business.aiText ?? "", StudySchema, system, user, 20000);
+  return { ...study, sources: research?.sources ?? [], researched: Boolean(research?.notes) };
 }

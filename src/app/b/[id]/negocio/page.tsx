@@ -25,7 +25,7 @@ export default async function NegocioPage({ params }: { params: Promise<{ id: st
         </Link>
         <form action={updateAiSettings.bind(null, id)} className="card" style={{ gridColumn: "1 / -1" }}>
           <h2>Agente de IA</h2>
-          <p className="small muted">Cuéntale a la IA sobre tu negocio. Solo usará estos datos: no inventa precios, teléfonos ni resultados.</p>
+          <p className="small muted">Cuéntale a la IA sobre tu negocio. Solo usará estos datos: no inventa precios, teléfonos ni resultados. ¿No sabes qué poner? El <Link href={`/b/${id}/estudio`}>Estudio del negocio</Link> lo escribe por ti.</p>
           <div className="stack">
             <label className="lbl" htmlFor="aiProfile">Sobre el negocio</label>
             <textarea

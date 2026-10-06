@@ -3,6 +3,7 @@ import { decryptJson } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import { publicMediaUrl } from "@/lib/media";
 import { PUBLISHERS } from "@/lib/publishers";
+import { readStudy, topKeywords } from "@/lib/study-shape";
 
 /**
  * Publica una publicación en sus canales pendientes.
@@ -25,11 +26,13 @@ export async function publishPost(postId: string): Promise<void> {
     seoTitle: post.seoTitle,
     mediaType: post.mediaType as MediaType,
   };
+  const study = readStudy(post.business.study);
   const input = {
     ...draft,
     mediaUrl: publicMediaUrl(post.mediaUrl),
     businessName: post.business.name,
     contacts: post.business.contacts,
+    keywords: study ? topKeywords(study, 15) : [],
   };
 
   const variants = (post.variants ?? {}) as Partial<Record<ChannelId, string>>;
