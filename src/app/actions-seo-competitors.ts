@@ -7,6 +7,7 @@ import { errorText, intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { normalizeDomain, parseOwnerDomains, runCompetitorsReport } from "@/lib/seo/competitors";
 import { dataForSeoEnabled, readTrackedKeywords, readZones } from "@/lib/seo/dataforseo";
+import { businessTopicVocab, gbpCategory, isRelevantKeyword } from "@/lib/seo/gap";
 import { readRankReport } from "@/lib/seo/rank";
 import { latestReports, saveReport } from "@/lib/seo/reports";
 import { latestByZone } from "@/lib/seo/zones";
@@ -21,7 +22,7 @@ export async function runCompetitors(businessId: string, _prev: CompetitorsResul
     return { ok: false, message: t("Falta conectar DataForSEO (DATAFORSEO_LOGIN y DATAFORSEO_PASSWORD en Vercel).", "DataForSEO isn't connected yet (DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD in Vercel).") };
   const b = await db.business.findUnique({
     where: { id: businessId },
-    select: { website: true, seoLocations: true, seoLocationCode: true, seoLocationName: true, seoLanguage: true },
+    select: { website: true, seoLocations: true, seoLocationCode: true, seoLocationName: true, seoLanguage: true, seoKeywords: true, study: true },
   });
   if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const self = normalizeDomain(b.website);
@@ -37,7 +38,9 @@ export async function runCompetitors(businessId: string, _prev: CompetitorsResul
 
   try {
     // Los competidores locales salen de la última revisión de posiciones de cada zona.
-    const ranks = (await latestReports(businessId, "rank", 10 * zones.length)).map((r) => readRankReport(r.data));
+    const [rankRows, [gbpRow]] = await Promise.all([latestReports(businessId, "rank", 10 * zones.length), latestReports(businessId, "gbp", 1)]);
+    const ranks = rankRows.map((r) => readRankReport(r.data));
+    const vocab = businessTopicVocab({ ...b, category: gbpRow ? gbpCategory(gbpRow.data) : null });
     const report = await runCompetitorsReport({
       website: b.website,
       // DataForSEO Labs solo trabaja por país: se usa el de la zona principal.
@@ -46,6 +49,7 @@ export async function runCompetitors(businessId: string, _prev: CompetitorsResul
       language: b.seoLanguage === "en" ? "en" : "es",
       ownerDomains: owner,
       rankJsons: [...latestByZone(ranks, zones).values()],
+      relevant: (k) => isRelevantKeyword(k, vocab),
     });
     await saveReport(businessId, "competitors", report as unknown as Prisma.InputJsonValue);
     revalidatePath(`/b/${businessId}/seo`);

@@ -12,6 +12,8 @@ type Filter = "all" | "sell" | "easy";
 type Props = {
   businessId: string;
   rows: GapRow[];
+  /** Búsquedas que no tienen que ver con el negocio: ocultas, salvo que el dueño pida verlas. */
+  offTopic?: GapRow[];
   /** Las palabras clave que ya sigue el negocio (minúsculas). */
   tracked: string[];
   track: (keyword: string) => Promise<{ ok: boolean; message: string }>;
@@ -35,8 +37,11 @@ const INTENT: Record<GapIntent, [string, string]> = {
 };
 
 /** Las búsquedas de la competencia, con pestañas ("te faltan" / "estás más abajo") y filtros, sin recargar. */
-export function GapTable({ businessId, rows, tracked, track }: Props) {
+export function GapTable({ businessId, rows: related, offTopic = [], tracked, track }: Props) {
   const { t, lang } = useT();
+  const [showOff, setShowOff] = useState(false);
+  const rows = showOff ? [...related, ...offTopic] : related;
+  const offSet = new Set(offTopic.map((r) => r.keyword));
   const [tab, setTab] = useState<GapType>("missing");
   const [filter, setFilter] = useState<Filter>("all");
   const [limit, setLimit] = useState(PAGE);
@@ -64,7 +69,8 @@ export function GapTable({ businessId, rows, tracked, track }: Props) {
     ["easy", t("Fáciles", "Easy")],
   ];
 
-  const best = [...rows].sort((a, b) => b.opportunity - a.opportunity).slice(0, 5);
+  // Las mejores oportunidades salen solo de las búsquedas que tienen que ver con el negocio.
+  const best = [...related].sort((a, b) => b.opportunity - a.opportunity).slice(0, 5);
 
   return (
     <div className="stack" style={{ gap: 16 }}>
@@ -106,6 +112,18 @@ export function GapTable({ businessId, rows, tracked, track }: Props) {
             })}
           </div>
         </div>
+      )}
+
+      {offTopic.length > 0 && (
+        <p className="small muted" style={{ margin: 0 }}>
+          {t(
+            `Ocultamos ${offTopic.length} ${offTopic.length === 1 ? "búsqueda que no tiene" : "búsquedas que no tienen"} que ver con tu negocio (por ejemplo, «${offTopic[0].keyword}»).`,
+            `We hid ${offTopic.length} ${offTopic.length === 1 ? "search that has" : "searches that have"} nothing to do with your business (for example, “${offTopic[0].keyword}”).`,
+          )}{" "}
+          <button type="button" className="btn link" style={{ minHeight: 0, padding: 0 }} aria-pressed={showOff} onClick={() => setShowOff((v) => !v)}>
+            {showOff ? t("Ocultarlas", "Hide them") : t("Mostrarlas igual", "Show them anyway")}
+          </button>
+        </p>
       )}
 
       <div className="tabs" role="tablist" aria-label={t("Tipo de oportunidad", "Opportunity type")}>
@@ -183,6 +201,7 @@ export function GapTable({ businessId, rows, tracked, track }: Props) {
                     <tr key={r.keyword}>
                       <td>
                         <strong>{r.keyword}</strong>
+                        {offSet.has(r.keyword) && <span className="small muted gap-intent">{t("no parece de tu negocio", "doesn't look related to your business")}</span>}
                         {r.intent && <span className="small muted gap-intent">{t(...INTENT[r.intent])}</span>}
                       </td>
                       <td className="kw-num">{r.volume === null ? <span className="muted">—</span> : number.format(r.volume)}</td>

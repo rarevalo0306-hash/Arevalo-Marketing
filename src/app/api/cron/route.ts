@@ -3,6 +3,7 @@ import { getT } from "@/lib/i18n-server";
 import { publishDue } from "@/lib/publish";
 import { runWeeklyReports } from "@/lib/seo/alerts";
 import { runDueRankChecks } from "@/lib/seo/rank";
+import { runMonthlyReports } from "@/lib/seo/report-run";
 import { safeEqual } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,13 @@ export async function GET(req: Request) {
       if (weekly?.ok) console.log("[reporte-semanal] enviado:", weekly.businessId);
     } catch (e) {
       console.error("[reporte-semanal] error:", e instanceof Error ? e.message : e);
+    }
+    // Reporte en PDF de cada mes (el día 1): como mucho UN negocio por llamada.
+    try {
+      const monthly = await runMonthlyReports();
+      if (monthly?.ok) console.log("[reporte-mensual] enviado:", monthly.businessId, `${monthly.ms} ms`);
+    } catch (e) {
+      console.error("[reporte-mensual] error:", e instanceof Error ? e.message : e);
     }
   });
   return Response.json({ published });

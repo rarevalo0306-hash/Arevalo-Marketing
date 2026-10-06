@@ -10,6 +10,7 @@ import { fetchJson } from "@/lib/publishers/http";
 import { escapeHtml } from "@/lib/text";
 import { BUSINESS_TZ } from "@/lib/time";
 import { readAuditReport } from "@/lib/seo/audit";
+import { businessTopicVocab, relevantGapRows } from "@/lib/seo/gap";
 import { readReviewsReport } from "@/lib/seo/gbp";
 import { readZones, zoneLabel } from "@/lib/seo/dataforseo";
 import { asGscReport } from "@/lib/seo/gsc";
@@ -149,9 +150,11 @@ export function isWeeklyDue(now: Date, lastSent: Date | null, tz = BUSINESS_TZ):
 
 export type EmailBusiness = { id: string; name: string; color: string };
 export type BuiltEmail = { subject: string; html: string; text: string };
-export type EmailOpts = { baseUrl?: string; tz?: string };
+export type EmailOpts = { baseUrl?: string; tz?: string; /** Cómo dejar de recibir este email (si no, el texto de los avisos). */ offText?: string; /** Ancla de la sección en la página de SEO ("#reporte"). */ anchor?: string };
 
 type Tone = "bad" | "good" | "neutral";
+/** Un bloque del cuerpo del email (título, párrafo, lista o tabla). */
+export type EmailBlock = Block;
 type Block =
   | { kind: "h"; text: string }
   | { kind: "p"; text: string; muted?: boolean }
@@ -204,13 +207,14 @@ function blockText(b: Block): string {
   return [b.head.join(" | "), ...b.rows.map((r) => r.join(" | "))].join("\n");
 }
 
-function renderEmail(business: EmailBusiness, lang: UiLang, title: string, blocks: Block[], opts?: EmailOpts): { html: string; text: string } {
+/** El email completo (HTML y texto) con el encabezado de la marca, los bloques y el pie. */
+export function renderEmail(business: EmailBusiness, lang: UiLang, title: string, blocks: Block[], opts?: EmailOpts): { html: string; text: string } {
   const t = (es: string, en: string) => (lang === "en" ? en : es);
   const color = brandColor(business.color);
   const fg = textOn(color);
   const base = baseUrlOf(opts);
-  const seoUrl = `${base}/b/${encodeURIComponent(business.id)}/seo`;
-  const offText = t(
+  const seoUrl = `${base}/b/${encodeURIComponent(business.id)}/seo${opts?.anchor ?? ""}`;
+  const offText = opts?.offText ?? t(
     "Para dejar de recibir estos emails: entra a SEO en la app, busca \"Avisos por email\" y quita la marca de cada opción.",
     "To stop these emails: open SEO in the app, find \"Email alerts\" and uncheck each option.",
   );
@@ -609,7 +613,7 @@ export function closestWeekBefore(cur: RankReport, older: RankReport[]): RankRep
 export async function gatherWeekly(businessId: string, now = new Date()): Promise<WeeklyData> {
   const b = await db.business.findUniqueOrThrow({
     where: { id: businessId },
-    select: { seoLocations: true, seoLocationCode: true, seoLocationName: true, seoKeywords: true },
+    select: { seoLocations: true, seoLocationCode: true, seoLocationName: true, seoKeywords: true, study: true },
   });
   const zones = readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName);
   const latest = (kind: string, take = 1) => db.seoReport.findMany({ where: { businessId, kind }, orderBy: { createdAt: "desc" }, take, select: { data: true, createdAt: true } });
@@ -648,11 +652,13 @@ export async function gatherWeekly(businessId: string, now = new Date()): Promis
   const audit = auditRows[0] ? readAuditReport(auditRows[0].data) : null;
   const gsc = gscRows[0] ? asGscReport(gscRows[0].data) : null;
 
-  let recommendations = gapRows[0] ? readGapRecommendations(gapRows[0].data) : [];
+  // Solo búsquedas que tienen que ver con el negocio (los reportes viejos pueden traer de todo).
+  const vocab = businessTopicVocab(b);
+  let recommendations = gapRows[0] ? relevantGapRows(readGapRecommendations(gapRows[0].data, 50), vocab).slice(0, 3) : [];
   if (!recommendations.length && kwRows[0]) {
     const kw = readKeywordsReport(kwRows[0].data);
     const tracked = new Set((Array.isArray(b.seoKeywords) ? b.seoKeywords : []).map((k) => String(k).toLowerCase()));
-    recommendations = (kw?.ideas ?? [])
+    recommendations = relevantGapRows(kw?.ideas ?? [], vocab)
       .filter((i) => !tracked.has(i.keyword.toLowerCase()) && (i.volume ?? 0) > 0)
       .sort((a, c) => (c.volume ?? 0) - (a.volume ?? 0))
       .slice(0, 3)
@@ -718,8 +724,27 @@ export async function resolveSender(businessId: string): Promise<Sender> {
 /** "Nombre <correo>" para mostrar en la pantalla (nunca la clave). */
 export const senderLabel = (s: Pick<Sender, "name" | "email">) => (s.name ? `${s.name} <${s.email}>` : s.email);
 
+/** Un archivo adjunto (por ejemplo el reporte en PDF). */
+export type EmailAttachment = { name: string; content: Buffer };
+
+/** Los adjuntos como los pide cada servicio: Brevo `attachment: [{ name, content }]`, Resend `attachments: [{ filename, content }]` (base64). */
+export function attachmentPayload(list: EmailAttachment[] | undefined, brevo: boolean): Record<string, unknown> {
+  const files = (list ?? []).filter((a) => a.name && a.content.length);
+  if (!files.length) return {};
+  return brevo
+    ? { attachment: files.map((a) => ({ name: a.name, content: a.content.toString("base64") })) }
+    : { attachments: files.map((a) => ({ filename: a.name, content: a.content.toString("base64") })) };
+}
+
 /** Manda un email a los destinatarios (Brevo o Resend según la clave). Errores en los dos idiomas, sin claves. */
-export async function sendSeoEmail(opts: { businessId: string; to: string[]; subject: string; html: string; text: string }): Promise<Sender> {
+export async function sendSeoEmail(opts: {
+  businessId: string;
+  to: string[];
+  subject: string;
+  html: string;
+  text: string;
+  attachments?: EmailAttachment[];
+}): Promise<Sender> {
   const to = opts.to.filter((e) => EMAIL_RE.test(e)).slice(0, MAX_ALERT_EMAILS);
   if (!to.length) throw new SenderConfigError("Falta un email válido para recibir los avisos.", "A valid email to receive the alerts is missing.");
   const sender = await resolveSender(opts.businessId);
@@ -734,13 +759,14 @@ export async function sendSeoEmail(opts: { businessId: string; to: string[]; sub
           subject: opts.subject,
           htmlContent: opts.html,
           textContent: opts.text,
+          ...attachmentPayload(opts.attachments, true),
         }),
       });
     } else {
       await fetchJson("https://api.resend.com/emails", {
         method: "POST",
         headers: { Authorization: `Bearer ${sender.apiKey.trim()}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ from: senderLabel(sender), to, subject: opts.subject, html: opts.html, text: opts.text }),
+        body: JSON.stringify({ from: senderLabel(sender), to, subject: opts.subject, html: opts.html, text: opts.text, ...attachmentPayload(opts.attachments, false) }),
       });
     }
   } catch (e) {

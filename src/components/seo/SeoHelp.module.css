@@ -1,0 +1,74 @@
+/* Ayuda en palabras simples de la página de SEO: "Cómo leer esto", el resumen y el glosario. */
+
+/* ---------- "Cómo leer esto" (desplegable) ---------- */
+.help { font-size: 14px; color: var(--ink); }
+.help > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--brand-2);
+  min-height: 32px;
+}
+.help > summary::before {
+  content: "?";
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  background: var(--brand-soft);
+  color: var(--brand-2);
+}
+.help[open] > summary { margin-bottom: 6px; }
+.helpBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  line-height: 1.5;
+}
+.helpBody p { margin: 0; }
+.helpBody ul, .helpBody ol { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+
+/* ---------- El resumen en palabras simples ---------- */
+.lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.line {
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  gap: 8px;
+  align-items: start;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  line-height: 1.45;
+}
+.line.good { border-left: 4px solid var(--teal); }
+.line.warn { border-left: 4px solid #e8a33a; }
+.line.bad { border-left: 4px solid var(--err-text); }
+.line.info { border-left: 4px solid var(--brand-2); }
+.icon { font-size: 18px; line-height: 1.3; text-align: center; }
+.text { min-width: 0; overflow-wrap: anywhere; }
+.text a { white-space: nowrap; font-weight: 600; }
+
+/* ---------- Glosario y pasos ---------- */
+.glossary { display: grid; grid-template-columns: 1fr; gap: 10px; margin: 0; }
+.glossary > div { display: flex; flex-direction: column; gap: 2px; }
+.glossary dt { font-weight: 700; }
+.glossary dd { margin: 0; color: var(--muted); }
+@media (min-width: 720px) { .glossary { grid-template-columns: 1fr 1fr; column-gap: 24px; } }
+.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; line-height: 1.45; }
+
+/* ---------- Posiciones: la celda clara y el "¿Qué significa?" ---------- */
+.pos { display: flex; flex-direction: column; gap: 2px; min-width: 112px; }
+.posMain { font-weight: 700; white-space: nowrap; }
+.posMap { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.meaning { display: flex; flex-direction: column; gap: 4px; min-width: 180px; max-width: 320px; font-size: 13px; line-height: 1.4; }
+.mismatch { font-size: 13px; line-height: 1.4; color: var(--warn-text); background: var(--warn-bg); border-radius: 10px; padding: 6px 8px; }
+.statHelp { font-size: 12px; color: var(--muted); line-height: 1.35; }

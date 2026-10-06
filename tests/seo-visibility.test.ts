@@ -11,7 +11,16 @@ import {
   rankDomains,
   readVisibilityReport,
   sourceDomain,
+  errorKind,
+  explainError,
+  isRetryableError,
+  mapLimit,
+  PROVIDER_CONCURRENCY,
+  providerErrors,
+  RETRY_WAITS_MS,
+  withRetry,
 } from "@/lib/seo/visibility";
+import fameseg from "./fixtures/fameseg.json";
 
 const biz = { name: "Arévalo Public Adjusters, LLC", website: "https://www.arevalopa.com/" };
 const m = mentionMatcher(biz);
@@ -108,5 +117,125 @@ describe("questions and saved reports", () => {
     expect(r?.score).toBe(100);
     expect(r?.questions).toEqual(["q"]);
     expect(r?.recommendations).toEqual([{ title: "Pide reseñas", detail: "" }]);
+  });
+});
+
+describe("errores de las IAs en palabras simples (Fameseg: Gemini llegó a su límite en las 5 preguntas)", () => {
+  const GEMINI_LIMIT = "Gemini llegó a su límite por ahora. Espera un minuto o activa la facturación en Google AI Studio.";
+
+  it("reconoce el tipo de error en español o inglés", () => {
+    expect(errorKind(GEMINI_LIMIT)).toBe("limit");
+    expect(errorKind("Gemini has hit its limit for now. Wait a minute or turn on billing in Google AI Studio.")).toBe("limit");
+    expect(errorKind("ChatGPT llegó a su límite o tu cuenta de OpenAI no tiene saldo (platform.openai.com/settings/organization/billing).")).toBe("limit");
+    expect(errorKind("Gemini está muy ocupado en este momento. Intenta de nuevo en un minuto.")).toBe("busy");
+    expect(errorKind("Claude (Anthropic) tardó demasiado en contestar (más de 60 s).")).toBe("timeout");
+    expect(errorKind("OpenAI rechazó la clave (OPENAI_API_KEY).")).toBe("key");
+    expect(errorKind("algo raro")).toBe("other");
+    expect(isRetryableError(GEMINI_LIMIT)).toBe(true);
+    expect(isRetryableError("OpenAI rechazó la clave (OPENAI_API_KEY).")).toBe(false);
+  });
+
+  it("explica el límite de Gemini con qué hacer", () => {
+    expect(explainError("gemini", GEMINI_LIMIT).es).toBe(
+      "Gemini llegó a su límite gratis de preguntas por minuto. Vuelve a intentar en un rato o activa la facturación en Google AI Studio.",
+    );
+    expect(explainError("claude", "nada que ver")).toEqual({ es: "nada que ver", en: "nada que ver" });
+  });
+
+  it("resume los errores por IA con el reporte de Fameseg", () => {
+    const report = readVisibilityReport(fameseg.reports.ai.data)!;
+    const errors = providerErrors(report.results);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ provider: "gemini", failed: 5, total: 5, kind: "limit" });
+    expect(errors[0].reason.en).toContain("free per-minute limit");
+    // Gemini sin respuestas no cuenta como 0 %: el puntaje es solo de ChatGPT.
+    expect(report.byProvider.gemini?.score).toBeNull();
+    expect(report.byProvider.openai).toEqual({ score: 80, mentioned: 4, total: 5, errors: 0 });
+    expect(report.score).toBe(80);
+  });
+
+  it("a Gemini se le pregunta de a una", () => {
+    expect(PROVIDER_CONCURRENCY.gemini).toBe(1);
+    expect(RETRY_WAITS_MS).toEqual([8000, 20000]);
+  });
+});
+
+describe("withRetry", () => {
+  const clock = () => {
+    let t = 0;
+    const waits: number[] = [];
+    return { now: () => t, sleep: async (ms: number) => void (waits.push(ms), (t += ms)), waits };
+  };
+  const limit = new Error("Gemini llegó a su límite por ahora.");
+
+  it("reintenta 2 veces con 8 s y 20 s si la IA llegó a su límite", async () => {
+    const c = clock();
+    let calls = 0;
+    const r = await withRetry(
+      async () => {
+        calls++;
+        if (calls < 3) throw limit;
+        return "ok";
+      },
+      { deadline: 300_000, now: c.now, sleep: c.sleep },
+    );
+    expect(r).toBe("ok");
+    expect(c.waits).toEqual([8000, 20000]);
+  });
+
+  it("después de 2 reintentos se rinde con el error", async () => {
+    const c = clock();
+    let calls = 0;
+    await expect(
+      withRetry(
+        async () => {
+          calls++;
+          throw limit;
+        },
+        { deadline: 300_000, now: c.now, sleep: c.sleep },
+      ),
+    ).rejects.toBe(limit);
+    expect(calls).toBe(3);
+  });
+
+  it("no reintenta otros errores", async () => {
+    const c = clock();
+    const key = new Error("OpenAI rechazó la clave (OPENAI_API_KEY).");
+    await expect(withRetry(async () => Promise.reject(key), { deadline: 300_000, now: c.now, sleep: c.sleep })).rejects.toBe(key);
+    expect(c.waits).toEqual([]);
+  });
+
+  it("no reintenta si quedan menos de 40 s después de esperar", async () => {
+    const c = clock();
+    let calls = 0;
+    await expect(
+      withRetry(
+        async () => {
+          calls++;
+          throw limit;
+        },
+        // 8 s de espera + 40 s de reserva caben en 50 s; 20 s más ya no.
+        { deadline: 50_000, now: c.now, sleep: c.sleep },
+      ),
+    ).rejects.toBe(limit);
+    expect(c.waits).toEqual([8000]);
+    expect(calls).toBe(2);
+  });
+});
+
+describe("mapLimit", () => {
+  it("respeta el máximo a la vez y el orden", async () => {
+    let running = 0;
+    let peak = 0;
+    const out = await mapLimit([30, 10, 20, 5], 1, async (ms, i) => {
+      running++;
+      peak = Math.max(peak, running);
+      await new Promise((r) => setTimeout(r, ms));
+      running--;
+      return i;
+    });
+    expect(out).toEqual([0, 1, 2, 3]);
+    expect(peak).toBe(1);
+    expect(await mapLimit([], 2, async (x) => x)).toEqual([]);
   });
 });

@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { saveReport } from "@/lib/seo/reports";
-import { checkVisibility, cleanQuestions, suggestQuestions, visibilityProviders } from "@/lib/seo/visibility";
+import { checkVisibility, cleanQuestions, PROVIDER_SHORT, providerErrors, suggestQuestions, visibilityProviders } from "@/lib/seo/visibility";
 
 export type VisibilityRunResult = { ok: boolean; message: string } | null;
 export type SuggestQuestionsResult = { ok: true; questions: string[] } | { ok: false; error: string };
@@ -52,7 +52,16 @@ export async function runVisibility(businessId: string, _prev: VisibilityRunResu
     const failed = report.results.filter((r) => r.error).length;
     const ok = report.results.length - failed;
     const mentioned = report.results.filter((r) => r.mentioned).length;
-    const warn = failed ? t(` ${failed} respuesta(s) fallaron; mira el detalle abajo.`, ` ${failed} answer(s) failed; see the details below.`) : "";
+    // Por qué falló cada IA, en palabras simples (por ejemplo, Gemini llegó a su límite gratis por minuto).
+    const warn = failed
+      ? providerErrors(report.results)
+          .map((w) =>
+            w.failed === w.total
+              ? t(` ${PROVIDER_SHORT[w.provider]} no se pudo revisar: ${w.reason.es}`, ` ${PROVIDER_SHORT[w.provider]} couldn't be checked: ${w.reason.en}`)
+              : t(` ${PROVIDER_SHORT[w.provider]} no contestó ${w.failed} de ${w.total}: ${w.reason.es}`, ` ${PROVIDER_SHORT[w.provider]} didn't answer ${w.failed} of ${w.total}: ${w.reason.en}`),
+          )
+          .join("")
+      : "";
     return {
       ok: true,
       message:

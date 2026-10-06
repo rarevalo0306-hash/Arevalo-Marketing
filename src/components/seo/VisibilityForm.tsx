@@ -41,8 +41,8 @@ function Working({ pending, providers, count }: { pending: boolean; providers: s
       <p className="small muted">
         {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")} ·{" "}
         {t(
-          "Puede tardar de 1 a 3 minutos y usa el saldo de tus cuentas de IA. No cierres esta página.",
-          "It can take 1 to 3 minutes and uses credit from your AI accounts. Don't close this page.",
+          "Puede tardar de 1 a 4 minutos (a Gemini le preguntamos de a una para no pasar su límite) y usa el saldo de tus cuentas de IA. No cierres esta página.",
+          "It can take 1 to 4 minutes (we ask Gemini one question at a time to stay under its limit) and uses credit from your AI accounts. Don't close this page.",
         )}
       </p>
     </div>

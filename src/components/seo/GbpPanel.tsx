@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { refreshProfile, refreshReviews } from "@/app/actions-seo-gbp";
 import { GbpRefreshButton } from "@/components/seo/GbpRefreshButton";
+import { HowToRead } from "@/components/seo/HowToRead";
 import { GbpReviews, Stars } from "@/components/seo/GbpReviews";
 import { MapPlacePicker } from "@/components/seo/MapPlacePicker";
 import { aiEnabled } from "@/lib/ai";
@@ -170,6 +171,13 @@ export async function GbpPanel({ businessId }: { businessId: string }) {
   return (
     <section className="card" id="perfil">
       {header}
+      <HowToRead title={t("Cómo leer esto", "How to read this")}>
+        <ul>
+          <li>{t("Tu Perfil de Google es la ficha que sale en el mapa. Es lo que más pesa para salir entre los 3 negocios del mapa.", "Your Google profile is the listing shown on the map. It's what matters most to show up among the 3 businesses on the map.")}</li>
+          <li>{t("La nota de 0 a 100 mide qué tan completo está (fotos, horario, teléfono, descripción, categorías, reseñas): 80 o más está bien.", "The 0-100 score measures how complete it is (photos, hours, phone, description, categories, reviews): 80 or more is good.")}</li>
+          <li>{t("Reseñas: más reseñas recientes y responderlas todas ayuda a subir en el mapa.", "Reviews: more recent reviews and replying to all of them helps you move up on the map.")}</li>
+        </ul>
+      </HowToRead>
 
       {/* ---------- El perfil ---------- */}
       {p && gbp ? (

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { runSiteAudit } from "@/app/actions-seo-audit";
 import { AuditButton } from "@/components/seo/AuditButton";
+import { HowToRead } from "@/components/seo/HowToRead";
 import { db } from "@/lib/db";
 import { intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
@@ -88,6 +89,15 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
         {rows[0] && <> · {t("Última revisión:", "Last check:")} {fmt.format(rows[0].createdAt)}</>}
       </p>
       <AuditButton action={action} has={rows.length > 0} />
+      {report && (
+        <HowToRead title={t("Cómo leer esto", "How to read this")}>
+          <ul>
+            <li>{t("Puntaje de salud de 0 a 100: qué tan bien está armada tu página para Google. 80 o más está bien; de 50 a 79, hay cosas que mejorar; menos de 50, hay problemas importantes.", "Health score from 0 to 100: how well your website is built for Google. 80 or more is good; 50 to 79, things to improve; under 50, important problems.")}</li>
+            <li>{t("Arregla primero los errores (rojo), después las advertencias (amarillo). Las sugerencias son detalles.", "Fix the errors (red) first, then the warnings (yellow). Notices are details.")}</li>
+            <li>{t("La velocidad importa sobre todo en el celular: si tu página tarda, la gente se va antes de verla.", "Speed matters most on phones: if your page is slow, people leave before seeing it.")}</li>
+          </ul>
+        </HowToRead>
+      )}
 
       {rows.length === 0 && (
         <p className="small muted">{t("Todavía no has revisado tu página. Presiona el botón: es gratis y no necesita claves.", "You haven't checked your website yet. Press the button: it's free and needs no keys.")}</p>

@@ -1,4 +1,5 @@
 import { PageHead } from "@/components/PageHead";
+import { ReportCard } from "@/components/seo/ReportCard";
 import { AlertsPanel } from "@/components/seo/AlertsPanel";
 import { AuditPanel } from "@/components/seo/AuditPanel";
 import { CompetitorsPanel } from "@/components/seo/CompetitorsPanel";
@@ -10,6 +11,7 @@ import { MapRankPanel } from "@/components/seo/MapRankPanel";
 import { OnPagePanel } from "@/components/seo/OnPagePanel";
 import { RankPanel } from "@/components/seo/RankPanel";
 import { SearchConsolePanel } from "@/components/seo/SearchConsolePanel";
+import { SeoGuide } from "@/components/seo/SeoGuide";
 import { VisibilityPanel } from "@/components/seo/VisibilityPanel";
 import { WriterCard } from "@/components/seo/WriterCard";
 import { db } from "@/lib/db";
@@ -35,6 +37,7 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
         )}
       />
       <div className="stack" style={{ gap: 22 }}>
+        <SeoGuide businessId={id} />
         <DfsSettingsPanel businessId={id} />
         <KeywordsPanel businessId={id} />
         <WriterCard businessId={id} />
@@ -42,6 +45,7 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
         <MapRankPanel businessId={id} mapId={mapa} />
         <GbpPanel businessId={id} />
         <AlertsPanel businessId={id} />
+        <ReportCard businessId={id} />
         <CompetitorsPanel businessId={id} />
         <GapPanel businessId={id} />
         <OnPagePanel businessId={id} />

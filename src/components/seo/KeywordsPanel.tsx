@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { refreshKeywords } from "@/app/actions-seo-keywords";
+import { HowToRead } from "@/components/seo/HowToRead";
 import { FollowButton, KeywordsButton } from "@/components/seo/KeywordsButton";
 import { db } from "@/lib/db";
 import { intlLocale } from "@/lib/i18n";
@@ -75,7 +76,7 @@ export async function KeywordsPanel({ businessId }: { businessId: string }) {
 
   if (!zones.length || tracked.length === 0) {
     return (
-      <section className="card">
+      <section className="card" id="palabras">
         {header}
         <p className="note">
           {t(
@@ -129,7 +130,7 @@ export async function KeywordsPanel({ businessId }: { businessId: string }) {
         className="muted"
         title={
           v === null
-            ? t("Google no tiene datos de esta búsqueda", "Google has no data for this search")
+            ? t("Google dice que esta búsqueda casi no se hace (menos de unas 10 veces al mes) o no tiene datos", "Google says this search is barely made (fewer than about 10 times a month) or has no data")
             : byZone.has(z.code)
               ? t("Esta palabra no se midió en esa zona. Presiona Actualizar búsquedas.", "This keyword wasn't measured in that area. Press Update searches.")
               : t("Presiona Actualizar búsquedas para ver sus datos", "Press Update searches to see its data")
@@ -195,9 +196,11 @@ export async function KeywordsPanel({ businessId }: { businessId: string }) {
     </div>
   );
   const totals = mine.filter((m) => m.volumes.filter((v) => typeof v === "number").length > 1);
+  // Tus palabras que Google dice que casi no se buscan (sale «—»).
+  const unsearched = mine.filter((m) => m.volumes.some((v) => v === null)).map((m) => m.row.keyword);
 
   return (
-    <section className="card">
+    <section className="card" id="palabras">
       {header}
       <p className="small muted">
         {multi ? t("Zonas:", "Areas:") : t("Zona:", "Area:")} {zones.map(label).join(" · ")}
@@ -245,6 +248,23 @@ export async function KeywordsPanel({ businessId }: { businessId: string }) {
                 "CPC is what an advertiser pays Google for each click. If it's high, that search brings customers worth money: it's worth showing up for free with posts and articles.",
               )}
             </span>
+            {unsearched.length > 0 && (
+              <p className="note">
+                {t(
+                  `«—» en búsquedas = Google dice que se buscan muy poco (menos de unas 10 veces al mes) o no tiene datos: ${unsearched.join(", ")}. No es un error, pero casi nadie escribe así. Sigue también alguna de las ideas de abajo que sí se buscan.`,
+                  `“—” in searches = Google says they're barely searched (fewer than about 10 times a month) or has no data: ${unsearched.join(", ")}. It's not an error, but almost nobody types it that way. Also track some of the ideas below that people do search.`,
+                )}
+              </p>
+            )}
+            <HowToRead title={t("Cómo leer esta tabla", "How to read this table")}>
+              <ul>
+                <li>{t("Búsquedas al mes: cuántas veces buscan esa frase en Google al mes en tu zona (promedio del último año). Más es mejor, pero frases con pocas búsquedas y muy claras («lo que vendes + tu ciudad») traen clientes listos para comprar.", "Monthly searches: how many times that phrase is searched on Google per month in your area (last year's average). More is better, but clear phrases with few searches (“what you sell + your city”) bring customers ready to buy.")}</li>
+                <li>{t("«—»: Google dice que se busca muy poco (menos de unas 10 al mes) o no tiene datos.", "“—”: Google says it's barely searched (fewer than about 10 a month) or has no data.")}</li>
+                <li>{t("Últimos 12 meses: si la búsqueda sube ▲ o baja ▼ en la temporada.", "Last 12 months: whether the search goes up ▲ or down ▼ with the season.")}</li>
+                <li>{t("Competencia en anuncios: cuántos negocios pagan anuncios en Google por esa búsqueda (baja, media, alta). No dice qué tan difícil es salir gratis.", "Ad competition: how many businesses pay for Google ads on that search (low, medium, high). It doesn't say how hard it is to show up for free.")}</li>
+                <li>{t("CPC: lo que paga un anunciante por cada clic. Alto = esa búsqueda trae clientes que valen dinero.", "CPC: what an advertiser pays for each click. High = that search brings customers worth money.")}</li>
+              </ul>
+            </HowToRead>
             {totals.length > 0 && (
               <details>
                 <summary className="btn link" style={{ display: "inline-flex", padding: 0 }}>{t("Ver el total de búsquedas en tus zonas", "See total searches across your areas")}</summary>

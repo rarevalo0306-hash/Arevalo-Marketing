@@ -131,6 +131,126 @@ export function positionOf(list: string[], m: MentionMatcher): number | null {
   return i < 0 ? null : i + 1;
 }
 
+// ---------- Errores de las IAs y reintentos (funciones puras) ----------
+
+/** Lo que tarda como máximo la revisión: el maxDuration de la página /b/[id]/seo (la acción corre dentro de ella). */
+export const VISIBILITY_BUDGET_MS = 300_000;
+/** Con menos de esto por delante ya no se reintenta: queda para leer las respuestas y escribir las recomendaciones. */
+export const VISIBILITY_RESERVE_MS = 40_000;
+/** Si una IA llega a su límite por minuto: se espera 8 s y se reintenta; si vuelve a pasar, 20 s y otra vez. */
+export const RETRY_WAITS_MS = [8_000, 20_000];
+/**
+ * Cuántas preguntas a la vez por IA. Gemini gratis tiene un límite de preguntas por minuto: de a una.
+ * Las IAs van en paralelo entre ellas.
+ */
+export const PROVIDER_CONCURRENCY: Record<TextProvider, number> = { gemini: 1, claude: 2, openai: 2 };
+
+export type ErrorKind = "limit" | "busy" | "timeout" | "key" | "empty" | "other";
+
+/** De qué tipo es un error de una IA, por su mensaje (en español o inglés, como lo guarda ai.ts). */
+export function errorKind(message: string): ErrorKind {
+  const m = message.toLowerCase();
+  if (/l[ií]mite|hit its limit|rate.?limit|\b429\b|resource.?exhausted|quota|too many requests|saldo|out of credit/.test(m)) return "limit";
+  if (/ocupad|very busy|overloaded|\b503\b|\b529\b/.test(m)) return "busy";
+  if (/tard[oó] demasiado|took too long|timed? ?out|tiempo de la revisi|ran out of time/.test(m)) return "timeout";
+  if (/clave|api key|\bkey\b/.test(m)) return "key";
+  if (/no devolvi[oó] respuesta|empty answer/.test(m)) return "empty";
+  return "other";
+}
+
+/** Vale la pena reintentar: la IA llegó a su límite por minuto o estaba saturada. */
+export const isRetryableError = (message: string) => ["limit", "busy"].includes(errorKind(message));
+
+export const PROVIDER_SHORT: Record<TextProvider, string> = { gemini: "Gemini", claude: "Claude", openai: "ChatGPT" };
+
+/** El error explicado en palabras simples, con qué hacer. `raw` es el mensaje original (para "other"). */
+export function explainError(provider: TextProvider, raw: string): { es: string; en: string } {
+  const name = PROVIDER_SHORT[provider];
+  switch (errorKind(raw)) {
+    case "limit":
+      if (provider === "gemini")
+        return {
+          es: "Gemini llegó a su límite gratis de preguntas por minuto. Vuelve a intentar en un rato o activa la facturación en Google AI Studio.",
+          en: "Gemini hit its free per-minute limit. Try again in a while or turn on billing in Google AI Studio.",
+        };
+      if (provider === "openai")
+        return {
+          es: "ChatGPT llegó a su límite o tu cuenta de OpenAI no tiene saldo. Vuelve a intentar en un rato o revisa la facturación en platform.openai.com.",
+          en: "ChatGPT hit its limit or your OpenAI account is out of credit. Try again in a while or check billing at platform.openai.com.",
+        };
+      return { es: `${name} llegó a su límite de preguntas por minuto. Vuelve a intentar en un rato.`, en: `${name} hit its per-minute limit. Try again in a while.` };
+    case "busy":
+      return { es: `${name} estaba saturado en ese momento. Vuelve a intentar en unos minutos.`, en: `${name} was overloaded at that moment. Try again in a few minutes.` };
+    case "timeout":
+      return { es: `${name} tardó demasiado en contestar. Vuelve a intentar.`, en: `${name} took too long to answer. Try again.` };
+    case "key":
+      return { es: `${name} rechazó la clave o falta la clave en el servidor.`, en: `${name} rejected the key, or the key is missing on the server.` };
+    case "empty":
+      return { es: `${name} no devolvió respuesta. Vuelve a intentar.`, en: `${name} sent back an empty answer. Try again.` };
+    default:
+      return { es: raw, en: raw };
+  }
+}
+
+export type ProviderErrors = { provider: TextProvider; failed: number; total: number; kind: ErrorKind; reason: { es: string; en: string } };
+
+/** Por cada IA que falló: cuántas preguntas no contestó y por qué (el motivo más común), en palabras simples. */
+export function providerErrors(results: Pick<VisibilityResult, "provider" | "error">[]): ProviderErrors[] {
+  const out: ProviderErrors[] = [];
+  for (const p of TEXT_PROVIDERS) {
+    const list = results.filter((r) => r.provider === p.id);
+    const errors = list.map((r) => r.error).filter((e): e is string => Boolean(e));
+    if (!errors.length) continue;
+    const counts = new Map<ErrorKind, { n: number; raw: string }>();
+    for (const e of errors) {
+      const k = errorKind(e);
+      const c = counts.get(k);
+      counts.set(k, { n: (c?.n ?? 0) + 1, raw: c?.raw ?? e });
+    }
+    const [kind, top] = [...counts.entries()].sort((a, b) => b[1].n - a[1].n)[0];
+    out.push({ provider: p.id, failed: errors.length, total: list.length, kind, reason: explainError(p.id, top.raw) });
+  }
+  return out;
+}
+
+/**
+ * Corre `fn` y, si falla por límite o saturación, espera y reintenta (RETRY_WAITS_MS), siempre que después de la
+ * espera queden más de `reserveMs` antes de `deadline`. Los demás errores se lanzan de una vez.
+ */
+export async function withRetry<T>(
+  fn: (attempt: number) => Promise<T>,
+  opts: { deadline: number; waits?: number[]; reserveMs?: number; isRetryable?: (e: unknown) => boolean; now?: () => number; sleep?: (ms: number) => Promise<void> },
+): Promise<T> {
+  const waits = opts.waits ?? RETRY_WAITS_MS;
+  const reserve = opts.reserveMs ?? VISIBILITY_RESERVE_MS;
+  const now = opts.now ?? Date.now;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const retryable = opts.isRetryable ?? ((e: unknown) => isRetryableError(e instanceof Error ? e.message : String(e)));
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn(attempt);
+    } catch (e) {
+      const wait = waits[attempt];
+      if (wait === undefined || !retryable(e) || now() + wait > opts.deadline - reserve) throw e;
+      await sleep(wait);
+    }
+  }
+}
+
+/** Corre tareas con un máximo de `n` a la vez y devuelve los resultados en el mismo orden. */
+export async function mapLimit<T, R>(list: T[], n: number, fn: (x: T, i: number) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(list.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < list.length) {
+      const i = next++;
+      out[i] = await fn(list[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(n, list.length)) }, worker));
+  return out;
+}
+
 // ---------- Puntaje y resumen (funciones puras) ----------
 
 type Scored = Pick<VisibilityResult, "provider" | "mentioned" | "error">;
@@ -344,20 +464,20 @@ function timeout<T>(p: Promise<T>, ms: number): Promise<T> {
 }
 
 /** Pide a la IA la lista ordenada de negocios que recomienda cada respuesta (una sola llamada para todas). */
-async function extractBusinesses(pref: string, answers: { id: number; question: string; text: string }[]): Promise<Map<number, string[]>> {
+async function extractBusinesses(pref: string, answers: { id: number; question: string; text: string }[], timeoutMs = 90000): Promise<Map<number, string[]>> {
   const system = `You read answers that AI assistants gave to customers and list the specific businesses they recommend.
 Rules:
 - For each answer, list the businesses, companies or brands it recommends or names as options for the customer, in the order they first appear, with the name as written.
 - Do not include directories or websites used only as sources (Google Maps, Yelp, BBB, Angi, Facebook) unless the answer recommends them as the provider, and do not include generic categories ("a local roofer").
 - An empty list when the answer names no business. Return every answer id.`;
   const user = answers.map((a) => `<answer id="${a.id}">\nQuestion: ${a.question}\n${a.text.slice(0, 3500)}\n</answer>`).join("\n\n");
-  const r = await timeout(ask(pref, ExtractSchema, system, user, 6000), 90000);
+  const r = await timeout(ask(pref, ExtractSchema, system, user, 6000), timeoutMs);
   const map = new Map<number, string[]>();
   for (const a of r.answers) map.set(a.id, [...new Set(a.businesses.map((b) => b.trim().slice(0, 120)).filter(Boolean))].slice(0, 15));
   return map;
 }
 
-async function recommend(business: BusinessVis, report: Omit<VisibilityReport, "recommendations" | "finishedAt">, lang: UiLang): Promise<Recommendation[]> {
+async function recommend(business: BusinessVis, report: Omit<VisibilityReport, "recommendations" | "finishedAt">, lang: UiLang, timeoutMs = 90000): Promise<Recommendation[]> {
   const study = readStudy(business.study);
   const name = (p: TextProvider) => TEXT_PROVIDERS.find((x) => x.id === p)?.name ?? p;
   const lines = report.results
@@ -384,7 +504,7 @@ Websites the assistants cite most: ${report.topDomains.map((d) => `${d.domain} (
 
 Answer excerpts:
 ${excerpts.join("\n\n")}`;
-  const r = await timeout(ask(business.aiText ?? "", RecsSchema, system, user, 4000), 90000);
+  const r = await timeout(ask(business.aiText ?? "", RecsSchema, system, user, 4000), timeoutMs);
   return r.recommendations
     .map((x) => ({ title: x.title.trim().slice(0, 200), detail: x.detail.trim().slice(0, 1000) }))
     .filter((x) => x.title)
@@ -394,8 +514,12 @@ ${excerpts.join("\n\n")}`;
 /** Las IAs que pueden contestar con búsqueda en internet (las tres la tienen). */
 export const visibilityProviders = (): TextProvider[] => availableText().map((p) => p.id);
 
-/** Hace cada pregunta a cada IA con clave, con búsqueda en internet, y arma el reporte. */
-export async function checkVisibility(business: BusinessVis, questions: string[], lang: UiLang): Promise<VisibilityReport> {
+/**
+ * Hace cada pregunta a cada IA con clave, con búsqueda en internet, y arma el reporte.
+ * Las IAs van en paralelo; las preguntas de cada IA, de a una o dos (PROVIDER_CONCURRENCY) para no pasar su límite
+ * por minuto, y si igual lo pasan se reintenta con espera mientras alcance el tiempo (`budgetMs`).
+ */
+export async function checkVisibility(business: BusinessVis, questions: string[], lang: UiLang, budgetMs = VISIBILITY_BUDGET_MS): Promise<VisibilityReport> {
   const providers = visibilityProviders();
   if (!providers.length)
     throw bi(
@@ -405,28 +529,47 @@ export async function checkVisibility(business: BusinessVis, questions: string[]
   const qs = cleanQuestions(questions);
   if (!qs.length) throw bi("Escribe al menos una pregunta.", "Write at least one question.");
   const startedAt = new Date().toISOString();
+  // Unos segundos de margen para guardar el reporte antes de que se acabe el tiempo de la página.
+  const deadline = Date.now() + budgetMs - 5_000;
+  const left = () => deadline - Date.now();
   const m = mentionMatcher(business);
 
-  const raw = await Promise.all(
-    qs.flatMap((question) =>
-      providers.map(async (provider) => {
+  type Raw = { question: string; provider: TextProvider; text: string; sources: StudySource[]; error: string | undefined };
+  const perProvider = await Promise.all(
+    providers.map(async (provider) => {
+      // Si la IA ya agotó los reintentos por su límite, las siguientes preguntas se intentan una sola vez.
+      let limited = false;
+      return mapLimit(qs, PROVIDER_CONCURRENCY[provider], async (question): Promise<Raw> => {
         try {
-          const r = await searchAnswer(provider, question, { system: NEUTRAL_SYSTEM, timeoutMs: 60000 });
+          if (left() < VISIBILITY_RESERVE_MS)
+            throw bi("Se acabó el tiempo de la revisión antes de hacer esta pregunta.", "The check ran out of time before asking this question.");
+          const r = await withRetry(
+            () => searchAnswer(provider, question, { system: NEUTRAL_SYSTEM, timeoutMs: Math.max(10_000, Math.min(60_000, left() - VISIBILITY_RESERVE_MS)) }),
+            { deadline, waits: limited ? [] : RETRY_WAITS_MS },
+          );
           if (!r.text.trim()) throw bi("La IA no devolvió respuesta.", "The AI sent back an empty answer.");
-          return { question, provider, text: r.text, sources: r.sources, error: undefined as string | undefined };
+          return { question, provider, text: r.text, sources: r.sources, error: undefined };
         } catch (e) {
           console.error(`Visibilidad en IA: ${provider} falló`, e);
-          return { question, provider, text: "", sources: [] as StudySource[], error: errorText(e, lang) };
+          const error = errorText(e, lang);
+          if (errorKind(error) === "limit") limited = true;
+          return { question, provider, text: "", sources: [], error };
         }
-      }),
-    ),
+      });
+    }),
   );
+  // En el orden de siempre: pregunta por pregunta, cada IA.
+  const raw: Raw[] = qs.flatMap((_, qi) => perProvider.map((list) => list[qi]));
   const ok = raw.map((r, id) => ({ ...r, id })).filter((r) => !r.error);
-  if (!ok.length) throw bi(`Ninguna IA pudo contestar: ${raw[0]?.error ?? ""}`, `None of the AIs could answer: ${raw[0]?.error ?? ""}`);
+  if (!ok.length) {
+    const why = providerErrors(raw);
+    throw bi(`Ninguna IA pudo contestar. ${why.map((w) => w.reason.es).join(" ")}`, `None of the AIs could answer. ${why.map((w) => w.reason.en).join(" ")}`);
+  }
 
   let lists = new Map<number, string[]>();
   try {
-    lists = await extractBusinesses(business.aiText ?? "", ok);
+    if (left() < 10_000) throw new Error("sin tiempo para leer las respuestas");
+    lists = await extractBusinesses(business.aiText ?? "", ok, Math.min(90_000, left() - 5_000));
   } catch (e) {
     console.error("Visibilidad en IA: no se pudieron sacar los competidores", e);
   }
@@ -460,7 +603,8 @@ export async function checkVisibility(business: BusinessVis, questions: string[]
   };
   let recommendations: Recommendation[] = [];
   try {
-    recommendations = await recommend(business, base, lang);
+    if (left() < 10_000) throw new Error("sin tiempo para las recomendaciones");
+    recommendations = await recommend(business, base, lang, Math.min(90_000, left() - 3_000));
   } catch (e) {
     console.error("Visibilidad en IA: no se pudieron escribir las recomendaciones", e);
   }
