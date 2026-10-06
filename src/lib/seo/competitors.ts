@@ -457,8 +457,6 @@ type RunInput = {
   ownerDomains: string[];
   /** El último reporte de posiciones (kind "rank"), tal cual se guardó. */
   rankJson: unknown;
-  /** Lector del reporte de posiciones (si existe el módulo de Rank). */
-  rankRows?: (json: unknown) => RankRow[];
 };
 
 /** Hace la búsqueda completa: ~5 llamadas a DataForSEO Labs (unos USD 0.05 a 0.10). */
@@ -476,7 +474,7 @@ export async function runCompetitorsReport(input: RunInput): Promise<Competitors
       en: `DataForSEO has no ${input.language === "en" ? "English" : "Spanish"} data for ${location.countryName}; used "${location.language}".`,
     });
 
-  const rows = (input.rankRows ?? readRankRows)(input.rankJson);
+  const rows = readRankRows(input.rankJson);
 
   // 1) Competidores según DataForSEO (todo el país).
   let labs: LabsCompetitor[] = [];
@@ -511,12 +509,16 @@ export async function runCompetitorsReport(input: RunInput): Promise<Competitors
       ...(competitor ? { filters: ["ranked_serp_element.serp_item.rank_group", "<=", 10] } : {}),
     });
 
-  const mine = await ranked(self, false);
-  cost += mine.cost;
-  const youData = parseRankedKeywords(mine.result);
-
+  // Las 4 llamadas van a la vez; si fallan todas (sin saldo, clave mala…) se avisa el error.
   const analyzed = candidates.slice(0, 3);
-  const settled = await Promise.allSettled(analyzed.map((c) => ranked(c.domain, true)));
+  const [mine, ...settled] = await Promise.allSettled([ranked(self, false), ...analyzed.map((c) => ranked(c.domain, true))]);
+  if (mine.status === "rejected" && settled.every((x) => x.status === "rejected")) throw mine.reason;
+  let youData: ReturnType<typeof parseRankedKeywords> = { keywords: null, traffic: null, top: [] };
+  if (mine.status === "fulfilled") {
+    cost += mine.value.cost;
+    youData = parseRankedKeywords(mine.value.result);
+  } else notes.push({ es: `No se pudieron leer las búsquedas de ${self}.`, en: `Couldn't read ${self}'s keywords.` });
+
   const competitors: Competitor[] = candidates.map((c, i) => {
     const s = i < analyzed.length ? settled[i] : null;
     if (s?.status === "fulfilled") {
@@ -530,13 +532,10 @@ export async function runCompetitorsReport(input: RunInput): Promise<Competitors
 
   // Coincidencias contigo cuando DataForSEO no las dio (búsquedas en común entre las leídas).
   const myKeys = new Set(youData.top.map((k) => k.keyword));
-  for (const c of competitors) if (c.overlap === null && c.analyzed && myKeys.size) c.overlap = c.top.filter((k) => myKeys.has(k.keyword)).length;
+  if (mine.status === "fulfilled") for (const c of competitors) if (c.overlap === null && c.analyzed) c.overlap = c.top.filter((k) => myKeys.has(k.keyword)).length;
 
-  const gap = computeGap(
-    youData.top,
-    competitors.filter((c) => c.analyzed),
-    30,
-  );
+  // Sin tus búsquedas no se puede saber dónde no sales: no se inventan oportunidades.
+  const gap = mine.status === "fulfilled" ? computeGap(youData.top, competitors.filter((c) => c.analyzed), 30) : [];
 
   return {
     domain: self,

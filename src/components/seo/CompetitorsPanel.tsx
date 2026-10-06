@@ -88,8 +88,8 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
       {report?.location.local && (
         <p className="note">
           {t(
-            `Los datos de competencia son de todo ${report.location.countryName} (DataForSEO no los tiene por ciudad). Tus posiciones en Google sí son de ${report.location.name}.`,
-            `Competitor data covers all of ${report.location.countryName} (DataForSEO doesn't have it by city). Your Google rankings are for ${report.location.name}.`,
+            `Los datos de competencia son de todo ${report.location.countryName} (DataForSEO no los tiene por ciudad). Tus posiciones en Google sí son de ${report.location.name.replace(/,/g, ", ")}.`,
+            `Competitor data covers all of ${report.location.countryName} (DataForSEO doesn't have it by city). Your Google rankings are for ${report.location.name.replace(/,/g, ", ")}.`,
           )}
         </p>
       )}
