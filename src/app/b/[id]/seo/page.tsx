@@ -2,6 +2,7 @@ import { PageHead } from "@/components/PageHead";
 import { ReportCard } from "@/components/seo/ReportCard";
 import { AlertsPanel } from "@/components/seo/AlertsPanel";
 import { AuditPanel } from "@/components/seo/AuditPanel";
+import { CannibalPanel } from "@/components/seo/CannibalPanel";
 import { BacklinksPanel } from "@/components/seo/BacklinksPanel";
 import { CompetitorsPanel } from "@/components/seo/CompetitorsPanel";
 import { DfsSettingsPanel } from "@/components/seo/DfsSettingsPanel";
@@ -55,9 +56,12 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
         <TrafficPanel businessId={id} />
         <BacklinksPanel businessId={id} />
         <OnPagePanel businessId={id} />
+        <CannibalPanel businessId={id} />
         <AuditPanel businessId={id} />
         <VisibilityPanel businessId={id} />
-        <SearchConsolePanel businessId={id} />
+        <div id="search-console">
+          <SearchConsolePanel businessId={id} />
+        </div>
       </div>
     </>
   );

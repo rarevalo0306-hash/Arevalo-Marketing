@@ -16,7 +16,12 @@ export type SeoKind =
   // Tu Perfil de Google (src/lib/seo/gbp.ts): el perfil, las reseñas y la tarea de reseñas que quedó en la cola.
   | "gbp"
   | "reviews"
-  | "reviews-task";
+  | "reviews-task"
+  // Visitas de la competencia (traffic.ts), enlaces (backlinks.ts) y páginas que compiten entre sí (cannibal.ts).
+  | "traffic"
+  | "backlinks"
+  | "backlinks-locked"
+  | "cannibal";
 
 export async function saveReport(businessId: string, kind: SeoKind, data: Prisma.InputJsonValue) {
   return db.seoReport.create({ data: { businessId, kind, data } });
