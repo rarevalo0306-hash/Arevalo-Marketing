@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { generateStudy, saveStudyProfile, studyInterview } from "@/app/actions";
+import { deleteStudy, generateStudy, saveStudyProfile, studyInterview } from "@/app/actions";
 import { PageHead } from "@/components/PageHead";
 import { StudyForm } from "@/components/StudyForm";
 import { aiEnabled, researchProvider, TEXT_PROVIDERS } from "@/lib/ai";
@@ -222,6 +222,23 @@ export default async function EstudioPage({ params }: { params: Promise<{ id: st
                   )}
                 </section>
               </div>
+
+              <details className="card" style={{ gap: 0 }}>
+                <summary className="row between" style={{ cursor: "pointer" }}>
+                  <span className="stack" style={{ gap: 2 }}>
+                    <strong>Borrar estudio</strong>
+                    <span className="small muted">Para empezar de cero, con las preguntas en blanco.</span>
+                  </span>
+                  <span className="btn danger">Borrar</span>
+                </summary>
+                <form action={deleteStudy.bind(null, id)} className="stack" style={{ gap: 12, marginTop: 16 }}>
+                  <p className="small">
+                    Se borran el estudio y tus respuestas a la entrevista. La IA deja de usarlo en lo que escribe hasta que hagas uno nuevo.
+                    El perfil del negocio que guardaste en <Link href={`/b/${id}/negocio`}>Ajustes</Link> no se borra.
+                  </p>
+                  <div><button type="submit" className="btn danger">Sí, borrar el estudio</button></div>
+                </form>
+              </details>
             </>
           )}
         </div>

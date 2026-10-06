@@ -1,5 +1,6 @@
 "use server";
 
+import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -694,5 +695,12 @@ export async function generateStudy(businessId: string, _prev: StudyResult, f: F
 export async function saveStudyProfile(businessId: string, f: FormData) {
   await business(businessId);
   await db.business.update({ where: { id: businessId }, data: { aiProfile: str(f, "aiProfile").slice(0, 4000) } });
+  revalidatePath(`/b/${businessId}`, "layout");
+}
+
+/** Borra el estudio y las respuestas de la entrevista. El perfil del negocio (Ajustes) no se toca. */
+export async function deleteStudy(businessId: string) {
+  await business(businessId);
+  await db.business.update({ where: { id: businessId }, data: { study: Prisma.DbNull, studyInput: Prisma.DbNull, studyAt: null } });
   revalidatePath(`/b/${businessId}`, "layout");
 }
