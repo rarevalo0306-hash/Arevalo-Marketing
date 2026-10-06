@@ -135,6 +135,7 @@ export function parseProfile(result: BusinessInfoResult | null | undefined): Gbp
     topics,
     lat: num(i.latitude),
     lng: num(i.longitude),
+    timetable: timetable ?? null,
   };
 }
 

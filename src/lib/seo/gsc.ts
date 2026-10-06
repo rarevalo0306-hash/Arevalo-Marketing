@@ -147,8 +147,8 @@ export function findLowCtr(rows: GscRow[], limit = 10): GscRow[] {
 
 // ---------- Fechas ----------
 
-const day = (d: Date) => d.toISOString().slice(0, 10);
-const minusDays = (d: Date, n: number) => new Date(d.getTime() - n * 86_400_000);
+export const day = (d: Date) => d.toISOString().slice(0, 10);
+export const minusDays = (d: Date, n: number) => new Date(d.getTime() - n * 86_400_000);
 
 /** Últimos 28 días terminando hace 3 días (Search Console tarda en tener los datos) y los 28 días anteriores. */
 export function gscRanges(now = new Date()): { range: GscRange; previousRange: GscRange } {
@@ -161,15 +161,15 @@ export function gscRanges(now = new Date()): { range: GscRange; previousRange: G
 
 // ---------- Leer datos de Google ----------
 
-type ApiRow = { keys?: string[]; clicks?: number; impressions?: number; ctr?: number; position?: number };
+export type ApiRow = { keys?: string[]; clicks?: number; impressions?: number; ctr?: number; position?: number };
 
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 
-function toRow(r: ApiRow): GscRow {
+export function toRow(r: ApiRow): GscRow {
   return { key: String(r.keys?.[0] ?? ""), clicks: num(r.clicks), impressions: num(r.impressions), ctr: num(r.ctr), position: num(r.position) };
 }
 
-function toPair(r: ApiRow): GscPageQuery {
+export function toPair(r: ApiRow): GscPageQuery {
   return { page: String(r.keys?.[0] ?? ""), query: String(r.keys?.[1] ?? ""), clicks: num(r.clicks), impressions: num(r.impressions), position: num(r.position) };
 }
 
@@ -178,7 +178,7 @@ const totalsOf = (rows: ApiRow[]): GscTotals => {
   return { clicks, impressions, ctr, position };
 };
 
-async function query(accessToken: string, siteUrl: string, range: GscRange, dimensions: string[], rowLimit: number): Promise<ApiRow[]> {
+export async function query(accessToken: string, siteUrl: string, range: GscRange, dimensions: string[], rowLimit: number): Promise<ApiRow[]> {
   const r = await fetchJson<{ rows?: ApiRow[] }>(
     `https://searchconsole.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
     {
@@ -188,6 +188,22 @@ async function query(accessToken: string, siteUrl: string, range: GscRange, dime
     },
   );
   return r.rows ?? [];
+}
+
+/**
+ * Abre la conexión guardada: el sitio y un permiso de acceso nuevo (lo usan otros reportes que leen Search Console,
+ * como "Páginas para actualizar"). Los mismos errores en palabras claras que searchConsoleReport.
+ */
+export async function gscConnection(conn: { secret: string }): Promise<{ token: string; siteUrl: string }> {
+  let creds: { refreshToken?: string; siteUrl?: string };
+  try {
+    creds = decryptJson<{ refreshToken?: string; siteUrl?: string }>(conn.secret);
+  } catch {
+    throw bi("No se pudo leer la conexión con Search Console. Vuelve a conectarla.", "Couldn't read the Search Console connection. Please connect it again.");
+  }
+  if (!creds.refreshToken || !creds.siteUrl)
+    throw bi("A la conexión con Search Console le faltan datos. Vuelve a conectarla.", "The Search Console connection is missing data. Please connect it again.");
+  return { token: await googleAccess(creds.refreshToken), siteUrl: creds.siteUrl };
 }
 
 /** Arma el reporte completo con la conexión guardada (fila Connection con channel "gsc"). */

@@ -3,6 +3,8 @@ import { runBacklinks } from "@/app/actions-seo-backlinks";
 import styles from "@/components/seo/Backlinks.module.css";
 import { BacklinksButton } from "@/components/seo/BacklinksButton";
 import { HowToRead } from "@/components/seo/HowToRead";
+import { OutreachProvider, OutreachRow, OutreachTop } from "@/components/seo/OutreachDrafts";
+import { aiEnabled } from "@/lib/ai";
 import { db } from "@/lib/db";
 import { intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
@@ -23,6 +25,7 @@ import {
 } from "@/lib/seo/backlinks";
 import { normalizeDomain, readCompetitorsReport } from "@/lib/seo/competitors";
 import { dataForSeoEnabled } from "@/lib/seo/dataforseo";
+import { OUTREACH_KIND, readOutreachStore } from "@/lib/seo/outreach";
 import { BUSINESS_TZ } from "@/lib/time";
 
 /** Enlaces hacia tu página (estilo Backlink Analytics + Backlink Gap). */
@@ -60,13 +63,15 @@ export async function BacklinksPanel({ businessId }: { businessId: string }) {
       </>,
     );
 
-  const [[row], [lockedRow], [compRow]] = await Promise.all([
+  const [[row], [lockedRow], [compRow], [outreachRow]] = await Promise.all([
     db.seoReport.findMany({ where: { businessId, kind: BACKLINKS_KIND }, orderBy: { createdAt: "desc" }, take: 1 }),
     db.seoReport.findMany({ where: { businessId, kind: BACKLINKS_LOCKED_KIND }, orderBy: { createdAt: "desc" }, take: 1 }),
     db.seoReport.findMany({ where: { businessId, kind: "competitors" }, orderBy: { createdAt: "desc" }, take: 1 }),
+    db.seoReport.findMany({ where: { businessId, kind: OUTREACH_KIND }, orderBy: { createdAt: "desc" }, take: 1 }),
   ]);
   const report = row ? readBacklinksReport(row.data) : null;
   const locked = lockedRow && readBacklinksLocked(lockedRow.data) && (!row || lockedRow.createdAt > row.createdAt);
+  const outreach = readOutreachStore(outreachRow?.data).drafts;
   const competitors = pickBacklinkCompetitors(compRow ? readCompetitorsReport(compRow.data) : null, self);
   const estimate = backlinksCostEstimate(competitors.length);
 
@@ -184,6 +189,7 @@ export async function BacklinksPanel({ businessId }: { businessId: string }) {
           <span className={styles.whereMeta}>
             {t("Fuerza", "Strength")} {n(g.rank)} · {t("enlaza a", "links to")} {g.linksTo.join(", ")}
           </span>
+          <OutreachRow domain={g.domain} hint={g.hint} />
         </li>
       ))}
     </ul>
@@ -365,7 +371,8 @@ export async function BacklinksPanel({ businessId }: { businessId: string }) {
                   )}
                 </p>
               ) : (
-                <>
+                <OutreachProvider businessId={businessId} aiReady={aiEnabled()} initial={outreach}>
+                  <OutreachTop pendingCount={report.gap.filter((g) => !outreach[g.domain]).length} />
                   {whereList(report.gap.slice(0, 15))}
                   {report.gap.length > 15 && (
                     <details>
@@ -375,7 +382,7 @@ export async function BacklinksPanel({ businessId }: { businessId: string }) {
                       {whereList(report.gap.slice(15))}
                     </details>
                   )}
-                </>
+                </OutreachProvider>
               )}
               {report.gapSpamHidden > 0 && (
                 <span className="small muted">

@@ -65,6 +65,8 @@ export type GbpProfile = {
   topics: { term: string; count: number }[];
   lat: number | null;
   lng: number | null;
+  /** Horario tal como lo da DataForSEO (work_hours.timetable), para el código de Google (schema). */
+  timetable?: Record<string, unknown> | null;
 };
 
 /** Lo que se compara de un competidor (su perfil, no sus reseñas). */

@@ -21,7 +21,10 @@ export type SeoKind =
   | "traffic"
   | "backlinks"
   | "backlinks-locked"
-  | "cannibal";
+  | "cannibal"
+  | "decay"
+  | "outreach"
+  | "schema";
 
 export async function saveReport(businessId: string, kind: SeoKind, data: Prisma.InputJsonValue) {
   return db.seoReport.create({ data: { businessId, kind, data } });

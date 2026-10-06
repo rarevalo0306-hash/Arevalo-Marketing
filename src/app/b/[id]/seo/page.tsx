@@ -4,6 +4,7 @@ import { AlertsPanel } from "@/components/seo/AlertsPanel";
 import { AuditPanel } from "@/components/seo/AuditPanel";
 import { CannibalPanel } from "@/components/seo/CannibalPanel";
 import { BacklinksPanel } from "@/components/seo/BacklinksPanel";
+import { DecayPanel } from "@/components/seo/DecayPanel";
 import { CompetitorsPanel } from "@/components/seo/CompetitorsPanel";
 import { DfsSettingsPanel } from "@/components/seo/DfsSettingsPanel";
 import { GapPanel } from "@/components/seo/GapPanel";
@@ -11,7 +12,9 @@ import { GbpPanel } from "@/components/seo/GbpPanel";
 import { KeywordsPanel } from "@/components/seo/KeywordsPanel";
 import { MapRankPanel } from "@/components/seo/MapRankPanel";
 import { OnPagePanel } from "@/components/seo/OnPagePanel";
+import { QuestionsPanel } from "@/components/seo/QuestionsPanel";
 import { RankPanel } from "@/components/seo/RankPanel";
+import { SchemaPanel } from "@/components/seo/SchemaPanel";
 import { SearchConsolePanel } from "@/components/seo/SearchConsolePanel";
 import { SharePanel } from "@/components/seo/SharePanel";
 import { TrafficPanel } from "@/components/seo/TrafficPanel";
@@ -46,8 +49,10 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
         <KeywordsPanel businessId={id} />
         <WriterCard businessId={id} />
         <RankPanel businessId={id} />
+        <QuestionsPanel businessId={id} />
         <MapRankPanel businessId={id} mapId={mapa} />
         <GbpPanel businessId={id} />
+        <SchemaPanel businessId={id} />
         <AlertsPanel businessId={id} />
         <ReportCard businessId={id} />
         <SharePanel businessId={id} />
@@ -57,6 +62,7 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
         <BacklinksPanel businessId={id} />
         <OnPagePanel businessId={id} />
         <CannibalPanel businessId={id} />
+        <DecayPanel businessId={id} />
         <AuditPanel businessId={id} />
         <VisibilityPanel businessId={id} />
         <div id="search-console">

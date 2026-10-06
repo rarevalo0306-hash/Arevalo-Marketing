@@ -1,0 +1,30 @@
+/* "Páginas para actualizar": la lista de páginas que pierden visitas. */
+.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--line);
+  background: var(--surface);
+  min-width: 0;
+}
+.position { border-left-color: var(--err-text); }
+.ctr { border-left-color: #e8a33a; }
+.queries { border-left-color: var(--brand-2); }
+.demand { border-left-color: var(--line); }
+.head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.url { font-weight: 700; overflow-wrap: anywhere; word-break: break-word; min-width: 0; }
+.clicks { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; line-height: 1.35; }
+.big { font-size: 18px; font-weight: 800; white-space: nowrap; }
+.nums { font-size: 13px; line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; }
+.why { margin: 0; font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
+.todo { display: flex; flex-direction: column; gap: 4px; font-size: 14px; line-height: 1.45; }
+.todo ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.todo li { overflow-wrap: anywhere; }
+.queryCell { overflow-wrap: anywhere; min-width: 120px; }
+.num { white-space: nowrap; text-align: right; }
+.good { display: flex; flex-direction: column; gap: 4px; }
+.good strong { font-size: 16px; }
