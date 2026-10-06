@@ -35,6 +35,13 @@ model Business {
   brandBookUrl  String     @default("")
   hashtags      String     @default("")
   template      String     @default("auto")
+  /// SEO con DataForSEO: zona de Google (código y nombre de DataForSEO), idioma de búsqueda,
+  /// palabras clave que se siguen (lista de textos) y si se revisan las posiciones cada día.
+  seoLocationCode Int?
+  seoLocationName String   @default("")
+  seoLanguage     String   @default("es")
+  seoKeywords     Json?
+  seoDaily        Boolean  @default(false)
   /// Estudio del negocio hecho por la IA (StudySchema en src/lib/study-shape.ts), las respuestas del dueño y cuándo se hizo.
   study         Json?
   studyInput    Json?

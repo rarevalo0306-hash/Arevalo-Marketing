@@ -1,0 +1,69 @@
+"use client";
+
+import { useActionState, useEffect, useState } from "react";
+import type { RankResult } from "@/app/actions-seo-rank";
+import { useT } from "@/components/I18n";
+
+type Props = {
+  action: (prev: RankResult, f: FormData) => Promise<RankResult>;
+  /** Cuántas palabras clave se van a revisar. */
+  keywords: number;
+  /** Costo por palabra clave (USD). */
+  perKeyword: number;
+  /** Ya hay una revisión guardada. */
+  has: boolean;
+};
+
+function Working({ pending, keywords }: { pending: boolean; keywords: number }) {
+  const { t } = useT();
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    if (!pending) return;
+    setSeconds(0);
+    const timer = setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => clearInterval(timer);
+  }, [pending]);
+  if (!pending) return null;
+  const steps: [number, string][] = [
+    [0, t(`Buscando tus ${keywords} palabras clave en Google…`, `Searching your ${keywords} keywords on Google…`)],
+    [Math.max(10, keywords * 2), t("Buscando tu página y tu negocio en el mapa…", "Looking for your website and your business on the map…")],
+    [Math.max(25, keywords * 3), t("Comparando con la revisión anterior…", "Comparing with the last check…")],
+  ];
+  const now = steps.findLastIndex(([at]) => seconds >= at);
+  return (
+    <div className="stack" style={{ gap: 12 }} aria-live="polite">
+      <ul className="magic-steps">
+        {steps.map(([, label], i) => <li key={label} className={i < now ? "done" : i === now ? "now" : ""}>{label}</li>)}
+      </ul>
+      <p className="small muted">
+        {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")} · {t("Suele tardar menos de un minuto. No cierres esta página.", "It usually takes less than a minute. Don't close this page.")}
+      </p>
+    </div>
+  );
+}
+
+export function RankButton({ action, keywords, perKeyword, has }: Props) {
+  const { t, lang } = useT();
+  const [result, run, pending] = useActionState(action, null);
+  const money = (n: number) => new Intl.NumberFormat(lang === "en" ? "en-US" : "es", { style: "currency", currency: "USD", maximumFractionDigits: 4 }).format(n);
+  const total = money(Math.round(keywords * perKeyword * 10000) / 10000);
+  return (
+    <form action={run} className="stack" style={{ gap: 12 }}>
+      {!pending && (
+        <div className="row">
+          <button type="submit" className="btn ai">
+            {has ? t("Volver a revisar", "Check again") : t("Revisar mis posiciones", "Check my rankings")}
+          </button>
+          <span className="small muted">
+            {t(
+              `Cuesta ≈ ${total} (${keywords} ${keywords === 1 ? "palabra" : "palabras"} × ${money(perKeyword)}) de tu saldo de DataForSEO.`,
+              `Costs ≈ ${total} (${keywords} ${keywords === 1 ? "keyword" : "keywords"} × ${money(perKeyword)}) from your DataForSEO balance.`,
+            )}
+          </span>
+        </div>
+      )}
+      <Working pending={pending} keywords={keywords} />
+      {result && !pending && <p className={result.ok ? "note ok" : "note error"} role="status">{result.message}</p>}
+    </form>
+  );
+}

@@ -6,6 +6,8 @@ import { aiEnabled, researchProvider, TEXT_PROVIDERS } from "@/lib/ai";
 import { db } from "@/lib/db";
 import { intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
+import { readKeywordsReport, reportLookup, volumeFormat } from "@/lib/seo/keywords";
+import { latestReports } from "@/lib/seo/reports";
 import { campaignIdea, EMPTY_INPUT, readInput, readStudy } from "@/lib/study-shape";
 import { BUSINESS_TZ } from "@/lib/time";
 
@@ -37,6 +39,12 @@ export default async function EstudioPage({ params }: { params: Promise<{ id: st
   const input = readInput(b.studyInput) ?? { ...EMPTY_INPUT, services: b.aiProfile.slice(0, 2000) };
   const researcher = researchProvider(b.aiText);
   const create = (idea: string) => `/b/${id}/publicar?${new URLSearchParams({ idea: idea.slice(0, 2000), magic: "1" })}`;
+  // Volúmenes reales de Google Ads (DataForSEO), si ya se trajeron en SEO y visibilidad.
+  const kwRow = study ? (await latestReports(id, "keywords", 1))[0] : undefined;
+  const kwReport = kwRow ? readKeywordsReport(kwRow.data) : null;
+  const realVolume = reportLookup(kwReport);
+  const volume = volumeFormat(lang);
+  const hasReal = study ? study.keywords.some((k) => realVolume.get(k.keyword.trim().toLowerCase())?.volume != null) : false;
 
   return (
     <>
@@ -167,19 +175,40 @@ export default async function EstudioPage({ params }: { params: Promise<{ id: st
                       </tr>
                     </thead>
                     <tbody>
-                      {study.keywords.map((k, i) => (
-                        <tr key={i}>
-                          <td><strong>{k.keyword}</strong> <span className="small muted">{k.lang.toUpperCase()}</span></td>
-                          <td><span className={`pill ${INTENT[k.intent][0]}`}>{pick(INTENT[k.intent])}</span></td>
-                          <td><span className={`pill ${LEVEL[k.volume][0]}`}>{pick(LEVEL[k.volume])}</span></td>
-                          <td><span className={`pill ${LEVEL[k.difficulty][0]}`}>{pick(LEVEL[k.difficulty])}</span></td>
-                          <td className="small">{k.idea}</td>
-                          <td><Link href={create(`${k.idea}\n${t("Palabra clave", "Keyword")}: ${k.keyword}`)} className="btn link">{t("Crear", "Create")}</Link></td>
-                        </tr>
-                      ))}
+                      {study.keywords.map((k, i) => {
+                        const real = realVolume.get(k.keyword.trim().toLowerCase())?.volume;
+                        return (
+                          <tr key={i}>
+                            <td><strong>{k.keyword}</strong> <span className="small muted">{k.lang.toUpperCase()}</span></td>
+                            <td><span className={`pill ${INTENT[k.intent][0]}`}>{pick(INTENT[k.intent])}</span></td>
+                            <td>
+                              <span className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+                                <span className={`pill ${LEVEL[k.volume][0]}`}>{pick(LEVEL[k.volume])}</span>
+                                {real != null && (
+                                  <span className="small kw-real" style={{ whiteSpace: "nowrap" }} title={t("Búsquedas reales al mes según Google Ads", "Real monthly searches from Google Ads")}>
+                                    {volume.format(real)}
+                                    {t("/mes", "/mo")} <span className="tag">{t("real", "real")}</span>
+                                  </span>
+                                )}
+                              </span>
+                            </td>
+                            <td><span className={`pill ${LEVEL[k.difficulty][0]}`}>{pick(LEVEL[k.difficulty])}</span></td>
+                            <td className="small">{k.idea}</td>
+                            <td><Link href={create(`${k.idea}\n${t("Palabra clave", "Keyword")}: ${k.keyword}`)} className="btn link">{t("Crear", "Create")}</Link></td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
+                {hasReal && kwReport && (
+                  <p className="small muted">
+                    {t(
+                      `Los volúmenes marcados "real" vienen de Google Ads (DataForSEO) para ${kwReport.location || "tu zona"}. Los demás son estimados de la IA.`,
+                      `Volumes marked "real" come from Google Ads (DataForSEO) for ${kwReport.location || "your area"}. The rest are AI estimates.`,
+                    )}
+                  </p>
+                )}
               </section>
 
               <section className="card">
