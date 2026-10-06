@@ -286,7 +286,7 @@ export function readRankReport(json: unknown): RankReport | null {
 // ---------- Revisión ----------
 
 /** Corre tareas con un máximo de N a la vez, en el mismo orden. */
-async function pool<T, R>(list: T[], n: number, fn: (x: T) => Promise<R>): Promise<R[]> {
+export async function pool<T, R>(list: T[], n: number, fn: (x: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(list.length);
   let next = 0;
   const worker = async () => {
@@ -299,7 +299,7 @@ async function pool<T, R>(list: T[], n: number, fn: (x: T) => Promise<R>): Promi
   return out;
 }
 
-const biOf = (e: unknown) =>
+export const biOf = (e: unknown) =>
   e instanceof BiError ? { es: e.message, en: e.en } : { es: e instanceof Error ? e.message : String(e), en: e instanceof Error ? e.message : String(e) };
 
 export type RankInput = {
