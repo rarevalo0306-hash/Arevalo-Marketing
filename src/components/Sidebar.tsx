@@ -1,17 +1,20 @@
 import Link from "next/link";
 import { logout } from "@/app/actions";
 import { db } from "@/lib/db";
+import { getT } from "@/lib/i18n-server";
+import { LangPicker } from "./I18n";
 import { NavLinks } from "./NavLinks";
 import { ThemePicker } from "./ThemePicker";
 
 export async function Sidebar({ activeId }: { activeId?: string }) {
   const businesses = await db.business.findMany({ orderBy: { createdAt: "asc" } });
+  const { t } = await getT();
   return (
-    <nav className="sidebar" aria-label="Menú principal">
+    <nav className="sidebar" aria-label={t("Menú principal", "Main menu")}>
       <Link href="/" className="brandmark"><span className="logo">A</span>Arevalo Marketing</Link>
 
       <div className="stack" style={{ gap: 2 }}>
-        <div className="side-label">Mis negocios</div>
+        <div className="side-label">{t("Mis negocios", "My businesses")}</div>
         {businesses.map((b) => (
           <Link
             key={b.id}
@@ -25,7 +28,7 @@ export async function Sidebar({ activeId }: { activeId?: string }) {
         ))}
         <Link href="/negocios/nuevo" className="biz">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" style={{ margin: "0 3px" }}><path d="M12 5v14M5 12h14" /></svg>
-          Agregar negocio
+          {t("Agregar negocio", "Add business")}
         </Link>
       </div>
 
@@ -37,12 +40,14 @@ export async function Sidebar({ activeId }: { activeId?: string }) {
       )}
 
       <div className="stack" style={{ marginTop: "auto", gap: 8 }}>
-        <div className="side-label">Estilo</div>
+        <div className="side-label">{t("Idioma", "Language")}</div>
+        <LangPicker />
+        <div className="side-label">{t("Estilo", "Style")}</div>
         <ThemePicker />
       </div>
       <form action={logout}>
         <button type="submit" className="navlink" style={{ width: "100%", background: "none", border: 0, cursor: "pointer", font: "inherit" }}>
-          Salir
+          {t("Salir", "Log out")}
         </button>
       </form>
     </nav>

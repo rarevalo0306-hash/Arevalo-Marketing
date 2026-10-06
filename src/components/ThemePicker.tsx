@@ -1,16 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useT } from "@/components/I18n";
 
 const THEMES = [
-  ["claro", "Claro"],
-  ["noche", "Noche"],
-  ["vidrio", "Vidrio"],
+  ["claro", "Claro", "Light"],
+  ["noche", "Noche", "Night"],
+  ["vidrio", "Vidrio", "Glass"],
 ] as const;
 type Theme = (typeof THEMES)[number][0];
 
 /** Cambia el estilo de la app. Se recuerda en este navegador. */
 export function ThemePicker() {
+  const { t } = useT();
   const [theme, setTheme] = useState<Theme>("noche");
   useEffect(() => {
     try {
@@ -26,9 +28,9 @@ export function ThemePicker() {
     } catch {}
   };
   return (
-    <div className="theme-pick" role="group" aria-label="Estilo de la app">
-      {THEMES.map(([id, label]) => (
-        <button key={id} type="button" className={theme === id ? "on" : ""} aria-pressed={theme === id} onClick={() => pick(id)}>{label}</button>
+    <div className="theme-pick" role="group" aria-label={t("Estilo de la app", "App style")}>
+      {THEMES.map(([id, es, en]) => (
+        <button key={id} type="button" className={theme === id ? "on" : ""} aria-pressed={theme === id} onClick={() => pick(id)}>{t(es, en)}</button>
       ))}
     </div>
   );

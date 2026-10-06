@@ -4,23 +4,35 @@ import { PageHead } from "@/components/PageHead";
 import { StudyForm } from "@/components/StudyForm";
 import { aiEnabled, researchProvider, TEXT_PROVIDERS } from "@/lib/ai";
 import { db } from "@/lib/db";
+import { intlLocale } from "@/lib/i18n";
+import { getT } from "@/lib/i18n-server";
 import { campaignIdea, EMPTY_INPUT, readInput, readStudy } from "@/lib/study-shape";
 import { BUSINESS_TZ } from "@/lib/time";
 
 // La IA investiga en internet y luego escribe el estudio: puede tardar.
 export const maxDuration = 300;
 
-const fmt = new Intl.DateTimeFormat("es", { dateStyle: "long", timeZone: BUSINESS_TZ });
-const INTENT: Record<string, [string, string]> = {
-  local: ["Local", "scheduled"],
-  comercial: ["Quiere contratar", "done"],
-  informativa: ["Quiere aprender", "draft"],
+// [estilo, español, inglés]
+const INTENT: Record<string, [string, string, string]> = {
+  local: ["scheduled", "Local", "Local"],
+  comercial: ["done", "Quiere contratar", "Ready to hire"],
+  informativa: ["draft", "Quiere aprender", "Wants to learn"],
 };
-const LEVEL: Record<string, string> = { alto: "done", medio: "scheduled", bajo: "", alta: "failed", media: "partial", baja: "done" };
+const LEVEL: Record<string, [string, string, string]> = {
+  alto: ["done", "alto", "high"],
+  medio: ["scheduled", "medio", "medium"],
+  bajo: ["", "bajo", "low"],
+  alta: ["failed", "alta", "high"],
+  media: ["partial", "media", "medium"],
+  baja: ["done", "baja", "low"],
+};
 
 export default async function EstudioPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const b = await db.business.findUniqueOrThrow({ where: { id } });
+  const { lang, t } = await getT();
+  const fmt = new Intl.DateTimeFormat(intlLocale(lang), { dateStyle: "long", timeZone: BUSINESS_TZ });
+  const pick = ([, es, en]: [string, string, string]) => t(es, en);
   const study = readStudy(b.study);
   const input = readInput(b.studyInput) ?? { ...EMPTY_INPUT, services: b.aiProfile.slice(0, 2000) };
   const researcher = researchProvider(b.aiText);
@@ -30,22 +42,30 @@ export default async function EstudioPage({ params }: { params: Promise<{ id: st
     <>
       <PageHead
         business={b}
-        prefix="Estudio de"
-        title="Estudio del negocio"
-        subtitle="La IA estudia tu negocio y tu mercado local: a quién venderle, qué busca la gente en Google y qué anunciar. Todo lo que escribe y diseña después (textos, fotos, videos y campañas) sale de aquí."
+        prefix={t("Estudio de", "Study of")}
+        title={t("Estudio del negocio", "Business study")}
+        subtitle={t(
+          "La IA estudia tu negocio y tu mercado local: a quién venderle, qué busca la gente en Google y qué anunciar. Todo lo que escribe y diseña después (textos, fotos, videos y campañas) sale de aquí.",
+          "The AI studies your business and your local market: who to sell to, what people search for on Google and what to advertise. Everything it writes and designs afterwards (posts, photos, videos and campaigns) comes from here.",
+        )}
       />
       {!aiEnabled() ? (
-        <div className="card empty">Falta la clave de la IA (GEMINI_API_KEY, ANTHROPIC_API_KEY u OPENAI_API_KEY) en Vercel.</div>
+        <div className="card empty">{t("Falta la clave de la IA (GEMINI_API_KEY, ANTHROPIC_API_KEY u OPENAI_API_KEY) en Vercel.", "The AI key (GEMINI_API_KEY, ANTHROPIC_API_KEY or OPENAI_API_KEY) is missing in Vercel.")}</div>
       ) : (
         <div className="stack" style={{ gap: 22 }}>
           {study ? (
             <details className="card" style={{ gap: 0 }}>
               <summary className="row between" style={{ cursor: "pointer" }}>
                 <span className="stack" style={{ gap: 2 }}>
-                  <strong>Estudio del {b.studyAt ? fmt.format(b.studyAt) : "—"}</strong>
-                  <span className="small muted">{study.researched ? `Con investigación en internet (${study.sources.length} fuentes)` : "Sin investigación en internet"}. Ábrelo para cambiar tus respuestas y actualizarlo.</span>
+                  <strong>{t("Estudio del", "Study from")} {b.studyAt ? fmt.format(b.studyAt) : "—"}</strong>
+                  <span className="small muted">
+                    {study.researched
+                      ? t(`Con investigación en internet (${study.sources.length} fuentes)`, `With web research (${study.sources.length} sources)`)
+                      : t("Sin investigación en internet", "No web research")}
+                    . {t("Ábrelo para cambiar tus respuestas y actualizarlo.", "Open it to change your answers and update it.")}
+                  </span>
                 </span>
-                <span className="btn">Actualizar</span>
+                <span className="btn">{t("Actualizar", "Update")}</span>
               </summary>
               <div style={{ marginTop: 18 }}>
                 <StudyForm action={generateStudy.bind(null, id)} interview={studyInterview.bind(null, id)} input={input} researcher={researcher && TEXT_PROVIDERS.find((p) => p.id === researcher)!.name} has />
@@ -59,63 +79,66 @@ export default async function EstudioPage({ params }: { params: Promise<{ id: st
             <>
               <div className="grid-2">
                 <section className="card">
-                  <h2>Lo que entendió la IA</h2>
+                  <h2>{t("Lo que entendió la IA", "What the AI understood")}</h2>
                   <p>{study.summary}</p>
                   <div className="stack" style={{ gap: 6 }}>
-                    <span className="lbl">Qué anunciar</span>
+                    <span className="lbl">{t("Qué anunciar", "What to advertise")}</span>
                     <ul className="study-list">
                       {study.services.map((s, i) => <li key={i}><strong>{s.name}.</strong> {s.description}</li>)}
                     </ul>
                   </div>
                   <div className="stack" style={{ gap: 6 }}>
-                    <span className="lbl">Por qué elegirte</span>
+                    <span className="lbl">{t("Por qué elegirte", "Why choose you")}</span>
                     <ul className="study-list">{study.differentiators.map((d, i) => <li key={i}>{d}</li>)}</ul>
                   </div>
                 </section>
                 <form action={saveStudyProfile.bind(null, id)} className="card">
-                  <h2>Perfil del negocio para la IA</h2>
+                  <h2>{t("Perfil del negocio para la IA", "Business profile for the AI")}</h2>
                   <p className="small muted">
-                    Esto es lo único que la IA dirá de tu negocio como un hecho. Revisa que todo sea cierto, corrige lo que haga falta y guárdalo.
-                    {b.aiProfile.trim() ? " Reemplaza el perfil que tienes en Ajustes." : ""}
+                    {t(
+                      "Esto es lo único que la IA dirá de tu negocio como un hecho. Revisa que todo sea cierto, corrige lo que haga falta y guárdalo.",
+                      "This is the only thing the AI will state about your business as fact. Check that everything is true, fix what's needed and save it.",
+                    )}
+                    {b.aiProfile.trim() ? t(" Reemplaza el perfil que tienes en Ajustes.", " It replaces the profile you have in Settings.") : ""}
                   </p>
-                  <textarea name="aiProfile" className="field" style={{ minHeight: 220 }} maxLength={4000} defaultValue={b.aiProfile.trim() === study.suggestedProfile.trim() ? b.aiProfile : study.suggestedProfile} aria-label="Perfil del negocio" />
+                  <textarea name="aiProfile" className="field" style={{ minHeight: 220 }} maxLength={4000} defaultValue={b.aiProfile.trim() === study.suggestedProfile.trim() ? b.aiProfile : study.suggestedProfile} aria-label={t("Perfil del negocio", "Business profile")} />
                   <div className="row">
-                    <button type="submit" className="btn on">{b.aiProfile.trim() === study.suggestedProfile.trim() ? "Guardado ✓ (guardar cambios)" : "Usar este perfil"}</button>
+                    <button type="submit" className="btn on">{b.aiProfile.trim() === study.suggestedProfile.trim() ? t("Guardado ✓ (guardar cambios)", "Saved ✓ (save changes)") : t("Usar este perfil", "Use this profile")}</button>
                   </div>
                 </form>
               </div>
 
               <section className="card">
-                <h2>Cliente ideal</h2>
+                <h2>{t("Cliente ideal", "Ideal customer")}</h2>
                 <div className="cards">
                   {study.audiences.map((a, i) => (
                     <div key={i} className="study-tile">
                       <strong>{a.name}</strong>
                       <span className="small">{a.description}</span>
                       <ul className="study-list small">{a.pains.map((p, i) => <li key={i}>{p}</li>)}</ul>
-                      <span className="small muted">Dónde encontrarlos: {a.channels}</span>
+                      <span className="small muted">{t("Dónde encontrarlos:", "Where to find them:")} {a.channels}</span>
                     </div>
                   ))}
                 </div>
               </section>
 
               <section className="card">
-                <h2>Mercado local</h2>
+                <h2>{t("Mercado local", "Local market")}</h2>
                 <p>{study.market.area}</p>
                 <div className="tags">{study.market.places.map((p, i) => <span key={i} className="tag">{p}</span>)}</div>
                 <div className="grid-2" style={{ gap: 18 }}>
                   <div className="stack" style={{ gap: 6 }}>
-                    <span className="lbl">Temporadas</span>
+                    <span className="lbl">{t("Temporadas", "Seasons")}</span>
                     <ul className="study-list">{study.market.seasonality.map((s, i) => <li key={i}>{s}</li>)}</ul>
                   </div>
                   <div className="stack" style={{ gap: 6 }}>
-                    <span className="lbl">Oportunidades</span>
+                    <span className="lbl">{t("Oportunidades", "Opportunities")}</span>
                     <ul className="study-list">{study.market.opportunities.map((s, i) => <li key={i}>{s}</li>)}</ul>
                   </div>
                 </div>
                 {study.market.competitors.length > 0 && (
                   <div className="stack" style={{ gap: 6 }}>
-                    <span className="lbl">Competencia</span>
+                    <span className="lbl">{t("Competencia", "Competitors")}</span>
                     <ul className="study-list">{study.market.competitors.map((c, i) => <li key={i}><strong>{c.name}:</strong> {c.note}</li>)}</ul>
                   </div>
                 )}
@@ -123,23 +146,35 @@ export default async function EstudioPage({ params }: { params: Promise<{ id: st
 
               <section className="card">
                 <div className="stack" style={{ gap: 4 }}>
-                  <h2>Palabras clave para Google (SEO)</h2>
-                  <p className="small muted">Lo que escribe la gente en Google para encontrar un negocio como el tuyo. La IA las usa en tus publicaciones y en los artículos de tu sitio web. Presiona Crear para hacer una publicación sobre esa búsqueda.</p>
+                  <h2>{t("Palabras clave para Google (SEO)", "Google keywords (SEO)")}</h2>
+                  <p className="small muted">
+                    {t(
+                      "Lo que escribe la gente en Google para encontrar un negocio como el tuyo. La IA las usa en tus publicaciones y en los artículos de tu sitio web. Presiona Crear para hacer una publicación sobre esa búsqueda.",
+                      "What people type into Google to find a business like yours. The AI uses them in your posts and in your website articles. Press Create to make a post about that search.",
+                    )}
+                  </p>
                 </div>
                 <div className="table-wrap">
                   <table>
                     <thead>
-                      <tr><th>Búsqueda</th><th>Qué quiere</th><th>Búsquedas</th><th>Competencia</th><th>Idea para publicar</th><th><span className="sr-only">Crear</span></th></tr>
+                      <tr>
+                        <th>{t("Búsqueda", "Search")}</th>
+                        <th>{t("Qué quiere", "Intent")}</th>
+                        <th>{t("Búsquedas", "Volume")}</th>
+                        <th>{t("Competencia", "Competition")}</th>
+                        <th>{t("Idea para publicar", "Post idea")}</th>
+                        <th><span className="sr-only">{t("Crear", "Create")}</span></th>
+                      </tr>
                     </thead>
                     <tbody>
                       {study.keywords.map((k, i) => (
                         <tr key={i}>
                           <td><strong>{k.keyword}</strong> <span className="small muted">{k.lang.toUpperCase()}</span></td>
-                          <td><span className={`pill ${INTENT[k.intent][1]}`}>{INTENT[k.intent][0]}</span></td>
-                          <td><span className={`pill ${LEVEL[k.volume]}`}>{k.volume}</span></td>
-                          <td><span className={`pill ${LEVEL[k.difficulty]}`}>{k.difficulty}</span></td>
+                          <td><span className={`pill ${INTENT[k.intent][0]}`}>{pick(INTENT[k.intent])}</span></td>
+                          <td><span className={`pill ${LEVEL[k.volume][0]}`}>{pick(LEVEL[k.volume])}</span></td>
+                          <td><span className={`pill ${LEVEL[k.difficulty][0]}`}>{pick(LEVEL[k.difficulty])}</span></td>
                           <td className="small">{k.idea}</td>
-                          <td><Link href={create(`${k.idea}\nPalabra clave: ${k.keyword}`)} className="btn link">Crear</Link></td>
+                          <td><Link href={create(`${k.idea}\n${t("Palabra clave", "Keyword")}: ${k.keyword}`)} className="btn link">{t("Crear", "Create")}</Link></td>
                         </tr>
                       ))}
                     </tbody>
@@ -148,17 +183,22 @@ export default async function EstudioPage({ params }: { params: Promise<{ id: st
               </section>
 
               <section className="card">
-                <h2>Ideas de campaña</h2>
-                <p className="small muted">Listas para usar. Crear con IA escribe el texto para cada red y hace la foto con tu marca; desde ahí también puedes convertir la foto en video.</p>
+                <h2>{t("Ideas de campaña", "Campaign ideas")}</h2>
+                <p className="small muted">
+                  {t(
+                    "Listas para usar. Crear con IA escribe el texto para cada red y hace la foto con tu marca; desde ahí también puedes convertir la foto en video.",
+                    "Ready to use. Create with AI writes the text for each network and makes the photo with your brand; from there you can also turn the photo into a video.",
+                  )}
+                </p>
                 <div className="cards">
                   {study.campaigns.map((c, i) => (
                     <article key={i} className="study-tile">
                       <strong>{c.title}</strong>
-                      <span className="small muted">Para: {c.audience}</span>
+                      <span className="small muted">{t("Para:", "For:")} {c.audience}</span>
                       <span className="study-hook">“{c.hook}”</span>
                       <span className="small">{c.message}</span>
                       <span className="small"><strong>Video:</strong> {c.video}</span>
-                      <div style={{ marginTop: "auto" }}><Link href={create(campaignIdea(c))} className="btn ai">✦ Crear con IA</Link></div>
+                      <div style={{ marginTop: "auto" }}><Link href={create(campaignIdea(c, lang))} className="btn ai">✦ {t("Crear con IA", "Create with AI")}</Link></div>
                     </article>
                   ))}
                 </div>
@@ -166,8 +206,8 @@ export default async function EstudioPage({ params }: { params: Promise<{ id: st
 
               <div className="grid-2">
                 <section className="card">
-                  <h2>Pilares de contenido</h2>
-                  <p className="small muted">De qué hablar y cuánto. El plan semanal con IA los sigue.</p>
+                  <h2>{t("Pilares de contenido", "Content pillars")}</h2>
+                  <p className="small muted">{t("De qué hablar y cuánto. El plan semanal con IA los sigue.", "What to talk about and how much. The AI weekly plan follows them.")}</p>
                   {study.pillars.map((p, i) => (
                     <div key={i} className="stack" style={{ gap: 4 }}>
                       <div className="row between"><strong>{p.name}</strong><span className="small muted">{Math.round(p.share)}%</span></div>
@@ -176,22 +216,22 @@ export default async function EstudioPage({ params }: { params: Promise<{ id: st
                     </div>
                   ))}
                   <div className="stack" style={{ gap: 6 }}>
-                    <span className="lbl">Estilo de fotos y videos</span>
+                    <span className="lbl">{t("Estilo de fotos y videos", "Photo and video style")}</span>
                     <p className="small">{study.visualStyle}</p>
                   </div>
                 </section>
                 <section className="card">
-                  <h2>Anuncios pagados</h2>
+                  <h2>{t("Anuncios pagados", "Paid ads")}</h2>
                   <div className="stack" style={{ gap: 6 }}>
-                    <span className="lbl">Público para Facebook e Instagram</span>
+                    <span className="lbl">{t("Público para Facebook e Instagram", "Facebook and Instagram audience")}</span>
                     <p className="small">{study.ads.metaAudience}</p>
                   </div>
                   <div className="stack" style={{ gap: 6 }}>
-                    <span className="lbl">Palabras clave para Google Ads</span>
+                    <span className="lbl">{t("Palabras clave para Google Ads", "Google Ads keywords")}</span>
                     <div className="tags">{study.ads.googleKeywords.map((k, i) => <span key={i} className="tag">{k}</span>)}</div>
                   </div>
                   <div className="stack" style={{ gap: 6 }}>
-                    <span className="lbl">Palabras negativas (para no pagar clics inútiles)</span>
+                    <span className="lbl">{t("Palabras negativas (para no pagar clics inútiles)", "Negative keywords (so you don't pay for useless clicks)")}</span>
                     <div className="tags">{study.ads.negativeKeywords.map((k, i) => <span key={i} className="tag neg">−{k}</span>)}</div>
                   </div>
                   <p className="small muted">{study.ads.budgetTip}</p>
@@ -200,7 +240,7 @@ export default async function EstudioPage({ params }: { params: Promise<{ id: st
 
               <div className="grid-2">
                 <section className="card">
-                  <h2>Dudas de tus clientes</h2>
+                  <h2>{t("Dudas de tus clientes", "Your customers' doubts")}</h2>
                   {study.objections.map((o, i) => (
                     <div key={i} className="stack" style={{ gap: 2 }}>
                       <strong>{o.objection}</strong>
@@ -209,12 +249,12 @@ export default async function EstudioPage({ params }: { params: Promise<{ id: st
                   ))}
                 </section>
                 <section className="card">
-                  <h2>Lo que la IA nunca dirá</h2>
+                  <h2>{t("Lo que la IA nunca dirá", "What the AI will never say")}</h2>
                   <ul className="study-list">{study.avoid.map((a, i) => <li key={i}>{a}</li>)}</ul>
                   <p className="note">{study.caveats}</p>
                   {study.sources.length > 0 && (
                     <details>
-                      <summary className="small" style={{ cursor: "pointer", fontWeight: 600 }}>Fuentes que consultó la IA ({study.sources.length})</summary>
+                      <summary className="small" style={{ cursor: "pointer", fontWeight: 600 }}>{t("Fuentes que consultó la IA", "Sources the AI checked")} ({study.sources.length})</summary>
                       <ul className="study-list small" style={{ marginTop: 8 }}>
                         {study.sources.map((s, i) => <li key={i}><a href={s.url} target="_blank" rel="noopener noreferrer">{s.title || s.url}</a></li>)}
                       </ul>
@@ -226,17 +266,21 @@ export default async function EstudioPage({ params }: { params: Promise<{ id: st
               <details className="card" style={{ gap: 0 }}>
                 <summary className="row between" style={{ cursor: "pointer" }}>
                   <span className="stack" style={{ gap: 2 }}>
-                    <strong>Borrar estudio</strong>
-                    <span className="small muted">Para empezar de cero, con las preguntas en blanco.</span>
+                    <strong>{t("Borrar estudio", "Delete study")}</strong>
+                    <span className="small muted">{t("Para empezar de cero, con las preguntas en blanco.", "To start over, with blank questions.")}</span>
                   </span>
-                  <span className="btn danger">Borrar</span>
+                  <span className="btn danger">{t("Borrar", "Delete")}</span>
                 </summary>
                 <form action={deleteStudy.bind(null, id)} className="stack" style={{ gap: 12, marginTop: 16 }}>
                   <p className="small">
-                    Se borran el estudio y tus respuestas a la entrevista. La IA deja de usarlo en lo que escribe hasta que hagas uno nuevo.
-                    El perfil del negocio que guardaste en <Link href={`/b/${id}/negocio`}>Ajustes</Link> no se borra.
+                    {t(
+                      "Se borran el estudio y tus respuestas a la entrevista. La IA deja de usarlo en lo que escribe hasta que hagas uno nuevo.",
+                      "The study and your interview answers are deleted. The AI stops using it in what it writes until you make a new one.",
+                    )}{" "}
+                    {t("El perfil del negocio que guardaste en", "The business profile you saved in")} <Link href={`/b/${id}/negocio`}>{t("Ajustes", "Settings")}</Link>{" "}
+                    {t("no se borra.", "is not deleted.")}
                   </p>
-                  <div><button type="submit" className="btn danger">Sí, borrar el estudio</button></div>
+                  <div><button type="submit" className="btn danger">{t("Sí, borrar el estudio", "Yes, delete the study")}</button></div>
                 </form>
               </details>
             </>
