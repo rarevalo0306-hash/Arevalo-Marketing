@@ -44,6 +44,13 @@ model Business {
   seoDaily        Boolean  @default(false)
   /// Zonas de Google elegidas (hasta 5): [{ code, name, type }]. La primera también queda en seoLocationCode/Name.
   seoLocations    Json?
+  /// Avisos de SEO por email: a quién (hasta 3, separados por comas), avisos al bajar en la revisión diaria,
+  /// resumen de cada lunes (y cuándo se mandó el último) e idioma de los emails ("es" | "en").
+  seoAlertEmail   String   @default("")
+  seoAlerts       Boolean  @default(false)
+  seoWeekly       Boolean  @default(false)
+  seoWeeklyAt     DateTime?
+  seoEmailLang    String   @default("es")
   /// Estudio del negocio hecho por la IA (StudySchema en src/lib/study-shape.ts), las respuestas del dueño y cuándo se hizo.
   study         Json?
   studyInput    Json?

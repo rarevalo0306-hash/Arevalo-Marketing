@@ -482,6 +482,48 @@ async function readText(res: Response): Promise<{ text: string; bytes: number }>
   return { text, bytes: buf.byteLength };
 }
 
+/**
+ * Lee una página pública cualquiera (por ejemplo, la de un competidor) con las mismas protecciones que la auditoría:
+ * nada de direcciones internas o privadas (también después de cada redirección), tiempo máximo y tamaño máximo.
+ * Lanza un error si no responde, no es HTML o da un código de error.
+ */
+export async function fetchPublicHtml(url: string, timeoutMs = 8_000, maxBytes = 1_500_000): Promise<{ html: string; url: string; status: number }> {
+  const f = await makeFetcher().get(url, "GET", timeoutMs);
+  const type = f.res.headers.get("content-type") ?? "";
+  if (f.status >= 400 || (type && !/html/i.test(type))) {
+    drop(f.res);
+    throw bi(`La página respondió ${f.status}${type ? ` (${type.split(";")[0]})` : ""}.`, `The page responded ${f.status}${type ? ` (${type.split(";")[0]})` : ""}.`);
+  }
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  const reader = f.res.body?.getReader();
+  if (reader) {
+    while (size < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done || !value) break;
+      chunks.push(value);
+      size += value.byteLength;
+    }
+    await reader.cancel().catch(() => {});
+  }
+  const buf = new Uint8Array(Math.min(size, maxBytes));
+  let at = 0;
+  for (const c of chunks) {
+    if (at >= buf.length) break;
+    const part = c.subarray(0, buf.length - at);
+    buf.set(part, at);
+    at += part.byteLength;
+  }
+  const charset = /charset=["']?([\w-]+)/i.exec(type)?.[1] ?? "utf-8";
+  let html: string;
+  try {
+    html = new TextDecoder(charset).decode(buf);
+  } catch {
+    html = new TextDecoder().decode(buf);
+  }
+  return { html, url: f.url, status: f.status };
+}
+
 const reason = (e: unknown) =>
   e instanceof Error ? (e.name === "TimeoutError" || e.name === "AbortError" ? "timeout" : (e.cause instanceof Error ? e.cause.message : e.message)).slice(0, 200) : String(e).slice(0, 200);
 

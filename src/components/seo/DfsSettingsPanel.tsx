@@ -10,7 +10,7 @@ export async function DfsSettingsPanel({ businessId }: { businessId: string }) {
   const { lang, t } = await getT();
   if (!dataForSeoEnabled()) {
     return (
-      <section className="card">
+      <section className="card" id="dataforseo">
         <h2>{t("Datos reales de Google (DataForSEO)", "Real Google data (DataForSEO)")}</h2>
         <p className="small muted">
           {t(
@@ -31,7 +31,7 @@ export async function DfsSettingsPanel({ businessId }: { businessId: string }) {
   const balance = await dataForSeoBalance();
   const money = new Intl.NumberFormat(lang === "en" ? "en-US" : "es", { style: "currency", currency: "USD" });
   return (
-    <section className="card">
+    <section className="card" id="dataforseo">
       <div className="row between">
         <div className="stack" style={{ gap: 4 }}>
           <h2>{t("Datos reales de Google (DataForSEO)", "Real Google data (DataForSEO)")}</h2>

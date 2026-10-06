@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { runCompetitors, trackGapKeyword } from "@/app/actions-seo-competitors";
-import { CompetitorsForm, TrackGapButton } from "@/components/seo/CompetitorsForm";
+import { runCompetitors } from "@/app/actions-seo-competitors";
+import { CompetitorsForm } from "@/components/seo/CompetitorsForm";
 import { db } from "@/lib/db";
 import { intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { distinctCountries, normalizeDomain, readCompetitorsReport, type CompetitorSource, type DomainStats } from "@/lib/seo/competitors";
-import { dataForSeoEnabled, readTrackedKeywords, readZones, zoneLabel } from "@/lib/seo/dataforseo";
+import { dataForSeoEnabled, readZones, zoneLabel } from "@/lib/seo/dataforseo";
 import { latestReports } from "@/lib/seo/reports";
 import { BUSINESS_TZ } from "@/lib/time";
 
@@ -15,7 +15,7 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
   const { lang, t } = await getT();
   const b = await db.business.findUnique({
     where: { id: businessId },
-    select: { website: true, seoLocations: true, seoLocationCode: true, seoLocationName: true, seoKeywords: true },
+    select: { website: true, seoLocations: true, seoLocationCode: true, seoLocationName: true },
   });
   if (!b) return null;
   const zones = readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName);
@@ -54,7 +54,6 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
 
   const [row] = await latestReports(businessId, "competitors", 1);
   const report = row ? readCompetitorsReport(row.data) : null;
-  const tracked = new Set(readTrackedKeywords(b.seoKeywords).map((k) => k.toLowerCase()));
   const fmt = new Intl.DateTimeFormat(intlLocale(lang), { dateStyle: "long", timeStyle: "short", timeZone: BUSINESS_TZ });
   const number = new Intl.NumberFormat(intlLocale(lang), { maximumFractionDigits: 0 });
   const money = new Intl.NumberFormat(intlLocale(lang), { style: "currency", currency: "USD", maximumFractionDigits: 3 });
@@ -67,8 +66,6 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
   };
   const sourcePill: Record<CompetitorSource, string> = { labs: "scheduled", serp: "partial", owner: "draft" };
   const href = (d: string) => `https://${d}`;
-  const idea = (kw: string) => t(`Escribe una publicación para competir por la búsqueda: ${kw}`, `Write a post to compete for the search: ${kw}`);
-  const track = trackGapKeyword.bind(null, businessId);
 
   const all: DomainStats[] = report ? [report.you, ...report.competitors] : [];
   const maxTraffic = Math.max(1, ...all.map((d) => d.traffic ?? 0));
@@ -231,26 +228,25 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
                   : t("Todavía no hay datos para comparar.", "There's no data to compare yet.")}
               </p>
             ) : (
-              <ul className="comp-gap">
-                {report.gap.map((g) => (
-                  <li key={g.keyword}>
-                    <div className="stack" style={{ gap: 2, minWidth: 0 }}>
-                      <strong>{g.keyword}</strong>
-                      <span className="small muted">
-                        {g.volume !== null && <>{t(`${n(g.volume)} búsquedas al mes`, `${n(g.volume)} searches a month`)} · </>}
-                        {t(`${g.bestCompetitor} sale #${g.competitorPosition}`, `${g.bestCompetitor} ranks #${g.competitorPosition}`)} ·{" "}
-                        {g.yourPosition === null ? t("tú no sales", "you don't show up") : t(`tú sales #${g.yourPosition}`, `you rank #${g.yourPosition}`)}
-                      </span>
-                    </div>
-                    <span className="row" style={{ gap: 6 }}>
-                      <TrackGapButton action={track} keyword={g.keyword} tracked={tracked.has(g.keyword.toLowerCase())} />
-                      <Link className="btn" href={`/b/${businessId}/publicar?${new URLSearchParams({ idea: idea(g.keyword), magic: "1" })}`}>
-                        {t("Crear post", "Create post")}
-                      </Link>
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <>
+                <ul className="comp-gap">
+                  {report.gap.slice(0, 5).map((g) => (
+                    <li key={g.keyword}>
+                      <div className="stack" style={{ gap: 2, minWidth: 0 }}>
+                        <strong>{g.keyword}</strong>
+                        <span className="small muted">
+                          {g.volume !== null && <>{t(`${n(g.volume)} búsquedas al mes`, `${n(g.volume)} searches a month`)} · </>}
+                          {t(`${g.bestCompetitor} sale #${g.competitorPosition}`, `${g.bestCompetitor} ranks #${g.competitorPosition}`)} ·{" "}
+                          {g.yourPosition === null ? t("tú no sales", "you don't show up") : t(`tú sales #${g.yourPosition}`, `you rank #${g.yourPosition}`)}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <a className="btn link" href="#gap" style={{ alignSelf: "flex-start", minHeight: 0, padding: 0 }}>
+                  {t("Ver todas las oportunidades ↓", "See all opportunities ↓")}
+                </a>
+              </>
             )}
           </div>
 
