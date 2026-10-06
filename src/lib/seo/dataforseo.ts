@@ -82,13 +82,51 @@ export async function searchLocations(country: string, query: string, limit = 20
     cached = { at: Date.now(), list: r.result.map((l) => ({ code: l.location_code, name: l.location_name, type: l.location_type, country: l.country_iso_code })) };
     locationCache.set(iso, cached);
   }
-  const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-  const words = norm(query).split(/[\s,]+/).filter(Boolean);
-  const order: Record<string, number> = { City: 0, County: 1, "DMA Region": 2, Municipality: 3, State: 4, Region: 5, Country: 6 };
-  return cached.list
-    .filter((l) => words.every((w) => norm(l.name).includes(w)))
-    .sort((a, b) => (order[a.type] ?? 9) - (order[b.type] ?? 9) || a.name.length - b.name.length)
+  return rankLocations(cached.list, query, limit);
+}
+
+const normName = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+const TYPE_ORDER: Record<string, number> = { Country: 0, State: 1, Department: 1, Province: 1, "DMA Region": 2, Region: 3, County: 4, City: 5, Municipality: 6 };
+
+/**
+ * Ordena las zonas que coinciden con la búsqueda: primero las que se llaman exactamente así
+ * (ej. "Nicaragua" el país), luego las que empiezan así, y dentro de eso de la más grande a la más chica.
+ */
+export function rankLocations(list: DfsLocation[], query: string, limit = 20): DfsLocation[] {
+  const q = normName(query);
+  const words = q.split(/[\s,]+/).filter(Boolean);
+  if (!words.length) return [];
+  const score = (l: DfsLocation) => {
+    const first = normName(l.name.split(",")[0]);
+    return first === q ? 0 : first.startsWith(q) ? 1 : 2;
+  };
+  return list
+    .filter((l) => words.every((w) => normName(l.name).includes(w)))
+    .sort((a, b) => score(a) - score(b) || (TYPE_ORDER[a.type] ?? 9) - (TYPE_ORDER[b.type] ?? 9) || a.name.length - b.name.length)
     .slice(0, limit);
+}
+
+/** Zonas de Google elegidas (hasta 5). La primera es la principal. */
+export type Zone = { code: number; name: string; type?: string };
+export const MAX_ZONES = 5;
+
+/** Lee las zonas guardadas; si no hay lista (negocios de antes), usa la zona única. */
+export function readZones(json: unknown, fallbackCode?: number | null, fallbackName?: string): Zone[] {
+  const list = Array.isArray(json)
+    ? json
+        .filter((z): z is Zone => Number.isInteger((z as Zone)?.code) && (z as Zone).code > 0)
+        .map((z) => ({ code: z.code, name: String(z.name ?? "").slice(0, 200), ...(z.type ? { type: String(z.type) } : {}) }))
+    : [];
+  const unique = list.filter((z, i) => list.findIndex((x) => x.code === z.code) === i).slice(0, MAX_ZONES);
+  if (unique.length) return unique;
+  return fallbackCode ? [{ code: fallbackCode, name: fallbackName ?? "" }] : [];
+}
+
+/** Nombre corto de una zona para columnas y pestañas: "Managua, Nicaragua" en vez de "Managua,Managua,Managua,Nicaragua". */
+export function zoneLabel(name: string): string {
+  const parts = name.split(",").map((p) => p.trim()).filter(Boolean);
+  const out = parts.filter((p, i) => i === 0 || p !== parts[i - 1]);
+  return out.length > 2 ? `${out[0]}, ${out[out.length - 1]}` : out.join(", ");
 }
 
 /** Palabras clave que el negocio sigue (guardadas en Business.seoKeywords). */

@@ -1,7 +1,7 @@
 import { saveSeoSettings } from "@/app/actions-seo-dfs";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
-import { dataForSeoBalance, dataForSeoEnabled, readTrackedKeywords } from "@/lib/seo/dataforseo";
+import { dataForSeoBalance, dataForSeoEnabled, readTrackedKeywords, readZones } from "@/lib/seo/dataforseo";
 import { readStudy, topKeywords } from "@/lib/study-shape";
 import { DfsSettingsForm } from "./DfsSettingsForm";
 
@@ -23,7 +23,7 @@ export async function DfsSettingsPanel({ businessId }: { businessId: string }) {
   }
   const b = await db.business.findUniqueOrThrow({
     where: { id: businessId },
-    select: { seoLocationCode: true, seoLocationName: true, seoLanguage: true, seoKeywords: true, seoDaily: true, study: true, studyInput: true },
+    select: { seoLocations: true, seoLocationCode: true, seoLocationName: true, seoLanguage: true, seoKeywords: true, seoDaily: true, study: true, studyInput: true },
   });
   const tracked = readTrackedKeywords(b.seoKeywords);
   const study = readStudy(b.study);
@@ -51,8 +51,7 @@ export async function DfsSettingsPanel({ businessId }: { businessId: string }) {
       <DfsSettingsForm
         action={saveSeoSettings.bind(null, businessId)}
         initial={{
-          locationCode: b.seoLocationCode,
-          locationName: b.seoLocationName,
+          zones: readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName),
           language: b.seoLanguage === "en" ? "en" : "es",
           keywords: tracked.length ? tracked : suggested,
           daily: b.seoDaily,

@@ -42,6 +42,8 @@ model Business {
   seoLanguage     String   @default("es")
   seoKeywords     Json?
   seoDaily        Boolean  @default(false)
+  /// Zonas de Google elegidas (hasta 5): [{ code, name, type }]. La primera también queda en seoLocationCode/Name.
+  seoLocations    Json?
   /// Estudio del negocio hecho por la IA (StudySchema en src/lib/study-shape.ts), las respuestas del dueño y cuándo se hizo.
   study         Json?
   studyInput    Json?

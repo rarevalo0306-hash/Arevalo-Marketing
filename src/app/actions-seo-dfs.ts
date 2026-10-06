@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { searchLocations, type DfsLocation } from "@/lib/seo/dataforseo";
+import { MAX_ZONES, readZones, searchLocations, type DfsLocation } from "@/lib/seo/dataforseo";
 import { db } from "@/lib/db";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
@@ -26,7 +26,11 @@ export async function saveSeoSettings(businessId: string, _prev: SeoSettingsResu
   const { t } = await getT();
   const b = await db.business.findUnique({ where: { id: businessId }, select: { id: true } });
   if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
-  const code = Number(f.get("locationCode"));
+  let parsed: unknown = [];
+  try {
+    parsed = JSON.parse(String(f.get("zones") ?? "[]"));
+  } catch {}
+  const zones = readZones(parsed).slice(0, MAX_ZONES);
   const keywords = [
     ...new Set(
       String(f.get("keywords") ?? "")
@@ -38,13 +42,18 @@ export async function saveSeoSettings(businessId: string, _prev: SeoSettingsResu
   await db.business.update({
     where: { id: businessId },
     data: {
-      seoLocationCode: Number.isInteger(code) && code > 0 ? code : null,
-      seoLocationName: String(f.get("locationName") ?? "").slice(0, 200),
+      // La primera zona es la principal (la usan la competencia y los datos de un solo lugar).
+      seoLocations: zones,
+      seoLocationCode: zones[0]?.code ?? null,
+      seoLocationName: zones[0]?.name ?? "",
       seoLanguage: f.get("language") === "en" ? "en" : "es",
       seoKeywords: keywords,
       seoDaily: f.get("daily") === "on",
     },
   });
   revalidatePath(`/b/${businessId}/seo`);
-  return { ok: true, message: t(`Guardado: ${keywords.length} palabras clave.`, `Saved: ${keywords.length} keywords.`) };
+  return {
+    ok: true,
+    message: t(`Guardado: ${zones.length} ${zones.length === 1 ? "zona" : "zonas"} y ${keywords.length} palabras clave.`, `Saved: ${zones.length} ${zones.length === 1 ? "area" : "areas"} and ${keywords.length} keywords.`),
+  };
 }
