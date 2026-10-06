@@ -1,13 +1,15 @@
 // Estudio del negocio: lo que la IA entiende del negocio, su mercado local, las palabras que busca
 // la gente (SEO) y qué anunciar. Se guarda en Business.study y lo usa todo lo que escribe y diseña la IA.
 import { z } from "zod";
+import type { UiLang } from "@/lib/i18n";
 
+// [id, español, inglés]
 export const GOALS = [
-  ["llamadas", "Más llamadas y mensajes"],
-  ["citas", "Más citas o evaluaciones"],
-  ["web", "Más visitas a la página web"],
-  ["ventas", "Más ventas"],
-  ["marca", "Que más gente conozca la marca"],
+  ["llamadas", "Más llamadas y mensajes", "More calls and messages"],
+  ["citas", "Más citas o evaluaciones", "More appointments or estimates"],
+  ["web", "Más visitas a la página web", "More website visits"],
+  ["ventas", "Más ventas", "More sales"],
+  ["marca", "Que más gente conozca la marca", "More people knowing the brand"],
 ] as const;
 export type Goal = (typeof GOALS)[number][0];
 
@@ -156,8 +158,10 @@ export function studyIdeas(json: unknown, n = 5): string[] {
 }
 
 /** Texto que se manda al compositor para crear una publicación a partir de una idea de campaña. */
-export function campaignIdea(c: Study["campaigns"][number]): string {
-  return `${c.title}\nPara: ${c.audience}\nGancho: ${c.hook}\nMensaje: ${c.message}\nFoto: ${c.photo}`;
+export function campaignIdea(c: Study["campaigns"][number], lang: UiLang = "es"): string {
+  return lang === "en"
+    ? `${c.title}\nFor: ${c.audience}\nHook: ${c.hook}\nMessage: ${c.message}\nPhoto: ${c.photo}`
+    : `${c.title}\nPara: ${c.audience}\nGancho: ${c.hook}\nMensaje: ${c.message}\nFoto: ${c.photo}`;
 }
 
 /** Saca el texto visible de una página web (sin scripts, estilos ni etiquetas). */

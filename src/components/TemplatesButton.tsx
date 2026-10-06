@@ -3,12 +3,18 @@
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import type { TemplatesResult } from "@/app/actions";
+import { useT } from "@/components/I18n";
 
 function Submit({ has }: { has: boolean }) {
   const { pending } = useFormStatus();
+  const { t } = useT();
   return (
     <button type="submit" className="btn ai" disabled={pending}>
-      {pending ? "La IA está diseñando… (unos segundos)" : has ? "✦ Crear más plantillas con IA" : "✦ Crear plantillas con IA"}
+      {pending
+        ? t("La IA está diseñando… (unos segundos)", "The AI is designing… (a few seconds)")
+        : has
+          ? t("✦ Crear más plantillas con IA", "✦ Create more templates with AI")
+          : t("✦ Crear plantillas con IA", "✦ Create templates with AI")}
     </button>
   );
 }

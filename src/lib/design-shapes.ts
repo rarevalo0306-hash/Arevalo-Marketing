@@ -47,6 +47,16 @@ export const BUILTIN_TEMPLATES: TemplateSpec[] = [
   { name: "Pasos", layout: "lista", textPosition: "arriba", align: "izquierda", background: "degradado", overlay: "suave", accent: "ninguno", headlineScale: 0.8, uppercase: false, contactStyle: "pastilla", logoPosition: "arriba-izquierda" },
 ];
 
+/** Nombres en inglés de las plantillas de fábrica, solo para mostrarlas en la app. */
+const BUILTIN_NAME_EN: Record<string, string> = {
+  Consejo: "Tip",
+  "Titular arriba": "Headline on top",
+  Pregunta: "Question",
+  Pasos: "Steps",
+};
+/** Nombre de una plantilla de fábrica en el idioma de la app (las propias se muestran como están). */
+export const builtinTemplateName = (name: string, lang: "es" | "en") => (lang === "en" ? (BUILTIN_NAME_EN[name] ?? name) : name);
+
 export const needsPhoto = (t: TemplateSpec) => !["color-solido", "lista"].includes(t.layout);
 
 /**

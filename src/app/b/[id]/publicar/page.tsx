@@ -4,8 +4,9 @@ import { PageHead } from "@/components/PageHead";
 import type { ChannelId } from "@/lib/channels";
 import { aiEnabled } from "@/lib/ai";
 import { db } from "@/lib/db";
-import { BUILTIN_TEMPLATES, needsPhoto, TemplateSpec } from "@/lib/design-shapes";
+import { BUILTIN_TEMPLATES, builtinTemplateName, needsPhoto, TemplateSpec } from "@/lib/design-shapes";
 import { falEnabled } from "@/lib/fal";
+import { getT } from "@/lib/i18n-server";
 import { imagesEnabled } from "@/lib/imagegen";
 import { usesSupabaseStorage } from "@/lib/media";
 
@@ -21,9 +22,13 @@ export default async function PublicarPage({
 }) {
   const { id } = await params;
   const q = await searchParams;
+  const { lang, t } = await getT();
   const b = await db.business.findUniqueOrThrow({ where: { id }, include: { connections: { select: { channel: true } }, templates: { orderBy: { createdAt: "asc" } } } });
   const specs = b.templates.map((t) => TemplateSpec.safeParse(t.spec)).filter((r) => r.success).map((r) => r.data!);
-  const templates = (specs.length ? specs : BUILTIN_TEMPLATES).map((t) => ({ name: t.name, list: t.layout === "lista", photo: needsPhoto(t) }));
+  // Las plantillas de fábrica se muestran en el idioma de la app; el compositor las manda por número, no por nombre.
+  const templates = specs.length
+    ? specs.map((x) => ({ name: x.name, list: x.layout === "lista", photo: needsPhoto(x) }))
+    : BUILTIN_TEMPLATES.map((x) => ({ name: builtinTemplateName(x.name, lang), list: x.layout === "lista", photo: needsPhoto(x) }));
   const [email, sms] = await Promise.all([
     db.contact.count({ where: { businessId: id, emailOptIn: true, NOT: { email: "" } } }),
     db.contact.count({ where: { businessId: id, smsOptIn: true, NOT: { phone: "" } } }),
@@ -32,9 +37,9 @@ export default async function PublicarPage({
     <>
       <PageHead
         business={b}
-        prefix="Publicando como"
-        title="Nueva publicación"
-        subtitle="Escríbelo una vez. Lo adaptamos y lo enviamos a cada canal que elijas."
+        prefix={t("Publicando como", "Publishing as")}
+        title={t("Nueva publicación", "New post")}
+        subtitle={t("Escríbelo una vez. Lo adaptamos y lo enviamos a cada canal que elijas.", "Write it once. We adapt it and send it to each channel you choose.")}
       />
       <Composer
         key={id}

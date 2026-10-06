@@ -6,8 +6,11 @@ import type { AiPost } from "@/lib/ai";
 import type { VideoJob } from "@/lib/fal";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
+import { useT } from "@/components/I18n";
+import { errorText, intlLocale } from "@/lib/i18n";
 import {
   CHANNELS,
+  channelText,
   isBlocked,
   notesFor,
   smsBody,
@@ -47,18 +50,26 @@ type Props = {
   autoMagic?: boolean;
 };
 
-const MAGIC_STEPS = ["Escribiendo para cada red", "Creando la foto", "Poniendo tu marca", "Listo para revisar"];
+/** Pasos del modo mágico: [español, inglés]. */
+const MAGIC_STEPS = [
+  ["Escribiendo para cada red", "Writing for each network"],
+  ["Creando la foto", "Creating the photo"],
+  ["Poniendo tu marca", "Adding your brand"],
+  ["Listo para revisar", "Ready to review"],
+] as const;
 
 function SubmitButton({ disabled, label }: { disabled: boolean; label: string }) {
   const { pending } = useFormStatus();
+  const { t } = useT();
   return (
     <button type="submit" className="primary" disabled={disabled || pending}>
-      {pending ? "Publicando… no cierres esta página" : label}
+      {pending ? t("Publicando… no cierres esta página", "Publishing… don't close this page") : label}
     </button>
   );
 }
 
 export function Composer({ businessId, businessName, color, connected, contactCounts, action, upload, aiWrite, aiMedia, initialIdea = "", autoMagic = false }: Props) {
+  const { lang: uiLang, t } = useT();
   const [text, setText] = useState("");
   const [subject, setSubject] = useState("");
   const [seoTitle, setSeoTitle] = useState("");
@@ -76,6 +87,7 @@ export function Composer({ businessId, businessName, color, connected, contactCo
   // Paso del modo mágico (-1 = apagado).
   const [magicStep, setMagicStep] = useState(-1);
   const magicStarted = useRef(false);
+  // Idioma en que escribe la IA (aparte del idioma de la app).
   const [lang, setLang] = useState("es");
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState("");
@@ -91,7 +103,7 @@ export function Composer({ businessId, businessName, color, connected, contactCo
   async function runDesign(photo = basePhoto) {
     if (!aiMedia || !photo) return;
     setMediaError("");
-    setMediaBusy("Diseñando con tu marca…");
+    setMediaBusy(t("Diseñando con tu marca…", "Designing with your brand…"));
     try {
       const r = await aiMedia.design(photo, headline, shape, template, steps);
       if (!r.ok) return setMediaError(r.error);
@@ -109,7 +121,7 @@ export function Composer({ businessId, businessName, color, connected, contactCo
     setMediaError("");
     setFileUrl("");
     try {
-      setMediaBusy("Creando la imagen…");
+      setMediaBusy(t("Creando la imagen…", "Creating the image…"));
       const img = await aiMedia.image(description, kind === "video" ? "vertical" : "square");
       if (!img.ok) return setMediaError(img.error);
       if (kind === "photo") {
@@ -117,7 +129,7 @@ export function Composer({ businessId, businessName, color, connected, contactCo
         setMediaLink(img.url);
         setBasePhoto(img.url);
         if (aiMedia.autoBrand && head.trim()) {
-          setMediaBusy("Diseñando con tu marca…");
+          setMediaBusy(t("Diseñando con tu marca…", "Designing with your brand…"));
           onBrand?.();
           const d = await aiMedia.design(img.url, head, shape, template, theSteps);
           if (d.ok) setMediaLink(d.url);
@@ -125,7 +137,7 @@ export function Composer({ businessId, businessName, color, connected, contactCo
         }
         return;
       }
-      setMediaBusy("Creando el video… tarda de 1 a 3 minutos, no cierres esta página");
+      setMediaBusy(t("Creando el video… tarda de 1 a 3 minutos, no cierres esta página", "Creating the video… it takes 1 to 3 minutes, don't close this page"));
       const start = await aiMedia.videoStart(img.url, "");
       if (!start.ok) return setMediaError(start.error);
       for (let i = 0; i < 60; i++) {
@@ -138,9 +150,9 @@ export function Composer({ businessId, businessName, color, connected, contactCo
           return;
         }
       }
-      setMediaError("El video está tardando demasiado. Intenta de nuevo más tarde.");
+      setMediaError(t("El video está tardando demasiado. Intenta de nuevo más tarde.", "The video is taking too long. Try again later."));
     } catch (e) {
-      setMediaError((e as Error).message);
+      setMediaError(errorText(e, uiLang));
     } finally {
       setMediaBusy("");
     }
@@ -166,7 +178,7 @@ export function Composer({ businessId, businessName, color, connected, contactCo
       setVariants({ facebook: p.facebook, instagram: p.instagram, tiktok: p.tiktok, google: p.google, sms: p.sms, email: p.email });
       return p;
     } catch (e) {
-      setAiError((e as Error).message);
+      setAiError(errorText(e, uiLang));
       return null;
     } finally {
       setAiBusy(false);
@@ -207,7 +219,7 @@ export function Composer({ businessId, businessName, color, connected, contactCo
       setMediaLink(publicUrl);
       if (f.type.startsWith("image/")) setBasePhoto(publicUrl);
     } catch (e) {
-      setUploadError(`No se pudo subir el archivo: ${(e as Error).message}`);
+      setUploadError(`${t("No se pudo subir el archivo", "Couldn't upload the file")}: ${errorText(e, uiLang)}`);
       setMediaLink("");
     } finally {
       setUploading(false);
@@ -219,13 +231,16 @@ export function Composer({ businessId, businessName, color, connected, contactCo
   const draft: Draft = { text, subject, seoTitle, mediaType };
   const textFor = (id: ChannelId) => variants[id]?.trim() || text;
   const draftFor = (id: ChannelId): Draft => ({ ...draft, text: textFor(id) });
-  const selected = CHANNELS.filter((c) => on.has(c.id));
+  const channels = CHANNELS.map((c) => channelText(c, uiLang));
+  const selected = channels.filter((c) => on.has(c.id));
   const pv = selected.find((c) => c.id === preview) ?? selected[0];
   const ready = selected.filter((c) => !isBlocked(c.id, draftFor(c.id))).length;
   const scheduledIso = useMemo(() => (localDate ? new Date(localDate).toISOString() : ""), [localDate]);
   const cant = uploading || !!mediaBusy || !selected.length || !text.trim() || (when === "later" && !scheduledIso);
   const n = selected.length;
-  const label = `${when === "later" ? "Programar en" : "Publicar en"} ${n} ${n === 1 ? "canal" : "canales"}`;
+  const label = when === "later"
+    ? t(`Programar en ${n} ${n === 1 ? "canal" : "canales"}`, `Schedule on ${n} ${n === 1 ? "channel" : "channels"}`)
+    : t(`Publicar en ${n} ${n === 1 ? "canal" : "canales"}`, `Publish on ${n} ${n === 1 ? "channel" : "channels"}`);
   const mediaSrc = fileUrl || mediaLink;
 
   const toggle = (id: ChannelId) =>
@@ -239,10 +254,15 @@ export function Composer({ businessId, businessName, color, connected, contactCo
   let head = "";
   let headLabel = "";
   const pvText = pv ? textFor(pv.id) : text;
-  let body = pvText || "Tu mensaje aparecerá aquí.";
-  if (pv?.id === "sms") body = smsBody(pvText || "Tu mensaje aparecerá aquí.");
-  if (pv?.id === "seo") { head = seoTitle || "[Título del artículo]"; headLabel = "Artículo en tu sitio (se redacta en español e inglés)"; }
-  if (pv?.id === "email") { head = subject || "[Asunto del email]"; headLabel = "Asunto"; }
+  const placeholderBody = t("Tu mensaje aparecerá aquí.", "Your message will appear here.");
+  let body = pvText || placeholderBody;
+  // El pie del SMS (SMS_FOOTER) va tal cual se envía a los clientes.
+  if (pv?.id === "sms") body = smsBody(pvText || placeholderBody);
+  if (pv?.id === "seo") {
+    head = seoTitle || t("[Título del artículo]", "[Article title]");
+    headLabel = t("Artículo en tu sitio (se redacta en español e inglés)", "Article on your website (written in Spanish and English)");
+  }
+  if (pv?.id === "email") { head = subject || t("[Asunto del email]", "[Email subject]"); headLabel = t("Asunto", "Subject"); }
 
   return (
     <form action={action} className="grid-2">
@@ -251,53 +271,62 @@ export function Composer({ businessId, businessName, color, connected, contactCo
         <input type="hidden" name="source" value={Object.keys(variants).length ? "ai" : "manual"} />
         {aiWrite && (
           <div className={aiBusy || magicStep >= 0 && magicStep < 3 ? "ai-box glow busy" : "ai-box glow"}>
-            <label htmlFor="idea" className="lbl ai-title">✦ Crea con IA</label>
-            <textarea id="idea" className="field" rows={2} style={{ minHeight: 64 }} placeholder="¿Sobre qué quieres publicar? Ej.: qué hacer si se filtra el techo después de una tormenta en Miami" value={idea} onChange={(e) => setIdea(e.target.value)} />
+            <label htmlFor="idea" className="lbl ai-title">✦ {t("Crea con IA", "Create with AI")}</label>
+            <textarea id="idea" className="field" rows={2} style={{ minHeight: 64 }} placeholder={t(
+                "¿Sobre qué quieres publicar? Ej.: qué hacer si se filtra el techo después de una tormenta en Miami",
+                "What do you want to post about? E.g., what to do if your roof leaks after a storm in Miami",
+              )} value={idea} onChange={(e) => setIdea(e.target.value)} />
             <div className="row">
-              <label htmlFor="lang" className="sr-only">Idioma</label>
+              <label htmlFor="lang" className="sr-only">{t("Idioma", "Language")}</label>
               <select id="lang" className="field" style={{ width: "auto" }} value={lang} onChange={(e) => setLang(e.target.value)}>
-                <option value="es">Español</option>
+                <option value="es">{t("Español", "Spanish")}</option>
                 <option value="en">English</option>
-                <option value="both">Español + English</option>
+                <option value="both">{t("Español + English", "Spanish + English")}</option>
               </select>
               {aiMedia && (
                 <button type="button" className="btn ai" disabled={aiBusy || !!mediaBusy || !idea.trim()} onClick={() => runMagic()}>
-                  ✦ Hacer todo con IA
+                  ✦ {t("Hacer todo con IA", "Do it all with AI")}
                 </button>
               )}
               <button type="button" className={aiMedia ? "btn" : "btn ai"} disabled={aiBusy || !!mediaBusy || !idea.trim()} onClick={() => runAi()}>
-                {aiBusy && magicStep < 0 ? "Escribiendo…" : aiMedia ? "Solo el texto" : "Escribir publicación"}
+                {aiBusy && magicStep < 0 ? t("Escribiendo…", "Writing…") : aiMedia ? t("Solo el texto", "Just the text") : t("Escribir publicación", "Write post")}
               </button>
             </div>
             {magicStep >= 0 && (
               <ol className="magic-steps" aria-live="polite">
-                {MAGIC_STEPS.map((step, i) => {
+                {MAGIC_STEPS.map(([es, en], i) => {
                   if (i > 0 && i < 3 && !aiMedia) return null;
                   const state = i < magicStep || magicStep === 3 ? "done" : i === magicStep ? "now" : "next";
-                  return <li key={step} className={state}>{step}</li>;
+                  return <li key={es} className={state}>{t(es, en)}</li>;
                 })}
               </ol>
             )}
-            {magicStep < 0 && <p className="small muted">La IA escribe una versión para cada red{aiMedia ? ", crea la foto y le pone tu marca" : ""}. Tú revisas y publicas.</p>}
+            {magicStep < 0 && (
+              <p className="small muted">
+                {aiMedia
+                  ? t("La IA escribe una versión para cada red, crea la foto y le pone tu marca. Tú revisas y publicas.", "AI writes a version for each network, creates the photo, and adds your brand. You review and publish.")
+                  : t("La IA escribe una versión para cada red. Tú revisas y publicas.", "AI writes a version for each network. You review and publish.")}
+              </p>
+            )}
             {aiError && <p className="note error" role="alert">{aiError}</p>}
-            {imageIdea && !aiMedia && <p className="small"><strong>Idea de foto:</strong> {imageIdea}</p>}
+            {imageIdea && !aiMedia && <p className="small"><strong>{t("Idea de foto:", "Photo idea:")}</strong> {imageIdea}</p>}
           </div>
         )}
         <div className="stack">
-          <label id="h-msg" htmlFor="text" className="lbl">Tu mensaje</label>
-          <textarea id="text" name="text" className="field" rows={6} required placeholder="¿Qué quieres decirle a tus clientes hoy?" value={text} onChange={(e) => setText(e.target.value)} />
-          <div className="row between small muted"><span>Un solo texto para todos los canales</span><span>{text.length.toLocaleString("es")} caracteres</span></div>
+          <label id="h-msg" htmlFor="text" className="lbl">{t("Tu mensaje", "Your message")}</label>
+          <textarea id="text" name="text" className="field" rows={6} required placeholder={t("¿Qué quieres decirle a tus clientes hoy?", "What do you want to tell your customers today?")} value={text} onChange={(e) => setText(e.target.value)} />
+          <div className="row between small muted"><span>{t("Un solo texto para todos los canales", "One text for all channels")}</span><span>{text.length.toLocaleString(intlLocale(uiLang))} {t("caracteres", "characters")}</span></div>
         </div>
 
         <div className="stack">
-          <div className="lbl">Foto o video</div>
+          <div className="lbl">{t("Foto o video", "Photo or video")}</div>
           {aiMedia && (
             <div className="ai-box">
-              <label htmlFor="imageIdea" className="lbl ai-title">✦ Crear foto o video con IA</label>
-              <textarea id="imageIdea" className="field" rows={2} style={{ minHeight: 64 }} placeholder="Describe la imagen. Ej.: casa en Miami con el techo reparado, día soleado" value={imageIdea} onChange={(e) => setImageIdea(e.target.value)} />
+              <label htmlFor="imageIdea" className="lbl ai-title">✦ {t("Crear foto o video con IA", "Create a photo or video with AI")}</label>
+              <textarea id="imageIdea" className="field" rows={2} style={{ minHeight: 64 }} placeholder={t("Describe la imagen. Ej.: casa en Miami con el techo reparado, día soleado", "Describe the image. E.g., a house in Miami with a repaired roof, sunny day")} value={imageIdea} onChange={(e) => setImageIdea(e.target.value)} />
               <div className="row">
-                <button type="button" className="btn on" disabled={!!mediaBusy || !imageIdea.trim()} onClick={() => runMedia("photo")}>Crear foto</button>
-                {aiMedia.video && <button type="button" className="btn outline" disabled={!!mediaBusy || !imageIdea.trim()} onClick={() => runMedia("video")}>Crear video (5 seg)</button>}
+                <button type="button" className="btn on" disabled={!!mediaBusy || !imageIdea.trim()} onClick={() => runMedia("photo")}>{t("Crear foto", "Create photo")}</button>
+                {aiMedia.video && <button type="button" className="btn outline" disabled={!!mediaBusy || !imageIdea.trim()} onClick={() => runMedia("video")}>{t("Crear video (5 seg)", "Create video (5 sec)")}</button>}
               </div>
               {mediaBusy && <p className="small muted" role="status">{mediaBusy}</p>}
               {mediaError && <p className="note error" role="alert">{mediaError}</p>}
@@ -305,46 +334,46 @@ export function Composer({ businessId, businessName, color, connected, contactCo
           )}
           {aiMedia && mediaType === "photo" && (basePhoto || /^https:\/\//.test(mediaLink)) && (
             <div className="stack" style={{ gap: 10, padding: 16, borderRadius: 12, border: "1.5px solid var(--line)" }}>
-              <div className="lbl">✦ Diseño con tu marca</div>
-              <p className="small muted">Pone tu logo, tu color, un titular y tu teléfono sobre la foto, con letras perfectas.</p>
-              <label htmlFor="headline" className="small" style={{ fontWeight: 600 }}>Titular en la foto</label>
-              <input id="headline" className="field" maxLength={80} placeholder="Ej.: ¿Daños en tu techo después de la tormenta?" value={headline} onChange={(e) => setHeadline(e.target.value)} />
+              <div className="lbl">✦ {t("Diseño con tu marca", "Design with your brand")}</div>
+              <p className="small muted">{t("Pone tu logo, tu color, un titular y tu teléfono sobre la foto, con letras perfectas.", "Puts your logo, your color, a headline, and your phone number on the photo, with perfect lettering.")}</p>
+              <label htmlFor="headline" className="small" style={{ fontWeight: 600 }}>{t("Titular en la foto", "Headline on the photo")}</label>
+              <input id="headline" className="field" maxLength={80} placeholder={t("Ej.: ¿Daños en tu techo después de la tormenta?", "E.g., Roof damage after the storm?")} value={headline} onChange={(e) => setHeadline(e.target.value)} />
               <div className="row">
-                <label htmlFor="template" className="sr-only">Plantilla</label>
+                <label htmlFor="template" className="sr-only">{t("Plantilla", "Template")}</label>
                 <select id="template" className="field" style={{ width: "auto" }} value={template} onChange={(e) => setTemplate(Number(e.target.value))}>
-                  <option value={-1}>✦ La IA elige la plantilla</option>
+                  <option value={-1}>✦ {t("La IA elige la plantilla", "AI picks the template")}</option>
                   {aiMedia.templates.map((t, i) => <option key={i} value={i}>{t.name}</option>)}
                 </select>
-                <label htmlFor="shape" className="sr-only">Tamaño</label>
+                <label htmlFor="shape" className="sr-only">{t("Tamaño", "Size")}</label>
                 <select id="shape" className="field" style={{ width: "auto" }} value={shape} onChange={(e) => setShape(e.target.value)}>
-                  <option value="square">Cuadrado · Facebook e Instagram</option>
-                  <option value="portrait">Vertical 4:5 · Instagram</option>
-                  <option value="story">Historia / Reel 9:16</option>
+                  <option value="square">{t("Cuadrado · Facebook e Instagram", "Square · Facebook and Instagram")}</option>
+                  <option value="portrait">{t("Vertical 4:5 · Instagram", "Portrait 4:5 · Instagram")}</option>
+                  <option value="story">{t("Historia / Reel 9:16", "Story / Reel 9:16")}</option>
                 </select>
-                <button type="button" className="btn on" disabled={!!mediaBusy || !headline.trim()} onClick={() => runDesign(basePhoto || mediaLink)}>Diseñar</button>
+                <button type="button" className="btn on" disabled={!!mediaBusy || !headline.trim()} onClick={() => runDesign(basePhoto || mediaLink)}>{t("Diseñar", "Design")}</button>
               </div>
               {(template === -1 ? steps.length > 0 : aiMedia.templates[template]?.list) && (
                 <div className="stack" style={{ gap: 6 }}>
-                  <label htmlFor="steps" className="small" style={{ fontWeight: 600 }}>Pasos para la plantilla de lista (uno por línea, máximo 3)</label>
+                  <label htmlFor="steps" className="small" style={{ fontWeight: 600 }}>{t("Pasos para la plantilla de lista (uno por línea, máximo 3)", "Steps for the list template (one per line, 3 max)")}</label>
                   <textarea id="steps" className="field" style={{ minHeight: 84 }} value={steps.join("\n")} onChange={(e) => setSteps(e.target.value.split("\n").slice(0, 3))} />
                 </div>
               )}
               <div className="row">
                 {basePhoto && mediaLink !== basePhoto && (
-                  <button type="button" className="btn link" onClick={() => setMediaLink(basePhoto)}>Usar la foto sin diseño</button>
+                  <button type="button" className="btn link" onClick={() => setMediaLink(basePhoto)}>{t("Usar la foto sin diseño", "Use the photo without the design")}</button>
                 )}
               </div>
             </div>
           )}
           <input type="hidden" name="mediaType" value={mediaType} />
-          <div className="row" role="group" aria-label="Tipo de archivo">
-            {([["none", "Sin archivo"], ["photo", "Foto"], ["video", "Video"]] as const).map(([v, l]) => (
+          <div className="row" role="group" aria-label={t("Tipo de archivo", "File type")}>
+            {([["none", t("Sin archivo", "No file")], ["photo", t("Foto", "Photo")], ["video", t("Video", "Video")]] as const).map(([v, l]) => (
               <button key={v} type="button" className={mediaType === v ? "btn on" : "btn"} aria-pressed={mediaType === v} onClick={() => { setMediaType(v); setFileUrl(""); }}>{l}</button>
             ))}
           </div>
           {mediaType !== "none" && (
             <div className="stack" style={{ padding: 14, border: "1.5px dashed #94a3b8", borderRadius: 10 }}>
-              <label htmlFor="file" className="small" style={{ fontWeight: 500 }}>Sube el archivo desde tu computadora o celular</label>
+              <label htmlFor="file" className="small" style={{ fontWeight: 500 }}>{t("Sube el archivo desde tu computadora o celular", "Upload the file from your computer or phone")}</label>
               <input
                 id="file"
                 name={upload ? undefined : "file"}
@@ -352,18 +381,18 @@ export function Composer({ businessId, businessName, color, connected, contactCo
                 accept={mediaType === "video" ? "video/mp4,video/quicktime,video/webm" : "image/jpeg,image/png,image/webp,image/gif"}
                 onChange={(e) => onFile(e.target.files?.[0])}
               />
-              {uploading && <p className="small muted" role="status">Subiendo archivo…</p>}
+              {uploading && <p className="small muted" role="status">{t("Subiendo archivo…", "Uploading file…")}</p>}
               {uploadError && <p className="note error" role="alert">{uploadError}</p>}
-              <label htmlFor="mediaLink" className="small muted">o pega un enlace público al archivo</label>
+              <label htmlFor="mediaLink" className="small muted">{t("o pega un enlace público al archivo", "or paste a public link to the file")}</label>
               <input id="mediaLink" name="mediaLink" type="url" className="field" placeholder="https://…" value={mediaLink} onChange={(e) => setMediaLink(e.target.value)} />
             </div>
           )}
         </div>
 
         <fieldset style={{ border: 0, margin: 0, padding: 0 }} className="stack">
-          <legend className="lbl" style={{ padding: 0, marginBottom: 10 }}>¿Dónde se publica?</legend>
+          <legend className="lbl" style={{ padding: 0, marginBottom: 10 }}>{t("¿Dónde se publica?", "Where does it go?")}</legend>
           <div className="chips">
-            {CHANNELS.map((c) => {
+            {channels.map((c) => {
               const isConnected = connected.includes(c.id);
               const checked = on.has(c.id);
               return (
@@ -373,9 +402,9 @@ export function Composer({ businessId, businessName, color, connected, contactCo
                   <span className="stack" style={{ gap: 0 }}>
                     <span style={{ fontWeight: 600, fontSize: 14 }}>{c.name}</span>
                     <span className="sub">
-                      {!isConnected ? "Sin conectar"
-                        : c.id === "email" ? `${contactCounts.email} contactos`
-                        : c.id === "sms" ? `${contactCounts.sms} contactos`
+                      {!isConnected ? t("Sin conectar", "Not connected")
+                        : c.id === "email" ? t(`${contactCounts.email} contactos`, `${contactCounts.email} contacts`)
+                        : c.id === "sms" ? t(`${contactCounts.sms} contactos`, `${contactCounts.sms} contacts`)
                         : c.kind}
                     </span>
                   </span>
@@ -385,39 +414,40 @@ export function Composer({ businessId, businessName, color, connected, contactCo
           </div>
           {connected.length < CHANNELS.length && (
             <p className="small muted">
-              Los canales en gris no están conectados. <Link href={`/b/${businessId}/conexiones`}>Conectar canales</Link>
+              {t("Los canales en gris no están conectados.", "Grayed-out channels aren't connected.")}{" "}
+              <Link href={`/b/${businessId}/conexiones`}>{t("Conectar canales", "Connect channels")}</Link>
             </p>
           )}
         </fieldset>
 
         {(on.has("email") || on.has("seo")) && (
           <div className="stack" style={{ gap: 14, padding: 16, borderRadius: 10, background: "var(--ground)" }}>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>Datos extra para algunos canales</div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{t("Datos extra para algunos canales", "Extra details for some channels")}</div>
             {on.has("email") && (
               <div className="stack">
-                <label htmlFor="subject" className="small" style={{ fontWeight: 500 }}>Asunto del email</label>
-                <input id="subject" name="subject" className="field" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Ej.: Lo que debes saber antes de reclamar a tu seguro" />
+                <label htmlFor="subject" className="small" style={{ fontWeight: 500 }}>{t("Asunto del email", "Email subject")}</label>
+                <input id="subject" name="subject" className="field" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder={t("Ej.: Lo que debes saber antes de reclamar a tu seguro", "E.g., What to know before filing an insurance claim")} />
               </div>
             )}
             {on.has("seo") && (
               <div className="stack">
-                <label htmlFor="seoTitle" className="small" style={{ fontWeight: 500 }}>Título del artículo para tu sitio (en español)</label>
-                <input id="seoTitle" name="seoTitle" className="field" value={seoTitle} onChange={(e) => setSeoTitle(e.target.value)} placeholder="Ej.: Ajustador público en [tu ciudad]" />
+                <label htmlFor="seoTitle" className="small" style={{ fontWeight: 500 }}>{t("Título del artículo para tu sitio (en español)", "Article title for your website (in Spanish)")}</label>
+                <input id="seoTitle" name="seoTitle" className="field" value={seoTitle} onChange={(e) => setSeoTitle(e.target.value)} placeholder={t("Ej.: Ajustador público en [tu ciudad]", "E.g., Ajustador público en [your city]")} />
               </div>
             )}
           </div>
         )}
 
         <div className="stack">
-          <div className="lbl">¿Cuándo?</div>
+          <div className="lbl">{t("¿Cuándo?", "When?")}</div>
           <input type="hidden" name="when" value={when} />
           <input type="hidden" name="scheduledAt" value={scheduledIso} />
-          <div className="row" role="group" aria-label="Cuándo publicar">
-            <button type="button" className={when === "now" ? "btn on" : "btn"} aria-pressed={when === "now"} onClick={() => setWhen("now")}>Ahora mismo</button>
-            <button type="button" className={when === "later" ? "btn on" : "btn"} aria-pressed={when === "later"} onClick={() => setWhen("later")}>Programar</button>
+          <div className="row" role="group" aria-label={t("Cuándo publicar", "When to publish")}>
+            <button type="button" className={when === "now" ? "btn on" : "btn"} aria-pressed={when === "now"} onClick={() => setWhen("now")}>{t("Ahora mismo", "Right now")}</button>
+            <button type="button" className={when === "later" ? "btn on" : "btn"} aria-pressed={when === "later"} onClick={() => setWhen("later")}>{t("Programar", "Schedule")}</button>
             {when === "later" && (
               <>
-                <label htmlFor="when" className="sr-only">Fecha y hora</label>
+                <label htmlFor="when" className="sr-only">{t("Fecha y hora", "Date and time")}</label>
                 <input id="when" type="datetime-local" className="field" style={{ width: "auto" }} value={localDate} onChange={(e) => setLocalDate(e.target.value)} />
               </>
             )}
@@ -425,21 +455,21 @@ export function Composer({ businessId, businessName, color, connected, contactCo
         </div>
 
         <div className="row" style={{ borderTop: "1px solid var(--line)", paddingTop: 16, gap: 16 }}>
-          <SubmitButton disabled={cant} label={uploading ? "Esperando a que suba el archivo…" : label} />
-          <span className="small muted">{!text.trim() ? "Escribe tu mensaje para empezar" : `${ready} de ${n} listos`}</span>
+          <SubmitButton disabled={cant} label={uploading ? t("Esperando a que suba el archivo…", "Waiting for the file to upload…") : label} />
+          <span className="small muted">{!text.trim() ? t("Escribe tu mensaje para empezar", "Write your message to get started") : t(`${ready} de ${n} listos`, `${ready} of ${n} ready`)}</span>
         </div>
       </section>
 
       <section className="card" aria-labelledby="h-prev">
         <div className="row between">
-          <h2 id="h-prev">Vista previa por canal</h2>
-          <span className="small muted">Así se verá en cada lugar</span>
+          <h2 id="h-prev">{t("Vista previa por canal", "Preview by channel")}</h2>
+          <span className="small muted">{t("Así se verá en cada lugar", "How it will look in each place")}</span>
         </div>
         {!pv ? (
-          <p className="empty">Elige al menos un canal para ver la vista previa.</p>
+          <p className="empty">{t("Elige al menos un canal para ver la vista previa.", "Pick at least one channel to see the preview.")}</p>
         ) : (
           <>
-            <div className="tabs" role="tablist" aria-label="Canales">
+            <div className="tabs" role="tablist" aria-label={t("Canales", "Channels")}>
               {selected.map((c) => (
                 <button key={c.id} type="button" role="tab" aria-selected={c.id === pv.id} className={c.id === pv.id ? "tab on" : "tab"} onClick={() => setPreview(c.id)}>{c.name}</button>
               ))}
@@ -456,7 +486,10 @@ export function Composer({ businessId, businessName, color, connected, contactCo
                 <div style={{ padding: "14px 16px 0" }}>
                   <div className="small muted" style={{ fontWeight: 500 }}>{headLabel}</div>
                   <div style={{ fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>{head}</div>
-                  {pv.id === "seo" && <div className="small muted" style={{ marginTop: 4 }}>Claude ordena tu texto en secciones, lo traduce al inglés y elige una foto de tu sitio. No agrega datos que no escribiste.</div>}
+                  {pv.id === "seo" && <div className="small muted" style={{ marginTop: 4 }}>{t(
+                    "Claude ordena tu texto en secciones, lo traduce al inglés y elige una foto de tu sitio. No agrega datos que no escribiste.",
+                    "Claude organizes your text into sections, translates it into English, and picks a photo from your website. It doesn't add facts you didn't write.",
+                  )}</div>}
                 </div>
               )}
               {mediaType !== "none" && pv.id !== "sms" && (
@@ -464,10 +497,10 @@ export function Composer({ businessId, businessName, color, connected, contactCo
                   {mediaSrc ? (
                     mediaType === "video" ? <video src={mediaSrc} controls muted /> : (
                       // eslint-disable-next-line @next/next/no-img-element -- vista previa local (blob:) o enlace externo
-                      <img src={mediaSrc} alt="Vista previa del archivo" />
+                      <img src={mediaSrc} alt={t("Vista previa del archivo", "File preview")} />
                     )
                   ) : (
-                    <span>{mediaType === "video" ? "Tu video" : "Tu foto"}</span>
+                    <span>{mediaType === "video" ? t("Tu video", "Your video") : t("Tu foto", "Your photo")}</span>
                   )}
                 </div>
               )}
@@ -475,7 +508,7 @@ export function Composer({ businessId, businessName, color, connected, contactCo
             </div>
             {variants[pv.id] !== undefined && (
               <div className="stack">
-                <label htmlFor="variant" className="small" style={{ fontWeight: 600 }}>Texto solo para {pv.name}</label>
+                <label htmlFor="variant" className="small" style={{ fontWeight: 600 }}>{t(`Texto solo para ${pv.name}`, `Text just for ${pv.name}`)}</label>
                 <textarea
                   id="variant"
                   className="field"
@@ -486,18 +519,18 @@ export function Composer({ businessId, businessName, color, connected, contactCo
               </div>
             )}
             <div className="stack">
-              {notesFor(pv.id, draftFor(pv.id)).filter((x) => x.text !== "Escribe tu mensaje.").map((x) => (
-                <p key={x.text} className="note">{x.text}</p>
+              {notesFor(pv.id, draftFor(pv.id), uiLang).filter((x) => x.id !== "empty").map((x) => (
+                <p key={x.id} className="note">{x.text}</p>
               ))}
             </div>
             <div className="stack" style={{ gap: 0 }}>
-              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Estado de cada canal</div>
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>{t("Estado de cada canal", "Status of each channel")}</div>
               {selected.map((c) => {
                 const bad = isBlocked(c.id, draftFor(c.id));
                 return (
                   <div key={c.id} className="target">
                     <span>{c.name}</span>
-                    <span className={!text.trim() ? "pill" : bad ? "pill partial" : "pill sent"}>{!text.trim() ? "Esperando mensaje" : bad ? "Revisar" : "Listo"}</span>
+                    <span className={!text.trim() ? "pill" : bad ? "pill partial" : "pill sent"}>{!text.trim() ? t("Esperando mensaje", "Waiting for message") : bad ? t("Revisar", "Check") : t("Listo", "Ready")}</span>
                   </div>
                 );
               })}

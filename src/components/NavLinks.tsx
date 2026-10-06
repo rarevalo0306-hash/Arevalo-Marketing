@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useT } from "@/components/I18n";
 
 const ICONS: Record<string, React.ReactNode> = {
   inicio: <><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5" /></>,
@@ -15,24 +16,26 @@ const ICONS: Record<string, React.ReactNode> = {
   negocio: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" /></>,
 };
 
-// [ruta, nombre, nombre corto para la barra de abajo en el celular (vacío = no cabe en el celular)]
+// [ruta, nombre, nombre corto para la barra de abajo en el celular (vacío = no cabe en el celular)], en español y en inglés
 const LINKS = [
-  ["inicio", "Inicio", "Inicio"],
-  ["estudio", "Estudio del negocio", ""],
-  ["publicar", "Publicar", "Publicar"],
-  ["plan", "Plan con IA", "Plan IA"],
-  ["historial", "Historial", "Historial"],
-  ["marca", "Marca", "Marca"],
-  ["contactos", "Contactos", "Contactos"],
-  ["conexiones", "Conexiones", "Cuentas"],
-  ["negocio", "Ajustes del negocio", "Ajustes"],
+  ["inicio", ["Inicio", "Inicio"], ["Home", "Home"]],
+  ["estudio", ["Estudio del negocio", ""], ["Business study", ""]],
+  ["publicar", ["Publicar", "Publicar"], ["Publish", "Publish"]],
+  ["plan", ["Plan con IA", "Plan IA"], ["AI plan", "AI plan"]],
+  ["historial", ["Historial", "Historial"], ["History", "History"]],
+  ["marca", ["Marca", "Marca"], ["Brand", "Brand"]],
+  ["contactos", ["Contactos", "Contactos"], ["Contacts", "Contacts"]],
+  ["conexiones", ["Conexiones", "Cuentas"], ["Connections", "Accounts"]],
+  ["negocio", ["Ajustes del negocio", "Ajustes"], ["Business settings", "Settings"]],
 ] as const;
 
 export function NavLinks({ businessId }: { businessId: string }) {
   const path = usePathname();
+  const { lang } = useT();
   return (
     <div className="navlinks">
-      {LINKS.map(([slug, label, short]) => {
+      {LINKS.map(([slug, es, en]) => {
+        const [label, short] = lang === "en" ? en : es;
         const href = `/b/${businessId}/${slug}`;
         const on = path === href;
         return (

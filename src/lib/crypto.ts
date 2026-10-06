@@ -1,9 +1,13 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
+import { bi } from "@/lib/i18n";
 
 function key(): Buffer {
   const secret = process.env.APP_SECRET;
   if (!secret || secret.length < 32) {
-    throw new Error("APP_SECRET falta o es muy corta (mínimo 32 caracteres). Revisa tu archivo .env.");
+    throw bi(
+      "APP_SECRET falta o es muy corta (mínimo 32 caracteres). Revisa tu archivo .env.",
+      "APP_SECRET is missing or too short (at least 32 characters). Check your .env file.",
+    );
   }
   return createHash("sha256").update(secret).digest();
 }

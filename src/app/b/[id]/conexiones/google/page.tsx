@@ -4,10 +4,12 @@ import { chooseGoogleLocation } from "@/app/actions";
 import { PageHead } from "@/components/PageHead";
 import { decryptJson } from "@/lib/crypto";
 import { db } from "@/lib/db";
+import { getT } from "@/lib/i18n-server";
 import { GOOGLE_COOKIE, type GoogleLocation } from "@/lib/google-oauth";
 
 export default async function ElegirUbicacionGoogle({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const { t } = await getT();
   const b = await db.business.findUniqueOrThrow({ where: { id } });
   const raw = (await cookies()).get(GOOGLE_COOKIE)?.value;
   let locations: GoogleLocation[] = [];
@@ -19,10 +21,14 @@ export default async function ElegirUbicacionGoogle({ params }: { params: Promis
   }
   return (
     <>
-      <PageHead business={b} prefix="Cuentas de" title="¿Qué perfil de Google es de este negocio?" subtitle="Tu cuenta de Google administra varios perfiles. Elige el que corresponde a este negocio." />
+      <PageHead business={b} prefix={t("Cuentas de", "Accounts for")}
+        title={t("¿Qué perfil de Google es de este negocio?", "Which Google profile belongs to this business?")}
+        subtitle={t("Tu cuenta de Google administra varios perfiles. Elige el que corresponde a este negocio.", "Your Google account manages several profiles. Pick the one for this business.")}
+      />
       {locations.length === 0 ? (
         <div className="card empty">
-          La conexión venció. <Link href={`/b/${id}/conexiones`}>Vuelve a Conexiones</Link> y presiona otra vez &quot;Conectar con Google&quot;.
+          {t("La conexión venció.", "The connection expired.")} <Link href={`/b/${id}/conexiones`}>{t("Vuelve a Conexiones", "Go back to Connections")}</Link>{" "}
+          {t("y presiona otra vez \"Conectar con Google\".", "and click \"Connect with Google\" again.")}
         </div>
       ) : (
         <div className="cards">
@@ -30,7 +36,7 @@ export default async function ElegirUbicacionGoogle({ params }: { params: Promis
             <form key={l.locationId} action={chooseGoogleLocation.bind(null, id, l.locationId)} className="card" style={{ gap: 12 }}>
               <h2 style={{ fontSize: 18 }}>{l.title}</h2>
               {l.address && <p className="small muted">{l.address}</p>}
-              <div><button className="btn on" type="submit">Usar este perfil</button></div>
+              <div><button className="btn on" type="submit">{t("Usar este perfil", "Use this profile")}</button></div>
             </form>
           ))}
         </div>

@@ -1,3 +1,4 @@
+import { LangPicker } from "@/components/I18n";
 import { LoginForm } from "@/components/LoginForm";
 
 export default function LoginPage() {
@@ -9,6 +10,7 @@ export default function LoginPage() {
           <h1 style={{ fontSize: 22 }}>Arevalo Marketing</h1>
         </div>
         <LoginForm />
+        <LangPicker />
       </div>
     </main>
   );

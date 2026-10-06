@@ -1,12 +1,13 @@
 // Fotos con IA: FLUX (fal.ai, la más barata), ChatGPT (OpenAI) o Google Gemini.
 import { generateImage as fluxImage, type Shape } from "@/lib/fal";
 import { storeBuffer, storeRemote } from "@/lib/media";
-import { PublishError } from "@/lib/publishers/http";
+import { bi } from "@/lib/i18n";
 
 export const IMAGE_PROVIDERS = [
-  { id: "flux", name: "FLUX (fal.ai) — la más barata", env: "FAL_KEY" },
-  { id: "openai", name: "ChatGPT (OpenAI)", env: "OPENAI_API_KEY" },
-  { id: "gemini", name: "Google Gemini", env: "GEMINI_API_KEY" },
+  // name en español, nameEn en inglés: la pantalla elige según el idioma de la app.
+  { id: "flux", name: "FLUX (fal.ai) — la más barata", nameEn: "FLUX (fal.ai) — the cheapest", env: "FAL_KEY" },
+  { id: "openai", name: "ChatGPT (OpenAI)", nameEn: "ChatGPT (OpenAI)", env: "OPENAI_API_KEY" },
+  { id: "gemini", name: "Google Gemini", nameEn: "Google Gemini", env: "GEMINI_API_KEY" },
 ] as const;
 export type ImageProvider = (typeof IMAGE_PROVIDERS)[number]["id"];
 
@@ -37,13 +38,13 @@ async function openaiImage(description: string, shape: Shape): Promise<Buffer> {
   });
   const body = await res.text();
   if (!res.ok) {
-    if (res.status === 401) throw new PublishError("OpenAI rechazó la clave (OPENAI_API_KEY).");
-    if (res.status === 429) throw new PublishError("Tu cuenta de OpenAI no tiene saldo o llegó a su límite.");
-    if (body.includes("moderation") || body.includes("safety")) throw new PublishError("ChatGPT no quiso crear esa imagen. Prueba con otra descripción.");
-    throw new PublishError(`OpenAI respondió ${res.status}: ${body.slice(0, 300)}`);
+    if (res.status === 401) throw bi("OpenAI rechazó la clave (OPENAI_API_KEY).", "OpenAI rejected the key (OPENAI_API_KEY).");
+    if (res.status === 429) throw bi("Tu cuenta de OpenAI no tiene saldo o llegó a su límite.", "Your OpenAI account is out of credit or has hit its limit.");
+    if (body.includes("moderation") || body.includes("safety")) throw bi("ChatGPT no quiso crear esa imagen. Prueba con otra descripción.", "ChatGPT wouldn't create that image. Try a different description.");
+    throw bi(`OpenAI respondió ${res.status}: ${body.slice(0, 300)}`, `OpenAI responded ${res.status}: ${body.slice(0, 300)}`);
   }
   const b64 = (JSON.parse(body) as { data?: { b64_json?: string }[] }).data?.[0]?.b64_json;
-  if (!b64) throw new PublishError("ChatGPT no devolvió la imagen. Intenta de nuevo.");
+  if (!b64) throw bi("ChatGPT no devolvió la imagen. Intenta de nuevo.", "ChatGPT didn't return the image. Please try again.");
   return Buffer.from(b64, "base64");
 }
 
@@ -60,13 +61,13 @@ async function geminiImage(description: string, shape: Shape): Promise<{ data: B
   });
   const body = await res.text();
   if (!res.ok) {
-    if (res.status === 429) throw new PublishError("Gemini llegó a su límite para imágenes. Activa la facturación en Google AI Studio o usa otra IA.");
-    throw new PublishError(`Gemini respondió ${res.status}: ${body.slice(0, 300)}`);
+    if (res.status === 429) throw bi("Gemini llegó a su límite para imágenes. Activa la facturación en Google AI Studio o usa otra IA.", "Gemini has hit its image limit. Turn on billing in Google AI Studio or use a different AI.");
+    throw bi(`Gemini respondió ${res.status}: ${body.slice(0, 300)}`, `Gemini responded ${res.status}: ${body.slice(0, 300)}`);
   }
   const parts = (JSON.parse(body) as { candidates?: { content?: { parts?: { inlineData?: { data: string; mimeType: string } }[] } }[] })
     .candidates?.[0]?.content?.parts ?? [];
   const img = parts.find((p) => p.inlineData)?.inlineData;
-  if (!img) throw new PublishError("Gemini no pudo crear esa imagen. Prueba con otra descripción.");
+  if (!img) throw bi("Gemini no pudo crear esa imagen. Prueba con otra descripción.", "Gemini couldn't create that image. Try a different description.");
   return { data: Buffer.from(img.data, "base64"), type: img.mimeType };
 }
 
@@ -80,5 +81,5 @@ export async function createImage(pref: string, description: string, shape: Shap
     const img = await geminiImage(d, shape);
     return (await storeBuffer(img.data, img.type, folder)).url;
   }
-  throw new PublishError("Falta una clave para crear imágenes (FAL_KEY, OPENAI_API_KEY o GEMINI_API_KEY).");
+  throw bi("Falta una clave para crear imágenes (FAL_KEY, OPENAI_API_KEY o GEMINI_API_KEY).", "An image key is missing (FAL_KEY, OPENAI_API_KEY or GEMINI_API_KEY).");
 }

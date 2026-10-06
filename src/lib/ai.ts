@@ -5,6 +5,7 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import type { ChannelId } from "@/lib/channels";
 import { FONTS, TemplateSpec } from "@/lib/design-shapes";
+import { bi, errorText, type UiLang } from "@/lib/i18n";
 import { GOALS, htmlToText, type Interview, InterviewSchema, type SavedStudy, type StudyInput, StudySchema, type StudySource, studyContext } from "@/lib/study-shape";
 
 export const TEXT_PROVIDERS = [
@@ -79,15 +80,22 @@ Rules:
 - ${LANG_TEXT[lang]}`;
 }
 
+const refused = () => bi("La IA no quiso escribir sobre ese tema. Prueba con otra idea.", "The AI wouldn't write about that topic. Try a different idea.");
+const invalidReply = () => bi("La IA no devolvió una respuesta válida. Intenta de nuevo.", "The AI didn't send back a valid answer. Please try again.");
+
+/** Para el estudio y la entrevista en inglés: el texto para el dueño sale en inglés aunque el esquema diga español. */
+const OWNER_ENGLISH =
+  "- LANGUAGE OVERRIDE: Write every owner-facing text (questions, options, reasons, summary, profile, descriptions, ideas, notes) in English, even where a field description says Spanish; SEO keywords stay in the language customers search in. Keep fixed option values (enums) exactly as listed.";
+
 function parseJson<T extends z.ZodTypeAny>(schema: T, text: string): z.infer<T> {
   let json: unknown;
   try {
     json = JSON.parse(text);
   } catch {
-    throw new Error("La IA no devolvió una respuesta válida. Intenta de nuevo.");
+    throw invalidReply();
   }
   const parsed = schema.safeParse(json);
-  if (!parsed.success) throw new Error("La IA no devolvió una respuesta completa. Intenta de nuevo.");
+  if (!parsed.success) throw bi("La IA no devolvió una respuesta completa. Intenta de nuevo.", "The AI's answer came back incomplete. Please try again.");
   return parsed.data;
 }
 
@@ -118,17 +126,17 @@ async function geminiFetch(payload: string): Promise<GeminiResponse> {
     });
     if (res.status !== 503 && res.status !== 500 && res.status !== 404) break;
   }
-  if (!res) throw new Error("No se pudo llamar a Gemini.");
+  if (!res) throw bi("No se pudo llamar a Gemini.", "Couldn't reach Gemini.");
   const body = await res.text();
   if (!res.ok) {
-    if (res.status === 503) throw new Error("Gemini está muy ocupado en este momento. Intenta de nuevo en un minuto.");
-    if (res.status === 429) throw new Error("Gemini llegó a su límite por ahora. Espera un minuto o activa la facturación en Google AI Studio.");
-    if (res.status === 400 && body.includes("API key")) throw new Error("Google rechazó la clave de Gemini (GEMINI_API_KEY).");
-    throw new Error(`Gemini respondió ${res.status}: ${body.slice(0, 300)}`);
+    if (res.status === 503) throw bi("Gemini está muy ocupado en este momento. Intenta de nuevo en un minuto.", "Gemini is very busy right now. Try again in a minute.");
+    if (res.status === 429) throw bi("Gemini llegó a su límite por ahora. Espera un minuto o activa la facturación en Google AI Studio.", "Gemini has hit its limit for now. Wait a minute or turn on billing in Google AI Studio.");
+    if (res.status === 400 && body.includes("API key")) throw bi("Google rechazó la clave de Gemini (GEMINI_API_KEY).", "Google rejected the Gemini key (GEMINI_API_KEY).");
+    throw bi(`Gemini respondió ${res.status}: ${body.slice(0, 300)}`, `Gemini responded ${res.status}: ${body.slice(0, 300)}`);
   }
   const data = JSON.parse(body) as GeminiResponse;
   const c = data.candidates?.[0];
-  if (c?.finishReason === "SAFETY" || c?.finishReason === "PROHIBITED_CONTENT") throw new Error("La IA no quiso escribir sobre ese tema. Prueba con otra idea.");
+  if (c?.finishReason === "SAFETY" || c?.finishReason === "PROHIBITED_CONTENT") throw refused();
   return data;
 }
 
@@ -164,13 +172,17 @@ async function askOpenAI<T extends z.ZodTypeAny>(schema: T, system: string, user
   });
   const body = await res.text();
   if (!res.ok) {
-    if (res.status === 401) throw new Error("OpenAI rechazó la clave (OPENAI_API_KEY).");
-    if (res.status === 429) throw new Error("ChatGPT llegó a su límite o tu cuenta de OpenAI no tiene saldo (platform.openai.com/settings/organization/billing).");
-    throw new Error(`ChatGPT respondió ${res.status}: ${body.slice(0, 300)}`);
+    if (res.status === 401) throw bi("OpenAI rechazó la clave (OPENAI_API_KEY).", "OpenAI rejected the key (OPENAI_API_KEY).");
+    if (res.status === 429)
+      throw bi(
+        "ChatGPT llegó a su límite o tu cuenta de OpenAI no tiene saldo (platform.openai.com/settings/organization/billing).",
+        "ChatGPT hit its limit or your OpenAI account is out of credit (platform.openai.com/settings/organization/billing).",
+      );
+    throw bi(`ChatGPT respondió ${res.status}: ${body.slice(0, 300)}`, `ChatGPT responded ${res.status}: ${body.slice(0, 300)}`);
   }
   const data = JSON.parse(body) as { choices?: { message?: { content?: string | null; refusal?: string | null } }[] };
   const m = data.choices?.[0]?.message;
-  if (m?.refusal) throw new Error("La IA no quiso escribir sobre ese tema. Prueba con otra idea.");
+  if (m?.refusal) throw refused();
   return parseJson(schema, m?.content ?? "");
 }
 
@@ -185,8 +197,8 @@ async function askClaude<T extends z.ZodTypeAny>(schema: T, system: string, user
     system,
     messages: [{ role: "user", content: user }],
   });
-  if (response.stop_reason === "refusal") throw new Error("La IA no quiso escribir sobre ese tema. Prueba con otra idea.");
-  if (!response.parsed_output) throw new Error("La IA no devolvió una respuesta válida. Intenta de nuevo.");
+  if (response.stop_reason === "refusal") throw refused();
+  if (!response.parsed_output) throw invalidReply();
   return response.parsed_output;
 }
 
@@ -196,7 +208,10 @@ export async function ask<T extends z.ZodTypeAny>(pref: string, schema: T, syste
   if (provider === "gemini") return askGemini(schema, system, user, maxTokens);
   if (provider === "openai") return askOpenAI(schema, system, user, maxTokens);
   if (provider === "claude") return askClaude(schema, system, user, maxTokens);
-  throw new Error("Falta la clave de la IA (GEMINI_API_KEY, ANTHROPIC_API_KEY u OPENAI_API_KEY) en la configuración del servidor.");
+  throw bi(
+    "Falta la clave de la IA (GEMINI_API_KEY, ANTHROPIC_API_KEY u OPENAI_API_KEY) en la configuración del servidor.",
+    "The AI key is missing from the server settings (GEMINI_API_KEY, ANTHROPIC_API_KEY or OPENAI_API_KEY).",
+  );
 }
 
 /** Escribe una publicación con versiones para cada canal a partir de una idea. */
@@ -297,7 +312,7 @@ function cleanKit(k: BrandKitSuggestion): BrandKitSuggestion {
 
 /** Lee el manual de marca (PDF o imagen) y saca colores, letras, voz y hashtags. Solo con Gemini, que lee PDF. */
 export async function readBrandBook(business: BusinessAi, file: { mimeType: string; data: Buffer }): Promise<BrandKitSuggestion> {
-  if (!process.env.GEMINI_API_KEY) throw new Error("Para leer el manual de marca hace falta la clave de Gemini (GEMINI_API_KEY).");
+  if (!process.env.GEMINI_API_KEY) throw bi("Para leer el manual de marca hace falta la clave de Gemini (GEMINI_API_KEY).", "Reading the brand guide needs the Gemini key (GEMINI_API_KEY).");
   const system = `You are a brand designer. Read the brand guidelines document of "${business.name}" and extract its identity exactly as written: the main, secondary and accent colors (HEX), the heading and body typefaces, the voice and tone, and hashtags if any. If something is missing, propose a value that fits the rest of the guide and say so in the summary. Spanish text must use correct accents.`;
   const kit = await askGemini(BrandKitSchema, system, "Extract the brand identity from this document.", 4000, [{ inlineData: { mimeType: file.mimeType, data: file.data.toString("base64") } }]);
   return cleanKit(kit);
@@ -341,7 +356,7 @@ async function researchClaude(system: string, user: string): Promise<Research> {
       tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 8 }],
       messages,
     });
-    if (response.stop_reason === "refusal") throw new Error("La IA no quiso investigar ese tema.");
+    if (response.stop_reason === "refusal") throw bi("La IA no quiso investigar ese tema.", "The AI wouldn't research that topic.");
     content.push(...response.content);
     if (response.stop_reason !== "pause_turn") break;
   }
@@ -390,7 +405,7 @@ Find and report:
 4. Facts about the area useful for marketing (main cities or neighborhoods, who lives or does business there).
 5. What this business's own website says about it, if it has one.`;
   const r = provider === "claude" ? await researchClaude(system, user) : await researchGemini(system, user);
-  if (!r.notes.trim()) throw new Error("la búsqueda no devolvió resultados");
+  if (!r.notes.trim()) throw bi("la búsqueda no devolvió resultados", "the search returned no results");
   const seen = new Set<string>();
   const sources = r.sources.filter((s) => !seen.has(s.url) && seen.add(s.url)).slice(0, 15);
   return { notes: r.notes.slice(0, 20000), sources };
@@ -409,14 +424,14 @@ async function websiteText(url: string): Promise<string> {
 }
 
 /** Antes del estudio, la IA lee lo básico y prepara preguntas a la medida del negocio, con respuestas para tocar. */
-export async function interviewQuestions(business: BusinessAi, input: StudyInput): Promise<Interview> {
+export async function interviewQuestions(business: BusinessAi, input: StudyInput, lang: UiLang = "es"): Promise<Interview> {
   const site = await websiteText(business.website);
   const system = `You are a friendly local marketing consultant interviewing a small business owner before writing their marketing strategy.
 Ask only what you need to understand what to advertise, to whom and where: the specific products or services and which sell best, the cities or neighborhoods, the type of customer, how customers contact them, what they offer that others don't (warranty, speed, financing, free quote, experience), price level, busy seasons.
 Rules:
 - Do not ask what the owner already answered or what the website already says.
 - Make the options specific to this kind of business and this area (real city names, real product types), so the owner can answer by tapping.
-- Short, plain Spanish with correct accents, using tú. No markdown.`;
+${lang === "en" ? `- Short, plain English. No markdown.\n${OWNER_ENGLISH}` : "- Short, plain Spanish with correct accents, using tú. No markdown."}`;
   const user = `Business: ${business.name}${business.website ? ` (${business.website})` : ""}
 What it sells: ${input.services || "(not answered)"}
 Area: ${input.zone || "(not answered)"}
@@ -433,17 +448,18 @@ Write 4 to 6 questions.`;
 export async function studyBusiness(
   business: BusinessAi,
   input: StudyInput,
-  opts: { research: boolean },
+  opts: { research: boolean; lang?: UiLang },
 ): Promise<{ study: SavedStudy; researchError: string | null }> {
+  const uiLang = opts.lang ?? "es";
   const provider = opts.research ? researchProvider(business.aiText ?? "") : null;
   let researchError: string | null = null;
   const [site, research] = await Promise.all([
     websiteText(business.website),
     provider
-      ? researchMarket(business, input, provider).catch((e: Error) => {
+      ? researchMarket(business, input, provider).catch((e: unknown) => {
           // Si la investigación falla, el estudio se hace igual con lo que sabe la IA, y se le avisa al dueño por qué.
           console.error("Investigación del estudio falló:", e);
-          researchError = e.message;
+          researchError = errorText(e, uiLang);
           return null;
         })
       : Promise.resolve(null),
@@ -456,7 +472,7 @@ Rules:
 - Market facts (competitors, seasons, search phrases) come from the research notes when there are any; otherwise use your general knowledge and keep it general.
 - Search volumes and difficulty are your estimates: be realistic for a local business.
 - If the business is a public adjuster or insurance-related: never promise or imply a payout, a percentage or "more money", and do not give legal advice.
-- Customers speak ${langs}: keywords and ideas must be in the language customers search in.
+${uiLang === "en" ? `- Customers speak ${langs}: keywords must be in the language customers search in.\n${OWNER_ENGLISH}` : `- Customers speak ${langs}: keywords and ideas must be in the language customers search in.`}
 - Spanish text must use correct accents and punctuation. No markdown.`;
   const user = `Business: ${business.name}${business.website ? ` (${business.website})` : ""}
 Main goal: ${goal}

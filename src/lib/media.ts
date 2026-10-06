@@ -1,6 +1,7 @@
 import { randomBytes } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
+import { bi } from "@/lib/i18n";
 
 // Las fotos y videos van a Supabase Storage (bucket público). Sin Supabase configurado,
 // se guardan en el disco del servidor (útil solo en tu computadora).
@@ -38,11 +39,11 @@ const DOC_TYPES: Record<string, string> = { "application/pdf": "pdf", "image/jpe
 function newName(contentType: string, kind: "media" | "document" = "media"): string {
   if (kind === "document") {
     const ext = DOC_TYPES[contentType];
-    if (!ext) throw new Error("Formato no permitido. Usa PDF, JPG, PNG o WEBP.");
+    if (!ext) throw bi("Formato no permitido. Usa PDF, JPG, PNG o WEBP.", "File type not allowed. Use PDF, JPG, PNG or WEBP.");
     return `${randomBytes(12).toString("hex")}.${ext}`;
   }
   const ext = TYPES[contentType];
-  if (!ext) throw new Error("Formato no permitido. Usa JPG, PNG, WEBP, GIF, MP4, MOV o WEBM.");
+  if (!ext) throw bi("Formato no permitido. Usa JPG, PNG, WEBP, GIF, MP4, MOV o WEBM.", "File type not allowed. Use JPG, PNG, WEBP, GIF, MP4, MOV or WEBM.");
   return `${randomBytes(12).toString("hex")}.${ext}`;
 }
 
@@ -57,9 +58,9 @@ async function ensureBucket(sb: { url: string; key: string }) {
       headers,
       body: JSON.stringify({ id: BUCKET, name: BUCKET, public: true }),
     });
-    if (!created.ok && created.status !== 409) throw new Error(`No se pudo crear el bucket "${BUCKET}" en Supabase: ${await created.text()}`);
+    if (!created.ok && created.status !== 409) throw bi(`No se pudo crear el bucket "${BUCKET}" en Supabase: ${await created.text()}`, `Couldn't create the "${BUCKET}" bucket in Supabase: ${await created.text()}`);
   } else if (!res.ok) {
-    throw new Error(`No se pudo leer el bucket "${BUCKET}" en Supabase: ${await res.text()}`);
+    throw bi(`No se pudo leer el bucket "${BUCKET}" en Supabase: ${await res.text()}`, `Couldn't read the "${BUCKET}" bucket in Supabase: ${await res.text()}`);
   }
   bucketReady = true;
 }
@@ -70,14 +71,14 @@ async function ensureBucket(sb: { url: string; key: string }) {
  */
 export async function createSignedUpload(contentType: string, folder: string, kind: "media" | "document" = "media"): Promise<{ uploadUrl: string; publicUrl: string }> {
   const sb = supabase();
-  if (!sb) throw new Error("Supabase Storage no está configurado.");
+  if (!sb) throw bi("Supabase Storage no está configurado.", "Supabase Storage isn't set up.");
   await ensureBucket(sb);
   const objectPath = `${folder}/${newName(contentType, kind)}`;
   const res = await fetch(`${sb.url}/storage/v1/object/upload/sign/${BUCKET}/${objectPath}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${sb.key}`, apikey: sb.key },
   });
-  if (!res.ok) throw new Error(`Supabase no dio permiso para subir: ${await res.text()}`);
+  if (!res.ok) throw bi(`Supabase no dio permiso para subir: ${await res.text()}`, `Supabase didn't allow the upload: ${await res.text()}`);
   const { url } = (await res.json()) as { url: string };
   return {
     uploadUrl: `${sb.url}/storage/v1${url}`,
@@ -97,7 +98,7 @@ export function isOwnFile(url: string, folder: string): boolean {
  */
 export async function storeRemote(sourceUrl: string, folder: string): Promise<{ url: string; type: "photo" | "video" }> {
   const res = await fetch(sourceUrl);
-  if (!res.ok) throw new Error(`No se pudo descargar el archivo creado por la IA (${res.status}).`);
+  if (!res.ok) throw bi(`No se pudo descargar el archivo creado por la IA (${res.status}).`, `Couldn't download the file the AI created (${res.status}).`);
   const contentType = (res.headers.get("content-type") || "").split(";")[0].trim() || (sourceUrl.endsWith(".mp4") ? "video/mp4" : "image/jpeg");
   return storeBuffer(Buffer.from(await res.arrayBuffer()), contentType, folder);
 }
@@ -119,7 +120,7 @@ export async function storeBuffer(data: Buffer, contentType: string, folder: str
     headers: { Authorization: `Bearer ${sb.key}`, apikey: sb.key, "Content-Type": contentType },
     body: new Uint8Array(data),
   });
-  if (!up.ok) throw new Error(`No se pudo guardar el archivo en Supabase: ${await up.text()}`);
+  if (!up.ok) throw bi(`No se pudo guardar el archivo en Supabase: ${await up.text()}`, `Couldn't save the file in Supabase: ${await up.text()}`);
   return { url: `${sb.url}/storage/v1/object/public/${BUCKET}/${objectPath}`, type };
 }
 

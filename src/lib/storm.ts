@@ -1,12 +1,13 @@
 // Campaña de tormenta: tipos de evento y horarios que respetan las reglas de Florida para public adjusters.
 import { BUSINESS_TZ, localToUtc } from "@/lib/time";
 
+// name / nameEn: lo que ve el usuario en la app. en: lo que se le dice a la IA.
 export const STORM_EVENTS = [
-  { id: "huracan", name: "Huracán", en: "hurricane" },
-  { id: "inundacion", name: "Inundación", en: "flood" },
-  { id: "tornado", name: "Tornado o tormenta fuerte", en: "tornado or severe windstorm" },
-  { id: "granizo", name: "Granizo", en: "hailstorm" },
-  { id: "lluvias", name: "Lluvias fuertes y filtraciones", en: "heavy rain and roof or water leaks" },
+  { id: "huracan", name: "Huracán", nameEn: "Hurricane", en: "hurricane" },
+  { id: "inundacion", name: "Inundación", nameEn: "Flood", en: "flood" },
+  { id: "tornado", name: "Tornado o tormenta fuerte", nameEn: "Tornado or severe storm", en: "tornado or severe windstorm" },
+  { id: "granizo", name: "Granizo", nameEn: "Hail", en: "hailstorm" },
+  { id: "lluvias", name: "Lluvias fuertes y filtraciones", nameEn: "Heavy rain and leaks", en: "heavy rain and roof or water leaks" },
 ] as const;
 export type StormEvent = (typeof STORM_EVENTS)[number]["id"];
 export const stormEvent = (id: string) => STORM_EVENTS.find((e) => e.id === id);
