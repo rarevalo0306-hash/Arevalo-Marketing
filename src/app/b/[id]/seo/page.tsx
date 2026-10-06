@@ -8,6 +8,7 @@ import { KeywordsPanel } from "@/components/seo/KeywordsPanel";
 import { RankPanel } from "@/components/seo/RankPanel";
 import { SearchConsolePanel } from "@/components/seo/SearchConsolePanel";
 import { VisibilityPanel } from "@/components/seo/VisibilityPanel";
+import { WriterCard } from "@/components/seo/WriterCard";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
 
@@ -32,6 +33,7 @@ export default async function SeoPage({ params }: { params: Promise<{ id: string
       <div className="stack" style={{ gap: 22 }}>
         <DfsSettingsPanel businessId={id} />
         <KeywordsPanel businessId={id} />
+        <WriterCard businessId={id} />
         <RankPanel businessId={id} />
         <AlertsPanel businessId={id} />
         <CompetitorsPanel businessId={id} />

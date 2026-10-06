@@ -2,7 +2,7 @@
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 
-export type SeoKind = "audit" | "ai" | "gsc" | "keywords" | "rank" | "competitors" | "gap";
+export type SeoKind = "audit" | "ai" | "gsc" | "keywords" | "rank" | "competitors" | "gap" | "article";
 
 export async function saveReport(businessId: string, kind: SeoKind, data: Prisma.InputJsonValue) {
   return db.seoReport.create({ data: { businessId, kind, data } });

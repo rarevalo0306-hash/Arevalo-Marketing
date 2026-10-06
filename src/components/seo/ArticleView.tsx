@@ -165,7 +165,7 @@ export async function ArticleView({ businessId, id, report }: { businessId: stri
         )}
         {research.organic.length > 0 && (
           <details>
-            <summary className="btn link" style={{ display: "inline-flex", padding: 0 }}>{t(`Ver los ${research.organic.length} primeros de Google`, `See Google's top ${research.organic.length}`)}</summary>
+            <summary className="btn link" style={{ display: "inline-flex", padding: 0 }}>{research.organic.length === 1 ? t("Ver el primero de Google", "See Google's top result") : t(`Ver los ${research.organic.length} primeros de Google`, `See Google's top ${research.organic.length}`)}</summary>
             <ol className="wr-serp">
               {research.organic.map((o) => {
                 const page = research.pages.find((p) => p.position === o.position);
