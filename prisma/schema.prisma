@@ -51,6 +51,9 @@ model Business {
   seoWeekly       Boolean  @default(false)
   seoWeeklyAt     DateTime?
   seoEmailLang    String   @default("es")
+  /// Reporte en PDF de cada mes (el día 1, del mes anterior) al mismo email de los avisos, y cuándo se mandó el último.
+  seoMonthly      Boolean  @default(false)
+  seoMonthlyAt    DateTime?
   /// El negocio en Google Maps, elegido por el dueño para el mapa de calor:
   /// { title, cid, placeId, featureId, address, lat, lng, domain, rating, reviews } (ver readMapPlace en src/lib/seo/maprank.ts).
   seoMapPlace     Json?
