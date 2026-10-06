@@ -30,7 +30,7 @@ function Working({ pending, providers, count }: { pending: boolean; providers: s
     [0, t(`Preguntando a ${providers.join(", ")} (${count} preguntas, con búsqueda en internet)`, `Asking ${providers.join(", ")} (${count} questions, with web search)`)],
     [35, t("Buscando tu nombre y tu página en cada respuesta", "Looking for your name and website in each answer")],
     [60, t("Anotando qué competidores recomiendan las IAs", "Noting which competitors the AIs recommend")],
-    [85, t("Escribiendo qué puedes hacer para aparecer más", "Writing what you can do to show up more")],
+    [85, t("Leyendo cómo hablan de ti y escribiendo qué puedes hacer para aparecer más", "Reading how they talk about you and writing what you can do to show up more")],
   ];
   const now = steps.findLastIndex(([at]) => seconds >= at);
   return (
