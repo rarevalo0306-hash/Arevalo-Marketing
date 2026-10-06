@@ -51,3 +51,5 @@ ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "seoAlerts" BOOLEAN NOT NULL DEF
 ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "seoWeekly" BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "seoWeeklyAt" TIMESTAMP(3);
 ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "seoEmailLang" TEXT NOT NULL DEFAULT 'es';
+-- 2026-10-06: mapa de calor en Google Maps (el negocio elegido en Google Maps).
+ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "seoMapPlace" JSONB;
