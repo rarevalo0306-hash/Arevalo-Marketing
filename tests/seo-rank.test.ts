@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildZoneReports,
   compareRuns,
   ctrFor,
   domainMatches,
   nameMatches,
   normalizeName,
   parseSerp,
+  rankJobs,
   rankSetup,
   readRankReport,
   siteDomain,
@@ -15,6 +17,7 @@ import {
   type RankRow,
   type SerpResult,
 } from "@/lib/seo/rank";
+import { groupByZone } from "@/lib/seo/zones";
 
 const row = (keyword: string, position: number | null, extra: Partial<RankRow> = {}): RankRow => ({
   keyword,
@@ -197,6 +200,56 @@ describe("rankSetup", () => {
     expect(rankSetup({ website: "", seoLocationCode: 1, seoKeywords: ["a"] })).toEqual({ ok: false, missing: "website" });
     expect(rankSetup({ website: "a.com", seoLocationCode: null, seoKeywords: ["a"] })).toEqual({ ok: false, missing: "location" });
     expect(rankSetup({ website: "a.com", seoLocationCode: 1, seoKeywords: [] })).toEqual({ ok: false, missing: "keywords" });
-    expect(rankSetup({ website: "https://www.a.com/", seoLocationCode: 1, seoKeywords: ["techos", 3] })).toEqual({ ok: true, domain: "a.com", locationCode: 1, keywords: ["techos"] });
+    expect(rankSetup({ website: "https://www.a.com/", seoLocationCode: 1, seoKeywords: ["techos", 3] })).toEqual({ ok: true, domain: "a.com", zones: [{ code: 1, name: "" }], keywords: ["techos"] });
+  });
+  it("usa todas las zonas guardadas (la primera es la principal)", () => {
+    const seoLocations = [
+      { code: 2, name: "León,Nicaragua", type: "City" },
+      { code: 3, name: "Nicaragua", type: "Country" },
+    ];
+    const r = rankSetup({ website: "a.com", seoLocations, seoLocationCode: 2, seoLocationName: "León,Nicaragua", seoKeywords: ["a"] });
+    expect(r).toEqual({ ok: true, domain: "a.com", zones: seoLocations, keywords: ["a"] });
+    expect(rankSetup({ website: "a.com", seoLocations: [], seoLocationCode: null, seoKeywords: ["a"] })).toEqual({ ok: false, missing: "location" });
+  });
+});
+
+describe("varias zonas", () => {
+  const zones = [
+    { code: 1, name: "Miami,Florida,United States" },
+    { code: 2, name: "Orlando,Florida,United States" },
+  ];
+
+  it("cada palabra en cada zona, sin repetir", () => {
+    const jobs = rankJobs(zones, ["techos", " techos ", "goteras", ""]);
+    expect(jobs.map((j) => `${j.zone.code}:${j.keyword}`)).toEqual(["1:techos", "1:goteras", "2:techos", "2:goteras"]);
+    expect(rankJobs(zones, Array.from({ length: 40 }, (_, i) => `k${i}`))).toHaveLength(50);
+  });
+
+  it("arma un reporte por zona y no guarda la zona donde todo falló", () => {
+    const err = { es: "sin saldo", en: "no funds" };
+    const { reports, failed } = buildZoneReports(
+      zones,
+      "es",
+      [
+        { zoneCode: 1, row: row("techos", 3), cost: 0.0035 },
+        { zoneCode: 2, row: row("techos", null, { error: err }), cost: 0 },
+        { zoneCode: 1, row: row("goteras", 12), cost: 0.0035 },
+        { zoneCode: 2, row: row("goteras", null, { error: err }), cost: 0 },
+      ],
+      "2026-10-06T12:00:00.000Z",
+    );
+    expect(reports).toHaveLength(1);
+    expect(reports[0]).toMatchObject({ location: zones[0].name, locationCode: 1, language: "es", device: "mobile", cost: 0.007, inTop3: 1, inTop10: 1, avgPosition: 7.5 });
+    expect(reports[0].rows.map((r) => r.keyword)).toEqual(["techos", "goteras"]);
+    expect(failed).toEqual([{ zone: zones[1], error: err }]);
+  });
+
+  it("separa el historial por zona para comparar cada zona con su revisión anterior", () => {
+    const at = (code: number, pos: number) => ({ ...report([row("techos", pos)]), locationCode: code });
+    const groups = groupByZone([at(2, 4), at(1, 3), at(2, 9), at(1, 5)], zones);
+    const miami = groups.get(1)!;
+    const orlando = groups.get(2)!;
+    expect(compareRuns(miami[0], miami[1])["techos"]).toEqual({ kind: "up", delta: 2, previous: 5 });
+    expect(compareRuns(orlando[0], orlando[1])["techos"]).toEqual({ kind: "up", delta: 5, previous: 9 });
   });
 });

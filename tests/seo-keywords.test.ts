@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   cleanKeyword,
   costText,
+  type KeywordsReport,
+  keywordsCostEstimate,
   type KwRow,
+  mergeZoneRows,
   monthlyTrend,
   normalizeRow,
   pickIdeas,
@@ -12,7 +15,10 @@ import {
   trendDirection,
   uniqueKeywords,
   volumeFormat,
+  zoneTotal,
+  zoneVolumes,
 } from "@/lib/seo/keywords";
+import { groupByZone, latestByZone, zonesWithout } from "@/lib/seo/zones";
 
 // Así viene un resultado de /v3/keywords_data/google_ads/search_volume/live (meses del más nuevo al más viejo).
 const API_ITEM = {
@@ -186,5 +192,78 @@ describe("formato", () => {
     expect(costText(Number.NaN)).toBe("$0.00");
     expect(volumeFormat("es").format(1300)).toBe("1.300");
     expect(volumeFormat("en").format(1300)).toBe("1,300");
+  });
+});
+
+describe("varias zonas", () => {
+  const zones = [
+    { code: 1, name: "Managua,Managua,Nicaragua", type: "City" },
+    { code: 2, name: "León,León,Nicaragua", type: "City" },
+    { code: 3, name: "Nicaragua", type: "Country" },
+  ];
+  const rep = (locationCode: number, keywords: KwRow[], createdAt = "2026-10-06T12:00:00.000Z"): KeywordsReport => ({
+    location: zones.find((z) => z.code === locationCode)?.name ?? "",
+    locationCode,
+    language: "es",
+    keywords,
+    ideas: [],
+    cost: 0.075,
+    createdAt,
+  });
+
+  it("toma el reporte más nuevo de cada zona y avisa cuáles faltan", () => {
+    const newest = rep(1, [row("techos", 100)], "2026-10-06T12:00:00.000Z");
+    const older = rep(1, [row("techos", 90)], "2026-10-01T12:00:00.000Z");
+    const leon = rep(2, [row("techos", 20)]);
+    const removed = rep(99, [row("techos", 5)]);
+    const byZone = latestByZone([newest, null, removed, leon, older], zones);
+    expect(byZone.get(1)).toBe(newest);
+    expect(byZone.get(2)).toBe(leon);
+    expect(byZone.has(3)).toBe(false);
+    expect(byZone.has(99)).toBe(false);
+    expect(zonesWithout(zones, byZone).map((z) => z.code)).toEqual([3]);
+    expect(groupByZone([newest, older], zones).get(1)).toEqual([newest, older]);
+  });
+
+  it("los reportes viejos sin código de zona cuentan como de la principal", () => {
+    const old = rep(0, [row("techos", 100)]);
+    expect(latestByZone([old], zones).get(1)).toBe(old);
+    expect(latestByZone([old], []).size).toBe(0);
+  });
+
+  it("une las filas: datos de la principal y una columna de búsquedas por zona", () => {
+    const byZone = new Map<number, KeywordsReport>([
+      [1, rep(1, [row("techos", 100, { cpc: 2, trend: [1, 2] }), row("goteras", null), row("tejas", 10)])],
+      [2, rep(2, [row("techos", 20), row("goteras", 300)])],
+    ]);
+    const rows = mergeZoneRows(["Techos", "goteras", "tejas", "techos", "nueva"], zones, byZone);
+    expect(rows.map((r) => r.row.keyword)).toEqual(["techos", "tejas", "goteras", "nueva"]);
+    expect(rows[0]).toEqual({ row: row("techos", 100, { cpc: 2, trend: [1, 2] }), volumes: [100, 20, undefined] });
+    // tejas no se midió en León; goteras no tiene datos en Managua.
+    expect(rows[1].volumes).toEqual([10, undefined, undefined]);
+    expect(rows[2].volumes).toEqual([null, 300, undefined]);
+    expect(rows[3]).toEqual({ row: row("nueva", null), volumes: [undefined, undefined, undefined] });
+  });
+
+  it("sin reporte de la principal ordena por el total de las otras zonas", () => {
+    const byZone = new Map<number, KeywordsReport>([[2, rep(2, [row("a", 5), row("b", 50)])]]);
+    expect(mergeZoneRows(["a", "b"], zones, byZone).map((r) => r.row.keyword)).toEqual(["b", "a"]);
+  });
+
+  it("volúmenes por zona y total", () => {
+    const byZone = new Map<number, KeywordsReport>([
+      [1, rep(1, [row("techos", 1300)])],
+      [3, rep(3, [row("techos", 2100)])],
+    ]);
+    const v = zoneVolumes(" TECHOS ", zones, byZone);
+    expect(v).toEqual([1300, undefined, 2100]);
+    expect(zoneTotal(v)).toBe(3400);
+    expect(zoneTotal([undefined, null])).toBeNull();
+  });
+
+  it("costo estimado: volúmenes por zona + ideas en la principal", () => {
+    expect(keywordsCostEstimate(1)).toBe(0.15);
+    expect(keywordsCostEstimate(3)).toBe(0.3);
+    expect(keywordsCostEstimate(0)).toBe(0.15);
   });
 });

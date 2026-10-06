@@ -3,6 +3,8 @@ import {
   brandToken,
   computeGap,
   DIRECTORY_SITES,
+  distinctCountries,
+  distinctKeywords,
   isBranded,
   isDirectory,
   mergeCandidates,
@@ -14,10 +16,12 @@ import {
   pickLanguage,
   readCompetitorsReport,
   readRankRows,
+  readRankRowsMany,
   sameSite,
   serpCandidates,
   type LabsCountry,
   type RankedKeyword,
+  zoneCountry,
 } from "@/lib/seo/competitors";
 
 const kw = (keyword: string, position: number, volume: number | null = 100): RankedKeyword => ({ keyword, position, volume, url: `https://x.com/${keyword}` });
@@ -213,5 +217,40 @@ describe("readCompetitorsReport", () => {
     expect(readCompetitorsReport(null)).toBeNull();
     expect(readCompetitorsReport({ domain: "a.com" })).toBeNull();
     expect(readCompetitorsReport([])).toBeNull();
+  });
+});
+
+describe("varias zonas", () => {
+  const miami = { rows: [{ keyword: "plomero", top: [{ position: 1, domain: "rival.com" }, { position: 2, domain: "otro.com" }] }] };
+  const orlando = {
+    rows: [
+      { keyword: "Plomero", top: [{ position: 1, domain: "rival.com" }, { position: 3, domain: "local.com" }] },
+      { keyword: "destapes", top: [{ position: 2, domain: "rival.com" }] },
+    ],
+  };
+
+  it("junta las posiciones de todas las zonas y cuenta cada búsqueda una vez", () => {
+    const rows = readRankRowsMany([miami, null, orlando]);
+    expect(rows).toHaveLength(3);
+    expect(distinctKeywords(rows)).toBe(2);
+    expect(serpCandidates(rows, "mio.com")).toEqual([
+      { domain: "rival.com", hits: 2 },
+      { domain: "local.com", hits: 1 },
+      { domain: "otro.com", hits: 1 },
+    ]);
+  });
+
+  it("el país de cada zona, sin repetir", () => {
+    expect(zoneCountry({ name: "Managua,Managua,Nicaragua", type: "City" })).toBe("Nicaragua");
+    expect(zoneCountry({ name: "Nicaragua", type: "Country" })).toBe("Nicaragua");
+    expect(zoneCountry({ name: "" })).toBe("");
+    expect(
+      distinctCountries([
+        { name: "Managua,Managua,Nicaragua", type: "City" },
+        { name: "Nicaragua", type: "Country" },
+        { name: "Miami,Florida,United States", type: "City" },
+        { name: "" },
+      ]),
+    ).toEqual(["Nicaragua", "United States"]);
   });
 });

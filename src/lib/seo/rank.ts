@@ -18,7 +18,7 @@ export const RANK_DEVICE = "mobile" as const;
 /** Máximo de palabras clave por revisión (igual que en los ajustes). */
 export const RANK_MAX_KEYWORDS = 25;
 
-const CONCURRENCY = 4;
+const CONCURRENCY = 8;
 const CALL_TIMEOUT_MS = 60_000;
 
 export type RankTop = { position: number; domain: string; title: string; url: string };
@@ -357,7 +357,7 @@ export function buildZoneReports(
 }
 
 /**
- * Revisa en Google (celular, primeros 20) cada palabra clave en cada zona, con máximo 4 consultas a la vez
+ * Revisa en Google (celular, primeros 20) cada palabra clave en cada zona, con máximo 8 consultas a la vez
  * en total. Devuelve un reporte por zona. Si todo falla, lanza el error.
  */
 export async function checkRankings(input: RankInput): Promise<ReturnType<typeof buildZoneReports>> {

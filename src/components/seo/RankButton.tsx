@@ -26,7 +26,7 @@ function Working({ pending, keywords, zones }: { pending: boolean; keywords: num
     return () => clearInterval(timer);
   }, [pending]);
   if (!pending) return null;
-  // Unas 4 consultas a la vez: el tiempo crece con palabras × zonas.
+  // Unas 8 consultas a la vez: el tiempo crece con palabras × zonas.
   const lookups = keywords * zones;
   const steps: [number, string][] = [
     [
@@ -35,8 +35,8 @@ function Working({ pending, keywords, zones }: { pending: boolean; keywords: num
         ? t(`Buscando tus ${keywords} palabras clave en Google en tus ${zones} zonas…`, `Searching your ${keywords} keywords on Google in your ${zones} areas…`)
         : t(`Buscando tus ${keywords} palabras clave en Google…`, `Searching your ${keywords} keywords on Google…`),
     ],
-    [Math.max(10, lookups * 2), t("Buscando tu página y tu negocio en el mapa…", "Looking for your website and your business on the map…")],
-    [Math.max(25, lookups * 3), t("Comparando con la revisión anterior…", "Comparing with the last check…")],
+    [Math.max(10, lookups), t("Buscando tu página y tu negocio en el mapa…", "Looking for your website and your business on the map…")],
+    [Math.max(25, Math.round(lookups * 1.5)), t("Comparando con la revisión anterior…", "Comparing with the last check…")],
   ];
   const now = steps.findLastIndex(([at]) => seconds >= at);
   return (

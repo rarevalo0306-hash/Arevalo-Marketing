@@ -6,8 +6,10 @@ import { db } from "@/lib/db";
 import { errorText, intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { normalizeDomain, parseOwnerDomains, runCompetitorsReport } from "@/lib/seo/competitors";
-import { dataForSeoEnabled, readTrackedKeywords } from "@/lib/seo/dataforseo";
+import { dataForSeoEnabled, readTrackedKeywords, readZones } from "@/lib/seo/dataforseo";
+import { readRankReport } from "@/lib/seo/rank";
 import { latestReports, saveReport } from "@/lib/seo/reports";
+import { latestByZone } from "@/lib/seo/zones";
 
 export type CompetitorsResult = { ok: boolean; message: string } | null;
 
@@ -19,12 +21,13 @@ export async function runCompetitors(businessId: string, _prev: CompetitorsResul
     return { ok: false, message: t("Falta conectar DataForSEO (DATAFORSEO_LOGIN y DATAFORSEO_PASSWORD en Vercel).", "DataForSEO isn't connected yet (DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD in Vercel).") };
   const b = await db.business.findUnique({
     where: { id: businessId },
-    select: { website: true, seoLocationCode: true, seoLocationName: true, seoLanguage: true },
+    select: { website: true, seoLocations: true, seoLocationCode: true, seoLocationName: true, seoLanguage: true },
   });
   if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const self = normalizeDomain(b.website);
   if (!self) return { ok: false, message: t("Primero agrega la dirección de tu página web en Ajustes del negocio.", "First add your website address in Business settings.") };
-  if (!b.seoLocationCode)
+  const zones = readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName);
+  if (!zones.length)
     return { ok: false, message: t("Primero elige la zona donde buscan tus clientes (arriba, en Datos reales de Google).", "First pick the area where your customers search (above, in Real Google data).") };
 
   const typed = String(f.get("domains") ?? "").slice(0, 1000);
@@ -33,14 +36,16 @@ export async function runCompetitors(businessId: string, _prev: CompetitorsResul
     return { ok: false, message: t("No reconocimos esos sitios. Escribe solo la dirección, por ejemplo: competencia.com", "We didn't recognize those websites. Type just the address, for example: competitor.com") };
 
   try {
-    const [rank] = await latestReports(businessId, "rank", 1);
+    // Los competidores locales salen de la última revisión de posiciones de cada zona.
+    const ranks = (await latestReports(businessId, "rank", 10 * zones.length)).map((r) => readRankReport(r.data));
     const report = await runCompetitorsReport({
       website: b.website,
-      locationCode: b.seoLocationCode,
-      locationName: b.seoLocationName,
+      // DataForSEO Labs solo trabaja por país: se usa el de la zona principal.
+      locationCode: zones[0].code,
+      locationName: zones[0].name,
       language: b.seoLanguage === "en" ? "en" : "es",
       ownerDomains: owner,
-      rankJson: rank?.data ?? null,
+      rankJsons: [...latestByZone(ranks, zones).values()],
     });
     await saveReport(businessId, "competitors", report as unknown as Prisma.InputJsonValue);
     revalidatePath(`/b/${businessId}/seo`);

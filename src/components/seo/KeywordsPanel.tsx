@@ -9,7 +9,6 @@ import {
   type Competition,
   costText,
   keywordsCostEstimate,
-  type KwRow,
   MAX_TRACKED,
   mergeZoneRows,
   readKeywordsReport,

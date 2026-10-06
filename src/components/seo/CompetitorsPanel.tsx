@@ -4,8 +4,8 @@ import { CompetitorsForm, TrackGapButton } from "@/components/seo/CompetitorsFor
 import { db } from "@/lib/db";
 import { intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
-import { normalizeDomain, readCompetitorsReport, type CompetitorSource, type DomainStats } from "@/lib/seo/competitors";
-import { dataForSeoEnabled, readTrackedKeywords } from "@/lib/seo/dataforseo";
+import { distinctCountries, normalizeDomain, readCompetitorsReport, type CompetitorSource, type DomainStats } from "@/lib/seo/competitors";
+import { dataForSeoEnabled, readTrackedKeywords, readZones, zoneLabel } from "@/lib/seo/dataforseo";
 import { latestReports } from "@/lib/seo/reports";
 import { BUSINESS_TZ } from "@/lib/time";
 
@@ -15,9 +15,11 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
   const { lang, t } = await getT();
   const b = await db.business.findUnique({
     where: { id: businessId },
-    select: { website: true, seoLocationCode: true, seoLocationName: true, seoKeywords: true },
+    select: { website: true, seoLocations: true, seoLocationCode: true, seoLocationName: true, seoKeywords: true },
   });
   if (!b) return null;
+  const zones = readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName);
+  const countries = distinctCountries(zones);
   const self = normalizeDomain(b.website);
 
   const header = (
@@ -32,7 +34,7 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
     </div>
   );
 
-  if (!self || !b.seoLocationCode) {
+  if (!self || !zones.length) {
     return (
       <section className="card">
         {header}
@@ -87,9 +89,22 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
 
       {report?.location.local && (
         <p className="note">
+          {zones.length > 1
+            ? t(
+                `Los datos de competencia son de todo ${report.location.countryName} (DataForSEO no los tiene por ciudad). Los que salen arriba en tus búsquedas sí vienen de tus posiciones en cada una de tus ${zones.length} zonas.`,
+                `Competitor data covers all of ${report.location.countryName} (DataForSEO doesn't have it by city). The ones ranking high on your searches do come from your rankings in each of your ${zones.length} areas.`,
+              )
+            : t(
+                `Los datos de competencia son de todo ${report.location.countryName} (DataForSEO no los tiene por ciudad). Tus posiciones en Google sí son de ${zoneLabel(report.location.name)}.`,
+                `Competitor data covers all of ${report.location.countryName} (DataForSEO doesn't have it by city). Your Google rankings are for ${zoneLabel(report.location.name)}.`,
+              )}
+        </p>
+      )}
+      {countries.length > 1 && (
+        <p className="small muted">
           {t(
-            `Los datos de competencia son de todo ${report.location.countryName} (DataForSEO no los tiene por ciudad). Tus posiciones en Google sí son de ${report.location.name.replace(/,/g, ", ")}.`,
-            `Competitor data covers all of ${report.location.countryName} (DataForSEO doesn't have it by city). Your Google rankings are for ${report.location.name.replace(/,/g, ", ")}.`,
+            `Tus zonas están en ${countries.length} países (${countries.join(", ")}). Para no cobrarte dos veces, la competencia del país se busca solo en ${countries[0]}, el de tu zona principal; los competidores de tus búsquedas sí salen de todas tus zonas.`,
+            `Your areas are in ${countries.length} countries (${countries.join(", ")}). To avoid paying twice, country-wide competitor data is looked up only for ${countries[0]}, your main area's country; competitors from your searches do come from all your areas.`,
           )}
         </p>
       )}
