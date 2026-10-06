@@ -97,6 +97,13 @@ export default async function InicioPage({ params }: { params: Promise<{ id: str
                 <span className="small muted">{b.studyAt ? t("Tu público, palabras clave e ideas de campaña", "Your audience, keywords, and campaign ideas") : t("La IA investiga tu mercado y aprende qué anunciar", "The AI researches your market and learns what to promote")}</span>
               </span>
             </Link>
+            <Link href={`/b/${id}/seo`} className="action">
+              <span className="action-icon teal">↗</span>
+              <span>
+                <strong>{t("SEO y visibilidad", "SEO and visibility")}</strong>
+                <span className="small muted">{t("Revisa tu página y si las IAs te recomiendan", "Check your website and whether AIs recommend you")}</span>
+              </span>
+            </Link>
             <Link href={`/b/${id}/plan`} className="action">
               <span className="action-icon">✦</span>
               <span><strong>{t("Plan de la semana", "Weekly plan")}</strong><span className="small muted">{t("La IA prepara varias publicaciones con foto", "The AI prepares several posts with photos")}</span></span>

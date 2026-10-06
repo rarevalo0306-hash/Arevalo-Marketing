@@ -29,3 +29,13 @@ REVOKE ALL ON "Template" FROM anon, authenticated;
 ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "study" JSONB;
 ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "studyInput" JSONB;
 ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "studyAt" TIMESTAMP(3);
+CREATE TABLE IF NOT EXISTS "SeoReport" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "businessId" TEXT NOT NULL REFERENCES "Business"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  "kind" TEXT NOT NULL,
+  "data" JSONB NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS "SeoReport_businessId_kind_createdAt_idx" ON "SeoReport"("businessId", "kind", "createdAt");
+ALTER TABLE "SeoReport" ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON "SeoReport" FROM anon, authenticated;
