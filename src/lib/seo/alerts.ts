@@ -10,14 +10,19 @@ import { fetchJson } from "@/lib/publishers/http";
 import { escapeHtml } from "@/lib/text";
 import { BUSINESS_TZ } from "@/lib/time";
 import { readAuditReport } from "@/lib/seo/audit";
+import { readBacklinksReport, type BacklinksReport } from "@/lib/seo/backlinks";
+import { buildCannibal, type CannibalReport } from "@/lib/seo/cannibal";
 import { businessTopicVocab, relevantGapRows } from "@/lib/seo/gap";
 import { readReviewsReport } from "@/lib/seo/gbp";
 import { readZones, zoneLabel } from "@/lib/seo/dataforseo";
 import { asGscReport } from "@/lib/seo/gsc";
-import { readKeywordsReport } from "@/lib/seo/keywords";
+import { readKeywordsReport, type KeywordsReport } from "@/lib/seo/keywords";
+import { readMapReport } from "@/lib/seo/maprank";
 import { readRankReport, type RankReport, type RankRow } from "@/lib/seo/rank";
-import { readVisibilityReport, type VisibilityReport } from "@/lib/seo/visibility";
-import { groupByZone } from "@/lib/seo/zones";
+import { mapGroups, marketSummary, organicChange, organicShare, pctText, type MarketSummary } from "@/lib/seo/sov";
+import { changeText, hasData, latestMonth, readTrafficReport, siteName, trafficDelta, visitsText, type TrafficReport } from "@/lib/seo/traffic";
+import { readVisibilityReport, sentimentText, type VisibilityReport } from "@/lib/seo/visibility";
+import { groupByZone, latestByZone } from "@/lib/seo/zones";
 
 const DAY_MS = 24 * 3600_000;
 /** Lugar que se usa para "no sale en los primeros 20" al medir cuánto subió o bajó. */
@@ -126,6 +131,40 @@ export function aiAlerts(prev: VisibilityReport, cur: VisibilityReport): { lost:
     if (!was && r.mentioned) gained.push({ provider: r.provider, question: r.question });
   }
   return { lost, gained };
+}
+
+export type NegativeMention = { provider: string; question: string; reason: string };
+
+/**
+ * Menciones donde una IA habla mal de ti y que no estaban antes: la misma IA y la misma pregunta no eran negativas en
+ * la revisión anterior (o no había revisión anterior). Las revisiones sin tono leído no avisan nada.
+ */
+export function newNegativeMentions(prev: VisibilityReport | null | undefined, cur: VisibilityReport): NegativeMention[] {
+  if (cur.sentiment?.status !== "ok") return [];
+  const before = new Set((prev?.results ?? []).filter((r) => !r.error && r.sentiment?.sentiment === "negativa").map((r) => qKey(r.provider, r.question)));
+  return cur.results
+    .filter((r) => !r.error && r.mentioned && r.sentiment?.sentiment === "negativa" && !before.has(qKey(r.provider, r.question)))
+    .map((r) => ({ provider: r.provider, question: r.question, reason: r.sentiment?.reason ?? "" }));
+}
+
+// ---------- Tu parte de Google en el aviso diario (puro) ----------
+
+/** Puntos que tiene que bajar tu parte de los clics de Google (entre dos revisiones) para avisar. */
+export const SHARE_ALERT_POINTS = 5;
+export type ShareDrop = { from: number; to: number };
+
+/**
+ * Si tu parte de los clics de Google bajó 5 puntos o más entre la revisión anterior y esta (comparando solo las
+ * palabras que están en las dos, en todas las zonas). `pairs`: por zona, [la actual, la anterior]. En %, sin decimales.
+ */
+export function shareDrop(pairs: [RankReport, RankReport][], website: string, keywords: KeywordsReport[] = []): ShareDrop | null {
+  if (!website.trim() || !pairs.length) return null;
+  const opts = { website, keywords };
+  const delta = organicChange(pairs, opts);
+  const now = organicShare(pairs.map((p) => p[0]), opts);
+  if (delta === null || !now || delta > -SHARE_ALERT_POINTS) return null;
+  const to = Math.round(now.you * 100);
+  return { from: Math.round(now.you * 100 - delta), to };
 }
 
 // ---------- ¿Toca el resumen semanal? (puro) ----------
@@ -269,10 +308,14 @@ function describeAlert(a: RankAlert, lang: UiLang): string {
   }
 }
 
-/** Email de aviso después de la revisión diaria automática: lo malo primero, luego lo bueno, por zona. */
-export function buildAlertEmail(business: EmailBusiness, zones: RankAlerts[], lang: UiLang, opts?: EmailOpts): BuiltEmail {
+/**
+ * Email de aviso después de la revisión diaria automática: lo malo primero, luego lo bueno, por zona.
+ * `extra.share`: tu parte de los clics de Google bajó 5 puntos o más (shareDrop): va primero, entre lo que bajó.
+ */
+export function buildAlertEmail(business: EmailBusiness, zones: RankAlerts[], lang: UiLang, opts?: EmailOpts, extra?: { share?: ShareDrop | null }): BuiltEmail {
   const t = (es: string, en: string) => (lang === "en" ? en : es);
-  const badCount = zones.reduce((s, z) => s + z.bad.length, 0);
+  const share = extra?.share ?? null;
+  const badCount = zones.reduce((s, z) => s + z.bad.length, 0) + (share ? 1 : 0);
   const many = zones.filter((z) => z.bad.length || z.good.length).length > 1;
   const where = (z: RankAlerts) => (many && z.zone ? ` (${z.zone})` : "");
   const blocks: Block[] = [
@@ -284,6 +327,21 @@ export function buildAlertEmail(business: EmailBusiness, zones: RankAlerts[], la
       ),
     },
   ];
+  if (share) {
+    blocks.push({ kind: "h", text: t("Tu parte de Google", "Your share of Google") });
+    blocks.push({
+      kind: "list",
+      items: [
+        {
+          tone: "bad",
+          text: t(
+            `Tu parte de los clics en tus búsquedas de Google bajó del ${share.from}% al ${share.to}%: tu competencia o los directorios se están llevando más.`,
+            `Your share of the clicks on your Google searches dropped from ${share.from}% to ${share.to}%: your competitors or directories are getting more.`,
+          ),
+        },
+      ],
+    });
+  }
   for (const z of zones) {
     if (!z.bad.length) continue;
     blocks.push({ kind: "h", text: t(`Lo que bajó${where(z)}`, `What dropped${where(z)}`) });
@@ -322,7 +380,80 @@ export type WeeklyData = {
   recommendations: Recommendation[];
   /** Tu Perfil de Google: solo si ya se trajeron las reseñas (opcional, los resúmenes de antes no lo tienen). */
   gbp?: WeeklyGbp | null;
+  /** Tu parte del mercado: Google, mapa e IAs (opcional). */
+  market?: WeeklyMarket | null;
+  /** Enlaces hacia tu página (opcional). */
+  links?: WeeklyLinks | null;
+  /** Visitas de tu competencia (opcional). */
+  traffic?: WeeklyTraffic | null;
+  /** Páginas que compiten entre sí: solo si hay alguna urgente (opcional). */
+  cannibal?: WeeklyCannibal | null;
 };
+
+/** Tu parte de Google, del mapa y de las IAs (0 a 1) y su cambio en puntos porcentuales. */
+export type WeeklyMarket = { organic: number | null; organicDelta: number | null; map: number | null; mapDelta: number | null; ai: number | null; aiDelta: number | null };
+
+/** Lo de tu parte del mercado que va en el resumen. null si no hay nada. */
+export function weeklyMarket(m: MarketSummary): WeeklyMarket | null {
+  if (!m.organic && !m.map && !m.ai) return null;
+  return {
+    organic: m.organic?.you ?? null,
+    organicDelta: m.organicDelta,
+    map: m.map?.you ?? null,
+    mapDelta: m.mapDelta,
+    // Si las IAs no nombraron ningún negocio, no hay "parte" que mostrar.
+    ai: m.ai && m.ai.mentions ? m.ai.you : null,
+    aiDelta: m.ai && m.ai.mentions ? m.aiDelta : null,
+  };
+}
+
+export type WeeklyLinks = {
+  referringDomains: number | null;
+  /** En la revisión anterior (null si no hay). */
+  prevReferringDomains: number | null;
+  /** Sitios nuevos y perdidos en el último mes (null si DataForSEO no lo dio). */
+  newDomains: number | null;
+  lostDomains: number | null;
+  /** Sitios que enlazan a tu competencia y a ti no. */
+  gap: number;
+  date: string;
+};
+
+/** Lo de tus enlaces que va en el resumen, con la revisión anterior para el cambio. null si no sirve. */
+export function weeklyLinks(cur: BacklinksReport | null, prev: BacklinksReport | null = null): WeeklyLinks | null {
+  if (!cur) return null;
+  const count = (r: BacklinksReport) => r.summary.referringDomains ?? r.referringTotal;
+  return {
+    referringDomains: count(cur),
+    prevReferringDomains: prev ? count(prev) : null,
+    newDomains: cur.summary.newDomains1m,
+    lostDomains: cur.summary.lostDomains1m,
+    gap: cur.gap.length,
+    date: cur.createdAt,
+  };
+}
+
+export type WeeklyTrafficSite = { domain: string; etv: number | null; year: { from: number; to: number } | null };
+export type WeeklyTraffic = { you: WeeklyTrafficSite | null; rival: WeeklyTrafficSite | null; date: string };
+
+/** Tú y el competidor que más visitas recibe, con el cambio en un año. null si nadie tiene datos. */
+export function weeklyTraffic(report: TrafficReport | null): WeeklyTraffic | null {
+  if (!report) return null;
+  const end = latestMonth(report.domains);
+  const site = (d: TrafficReport["domains"][number]): WeeklyTrafficSite => ({ domain: d.domain, etv: d.now?.etv ?? null, year: trafficDelta(d, 12, end) });
+  const you = report.domains.find((d) => d.isYou && hasData(d));
+  const rival = report.domains.filter((d) => !d.isYou && hasData(d)).sort((a, b) => (b.now?.etv ?? 0) - (a.now?.etv ?? 0))[0];
+  if (!you && !rival) return null;
+  return { you: you ? site(you) : null, rival: rival ? site(rival) : null, date: report.createdAt };
+}
+
+export type WeeklyCannibal = { urgent: number; query: string; pages: number };
+
+/** La búsqueda urgente de "páginas que compiten entre sí" (null si no hay ninguna urgente). */
+export function weeklyCannibal(report: CannibalReport | null): WeeklyCannibal | null {
+  const urgent = (report?.issues ?? []).filter((i) => i.severity === "alta");
+  return urgent[0] ? { urgent: urgent.length, query: urgent[0].query, pages: urgent[0].pages.length } : null;
+}
 
 /** Lo del Perfil de Google que va en el resumen semanal. */
 export type WeeklyGbp = {
@@ -452,6 +583,29 @@ export function buildWeeklyEmail(business: EmailBusiness, data: WeeklyData, lang
     }
   }
 
+  // Tu parte del mercado (Google, mapa e IAs), en una línea.
+  if (data.market) {
+    const m = data.market;
+    const pts = (d: number | null) => (d ? ` (${d > 0 ? "+" : "−"}${nf.format(Math.abs(d))} pts)` : "");
+    const parts = [
+      m.organic !== null ? `Google: ${pctText(m.organic)}${pts(m.organicDelta)}` : "",
+      m.map !== null ? t(`Mapa: ${pctText(m.map)}${pts(m.mapDelta)}`, `Map: ${pctText(m.map)}${pts(m.mapDelta)}`) : "",
+      m.ai !== null ? t(`IAs: ${pctText(m.ai)}${pts(m.aiDelta)}`, `AIs: ${pctText(m.ai)}${pts(m.aiDelta)}`) : "",
+    ].filter(Boolean);
+    if (parts.length) {
+      blocks.push({ kind: "h", text: t("Tu parte del mercado", "Your share of the market") });
+      blocks.push({ kind: "p", text: parts.join(" · ") });
+      blocks.push({
+        kind: "p",
+        muted: true,
+        text: t(
+          "Qué parte de los clics de tus búsquedas en Google, de los 3 primeros lugares del mapa y de los negocios que nombran las IAs te llevas tú. Entre paréntesis, el cambio con la revisión anterior.",
+          "How much of the clicks on your Google searches, the map's top 3 spots and the businesses the AIs name goes to you. In parentheses, the change vs. the previous check.",
+        ),
+      });
+    }
+  }
+
   // Visibilidad en las IAs.
   if (data.ai) {
     const { cur, prev } = data.ai;
@@ -482,12 +636,56 @@ export function buildWeeklyEmail(business: EmailBusiness, data: WeeklyData, lang
           : t(`% de respuestas que te mencionan. Revisión del ${day(data.ai.date)}.`, `% of answers that mention you. Check from ${day(data.ai.date)}.`),
       });
     }
+
+    // Cómo hablan de ti (solo si se leyó el tono): los conteos y, si apareció, la mención negativa nueva.
+    const sent = cur.sentiment;
+    if (sent && sent.status === "ok" && sent.total > 0) {
+      const counts = sentimentText(sent);
+      const fresh = newNegativeMentions(prev, cur);
+      const items: { text: string; tone?: Tone }[] = [{ tone: sent.negativa > sent.positiva ? "bad" : sent.negativa ? "neutral" : sent.positiva ? "good" : "neutral", text: t(counts.es, counts.en) + "." }];
+      if (fresh.length) {
+        const f = fresh[0];
+        const name = AI_NAMES[f.provider] ?? f.provider;
+        const why = f.reason.replace(/\s+/g, " ").trim().replace(/[.!]+$/, "");
+        const short = why.length > 140 ? `${why.slice(0, 139).trimEnd()}…` : why;
+        const more = fresh.length - 1;
+        items.push({
+          tone: "bad",
+          text:
+            t(`Nueva mención negativa: ${name}, en ${quote(f.question)}`, `New negative mention: ${name}, for ${quote(f.question)}`) +
+            (short ? `: ${short}` : "") +
+            (more ? t(` (y ${more} más)`, ` (and ${more} more)`) : "") +
+            ".",
+        });
+      }
+      blocks.push({ kind: "h", text: t("Cómo hablan de ti las IAs", "How the AIs talk about you") });
+      blocks.push({ kind: "list", items });
+    }
   }
 
   // Salud de la página.
   if (data.audit) {
     blocks.push({ kind: "h", text: t("Salud de tu página web", "Your website's health") });
     blocks.push({ kind: "p", text: t(`Puntaje: ${data.audit.score} de 100 (revisión del ${day(data.audit.date)}).`, `Score: ${data.audit.score} out of 100 (check from ${day(data.audit.date)}).`) });
+  }
+
+  // Páginas que compiten entre sí: una línea, solo si hay alguna urgente.
+  if (data.cannibal) {
+    const c = data.cannibal;
+    const more = c.urgent - 1;
+    blocks.push({ kind: "h", text: t("Páginas que compiten entre sí", "Pages competing with each other") });
+    blocks.push({
+      kind: "list",
+      items: [
+        {
+          tone: "bad",
+          text: t(
+            `Urgente: para ${quote(c.query)}, ${c.pages} de tus páginas compiten entre sí en Google y se reparten las visitas${more ? ` (y ${more} búsqueda${more === 1 ? "" : "s"} más)` : ""}. En la app te decimos cómo arreglarlo.`,
+            `Urgent: for ${quote(c.query)}, ${c.pages} of your pages compete with each other on Google and split the visits${more ? ` (and ${more} more search${more === 1 ? "" : "es"})` : ""}. The app shows you how to fix it.`,
+          ),
+        },
+      ],
+    });
   }
 
   // Search Console.
@@ -538,6 +736,49 @@ export function buildWeeklyEmail(business: EmailBusiness, data: WeeklyData, lang
     blocks.push({ kind: "list", items });
     const when = day(g.date);
     if (when) blocks.push({ kind: "p", muted: true, text: t(`Según tus reseñas traídas el ${when}.`, `Based on your reviews fetched on ${when}.`) });
+  }
+
+  // Enlaces hacia tu página.
+  if (data.links && data.links.referringDomains !== null) {
+    const l = data.links;
+    const int = new Intl.NumberFormat(intlLocale(lang));
+    const items: { text: string; tone?: Tone }[] = [
+      {
+        tone: l.prevReferringDomains === null || l.referringDomains === l.prevReferringDomains ? "neutral" : l.referringDomains! > l.prevReferringDomains ? "good" : "bad",
+        text: t(`Sitios que te enlazan: ${withChange(l.referringDomains, l.prevReferringDomains)}`, `Sites linking to you: ${withChange(l.referringDomains, l.prevReferringDomains)}`),
+      },
+    ];
+    const month =
+      l.newDomains !== null || l.lostDomains !== null
+        ? t(
+            `En el último mes: ${int.format(l.newDomains ?? 0)} ${l.newDomains === 1 ? "nuevo" : "nuevos"} y ${int.format(l.lostDomains ?? 0)} ${l.lostDomains === 1 ? "perdido" : "perdidos"}`,
+            `In the last month: ${int.format(l.newDomains ?? 0)} new and ${int.format(l.lostDomains ?? 0)} lost`,
+          )
+        : "";
+    const gap = l.gap ? t(`${int.format(l.gap)} sitios enlazan a tu competencia y a ti no`, `${int.format(l.gap)} sites link to your competitors but not to you`) : "";
+    if (month || gap) items.push({ text: [month, gap].filter(Boolean).join(" · ") + "." });
+    blocks.push({ kind: "h", text: t("Enlaces hacia tu página", "Links to your website") });
+    blocks.push({ kind: "list", items });
+  }
+
+  // Visitas de tu competencia: tú contra el que más recibe, y cómo cambió en un año.
+  if (data.traffic) {
+    const tr = data.traffic;
+    const v = (x: number | null) => visitsText(x, lang);
+    const who = [
+      tr.you ? t(`tú unas ${v(tr.you.etv)}`, `you about ${v(tr.you.etv)}`) : "",
+      tr.rival ? t(`${siteName(tr.rival.domain)} unas ${v(tr.rival.etv)}`, `${siteName(tr.rival.domain)} about ${v(tr.rival.etv)}`) : "",
+    ].filter(Boolean);
+    const yours = tr.you?.year;
+    const year = [
+      tr.rival?.year ? changeText(siteName(tr.rival.domain), tr.rival.year) : null,
+      // Solo tú: "pasaste de 1 a 3 visitas al mes".
+      yours ? (tr.rival?.year ? changeText(null, yours) : { es: `pasaste de ${visitsText(yours.from, "es")} a ${visitsText(yours.to, "es")} visitas al mes`, en: `you went from ${visitsText(yours.from, "en")} to ${visitsText(yours.to, "en")} visits a month` }) : null,
+    ].filter((x) => x !== null);
+    const items: { text: string; tone?: Tone }[] = [{ text: t(`Visitas al mes desde Google: ${who.join(" · ")}.`, `Monthly visits from Google: ${who.join(" · ")}.`) }];
+    if (year.length) items.push({ text: t(`En un año, ${year.map((x) => x.es).join("; ")}.`, `Over a year, ${year.map((x) => x.en).join("; ")}.`) });
+    blocks.push({ kind: "h", text: t("Visitas de tu competencia", "Your competitors' visits") });
+    blocks.push({ kind: "list", items });
   }
 
   // Recomendaciones.
@@ -613,12 +854,14 @@ export function closestWeekBefore(cur: RankReport, older: RankReport[]): RankRep
 export async function gatherWeekly(businessId: string, now = new Date()): Promise<WeeklyData> {
   const b = await db.business.findUniqueOrThrow({
     where: { id: businessId },
-    select: { seoLocations: true, seoLocationCode: true, seoLocationName: true, seoKeywords: true, study: true },
+    select: { name: true, website: true, seoLocations: true, seoLocationCode: true, seoLocationName: true, seoKeywords: true, study: true },
   });
   const zones = readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName);
   const latest = (kind: string, take = 1) => db.seoReport.findMany({ where: { businessId, kind }, orderBy: { createdAt: "desc" }, take, select: { data: true, createdAt: true } });
+  // Las partes nuevas (mapa, enlaces, visitas) son opcionales: si su lectura falla, el resumen sale igual.
+  const optional = (kind: string, take = 1) => latest(kind, take).catch(() => []);
 
-  const [rankRows, aiRows, auditRows, gscRows, gapRows, kwRows, reviewRows] = await Promise.all([
+  const [rankRows, aiRows, auditRows, gscRows, gapRows, kwRows, reviewRows, mapRows, linkRows, trafficRows] = await Promise.all([
     db.seoReport.findMany({
       where: { businessId, kind: "rank", createdAt: { gte: new Date(now.getTime() - 21 * DAY_MS) } },
       orderBy: { createdAt: "desc" },
@@ -629,8 +872,12 @@ export async function gatherWeekly(businessId: string, now = new Date()): Promis
     latest("audit"),
     latest("gsc"),
     latest("gap"),
-    latest("keywords"),
+    // El último de cada zona (para pesar tu parte de Google por búsquedas al mes).
+    latest("keywords", 2 * Math.max(1, zones.length)),
     latest("reviews"),
+    optional("maprank", 10),
+    optional("backlinks", 2),
+    optional("traffic"),
   ]);
 
   const ranks = rankRows
@@ -641,16 +888,38 @@ export async function gatherWeekly(businessId: string, now = new Date()): Promis
     })
     .filter((r): r is RankReport => r !== null);
   const weeklyZones: WeeklyZone[] = [];
+  // Para tu parte de Google: por zona, [la actual, la de hace ~7 días], con el código de la zona.
+  const shareZones: RankReport[][] = [];
   for (const [code, list] of groupByZone(ranks, zones)) {
     const [cur, ...older] = list;
     if (!cur) continue;
     const zone = zones.find((z) => z.code === code);
-    weeklyZones.push({ label: zoneLabel(zone?.name || cur.location), cur, prev: closestWeekBefore(cur, older) });
+    const prev = closestWeekBefore(cur, older);
+    weeklyZones.push({ label: zoneLabel(zone?.name || cur.location), cur, prev });
+    shareZones.push([cur, ...(prev ? [prev] : [])].map((r) => ({ ...r, locationCode: code })));
   }
 
   const ai = aiRows.map((r) => ({ rep: readVisibilityReport(r.data), at: r.createdAt })).filter((r) => r.rep);
   const audit = auditRows[0] ? readAuditReport(auditRows[0].data) : null;
   const gsc = gscRows[0] ? asGscReport(gscRows[0].data) : null;
+
+  // Tu parte del mercado: Google (contra hace ~7 días), el mapa y las IAs (contra la revisión anterior).
+  const main = zones[0]?.code;
+  const kwByZone = latestByZone(kwRows.map((r) => readKeywordsReport(r.data)), zones);
+  const market = weeklyMarket(
+    marketSummary({
+      website: b.website,
+      rankByZone: shareZones,
+      keywords: [...kwByZone.entries()].sort(([a], [c]) => Number(c === main) - Number(a === main)).map(([code, k]) => ({ ...k, locationCode: code })),
+      maps: mapGroups(mapRows.flatMap((r) => readMapReport(r.data) ?? [])),
+      ai: [ai[0]?.rep, ai[1]?.rep],
+    }),
+  );
+
+  // Páginas que compiten entre sí: solo Search Console puede marcar una búsqueda como urgente.
+  const cannibal = gsc?.pageQueries.length
+    ? weeklyCannibal(buildCannibal({ businessName: b.name, website: b.website, zones, gsc: { pageQueries: gsc.pageQueries, range: gsc.range }, ranks: [], audit, now }))
+    : null;
 
   // Solo búsquedas que tienen que ver con el negocio (los reportes viejos pueden traer de todo).
   const vocab = businessTopicVocab(b);
@@ -674,6 +943,10 @@ export async function gatherWeekly(businessId: string, now = new Date()): Promis
       : null,
     recommendations,
     gbp: reviewRows[0] ? weeklyGbp(reviewRows[0].data, now) : null,
+    market,
+    links: linkRows[0] ? weeklyLinks(readBacklinksReport(linkRows[0].data), linkRows[1] ? readBacklinksReport(linkRows[1].data) : null) : null,
+    traffic: trafficRows[0] ? weeklyTraffic(readTrafficReport(trafficRows[0].data)) : null,
+    cannibal,
   };
 }
 
@@ -789,16 +1062,21 @@ const emailLang = (v: string): UiLang => (v === "en" ? "en" : "es");
 export async function notifyRankAlerts(businessId: string, savedIds: string[]): Promise<{ sent: boolean; bad: number }> {
   const b = await db.business.findUnique({
     where: { id: businessId },
-    select: { id: true, name: true, color: true, seoAlerts: true, seoAlertEmail: true, seoEmailLang: true, seoLocations: true, seoLocationCode: true, seoLocationName: true },
+    select: { id: true, name: true, color: true, website: true, seoAlerts: true, seoAlertEmail: true, seoEmailLang: true, seoLocations: true, seoLocationCode: true, seoLocationName: true },
   });
   const to = b ? alertRecipients(b.seoAlertEmail) : [];
   if (!b || !b.seoAlerts || !to.length || !savedIds.length) return { sent: false, bad: 0 };
   const zones = readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName);
-  const rows = await db.seoReport.findMany({ where: { businessId, kind: "rank" }, orderBy: { createdAt: "desc" }, take: 60, select: { id: true, data: true } });
+  const [rows, kwRows] = await Promise.all([
+    db.seoReport.findMany({ where: { businessId, kind: "rank" }, orderBy: { createdAt: "desc" }, take: 60, select: { id: true, data: true } }),
+    // Para pesar tu parte de Google por búsquedas al mes (opcional).
+    db.seoReport.findMany({ where: { businessId, kind: "keywords" }, orderBy: { createdAt: "desc" }, take: 2 * Math.max(1, zones.length), select: { data: true } }).catch(() => []),
+  ]);
   const fresh = rows.filter((r) => savedIds.includes(r.id)).map((r) => readRankReport(r.data));
   const older = rows.filter((r) => !savedIds.includes(r.id)).map((r) => readRankReport(r.data));
   const prevByZone = groupByZone(older, zones);
   const results: RankAlerts[] = [];
+  const pairs: [RankReport, RankReport][] = [];
   for (const [code, list] of groupByZone(fresh, zones)) {
     const cur = list[0];
     const prev = prevByZone.get(code)?.[0];
@@ -806,10 +1084,14 @@ export async function notifyRankAlerts(businessId: string, savedIds: string[]): 
     const z = rankAlerts(prev, cur);
     const zone = zones.find((x) => x.code === code);
     results.push({ ...z, zone: zoneLabel(zone?.name || cur.location) });
+    pairs.push([{ ...cur, locationCode: code }, { ...prev, locationCode: code }]);
   }
-  const bad = results.reduce((s, z) => s + z.bad.length, 0);
+  const main = zones[0]?.code;
+  const kw = [...latestByZone(kwRows.map((r) => readKeywordsReport(r.data)), zones).entries()].sort(([a], [c]) => Number(c === main) - Number(a === main)).map(([code, k]) => ({ ...k, locationCode: code }));
+  const share = shareDrop(pairs, b.website, kw);
+  const bad = results.reduce((s, z) => s + z.bad.length, 0) + (share ? 1 : 0);
   if (!bad) return { sent: false, bad: 0 };
-  const email = buildAlertEmail(b, results, emailLang(b.seoEmailLang));
+  const email = buildAlertEmail(b, results, emailLang(b.seoEmailLang), undefined, { share });
   await sendSeoEmail({ businessId, to, ...email });
   return { sent: true, bad };
 }

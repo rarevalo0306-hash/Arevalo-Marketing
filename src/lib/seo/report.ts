@@ -9,6 +9,8 @@ import { intlLocale, translator, type UiLang } from "@/lib/i18n";
 import { BUSINESS_TZ, localToUtc } from "@/lib/time";
 import { AI_NAMES, alertRecipients, renderEmail, type BuiltEmail, type EmailBlock, type EmailOpts, weeklyMovers, type Mover } from "@/lib/seo/alerts";
 import { ISSUE_TEXT, readAuditReport, type Severity } from "@/lib/seo/audit";
+import { hintText, readBacklinksReport, type LinkHint } from "@/lib/seo/backlinks";
+import { buildCannibal, fixText, type CannibalSeverity, type CannibalSource } from "@/lib/seo/cannibal";
 import { readTrackedKeywords, readZones, zoneLabel, type Zone } from "@/lib/seo/dataforseo";
 import { businessTopicVocab, readGapReport, relevantGapRows, type GapType } from "@/lib/seo/gap";
 import { readGbpReport, readReviewsReport } from "@/lib/seo/gbp";
@@ -18,7 +20,9 @@ import { readMapReport, type MapReport } from "@/lib/seo/maprank";
 import { pathOf, readOnPageReport, topIdeas } from "@/lib/seo/onpage";
 import { readRankReport, type RankReport } from "@/lib/seo/rank";
 import type { SeoKind } from "@/lib/seo/reports";
-import { readVisibilityReport, type VisibilityReport } from "@/lib/seo/visibility";
+import { groupNewestFirst, hasMarket, marketSummary, pctText, shareChange, type AiShare, type MapShare, type OrganicShare } from "@/lib/seo/sov";
+import { hasData, latestMonth, readTrafficReport, siteName, trafficDelta, trafficSummary } from "@/lib/seo/traffic";
+import { readVisibilityReport, sentimentText, type VisibilityReport } from "@/lib/seo/visibility";
 import { readArticleReport } from "@/lib/seo/writer";
 import { groupByZone } from "@/lib/seo/zones";
 
@@ -170,10 +174,14 @@ export type ReportInputs = {
   posts: { channel: string; at: Date }[];
 };
 
-export const REPORT_KINDS: SeoKind[] = ["rank", "keywords", "maprank", "gbp", "reviews", "ai", "audit", "onpage", "gsc", "gap", "article"];
+/**
+ * Los tipos de reporte que se leen. "Páginas que compiten entre sí" no necesita el suyo: se arma con las posiciones,
+ * Search Console y la auditoría que ya se leen (como el panel), hasta el final del periodo.
+ */
+export const REPORT_KINDS: SeoKind[] = ["rank", "keywords", "maprank", "gbp", "reviews", "ai", "audit", "onpage", "gsc", "gap", "article", "backlinks", "traffic"];
 
 /** Cuántos reportes de cada tipo se leen (los más nuevos hasta el final del periodo). */
-const TAKE: Partial<Record<SeoKind, number>> = { rank: 300, keywords: 25, maprank: 30, gbp: 3, reviews: 1, ai: 12, audit: 8, onpage: 1, gsc: 1, gap: 1, article: 30 };
+const TAKE: Partial<Record<SeoKind, number>> = { rank: 300, keywords: 25, maprank: 30, gbp: 3, reviews: 1, ai: 12, audit: 8, onpage: 1, gsc: 1, gap: 1, article: 30, backlinks: 6, traffic: 1 };
 
 /** Lee de la base de datos lo que necesita el reporte. No llama a ninguna API. */
 export async function loadReportInputs(businessId: string, period: ReportPeriod): Promise<ReportInputs> {
@@ -330,6 +338,56 @@ export type GapSection = {
   rows: { keyword: string; volume: number | null; difficulty: number | null; type: GapType; yourPosition: number | null; competitor: string; competitorPosition: number | null }[];
 };
 
+/** Una de las tres partes del mercado: tu parte en % (0-100) con su cambio, y el detalle de sov.ts. */
+export type SharePart<S> = { share: S; you: Delta };
+export type MarketSection = {
+  /** La revisión más nueva que se usó. */
+  date: string;
+  organic: SharePart<OrganicShare> | null;
+  map: SharePart<MapShare> | null;
+  /** Solo si las IAs nombraron algún negocio. */
+  ai: SharePart<AiShare> | null;
+};
+
+export type SentimentCounts = { positiva: number; neutral: number; negativa: number; total: number };
+export type SentimentSection = SentimentCounts & {
+  date: string;
+  /** Lo que más te asocian ("garantía", "precio"…). */
+  attributes: string[];
+  /** Hasta 2 menciones negativas, con la IA, el motivo y la cita. */
+  negatives: { provider: string; reason: string; quote: string }[];
+  /** La revisión de comparación (null si no hay o no tenía tono). */
+  before: SentimentCounts | null;
+};
+
+export type LinksSection = {
+  date: string;
+  stale: boolean;
+  /** Sitios que te enlazan. */
+  referringDomains: Delta;
+  /** Fuerza del dominio (0 a 1000). */
+  rank: Delta;
+  backlinks: number | null;
+  /** Sitios nuevos y perdidos en el último mes (null si no se sabe). */
+  newDomains: number | null;
+  lostDomains: number | null;
+  competitors: { domain: string; referringDomains: number | null; rank: number | null }[];
+  /** Dónde conseguir enlaces: los 5 primeros sitios que enlazan a tu competencia y a ti no. */
+  gap: { domain: string; hint: LinkHint; linksTo: string[] }[];
+  gapTotal: number;
+};
+
+export type TrafficRow = { domain: string; isYou: boolean; etv: number | null; keywords: number | null; top10: number | null; year: { from: number; to: number } | null; noData: boolean };
+export type TrafficSection = { date: string; country: string; month: string | null; rows: TrafficRow[]; lines: Bi[] };
+
+export type CannibalSection = {
+  source: CannibalSource;
+  total: number;
+  urgent: number;
+  /** Las 3 primeras (las urgentes primero), con las páginas y qué hacer. */
+  issues: { query: string; severity: CannibalSeverity; pages: string[]; fix: Bi }[];
+};
+
 export type ReportData = {
   business: { id: string; name: string; website: string; color: string; color2: string; color3: string; logoUrl: string; fontHeading: string; aiText: string };
   period: ReportPeriod;
@@ -344,6 +402,16 @@ export type ReportData = {
   gap: GapSection | null;
   articles: { keyword: string; score: number; date: string }[];
   posts: { total: number; prevTotal: number; byChannel: { channel: string; count: number }[] };
+  /** Tu parte del mercado (Google, mapa e IAs). */
+  market: MarketSection | null;
+  /** Cómo hablan de ti las IAs (solo si se leyó el tono). */
+  sentiment: SentimentSection | null;
+  /** Enlaces hacia tu página. */
+  links: LinksSection | null;
+  /** Visitas de tu competencia. */
+  traffic: TrafficSection | null;
+  /** Páginas que compiten entre sí (solo si hay alguna). */
+  cannibal: CannibalSection | null;
 };
 
 type Dated<T> = { rep: T; at: Date };
@@ -373,31 +441,46 @@ const iso = (d: Date) => d.toISOString();
 const inRange = (at: Date, from: Date, to: Date) => at.getTime() >= from.getTime() && at.getTime() < to.getTime();
 const MAX_KEYWORDS = 25;
 
-function rankSection(inputs: ReportInputs, period: ReportPeriod): RankSection | null {
-  const b = inputs.business;
-  const zones: Zone[] = readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName);
-  const reports = parsed(inputs.rows.rank, readRankReport).map((x) => ({ ...x, rep: { ...x.rep, createdAt: iso(x.at) } }));
+const zonesOf = (b: ReportBusiness): Zone[] => readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName);
+const rankReports = (inputs: ReportInputs) => parsed(inputs.rows.rank, readRankReport).map((x) => ({ ...x, rep: { ...x.rep, createdAt: iso(x.at) } }));
+
+/** Por zona: la última revisión de posiciones hasta el final del periodo y con cuál se compara. */
+function rankZonePairs(inputs: ReportInputs, period: ReportPeriod): { zone: Zone; label: string; cur: Dated<RankReport>; base: Dated<RankReport> | null }[] {
+  const zones = zonesOf(inputs.business);
   const byZone = groupByZone(
-    reports.map((x) => ({ ...x, locationCode: x.rep.locationCode })),
+    rankReports(inputs).map((x) => ({ ...x, locationCode: x.rep.locationCode })),
     zones,
   );
-  const kwByZone = new Map<number, KeywordsReport>();
-  for (const [code, list] of groupByZone(
-    parsed(inputs.rows.keywords, readKeywordsReport).map((x) => ({ ...x.rep, at: x.at })),
-    zones,
-  )) {
-    const k = list.find((r) => r.at.getTime() <= period.to.getTime());
-    if (k) kwByZone.set(code, k);
-  }
-
-  const summaries: RankZoneSummary[] = [];
-  const pairs: { label: string; cur: RankReport; prev: RankReport | null }[] = [];
+  const out: { zone: Zone; label: string; cur: Dated<RankReport>; base: Dated<RankReport> | null }[] = [];
   for (const zone of zones) {
     const list = byZone.get(zone.code) ?? [];
     const cur = atOrBefore(list, period.to);
     if (!cur || !cur.rep.rows.length) continue;
-    const base = baseFor(list, cur, period);
-    const label = zoneLabel(zone.name || cur.rep.location) || "—";
+    out.push({ zone, label: zoneLabel(zone.name || cur.rep.location) || "—", cur, base: baseFor(list, cur, period) });
+  }
+  return out;
+}
+
+/** El último reporte de palabras de cada zona hasta el final del periodo. */
+function keywordsByZone(inputs: ReportInputs, period: ReportPeriod): Map<number, KeywordsReport> {
+  const kwByZone = new Map<number, KeywordsReport>();
+  for (const [code, list] of groupByZone(
+    parsed(inputs.rows.keywords, readKeywordsReport).map((x) => ({ ...x.rep, at: x.at })),
+    zonesOf(inputs.business),
+  )) {
+    const k = list.find((r) => r.at.getTime() <= period.to.getTime());
+    if (k) kwByZone.set(code, k);
+  }
+  return kwByZone;
+}
+
+function rankSection(inputs: ReportInputs, period: ReportPeriod): RankSection | null {
+  const b = inputs.business;
+  const kwByZone = keywordsByZone(inputs, period);
+
+  const summaries: RankZoneSummary[] = [];
+  const pairs: { label: string; cur: RankReport; prev: RankReport | null }[] = [];
+  for (const { zone, label, cur, base } of rankZonePairs(inputs, period)) {
     pairs.push({ label, cur: cur.rep, prev: base?.rep ?? null });
     summaries.push({
       code: zone.code,
@@ -593,6 +676,143 @@ function gapSection(inputs: ReportInputs, period: ReportPeriod): GapSection | nu
   };
 }
 
+/** Tu parte de Google, del mapa y de las IAs al final del periodo, comparada con cómo estabas al empezar. */
+function marketSection(inputs: ReportInputs, period: ReportPeriod): MarketSection | null {
+  const main = zonesOf(inputs.business)[0]?.code;
+  const zones = rankZonePairs(inputs, period);
+  const withCode = (r: RankReport, code: number) => ({ ...r, locationCode: code });
+  // Mapas: por búsqueda, el último hasta el final del periodo y con cuál se compara.
+  const mapList = parsed(inputs.rows.maprank, readMapReport).filter((x) => x.at.getTime() <= period.to.getTime());
+  const maps = [...groupNewestFirst(mapList, (x) => x.rep.keyword.trim().toLowerCase()).values()].map((list) => {
+    const base = baseFor(list, list[0], period);
+    return base ? [list[0].rep, base.rep] : [list[0].rep];
+  });
+  const ais = parsed(inputs.rows.ai, readVisibilityReport);
+  const aiCur = atOrBefore(ais, period.to);
+  const aiBase = aiCur ? baseFor(ais, aiCur, period) : null;
+  const m = marketSummary({
+    website: inputs.business.website,
+    rankByZone: zones.map((z) => [withCode(z.cur.rep, z.zone.code), ...(z.base ? [withCode(z.base.rep, z.zone.code)] : [])]),
+    keywords: [...keywordsByZone(inputs, period).entries()].sort(([a], [c]) => Number(c === main) - Number(a === main)).map(([code, k]) => ({ ...k, locationCode: code })),
+    maps,
+    ai: [aiCur?.rep, aiBase?.rep],
+  });
+  if (!hasMarket(m)) return null;
+  const part = <S extends { you: number }>(share: S | null, delta: number | null): SharePart<S> | null => {
+    if (!share) return null;
+    const c = shareChange(share.you, delta);
+    return { share, you: compare(c.now, c.before, { epsilon: 0.5 }) };
+  };
+  const ai = m.ai && m.ai.mentions ? part(m.ai, m.aiDelta) : null;
+  const organic = part(m.organic, m.organicDelta);
+  const map = part(m.map, m.mapDelta);
+  if (!organic && !map && !ai) return null;
+  const dates = [...(organic ? zones.map((z) => z.cur.at) : []), ...(map && mapList[0] ? [mapList[0].at] : []), ...(ai && aiCur ? [aiCur.at] : [])];
+  return { date: iso(new Date(Math.max(...dates.map((d) => d.getTime())))), organic, map, ai };
+}
+
+const toneCounts = (r: VisibilityReport | null | undefined): SentimentCounts | null => {
+  const t = r?.sentiment;
+  return t && t.status === "ok" && t.total > 0 ? { positiva: t.positiva, neutral: t.neutral, negativa: t.negativa, total: t.total } : null;
+};
+
+/** Cómo hablan de ti las IAs en la última revisión del periodo (solo si se leyó el tono). */
+function sentimentSection(inputs: ReportInputs, period: ReportPeriod): SentimentSection | null {
+  const list = parsed(inputs.rows.ai, readVisibilityReport);
+  const cur = atOrBefore(list, period.to);
+  const counts = toneCounts(cur?.rep);
+  if (!cur || !counts) return null;
+  const base = baseFor(list, cur, period);
+  return {
+    ...counts,
+    date: iso(cur.at),
+    attributes: (cur.rep.sentiment?.attributes ?? []).slice(0, 5).map((a) => a.name),
+    negatives: cur.rep.results
+      .filter((r) => !r.error && r.sentiment?.sentiment === "negativa")
+      .slice(0, 2)
+      .map((r) => ({ provider: AI_NAMES[r.provider] ?? r.provider, reason: r.sentiment?.reason ?? "", quote: r.sentiment?.quote ?? "" })),
+    before: toneCounts(base?.rep),
+  };
+}
+
+/** Enlaces hacia tu página: la última revisión del periodo, comparada con la del inicio. */
+function linksSection(inputs: ReportInputs, period: ReportPeriod): LinksSection | null {
+  const list = parsed(inputs.rows.backlinks, readBacklinksReport);
+  const cur = atOrBefore(list, period.to);
+  if (!cur) return null;
+  const base = baseFor(list, cur, period);
+  const count = (r: { summary: { referringDomains: number | null }; referringTotal: number | null } | undefined) => (r ? (r.summary.referringDomains ?? r.referringTotal) : null);
+  const s = cur.rep.summary;
+  if (count(cur.rep) === null && s.rank === null && s.backlinks === null) return null;
+  return {
+    date: iso(cur.at),
+    stale: cur.at.getTime() < period.from.getTime(),
+    referringDomains: compare(count(cur.rep), count(base?.rep)),
+    rank: compare(s.rank, base?.rep.summary.rank),
+    backlinks: s.backlinks,
+    newDomains: s.newDomains1m,
+    lostDomains: s.lostDomains1m,
+    competitors: cur.rep.competitors.filter((c) => c.ok).slice(0, 3).map((c) => ({ domain: c.domain, referringDomains: c.referringDomains, rank: c.rank })),
+    gap: cur.rep.gap.slice(0, 5).map((g) => ({ domain: g.domain, hint: g.hint, linksTo: g.linksTo })),
+    gapTotal: cur.rep.gap.length,
+  };
+}
+
+/** Visitas de tu competencia: el último reporte hasta el final del periodo (si alguien tiene datos). */
+function trafficSection(inputs: ReportInputs, period: ReportPeriod): TrafficSection | null {
+  const cur = atOrBefore(parsed(inputs.rows.traffic, readTrafficReport), period.to);
+  if (!cur || !cur.rep.domains.some((d) => hasData(d))) return null;
+  const end = latestMonth(cur.rep.domains);
+  // Tú primero; después tu competencia, de la que más visitas recibe a la que menos.
+  const domains = [...cur.rep.domains].sort((a, b) => Number(b.isYou) - Number(a.isYou) || (b.now?.etv ?? -1) - (a.now?.etv ?? -1));
+  return {
+    date: iso(cur.at),
+    country: cur.rep.country,
+    month: end,
+    rows: domains.slice(0, 4).map((d) => ({
+      domain: d.domain,
+      isYou: d.isYou,
+      etv: d.now?.etv ?? null,
+      keywords: d.now?.keywords ?? null,
+      top10: d.now?.top10 ?? null,
+      year: hasData(d) ? trafficDelta(d, 12, end) : null,
+      noData: !hasData(d),
+    })),
+    lines: trafficSummary(cur.rep).slice(0, 2),
+  };
+}
+
+const esT = translator("es");
+const enT = translator("en");
+const shortUrl = (url: string) => url.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") || url;
+
+/**
+ * Páginas que compiten entre sí, armado como en el panel (Search Console, si no las posiciones de los 30 días antes
+ * del final del periodo, y la auditoría). null si no hay datos o ninguna búsqueda tiene ese problema.
+ */
+function cannibalSection(inputs: ReportInputs, period: ReportPeriod, now: Date): CannibalSection | null {
+  const b = inputs.business;
+  const until = (x: { at: Date }) => x.at.getTime() <= period.to.getTime();
+  const gsc = atOrBefore(parsed(inputs.rows.gsc, asGscReport), period.to);
+  const audit = atOrBefore(parsed(inputs.rows.audit, readAuditReport), period.to);
+  const report = buildCannibal({
+    businessName: b.name,
+    website: b.website,
+    zones: zonesOf(b),
+    gsc: gsc ? { pageQueries: gsc.rep.pageQueries, range: gsc.rep.range } : null,
+    ranks: rankReports(inputs).filter(until).map((x) => x.rep),
+    audit: audit?.rep ?? null,
+    now: new Date(Math.min(period.to.getTime(), now.getTime())),
+  });
+  if (!report.source || !report.issues.length) return null;
+  return {
+    source: report.source,
+    total: report.issues.length,
+    urgent: report.issues.filter((i) => i.severity === "alta").length,
+    issues: report.issues.slice(0, 3).map((i) => ({ query: i.query, severity: i.severity, pages: i.pages.slice(0, 3).map((p) => shortUrl(p.url)), fix: { es: fixText(i, esT), en: fixText(i, enT) } })),
+  };
+}
+
 /** Arma el reporte con lo leído (puro). */
 export function buildReport(inputs: ReportInputs, period: ReportPeriod, now = new Date()): ReportData {
   const b = inputs.business;
@@ -621,6 +841,11 @@ export function buildReport(inputs: ReportInputs, period: ReportPeriod, now = ne
     gap: gapSection(inputs, period),
     articles,
     posts: { total: byChannel.reduce((s, c) => s + c.count, 0), prevTotal, byChannel },
+    market: marketSection(inputs, period),
+    sentiment: sentimentSection(inputs, period),
+    links: linksSection(inputs, period),
+    traffic: trafficSection(inputs, period),
+    cannibal: cannibalSection(inputs, period, now),
   };
 }
 
@@ -636,12 +861,15 @@ export async function gatherReport(
 
 /** ¿No hay nada que mostrar? (el PDF de una página que dice qué configurar) */
 export function isEmptyReport(d: ReportData): boolean {
-  return !d.rank && !d.maps && !d.gbp && !d.ai && !d.audit && !d.onpage && !d.gsc && !d.gap && !d.articles.length && !d.posts.total && !d.posts.prevTotal;
+  return (
+    !d.rank && !d.maps && !d.gbp && !d.ai && !d.audit && !d.onpage && !d.gsc && !d.gap && !d.articles.length && !d.posts.total && !d.posts.prevTotal &&
+    !d.market && !d.links && !d.traffic && !d.cannibal
+  );
 }
 
 // ---------- Indicadores (KPIs) ----------
 
-export type KpiId = "avgPosition" | "top10" | "mapTop3" | "rating" | "ai" | "posts";
+export type KpiId = "avgPosition" | "top10" | "mapTop3" | "rating" | "ai" | "share" | "links" | "posts";
 export type Kpi = { id: KpiId; label: Bi; delta: Delta; format: "pos" | "int" | "pct" | "rating"; note?: Bi };
 
 /** Los indicadores de arriba del reporte (solo los que tienen dato). */
@@ -681,6 +909,22 @@ export function reportKpis(d: ReportData): Kpi[] {
           : {}),
     });
   if (d.ai && d.ai.score.now !== null) out.push({ id: "ai", label: { es: "Visibilidad en las IAs", en: "AI visibility" }, delta: d.ai.score, format: "pct" });
+  if (d.market?.organic)
+    out.push({
+      id: "share",
+      label: { es: "Tu parte de Google", en: "Your share of Google" },
+      delta: d.market.organic.you,
+      format: "pct",
+      note: { es: "de los clics de tus búsquedas", en: "of the clicks on your searches" },
+    });
+  if (d.links && d.links.referringDomains.now !== null)
+    out.push({
+      id: "links",
+      label: { es: "Sitios que te enlazan", en: "Sites linking to you" },
+      delta: d.links.referringDomains,
+      format: "int",
+      ...(d.links.rank.now !== null ? { note: { es: `fuerza ${d.links.rank.now} de 1000`, en: `strength ${d.links.rank.now} of 1000` } } : {}),
+    });
   if (d.posts.total || d.posts.prevTotal)
     out.push({ id: "posts", label: { es: "Publicaciones", en: "Posts published" }, delta: compare(d.posts.total, d.posts.prevTotal, { epsilon: 0.5 }), format: "int" });
   return out;
@@ -823,6 +1067,81 @@ export function summaryFacts(d: ReportData, lang: UiLang, tz = BUSINESS_TZ): Fac
     out.push({ area: "gap", tone: "neutral", text: t(`Oportunidades donde la competencia sale y el negocio no (o sale más abajo): ${list}.`, `Opportunities where competitors rank and the business doesn't (or ranks lower): ${list}.`) });
   }
 
+  if (d.market) {
+    const m = d.market;
+    const before = (x: Delta, unit: string) => (x.before !== null && x.diff ? t(` (antes ${nf.format(x.before)}${unit})`, ` (before ${nf.format(x.before)}${unit})`) : "");
+    const pc = (x: Delta) => `${nf.format(x.now ?? 0)}${t(" %", "%")}`;
+    const parts: string[] = [];
+    if (m.organic) {
+      const o = m.organic.share;
+      parts.push(
+        t(`Google: el negocio se lleva el ${pc(m.organic.you)} de los clics posibles de sus búsquedas${before(m.organic.you, " %")}`, `Google: the business gets ${pc(m.organic.you)} of the possible clicks on its searches${before(m.organic.you, "%")}`) +
+          (o.directories > 0 ? t(`; los directorios y redes, el ${pctText(o.directories).replace("%", " %")}`, `; directories and social media, ${pctText(o.directories)}`) : "") +
+          (o.leader ? t(`; el competidor que más se lleva es ${o.leader.label} (${pctText(o.leader.share).replace("%", " %")})`, `; the top competitor is ${o.leader.label} (${pctText(o.leader.share)})`) : ""),
+      );
+    }
+    if (m.map)
+      parts.push(
+        t(`Mapa de Google: sale entre los 3 primeros en el ${pc(m.map.you)} de los puntos${before(m.map.you, " %")}`, `Google Maps: in the top 3 at ${pc(m.map.you)} of the points${before(m.map.you, "%")}`) +
+          (m.map.share.leader ? t(`; ${m.map.share.leader.label}, en el ${pctText(m.map.share.leader.share).replace("%", " %")}`, `; ${m.map.share.leader.label}, at ${pctText(m.map.share.leader.share)}`) : ""),
+      );
+    if (m.ai)
+      parts.push(
+        t(`IAs: ${pc(m.ai.you)} de las veces que nombran un negocio${before(m.ai.you, " %")}`, `AI assistants: ${pc(m.ai.you)} of the times they name a business${before(m.ai.you, "%")}`) +
+          (m.ai.share.leader ? t(`; ${m.ai.share.leader.label}, ${pctText(m.ai.share.leader.share).replace("%", " %")}`, `; ${m.ai.share.leader.label}, ${pctText(m.ai.share.leader.share)}`) : ""),
+      );
+    out.push({ area: "market", tone: m.organic?.you.tone ?? m.map?.you.tone ?? "neutral", text: t(`Parte del mercado: ${parts.join(". ")}.`, `Share of the market: ${parts.join(". ")}.`) });
+  }
+
+  if (d.sentiment) {
+    const s = d.sentiment;
+    const counts = sentimentText(s);
+    const neg = s.negatives[0];
+    out.push({
+      area: "sentiment",
+      tone: s.negativa ? "bad" : s.positiva ? "good" : "neutral",
+      text:
+        t(`Cómo hablan las IAs del negocio: ${counts.es}`, `How AI assistants talk about the business: ${counts.en}`) +
+        (s.attributes.length ? t(`; lo asocian con ${s.attributes.slice(0, 3).join(", ")}`, `; they link it with ${s.attributes.slice(0, 3).join(", ")}`) : "") +
+        (neg ? t(`. Mención negativa de ${neg.provider}: ${cutWords(neg.reason, 160)}`, `. Negative mention from ${neg.provider}: ${cutWords(neg.reason, 160)}`) : "") +
+        ".",
+    });
+  }
+
+  if (d.links) {
+    const l = d.links;
+    const parts: string[] = [];
+    if (l.referringDomains.now !== null) parts.push(t(`${int.format(l.referringDomains.now)} sitios enlazan al sitio${changeText(l.referringDomains, lang)}`, `${int.format(l.referringDomains.now)} sites link to the website${changeText(l.referringDomains, lang)}`));
+    if (l.rank.now !== null) parts.push(t(`fuerza ${int.format(l.rank.now)} de 1000`, `strength ${int.format(l.rank.now)} out of 1000`));
+    if (l.newDomains !== null || l.lostDomains !== null) parts.push(t(`en el último mes ${l.newDomains ?? 0} ${l.newDomains === 1 ? "nuevo" : "nuevos"} y ${l.lostDomains ?? 0} ${l.lostDomains === 1 ? "perdido" : "perdidos"}`, `in the last month ${l.newDomains ?? 0} new and ${l.lostDomains ?? 0} lost`));
+    if (l.competitors.length) parts.push(t(`la competencia: ${l.competitors.map((c) => `${c.domain} ${c.referringDomains === null ? "—" : int.format(c.referringDomains)}`).join(", ")}`, `competitors: ${l.competitors.map((c) => `${c.domain} ${c.referringDomains === null ? "—" : int.format(c.referringDomains)}`).join(", ")}`));
+    if (l.gapTotal) parts.push(t(`${l.gapTotal} sitios enlazan a la competencia y no al negocio (por ejemplo ${l.gap.slice(0, 2).map((g) => g.domain).join(", ")})`, `${l.gapTotal} sites link to competitors but not to the business (for example ${l.gap.slice(0, 2).map((g) => g.domain).join(", ")})`));
+    if (parts.length) out.push({ area: "links", tone: l.referringDomains.tone, text: t(`Enlaces: ${parts.join("; ")}.`, `Links: ${parts.join("; ")}.`) });
+  }
+
+  if (d.traffic) {
+    const tr = d.traffic;
+    const rows = tr.rows.filter((r) => !r.noData).map((r) => (r.isYou ? t(`el negocio unas ${int.format(Math.round(r.etv ?? 0))}`, `the business about ${int.format(Math.round(r.etv ?? 0))}`) : `${siteName(r.domain)} ${t("unas", "about")} ${int.format(Math.round(r.etv ?? 0))}`));
+    out.push({
+      area: "traffic",
+      tone: "neutral",
+      text: [t(`Visitas al mes desde Google (estimadas${tr.country ? `, ${tr.country}` : ""}): ${rows.join("; ")}.`, `Monthly visits from Google (estimated${tr.country ? `, ${tr.country}` : ""}): ${rows.join("; ")}.`), ...tr.lines.map((l) => l[lang])].join(" "),
+    });
+  }
+
+  if (d.cannibal) {
+    const c = d.cannibal;
+    const first = c.issues[0];
+    out.push({
+      area: "cannibal",
+      tone: c.urgent ? "bad" : "neutral",
+      text: t(
+        `Páginas que compiten entre sí: ${c.total} ${c.total === 1 ? "búsqueda" : "búsquedas"}${c.urgent ? ` (${c.urgent} urgente${c.urgent === 1 ? "" : "s"})` : ""}; la primera, ${quote(first.query, lang)}: ${first.fix.es}`,
+        `Pages competing with each other: ${c.total} ${c.total === 1 ? "search" : "searches"}${c.urgent ? ` (${c.urgent} urgent)` : ""}; the first one, ${quote(first.query, lang)}: ${first.fix.en}`,
+      ),
+    });
+  }
+
   if (d.articles.length)
     out.push({
       area: "articles",
@@ -896,6 +1215,23 @@ export function whatChanged(d: ReportData, lang: UiLang): { tone: Tone; text: st
     out.push({ tone: "good", weight: 3, text: d.gbp.newReviews === 1 ? t("Llegó 1 reseña nueva en Google.", "You got 1 new Google review.") : t(`Llegaron ${d.gbp.newReviews} reseñas nuevas en Google.`, `You got ${d.gbp.newReviews} new Google reviews.`) });
   if (d.gbp?.unanswered)
     out.push({ tone: "bad", weight: 2, text: d.gbp.unanswered === 1 ? t("Tienes 1 reseña sin contestar.", "You have 1 unanswered review.") : t(`Tienes ${d.gbp.unanswered} reseñas sin contestar.`, `You have ${d.gbp.unanswered} unanswered reviews.`) });
+  const share = d.market?.organic?.you;
+  if (share && share.tone !== "neutral" && share.before !== null && share.now !== null)
+    out.push({
+      tone: share.tone,
+      weight: 3,
+      text: t(`Tu parte de los clics de Google pasó del ${nf.format(share.before)} % al ${nf.format(share.now)} %.`, `Your share of Google clicks went from ${nf.format(share.before)}% to ${nf.format(share.now)}%.`),
+    });
+  const links = d.links?.referringDomains;
+  if (links && links.diff && links.before !== null && links.now !== null)
+    out.push({ tone: links.tone, weight: 2, text: t(`Sitios que te enlazan: de ${links.before} a ${links.now}.`, `Sites linking to you: from ${links.before} to ${links.now}.`) });
+  const sent = d.sentiment;
+  if (sent && sent.negativa > (sent.before?.negativa ?? 0))
+    out.push({
+      tone: "bad",
+      weight: 3,
+      text: sent.negativa === 1 ? t("Una IA habló mal de ti en 1 respuesta.", "An AI assistant spoke badly of you in 1 answer.") : t(`Las IAs hablaron mal de ti en ${sent.negativa} respuestas.`, `AI assistants spoke badly of you in ${sent.negativa} answers.`),
+    });
   if (d.ai && d.ai.score.tone !== "neutral" && d.ai.score.before !== null)
     out.push({ tone: d.ai.score.tone, weight: 3, text: t(`Las IAs te mencionan en el ${d.ai.score.now} % de las respuestas (antes ${d.ai.score.before} %).`, `AI assistants mention you in ${d.ai.score.now}% of answers (before ${d.ai.score.before}%).`) });
   if (d.audit && d.audit.score.tone !== "neutral" && d.audit.score.before !== null)
@@ -965,6 +1301,11 @@ export function ruleSummary(d: ReportData, lang: UiLang, tz = BUSINESS_TZ): Repo
         ? t("Contesta la reseña que está sin respuesta: en la app la IA te la escribe.", "Reply to the unanswered review: in the app the AI writes the reply for you.")
         : t(`Contesta las ${d.gbp.unanswered} reseñas sin respuesta: en la app la IA te escribe cada respuesta.`, `Reply to the ${d.gbp.unanswered} unanswered reviews: in the app the AI writes each reply for you.`),
     );
+  const urgentPages = d.cannibal?.issues.find((i) => i.severity === "alta");
+  if (urgentPages) add(cutWords(t(`Para ${quote(urgentPages.query, lang)} tienes páginas que compiten entre sí: `, `For ${quote(urgentPages.query, lang)} you have pages competing with each other: `) + lowerFirst(urgentPages.fix[lang]), 260));
+  const negative = d.sentiment?.negatives[0];
+  if (negative)
+    add(t(`Mira qué dice ${negative.provider} de ti en «Visibilidad en las IAs» y responde a eso en tu página y en tus reseñas.`, `See what ${negative.provider} says about you in "AI visibility" and address it on your website and in your reviews.`));
   if (d.rank?.drops[0]) add(t(`Revisa la página que debería salir con ${quote(d.rank.drops[0].keyword, lang)} y mejórala con «Revisar mis páginas».`, `Review the page that should rank for ${quote(d.rank.drops[0].keyword, lang)} and improve it with "Review my pages".`));
   if (d.gap?.rows[0]) add(t(`Escribe un artículo sobre ${quote(d.gap.rows[0].keyword, lang)} con el Escritor SEO: tu competencia ya sale con esa búsqueda.`, `Write an article about ${quote(d.gap.rows[0].keyword, lang)} with the SEO Writer: your competitors already rank for it.`));
   if (d.audit && (d.audit.score.now ?? 100) < 85 && d.audit.issues[0]) {
@@ -972,6 +1313,8 @@ export function ruleSummary(d: ReportData, lang: UiLang, tz = BUSINESS_TZ): Repo
     add(cutWords(`${t("En tu sitio", "On your website")}, ${lowerFirst(issue.title[lang])}: ${issue.fix[lang]}`, 260));
   }
   if (d.onpage?.ideas[0]) add(d.onpage.ideas[0].text[lang]);
+  const link = d.links?.gap[0];
+  if (link) add(cutWords(t(`Consigue un enlace en ${link.domain}: `, `Get a link on ${link.domain}: `) + lowerFirst(hintText(t)[link.hint].how), 260));
   if (d.maps && d.maps.top3Share < 50) add(t("Sube fotos y publica novedades en tu Perfil de Google cada semana para subir en el mapa.", "Upload photos and post updates on your Google Business Profile every week to climb on the map."));
   if (d.ai && (d.ai.score.now ?? 100) < 50) add(t("Pide reseñas y aparece en directorios de tu zona: es lo que leen las IAs antes de recomendar un negocio.", "Ask for reviews and get listed in local directories: that's what AI assistants read before recommending a business."));
   if (d.posts.total < 8) add(t("Publica al menos 2 veces por semana en tus redes y en tu Perfil de Google.", "Post at least twice a week on your social channels and your Google Business Profile."));

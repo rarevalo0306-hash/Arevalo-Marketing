@@ -20,8 +20,8 @@ const ICONS: Record<string, React.ReactNode> = {
 // [ruta, nombre, nombre corto para la barra de abajo en el celular (vacío = no cabe en el celular)], en español y en inglés
 const LINKS = [
   ["inicio", ["Inicio", "Inicio"], ["Home", "Home"]],
-  ["estudio", ["Estudio del negocio", ""], ["Business study", ""]],
-  ["seo", ["SEO y visibilidad", ""], ["SEO and visibility", ""]],
+  ["estudio", ["Estudio del negocio", "Estudio"], ["Business study", "Study"]],
+  ["seo", ["SEO y visibilidad", "SEO"], ["SEO and visibility", "SEO"]],
   ["publicar", ["Publicar", "Publicar"], ["Publish", "Publish"]],
   ["plan", ["Plan con IA", "Plan IA"], ["AI plan", "AI plan"]],
   ["historial", ["Historial", "Historial"], ["History", "History"]],

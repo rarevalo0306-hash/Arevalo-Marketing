@@ -1,9 +1,13 @@
 // La página de SEO en palabras simples, sin IA y sin costo: qué quiere decir cada posición, si la página que
 // muestra Google trata de lo que se busca, y un resumen de 3 a 6 frases armado con los últimos reportes guardados.
 // Todo es puro (sin base de datos ni red) y se prueba con los datos reales de Fameseg en tests/seo-plain.test.ts.
+import { HINT_EASY, type BacklinksReport } from "@/lib/seo/backlinks";
+import type { CannibalReport } from "@/lib/seo/cannibal";
 import { GENERIC_WORDS } from "@/lib/seo/gap";
 import type { KeywordsReport } from "@/lib/seo/keywords";
 import type { RankReport, RankRow } from "@/lib/seo/rank";
+import { mapVerdict, organicVerdict, pctText, type MarketSummary } from "@/lib/seo/sov";
+import { hasData, siteName, visitsText, type TrafficReport } from "@/lib/seo/traffic";
 import { errorKind, PROVIDER_SHORT, type VisibilityReport } from "@/lib/seo/visibility";
 import { norm, stem, STOPWORDS } from "@/lib/seo/writer";
 import { TEXT_PROVIDERS } from "@/lib/ai";
@@ -188,6 +192,14 @@ export type PlainInput = {
   max?: number;
   /** Si se pueden revisar posiciones (DataForSEO conectado): si no, no se pide empezar por ahí. */
   canRank?: boolean;
+  /** Tu parte del mercado (sov.ts → marketSummary), con los últimos reportes guardados. */
+  market?: MarketSummary | null;
+  /** Páginas que compiten entre sí (cannibal.ts → buildCannibal): solo se dice algo si hay una urgente. */
+  cannibal?: CannibalReport | null;
+  /** El último reporte de enlaces (backlinks.ts). */
+  backlinks?: BacklinksReport | null;
+  /** El último reporte de visitas de la competencia (traffic.ts). */
+  traffic?: TrafficReport | null;
 };
 
 const writeHref = (businessId: string, kw: string) => `/b/${businessId}/seo/escribir?kw=${encodeURIComponent(kw)}`;
@@ -418,7 +430,185 @@ export function plainSummary(input: PlainInput): PlainLine[] {
     }
   }
 
-  // De lo más importante a lo menos: lo que va bien, lo que urge, y después lo demás.
-  const order = ["no-rank", "top3", "missing", "page2", "mismatch", "map", "ai", "gap", "page1", "off-map", "volume"];
+  lines.push(...shareLines(input.market), ...sentimentLines(ai), ...cannibalLines(input.cannibal), ...linksLines(input.backlinks), ...trafficLines(input.traffic));
+
+  // De lo más importante a lo menos: lo que urge (no sales, una IA habla mal de ti, páginas que compiten), lo que
+  // va bien, y después las oportunidades.
+  const order = [
+    "no-rank",
+    "missing",
+    "sentiment-bad",
+    "cannibal",
+    "top3",
+    "map",
+    "share-good",
+    "ai",
+    "sentiment-good",
+    "share",
+    "mismatch",
+    "page2",
+    "traffic",
+    "links",
+    "gap",
+    "page1",
+    "off-map",
+    "volume",
+  ];
   return lines.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)).slice(0, max);
+}
+
+// ---------- Las frases de las herramientas nuevas (cada una solo si hay datos) ----------
+
+/** Tu parte de los clics de Google (o del mapa, si no hay posiciones). */
+function shareLines(m: MarketSummary | null | undefined): PlainLine[] {
+  const link: PlainLink = { href: "#mercado", label: { es: "Ver tu parte del mercado", en: "See your market share" } };
+  const o = m?.organic;
+  if (o) {
+    const lead = o.leader?.share ?? 0;
+    // Los directorios y redes se llevan más que tú y que cualquier competidor: lo que más ayuda es estar bien ahí.
+    if (o.directories > o.you && o.directories >= lead && o.directoryNames.length) {
+      const first = siteName(o.directoryNames[0]);
+      const who = o.directoryNames.length > 1 ? { es: `${first} y otros directorios`, en: `${first} and other directories` } : { es: first, en: first };
+      return [
+        {
+          id: "share",
+          icon: "📊",
+          tone: "warn",
+          text: {
+            es: `Te llevas el ${pctText(o.you)} de los clics en tus búsquedas; ${who.es} se llevan el ${pctText(o.directories)}: pon tu negocio bien completo en esos sitios.`,
+            en: `You get ${pctText(o.you)} of the clicks on your searches; ${who.en} get ${pctText(o.directories)}: make sure your business is fully listed on those sites.`,
+          },
+          link,
+        },
+      ];
+    }
+    const ahead = o.you > 0 && o.you > lead;
+    const v = organicVerdict(o);
+    const tip: Bi = ahead || !o.leader ? { es: "", en: "" } : { es: " Mira qué páginas tiene y escribe sobre lo mismo.", en: " See which pages it has and write about the same things." };
+    return [{ id: ahead ? "share-good" : "share", icon: "📊", tone: ahead ? "good" : "warn", text: { es: v.es + tip.es, en: v.en + tip.en }, link }];
+  }
+  const map = m?.map;
+  if (map) {
+    const ahead = map.you > 0 && map.you > (map.leader?.share ?? 0);
+    return [{ id: ahead ? "share-good" : "share", icon: "📊", tone: ahead ? "good" : "warn", text: mapVerdict(map), link }];
+  }
+  return [];
+}
+
+/** Cómo hablan de ti las IAs: aviso si alguna habla mal; si no, cuántas hablan bien. Sin tono leído, nada. */
+function sentimentLines(ai: VisibilityReport | null | undefined): PlainLine[] {
+  const s = ai?.sentiment;
+  if (!ai || !s || s.status !== "ok" || !s.total) return [];
+  const link: PlainLink = { href: "#ia", label: { es: "Ver qué dicen las IAs", en: "See what the AIs say" } };
+  if (s.negativa > 0) {
+    const bad = ai.results.find((r) => r.sentiment?.sentiment === "negativa");
+    const who = bad ? PROVIDER_SHORT[bad.provider] : null;
+    const why = (bad?.sentiment?.reason ?? "").replace(/\s+/g, " ").trim().replace(/[.!]+$/, "");
+    const reason = why.length > 110 ? `${why.slice(0, 109).trimEnd()}…` : why;
+    const one = s.negativa === 1;
+    return [
+      {
+        id: "sentiment-bad",
+        icon: "👎",
+        tone: "bad",
+        text: {
+          es: `Ojo: las IAs hablan mal de ti en ${s.negativa} de ${s.total} menciones${who && one ? ` (${who}${reason ? `: ${reason}` : ""})` : ""}. Mira qué dicen y responde a eso en tu página y tus reseñas.`,
+          en: `Heads up: the AIs speak badly of you in ${s.negativa} of ${s.total} mentions${who && one ? ` (${who}${reason ? `: ${reason}` : ""})` : ""}. See what they say and address it on your website and reviews.`,
+        },
+        link,
+      },
+    ];
+  }
+  if (!s.positiva) return [];
+  const attrs = s.attributes.slice(0, 2).map((a) => a.name);
+  const with_ = attrs.length ? { es: ` (te asocian con ${joinNames(attrs).es})`, en: ` (they link you with ${joinNames(attrs).en})` } : { es: "", en: "" };
+  return [
+    {
+      id: "sentiment-good",
+      icon: "💬",
+      tone: "good",
+      text: {
+        es: `Las IAs hablan bien de ti en ${s.positiva} de ${s.total} ${s.total === 1 ? "mención" : "menciones"}${with_.es}.`,
+        en: `The AIs speak well of you in ${s.positiva} of ${s.total} ${s.total === 1 ? "mention" : "mentions"}${with_.en}.`,
+      },
+      link,
+    },
+  ];
+}
+
+/** Páginas que compiten entre sí: solo si hay alguna urgente (si no, no se agrega ruido). */
+function cannibalLines(report: CannibalReport | null | undefined): PlainLine[] {
+  const urgent = (report?.issues ?? []).filter((i) => i.severity === "alta");
+  const first = urgent[0];
+  if (!first) return [];
+  const more = urgent.length - 1;
+  return [
+    {
+      id: "cannibal",
+      icon: "🔁",
+      tone: "bad",
+      text: {
+        es: `Para «${first.query}» ${first.pages.length} de tus páginas compiten entre sí en Google y se reparten las visitas${more ? ` (y pasa lo mismo con ${more} búsqueda${more === 1 ? "" : "s"} más)` : ""}. Deja una sola como la principal.`,
+        en: `For “${first.query}” ${first.pages.length} of your pages compete with each other on Google and split the visits${more ? ` (and the same happens with ${more} more search${more === 1 ? "" : "es"})` : ""}. Keep just one as the main page.`,
+      },
+      link: { href: "#canibalizacion", label: { es: "Ver cómo arreglarlo", en: "See how to fix it" } },
+    },
+  ];
+}
+
+/** Cuántos sitios te enlazan y dónde tiene enlace tu competencia y tú no. */
+function linksLines(report: BacklinksReport | null | undefined): PlainLine[] {
+  if (!report) return [];
+  const n = report.summary.referringDomains ?? report.referringTotal;
+  if (n === null) return [];
+  const gap = report.gap.length;
+  const easy = report.gap.find((g) => HINT_EASY[g.hint]);
+  const sites = (x: number) => ({ es: x === 1 ? "1 sitio te enlaza" : `${x} sitios te enlazan`, en: x === 1 ? "1 site links to you" : `${x} sites link to you` });
+  const have = n === 0 ? { es: "Ningún sitio te enlaza todavía", en: "No site links to you yet" } : sites(n);
+  const text: Bi = gap
+    ? {
+        es: `${have.es}; hay ${gap} donde tu competencia tiene enlace y tú no${easy ? `: empieza por ${easy.domain}, que es fácil` : ""}.`,
+        en: `${have.en}; there ${gap === 1 ? "is 1 site" : `are ${gap} sites`} where your competitors have a link and you don't${easy ? `: start with ${easy.domain}, it's easy` : ""}.`,
+      }
+    : { es: `${have.es}.`, en: `${have.en}.` };
+  return [{ id: "links", icon: "🔗", tone: n === 0 || gap > 0 ? "info" : "good", text, link: { href: "#enlaces", label: { es: "Ver tus enlaces", en: "See your links" } } }];
+}
+
+/** Las visitas desde Google: tú contra el competidor que más recibe. */
+function trafficLines(report: TrafficReport | null | undefined): PlainLine[] {
+  if (!report) return [];
+  const you = report.domains.find((d) => d.isYou);
+  const etv = (d: { now: { etv: number | null } | null }) => d.now?.etv ?? 0;
+  const rival = report.domains.filter((d) => !d.isYou && hasData(d)).sort((a, b) => etv(b) - etv(a))[0];
+  const mine = you && hasData(you) ? etv(you) : 0;
+  const link: PlainLink = { href: "#trafico", label: { es: "Ver las visitas de tu competencia", en: "See your competitors' visits" } };
+  if (rival && etv(rival) >= 1 && etv(rival) > mine) {
+    const name = siteName(rival.domain);
+    return [
+      {
+        id: "traffic",
+        icon: "👀",
+        tone: "info",
+        text: {
+          es: `${name} recibe unas ${visitsText(etv(rival), "es")} visitas al mes desde Google y tú ${visitsText(mine, "es")}; mira qué páginas le funcionan.`,
+          en: `${name} gets about ${visitsText(etv(rival), "en")} visits a month from Google and you get ${visitsText(mine, "en")}; see which pages work for them.`,
+        },
+        link,
+      },
+    ];
+  }
+  if (mine >= 1 && rival)
+    return [
+      {
+        id: "traffic",
+        icon: "👀",
+        tone: "good",
+        text: {
+          es: `Recibes unas ${visitsText(mine, "es")} visitas al mes desde Google, más que tu competencia.`,
+          en: `You get about ${visitsText(mine, "en")} visits a month from Google, more than your competitors.`,
+        },
+        link,
+      },
+    ];
+  return [];
 }

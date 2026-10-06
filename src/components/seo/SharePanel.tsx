@@ -9,20 +9,7 @@ import { readKeywordsReport } from "@/lib/seo/keywords";
 import { MAP_KEEP, readMapReport } from "@/lib/seo/maprank";
 import { readRankReport, type RankReport } from "@/lib/seo/rank";
 import { latestReports } from "@/lib/seo/reports";
-import {
-  aiChange,
-  aiShare,
-  aiVerdict,
-  groupNewestFirst,
-  latestMaps,
-  mapChange,
-  mapShare,
-  mapVerdict,
-  organicChange,
-  organicShare,
-  organicVerdict,
-  pctText,
-} from "@/lib/seo/sov";
+import { aiVerdict, groupNewestFirst, mapGroups, mapVerdict, marketSummary, organicVerdict, pctText } from "@/lib/seo/sov";
 import { readVisibilityReport } from "@/lib/seo/visibility";
 import { BUSINESS_TZ } from "@/lib/time";
 
@@ -108,19 +95,13 @@ export async function SharePanel({ businessId }: { businessId: string }) {
   const kwLatest = [...groupNewestFirst(kwRows.map((r) => readKeywordsReport(r.data)), (k) => (k.locationCode > 0 ? k.locationCode : main)).values()]
     .map((l) => l[0])
     .sort((a, b2) => Number(b2.locationCode === main) - Number(a.locationCode === main));
-  const latestRank = rankByZone.map((l) => l[0]);
-  const organic = b.website ? organicShare(latestRank, { website: b.website, keywords: kwLatest }) : null;
-  const organicDelta = b.website ? organicChange(rankByZone, { website: b.website, keywords: kwLatest }) : null;
-  const rankAt = latestRank.reduce<Date | null>((a, r) => (!a || r.savedAt > a ? r.savedAt : a), null);
+  const rankAt = rankByZone.map((l) => l[0]).reduce<Date | null>((a, r) => (!a || r.savedAt > a ? r.savedAt : a), null);
 
   // ---- Google Maps: el último mapa de cada búsqueda. ----
   const maps = mapRows.flatMap((r) => {
     const m = readMapReport(r.data);
     return m ? [{ ...m, savedAt: r.createdAt }] : [];
   });
-  const { latest: mapLatest, pairs: mapPairs } = latestMaps(maps);
-  const map = mapShare(mapLatest);
-  const mapDelta = mapChange(mapPairs);
   const mapAt = maps[0]?.savedAt ?? null;
 
   // ---- IAs: la última revisión y la anterior. ----
@@ -128,8 +109,15 @@ export async function SharePanel({ businessId }: { businessId: string }) {
     const v = readVisibilityReport(r.data);
     return v ? [{ report: v, at: r.createdAt }] : [];
   });
-  const ai = ais[0] ? aiShare(ais[0].report) : null;
-  const aiDelta = ais[0] ? aiChange(ais[0].report, ais[1]?.report) : null;
+
+  // Cada parte se compara con la revisión anterior (la de cada zona, cada búsqueda del mapa y las IAs).
+  const { organic, organicDelta, map, mapDelta, ai, aiDelta } = marketSummary({
+    website: b.website,
+    rankByZone,
+    keywords: kwLatest,
+    maps: mapGroups(maps),
+    ai: ais.map((x) => x.report),
+  });
 
   const go = (href: string, text: string) => (
     <a href={href} style={{ fontWeight: 700 }}>

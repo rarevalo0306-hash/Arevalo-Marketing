@@ -10,7 +10,7 @@
 // fila. Ese mismo día DataForSEO quitó la cuota mínima de US$100 al mes: ahora es solo pago por uso. Si la cuenta
 // no tiene acceso, DataForSEO responde 40204 "Access denied. Visit Plans and Subscriptions to activate your
 // subscription…" (docs.dataforseo.com/v3/appendix/errors): se muestra como explicación amable, no como error.
-import { bi, BiError } from "@/lib/i18n";
+import { bi, BiError, type T } from "@/lib/i18n";
 import { brandToken, isDirectory, normalizeDomain, sameSite, type BiText, type CompetitorsReport } from "@/lib/seo/competitors";
 import { dfsError, dfsTask } from "@/lib/seo/dataforseo";
 
@@ -244,6 +244,21 @@ export const HINT_EASY: Record<LinkHint, boolean> = {
   supplier: false,
   other: false,
 };
+
+/** Nombre corto y qué hacer para conseguir el enlace, según el tipo de sitio. */
+export function hintText(t: T): Record<LinkHint, { label: string; how: string }> {
+  return {
+    directory: { label: t("Directorio · fácil", "Directory · easy"), how: t("Fácil: regístrate gratis con tu nombre, teléfono y la dirección de tu página.", "Easy: sign up for free with your name, phone and website address.") },
+    social: { label: t("Red social · fácil", "Social network · easy"), how: t("Crea o completa tu perfil y pon el enlace a tu página.", "Create or complete your profile and add the link to your website.") },
+    news: { label: t("Noticias · nota de prensa", "News · press release"), how: t("Nota de prensa: mándales una novedad (un proyecto grande, un aniversario, algo nuevo que ofreces).", "Press release: send them some news (a big project, an anniversary, something new you offer).") },
+    public: { label: t("Gobierno o universidad", "Government or university"), how: t("Pregunta por su registro de proveedores, o patrocina o da una charla.", "Ask about their supplier registry, or sponsor or give a talk.") },
+    association: { label: t("Asociación o cámara", "Association or chamber"), how: t("Hazte miembro y pide aparecer en su lista de socios.", "Become a member and ask to be listed among their members.") },
+    forum: { label: t("Foro · fácil", "Forum · easy"), how: t("Responde preguntas de tu tema y comparte tu página solo cuando de verdad ayude.", "Answer questions about your trade and share your website only when it really helps.") },
+    blog: { label: t("Blog", "Blog"), how: t("Ofréceles un artículo útil escrito por ti, o pide que te mencionen.", "Offer them a useful article you write, or ask them to mention you.") },
+    supplier: { label: t("Proveedor o socio", "Supplier or partner"), how: t("Si les compras o trabajas con ellos, pide que te pongan en su lista de clientes o distribuidores.", "If you buy from them or work with them, ask to be added to their list of clients or dealers.") },
+    other: { label: t("Otro sitio", "Other site"), how: t("Escríbeles, preséntate y pide que te mencionen si tiene sentido para ellos.", "Write to them, introduce yourself and ask for a mention if it makes sense for them.") },
+  };
+}
 
 // ---------- Lectura de respuestas de DataForSEO ----------
 
