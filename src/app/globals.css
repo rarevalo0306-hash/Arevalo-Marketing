@@ -476,3 +476,36 @@ html[data-theme="noche"] .opt.on { background: #2f80ff; border-color: #2f80ff; }
 .seo-issues { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .seo-issue { display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); }
 .seo-urls { margin: 8px 0 0; padding-left: 18px; font-size: 13px; word-break: break-all; display: flex; flex-direction: column; gap: 3px; }
+
+/* SEO: palabras clave */
+.kw-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.kw-spark { display: block; flex: none; }
+.kw-spark rect { fill: var(--brand); opacity: 0.35; }
+.kw-spark rect.last { opacity: 1; }
+.kw-up { color: var(--teal-text); font-size: 12px; font-weight: 800; }
+.kw-down { color: var(--err-text); font-size: 12px; font-weight: 800; }
+.kw-error { color: var(--err-text); }
+.kw-real { font-weight: 700; font-variant-numeric: tabular-nums; }
+.kw-real .tag { font-size: 11px; padding: 1px 7px; }
+
+/* SEO: posiciones */
+.rank-up { color: var(--teal-text); font-weight: 700; white-space: nowrap; }
+.rank-down { color: var(--err-text); font-weight: 700; white-space: nowrap; }
+.rank-num { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rank-num .rank-up, .rank-num .rank-down { font-size: 12.5px; margin-left: 2px; }
+.rank-url { max-width: 260px; overflow-wrap: anywhere; }
+.rank-spark { display: block; overflow: visible; }
+.rank-spark polyline { stroke: var(--brand); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+.rank-spark circle { fill: var(--brand); }
+.rank-spark .rank-spark-last { fill: var(--brand); stroke: var(--surface); stroke-width: 1.2; }
+.rank-spark .rank-spark-miss { fill: var(--err-text); opacity: 0.7; }
+.rank-spark-mid { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 2; }
+.rank-details { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.rank-details details { padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.rank-details details:last-child { border-bottom: 0; }
+.rank-details summary { cursor: pointer; font-weight: 600; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; }
+.rank-details summary > span:first-child::before { content: "▸"; color: var(--muted); display: inline-block; width: 16px; }
+.rank-details details[open] summary > span:first-child::before { content: "▾"; }
+.rank-top { margin: 0; padding-left: 26px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; overflow-wrap: anywhere; }
+.rank-top li.mine { font-weight: 700; color: var(--teal-text); }
+.rank-top li.mine a { color: inherit; }
