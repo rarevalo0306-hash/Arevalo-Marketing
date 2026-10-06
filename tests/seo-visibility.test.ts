@@ -19,6 +19,12 @@ import {
   providerErrors,
   RETRY_WAITS_MS,
   withRetry,
+  applyMentionClasses,
+  quoteAround,
+  quoteInText,
+  sentimentText,
+  summarizeSentiment,
+  type VisibilityResult,
 } from "@/lib/seo/visibility";
 import fameseg from "./fixtures/fameseg.json";
 
@@ -237,5 +243,84 @@ describe("mapLimit", () => {
     expect(out).toEqual([0, 1, 2, 3]);
     expect(peak).toBe(1);
     expect(await mapLimit([], 2, async (x) => x)).toEqual([]);
+  });
+});
+
+describe("tono de las menciones (sentiment)", () => {
+  const fam = { name: "Fameseg", website: "https://fameseg.com" };
+  const report = readVisibilityReport(fameseg.reports.ai.data)!;
+  // Las respuestas guardadas en el fixture están recortadas; la revisión pasa la respuesta completa.
+  const FULL = `${report.results[1].answer}ón. 1. **Fameseg** — fabrican cortinas metálicas a la medida en su taller de Managua, con garantía de 24 meses. 2. Metalníca S.A.`;
+  const texts = report.results.map((r, i) => (i === 1 ? FULL : r.answer));
+  const text = (i: number) => texts[i];
+
+  it("los reportes viejos (sin tono) se leen igual", () => {
+    expect(report.sentiment).toBeUndefined();
+    expect(report.results.every((r) => r.sentiment === undefined)).toBe(true);
+    expect(report.score).toBe(80);
+  });
+
+  it("'S.A.' cuenta como sufijo legal", () => {
+    expect(nameVariants("Metalníca S.A.")).toEqual(["metalnica sa", "metalnica"]);
+  });
+
+  it("busca la frase donde sale el negocio y revisa que la cita esté en la respuesta", () => {
+    const q = quoteAround(text(1), fam);
+    expect(q).toBe("Fameseg — fabrican cortinas metálicas a la medida en su taller de Managua, con garantía de 24 meses.");
+    expect(q.length).toBeGreaterThan(0);
+    expect(q.length).toBeLessThanOrEqual(200);
+    expect(mentionMatcher(fam).inText(q)).toBe(true);
+    expect(quoteInText(q, text(1))).toBe(true);
+    expect(quoteInText("Fameseg es la peor empresa de Nicaragua", text(1))).toBe(false);
+    expect(quoteAround("No nombra a nadie.", fam)).toBe("");
+  });
+
+  it("une el tono con las respuestas que te mencionan y cambia la cita si la IA la inventó", () => {
+    const results = applyMentionClasses(
+      report.results,
+      [
+        { id: 1, sentiment: "positiva", reason: "Te recomienda primero.", quote: "Fameseg: cortinas a la medida con garantía (texto inventado)", attributes: ["garantía", "precio"] },
+        { id: 3, sentiment: "neutral", reason: "Solo te lista.", quote: "", attributes: ["Garantia", "rapidez"] },
+        { id: 5, sentiment: "negativa", reason: "No te menciona", quote: "x", attributes: [] },
+        { id: 7, sentiment: "negativa", reason: "Habla de quejas.", quote: "", attributes: ["precio"] },
+      ],
+      fam,
+      texts,
+    );
+    // id 5 no te menciona: se ignora.
+    expect(results[5].sentiment).toBeUndefined();
+    expect(results[1].sentiment?.sentiment).toBe("positiva");
+    expect(results[1].sentiment?.quote).toBe("Fameseg — fabrican cortinas metálicas a la medida en su taller de Managua, con garantía de 24 meses.");
+    expect(results[1].sentiment?.quote).toBe(quoteAround(text(1), fam));
+    // Una cita que sí está en la respuesta (sin importar los asteriscos) se respeta.
+    expect(applyMentionClasses(report.results, [{ id: 1, sentiment: "positiva", reason: "", quote: "Fameseg — fabrican cortinas", attributes: [] }], fam, texts)[1].sentiment?.quote).toBe("Fameseg — fabrican cortinas");
+    // Sin la respuesta completa y sin el nombre en lo guardado: no hay cita (no se inventa).
+    expect(results[3].sentiment?.quote).toBe("");
+    const s = summarizeSentiment(results);
+    expect(s).toMatchObject({ status: "ok", positiva: 1, neutral: 1, negativa: 1, total: 3 });
+    // "garantía" y "Garantia" son la misma.
+    expect(s.attributes).toEqual([
+      { name: "garantía", count: 2 },
+      { name: "precio", count: 2 },
+      { name: "rapidez", count: 1 },
+    ]);
+    expect(sentimentText(s)).toEqual({ es: "3 menciones: 1 positiva, 1 neutral, 1 negativa", en: "3 mentions: 1 positive, 1 neutral, 1 negative" });
+    expect(sentimentText({ positiva: 3, neutral: 1, negativa: 0, total: 4 }).es).toBe("4 menciones: 3 positivas, 1 neutral");
+
+    // Se guarda y se vuelve a leer igual; un tono roto se ignora.
+    const saved = JSON.parse(JSON.stringify({ ...report, results, sentiment: s }));
+    saved.results[3].sentiment.sentiment = "buenísima";
+    const back = readVisibilityReport(saved)!;
+    expect(back.results[1].sentiment).toEqual(results[1].sentiment);
+    expect(back.results[3].sentiment).toBeUndefined();
+    expect(back.sentiment).toMatchObject({ status: "ok", positiva: 1, negativa: 1, total: 2 });
+  });
+
+  it("si la llamada del tono falló, el reporte lo dice sin romperse", () => {
+    const back = readVisibilityReport({ ...fameseg.reports.ai.data, sentiment: { status: "failed", positiva: 0, neutral: 0, negativa: 0, total: 0, attributes: [] } })!;
+    expect(back.sentiment).toEqual({ status: "failed", positiva: 0, neutral: 0, negativa: 0, total: 0, attributes: [] });
+    expect(readVisibilityReport({ ...fameseg.reports.ai.data, sentiment: { status: "rarísimo" } })!.sentiment).toBeUndefined();
+    const r: Pick<VisibilityResult, "sentiment">[] = [{}];
+    expect(summarizeSentiment(r, "skipped")).toEqual({ status: "skipped", positiva: 0, neutral: 0, negativa: 0, total: 0, attributes: [] });
   });
 });

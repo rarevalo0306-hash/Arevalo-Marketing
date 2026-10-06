@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { saveReport } from "@/lib/seo/reports";
-import { checkVisibility, cleanQuestions, PROVIDER_SHORT, providerErrors, suggestQuestions, visibilityProviders } from "@/lib/seo/visibility";
+import { checkVisibility, cleanQuestions, PROVIDER_SHORT, providerErrors, sentimentText, suggestQuestions, visibilityProviders } from "@/lib/seo/visibility";
 
 export type VisibilityRunResult = { ok: boolean; message: string } | null;
 export type SuggestQuestionsResult = { ok: true; questions: string[] } | { ok: false; error: string };
@@ -62,13 +62,25 @@ export async function runVisibility(businessId: string, _prev: VisibilityRunResu
           )
           .join("")
       : "";
+    // El tono de las menciones: "Tono: 4 menciones: 3 positivas, 1 neutral." o por qué no se pudo leer.
+    const s = report.sentiment;
+    const tone =
+      !s || !mentioned
+        ? ""
+        : s.status === "ok" && s.total
+          ? t(` Tono: ${sentimentText(s).es}.`, ` Tone: ${sentimentText(s).en}.`)
+          : s.status !== "ok"
+            ? t(" No se pudo leer el tono de las menciones esta vez (el resto de la revisión sí se guardó).", " We couldn't read the tone of the mentions this time (the rest of the check was saved).")
+            : "";
     return {
       ok: true,
       message:
         t(
           `Listo: apareces en ${mentioned} de ${ok} respuestas (${report.score ?? 0}%).`,
           `Done: you show up in ${mentioned} of ${ok} answers (${report.score ?? 0}%).`,
-        ) + warn,
+        ) +
+        tone +
+        warn,
     };
   } catch (e) {
     return { ok: false, message: errorText(e, lang) };

@@ -2,6 +2,8 @@ import { PageHead } from "@/components/PageHead";
 import { ReportCard } from "@/components/seo/ReportCard";
 import { AlertsPanel } from "@/components/seo/AlertsPanel";
 import { AuditPanel } from "@/components/seo/AuditPanel";
+import { CannibalPanel } from "@/components/seo/CannibalPanel";
+import { BacklinksPanel } from "@/components/seo/BacklinksPanel";
 import { CompetitorsPanel } from "@/components/seo/CompetitorsPanel";
 import { DfsSettingsPanel } from "@/components/seo/DfsSettingsPanel";
 import { GapPanel } from "@/components/seo/GapPanel";
@@ -11,6 +13,8 @@ import { MapRankPanel } from "@/components/seo/MapRankPanel";
 import { OnPagePanel } from "@/components/seo/OnPagePanel";
 import { RankPanel } from "@/components/seo/RankPanel";
 import { SearchConsolePanel } from "@/components/seo/SearchConsolePanel";
+import { SharePanel } from "@/components/seo/SharePanel";
+import { TrafficPanel } from "@/components/seo/TrafficPanel";
 import { SeoGuide } from "@/components/seo/SeoGuide";
 import { VisibilityPanel } from "@/components/seo/VisibilityPanel";
 import { WriterCard } from "@/components/seo/WriterCard";
@@ -46,12 +50,18 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
         <GbpPanel businessId={id} />
         <AlertsPanel businessId={id} />
         <ReportCard businessId={id} />
+        <SharePanel businessId={id} />
         <CompetitorsPanel businessId={id} />
         <GapPanel businessId={id} />
+        <TrafficPanel businessId={id} />
+        <BacklinksPanel businessId={id} />
         <OnPagePanel businessId={id} />
+        <CannibalPanel businessId={id} />
         <AuditPanel businessId={id} />
         <VisibilityPanel businessId={id} />
-        <SearchConsolePanel businessId={id} />
+        <div id="search-console">
+          <SearchConsolePanel businessId={id} />
+        </div>
       </div>
     </>
   );

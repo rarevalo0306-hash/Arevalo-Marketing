@@ -2,7 +2,7 @@
 // Se hacen las preguntas que haría un cliente (con búsqueda en internet), se busca el nombre o la página
 // del negocio en cada respuesta y se anotan los competidores que sí aparecen.
 import { z } from "zod";
-import { ask, availableText, searchAnswer, TEXT_PROVIDERS, type TextProvider } from "@/lib/ai";
+import { ask, availableText, classifyMentions, type MentionClass, type MentionSentiment, searchAnswer, TEXT_PROVIDERS, type TextProvider } from "@/lib/ai";
 import { bi, errorText, type UiLang } from "@/lib/i18n";
 import { readInput, readStudy, type SavedStudy, type StudySource, topKeywords } from "@/lib/study-shape";
 
@@ -23,6 +23,33 @@ export type VisibilityResult = {
   /** Otros negocios que recomienda la respuesta, en orden. */
   competitors: string[];
   error?: string;
+  /** Cómo habla de ti la respuesta (solo si te menciona y se pudo leer el tono). Reportes viejos no lo tienen. */
+  sentiment?: MentionTone;
+};
+
+export type { MentionSentiment };
+export type MentionTone = {
+  sentiment: MentionSentiment;
+  /** Por qué, en una frase simple. */
+  reason: string;
+  /** Las palabras exactas de la respuesta donde te nombra (máx. 200 letras). */
+  quote: string;
+  /** Lo que la IA asocia contigo: "precio", "garantía", "rapidez"… */
+  attributes: string[];
+};
+/**
+ * El tono de todas las menciones de una revisión. status: ok = se leyó; failed = la llamada a la IA falló (la revisión
+ * igual se guardó); skipped = no alcanzó el tiempo. Los reportes viejos no lo tienen (undefined).
+ */
+export type SentimentSummary = {
+  status: "ok" | "failed" | "skipped";
+  positiva: number;
+  neutral: number;
+  negativa: number;
+  /** Menciones con tono leído. */
+  total: number;
+  /** Las 5 cualidades que más te asocian, con en cuántas respuestas aparece cada una. */
+  attributes: { name: string; count: number }[];
 };
 
 export type ProviderScore = { score: number | null; mentioned: number; total: number; errors: number };
@@ -38,6 +65,8 @@ export type VisibilityReport = {
   /** Páginas que más citan las IAs (directorios, reseñas, competidores). */
   topDomains: { domain: string; count: number }[];
   recommendations: Recommendation[];
+  /** Tono de las menciones (Semrush lo llama "sentiment"). Opcional: los reportes viejos no lo tienen. */
+  sentiment?: SentimentSummary;
   lang: UiLang;
   startedAt: string;
   finishedAt: string;
@@ -58,7 +87,7 @@ export function normalizeText(s: string): string {
     .trim();
 }
 
-const LEGAL = new Set(["llc", "inc", "incorporated", "corp", "corporation", "co", "company", "ltd", "limited", "pllc", "llp", "lp", "pa", "plc"]);
+const LEGAL = new Set(["llc", "inc", "incorporated", "corp", "corporation", "co", "company", "ltd", "limited", "pllc", "llp", "lp", "pa", "plc", "sa", "srl", "sas"]);
 
 /** Las formas del nombre a buscar: completo, y sin "The" ni LLC/Inc/Corp al final. */
 export function nameVariants(name: string): string[] {
@@ -307,6 +336,120 @@ const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
+// ---------- Tono de las menciones (funciones puras) ----------
+
+export const QUOTE_MAX = 200;
+export const SENTIMENTS: MentionSentiment[] = ["positiva", "neutral", "negativa"];
+const isSentiment = (v: unknown): v is MentionSentiment => SENTIMENTS.includes(v as MentionSentiment);
+
+/** Quita lo de markdown (asteriscos, numerales, viñetas) y los espacios de más. */
+const plainQuote = (s: string) =>
+  s
+    .replace(/[*_#`>]+/g, "")
+    .replace(/^\s*(?:[-•]|\d+[.)])\s*/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const cut = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s);
+
+/** La primera frase de la respuesta donde sale el negocio (para cuando la IA no copió bien la cita). */
+export function quoteAround(text: string, business: { name: string; website: string }): string {
+  const m = mentionMatcher(business);
+  const sentences = text.split(/(?<=[.!?…])\s+|\n+/).map(plainQuote).filter(Boolean);
+  const hit = sentences.find((x) => m.inText(x));
+  return hit ? cut(hit, QUOTE_MAX) : "";
+}
+
+/** ¿La cita está de verdad en la respuesta? Se compara sin acentos, mayúsculas ni signos. */
+export function quoteInText(quote: string, text: string): boolean {
+  const q = normalizeText(quote.replace(/…$/, ""));
+  return q.length >= 3 && ` ${normalizeText(text)} `.includes(` ${q} `);
+}
+
+/**
+ * Une lo que dijo la IA (tono, motivo, cita, cualidades) con cada respuesta que menciona al negocio.
+ * Si la cita no aparece tal cual en la respuesta, se usa la frase de la respuesta donde sale el nombre (o ninguna).
+ * `texts[i]` es la respuesta completa de `results[i]` (se guarda recortada).
+ */
+export function applyMentionClasses(
+  results: VisibilityResult[],
+  classes: MentionClass[],
+  business: { name: string; website: string },
+  texts: string[] = results.map((r) => r.answer),
+): VisibilityResult[] {
+  const byId = new Map(classes.map((c) => [c.id, c]));
+  return results.map((r, i) => {
+    const c = byId.get(i);
+    if (!c || !r.mentioned || r.error) return r;
+    const full = texts[i] ?? r.answer;
+    const own = plainQuote(c.quote);
+    // Nunca se muestra como cita algo que no está en la respuesta.
+    const quote = own && quoteInText(own, full) ? cut(own, QUOTE_MAX) : quoteAround(full, business);
+    return { ...r, sentiment: { sentiment: c.sentiment, reason: c.reason.trim().slice(0, 300), quote, attributes: c.attributes.slice(0, 5) } };
+  });
+}
+
+/** Cuenta los tonos y las 5 cualidades que más asocian al negocio (cada respuesta cuenta una vez por cualidad). */
+export function summarizeSentiment(results: Pick<VisibilityResult, "sentiment">[], status: SentimentSummary["status"] = "ok"): SentimentSummary {
+  const out: SentimentSummary = { status, positiva: 0, neutral: 0, negativa: 0, total: 0, attributes: [] };
+  const attrs = new Map<string, { name: string; count: number }>();
+  for (const r of results) {
+    if (!r.sentiment) continue;
+    out[r.sentiment.sentiment]++;
+    out.total++;
+    const seen = new Set<string>();
+    for (const a of r.sentiment.attributes) {
+      const key = normalizeText(a);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      const cur = attrs.get(key);
+      if (cur) cur.count++;
+      else attrs.set(key, { name: a.trim(), count: 1 });
+    }
+  }
+  out.attributes = [...attrs.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)).slice(0, 5);
+  return out;
+}
+
+/** "4 menciones: 3 positivas, 1 neutral" / "4 mentions: 3 positive, 1 neutral". */
+export function sentimentText(s: Pick<SentimentSummary, "positiva" | "neutral" | "negativa" | "total">): { es: string; en: string } {
+  const parts = [
+    { n: s.positiva, es: `positiva${s.positiva === 1 ? "" : "s"}`, en: "positive" },
+    { n: s.neutral, es: `neutral${s.neutral === 1 ? "" : "es"}`, en: "neutral" },
+    { n: s.negativa, es: `negativa${s.negativa === 1 ? "" : "s"}`, en: "negative" },
+  ].filter((p) => p.n > 0);
+  const es = parts.map((p) => `${p.n} ${p.es}`);
+  const en = parts.map((p) => `${p.n} ${p.en}`);
+  return {
+    es: `${s.total} ${s.total === 1 ? "mención" : "menciones"}${es.length ? `: ${es.join(", ")}` : ""}`,
+    en: `${s.total} ${s.total === 1 ? "mention" : "mentions"}${en.length ? `: ${en.join(", ")}` : ""}`,
+  };
+}
+
+function readTone(v: unknown): MentionTone | undefined {
+  const o = obj(v);
+  if (!isSentiment(o.sentiment)) return undefined;
+  return {
+    sentiment: o.sentiment,
+    reason: str(o.reason, 300),
+    quote: str(o.quote, QUOTE_MAX + 5),
+    attributes: arr(o.attributes).map((a) => str(a, 40).trim()).filter(Boolean).slice(0, 5),
+  };
+}
+
+function readSentimentSummary(v: unknown, results: VisibilityResult[]): SentimentSummary | undefined {
+  const o = obj(v);
+  if (o.status !== "ok" && o.status !== "failed" && o.status !== "skipped") return undefined;
+  // Los conteos se vuelven a sacar de las respuestas; las cualidades guardadas se usan si las respuestas no las traen.
+  const s = summarizeSentiment(results, o.status);
+  if (!s.attributes.length)
+    s.attributes = arr(o.attributes)
+      .map((a) => ({ name: str(obj(a).name, 40).trim(), count: num(obj(a).count) ?? 0 }))
+      .filter((a) => a.name)
+      .slice(0, 5);
+  return s;
+}
+
 /** Lee un reporte guardado sin fallar si es viejo o está incompleto. */
 export function readVisibilityReport(json: unknown): VisibilityReport | null {
   const o = obj(json);
@@ -327,9 +470,11 @@ export function readVisibilityReport(json: unknown): VisibilityReport | null {
           .slice(0, SOURCES_MAX),
         competitors: arr(r.competitors).map((c) => str(c, 200)).filter(Boolean),
         ...(typeof r.error === "string" && r.error ? { error: r.error.slice(0, 500) } : {}),
+        ...(r.mentioned === true && readTone(r.sentiment) ? { sentiment: readTone(r.sentiment) } : {}),
       },
     ];
   });
+  const sentiment = readSentimentSummary(o.sentiment, results);
   const computed = computeScores(results);
   const questions = arr(o.questions).map((q) => str(q, 300)).filter(Boolean);
   return {
@@ -346,6 +491,7 @@ export function readVisibilityReport(json: unknown): VisibilityReport | null {
     recommendations: arr(o.recommendations)
       .map((r) => (typeof r === "string" ? { title: r.slice(0, 300), detail: "" } : { title: str(obj(r).title, 300), detail: str(obj(r).detail, 1500) }))
       .filter((r) => r.title || r.detail),
+    ...(sentiment ? { sentiment } : {}),
     lang: o.lang === "en" ? "en" : "es",
     startedAt: str(o.startedAt, 40),
     finishedAt: str(o.finishedAt, 40),
@@ -574,7 +720,7 @@ export async function checkVisibility(business: BusinessVis, questions: string[]
     console.error("Visibilidad en IA: no se pudieron sacar los competidores", e);
   }
 
-  const results: VisibilityResult[] = raw.map((r, id) => {
+  let results: VisibilityResult[] = raw.map((r, id) => {
     const list = lists.get(id) ?? [];
     const position = positionOf(list, m);
     const answer = r.text.length > ANSWER_MAX ? `${r.text.slice(0, ANSWER_MAX).trimEnd()}…` : r.text;
@@ -601,12 +747,30 @@ export async function checkVisibility(business: BusinessVis, questions: string[]
     lang,
     startedAt,
   };
-  let recommendations: Recommendation[] = [];
-  try {
-    if (left() < 10_000) throw new Error("sin tiempo para las recomendaciones");
-    recommendations = await recommend(business, base, lang, Math.min(90_000, left() - 3_000));
-  } catch (e) {
-    console.error("Visibilidad en IA: no se pudieron escribir las recomendaciones", e);
-  }
-  return { ...base, recommendations, finishedAt: new Date().toISOString() };
+  // Las recomendaciones y el tono de las menciones van a la vez (una llamada cada una); si el tono falla, la revisión sigue.
+  const mentioning = results.flatMap((r, id) => (r.mentioned && !r.error ? [{ id, question: r.question, text: raw[id].text }] : []));
+  const [recommendations, tone] = await Promise.all([
+    (async (): Promise<Recommendation[]> => {
+      try {
+        if (left() < 10_000) throw new Error("sin tiempo para las recomendaciones");
+        return await recommend(business, base, lang, Math.min(90_000, left() - 3_000));
+      } catch (e) {
+        console.error("Visibilidad en IA: no se pudieron escribir las recomendaciones", e);
+        return [];
+      }
+    })(),
+    (async (): Promise<{ classes: MentionClass[]; status: SentimentSummary["status"] }> => {
+      if (!mentioning.length) return { classes: [], status: "ok" };
+      try {
+        if (left() < 10_000) return { classes: [], status: "skipped" };
+        const classes = await timeout(classifyMentions({ business, answers: mentioning, lang }), Math.min(60_000, left() - 3_000));
+        return { classes, status: classes.length ? "ok" : "failed" };
+      } catch (e) {
+        console.error("Visibilidad en IA: no se pudo leer el tono de las menciones", e);
+        return { classes: [], status: "failed" };
+      }
+    })(),
+  ]);
+  results = applyMentionClasses(results, tone.classes, business, raw.map((r) => r.text));
+  return { ...base, results, recommendations, sentiment: summarizeSentiment(results, tone.status), finishedAt: new Date().toISOString() };
 }

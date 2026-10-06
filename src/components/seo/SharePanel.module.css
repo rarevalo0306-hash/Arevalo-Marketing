@@ -1,0 +1,61 @@
+/* "Tu parte del mercado": tres bloques (Google, Mapa, IAs) con barras hechas con CSS, sin librerías de gráficas. */
+
+.blocks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.big { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.big strong { font: 800 30px/1.1 var(--display); color: var(--ink); }
+.verdict { margin: 0; font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
+.basis { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.4; overflow-wrap: anywhere; }
+.empty { margin: 0; font-size: 14px; line-height: 1.45; color: var(--muted); }
+
+/* Barra apilada: tu parte, cada competidor, directorios y el resto. */
+.bar {
+  display: flex;
+  width: 100%;
+  height: 16px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.seg { height: 100%; min-width: 0; }
+.seg + .seg { box-shadow: inset 1px 0 0 var(--surface); }
+.dirs { background: repeating-linear-gradient(135deg, #a7b4c6 0 4px, #c3ccd8 4px 8px); }
+.others { background: var(--line-strong); }
+
+/* Leyenda: punto de color, nombre, porcentaje. */
+.legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.item { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 14px; }
+.dot { width: 10px; height: 10px; border-radius: 3px; }
+.name { min-width: 0; overflow-wrap: anywhere; }
+.val { font-variant-numeric: tabular-nums; font-weight: 600; }
+.you .name, .you .val { font-weight: 800; }
+
+/* Lista de barras (el mapa: cada negocio con su propia barra, no suman 100 %). */
+.bars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.barItem { display: flex; flex-direction: column; gap: 3px; font-size: 14px; }
+.barLabel { display: flex; justify-content: space-between; gap: 8px; }
+.track { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.fill { display: block; height: 100%; border-radius: 4px; }
+
+/* Cambio frente a la revisión anterior. */
+.change { font-size: 13px; font-weight: 700; white-space: nowrap; }
+.up { color: var(--teal-text); }
+.down { color: var(--err-text); }
+.same { color: var(--muted); }
+
+.providers { display: flex; flex-wrap: wrap; gap: 6px; }

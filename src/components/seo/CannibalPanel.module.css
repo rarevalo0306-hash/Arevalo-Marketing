@@ -1,0 +1,38 @@
+/* "Páginas que compiten entre sí": la lista de búsquedas con varias páginas. */
+.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.issue {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--line);
+  background: var(--surface);
+  min-width: 0;
+}
+.alta { border-left-color: var(--err-text); }
+.media { border-left-color: #e8a33a; }
+.baja { border-left-color: var(--brand-2); }
+.head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.query { font-weight: 700; overflow-wrap: anywhere; }
+.pages { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  min-width: 0;
+}
+.pageTop { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.url { font-weight: 600; overflow-wrap: anywhere; word-break: break-word; }
+.title { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.nums { font-size: 13px; line-height: 1.4; }
+.bar { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; margin-top: 4px; }
+.bar > span { display: block; height: 100%; border-radius: 999px; background: var(--brand-2); }
+.mainBar > span { background: var(--teal); }
+.fix { margin: 0; font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
+.more > summary { cursor: pointer; font-weight: 700; color: var(--brand-2); min-height: 32px; display: inline-flex; align-items: center; }
+.more[open] > summary { margin-bottom: 10px; }

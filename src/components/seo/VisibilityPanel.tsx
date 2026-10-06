@@ -6,12 +6,27 @@ import { intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { latestReports } from "@/lib/seo/reports";
 import { HowToRead } from "@/components/seo/HowToRead";
-import { customerLang, errorKind, explainError, providerErrors, questionsFromStudy, readVisibilityReport, sourceDomain, visibilityProviders, type VisibilityResult } from "@/lib/seo/visibility";
+import {
+  customerLang,
+  errorKind,
+  explainError,
+  type MentionSentiment,
+  providerErrors,
+  questionsFromStudy,
+  readVisibilityReport,
+  sentimentText,
+  sourceDomain,
+  visibilityProviders,
+  type VisibilityResult,
+} from "@/lib/seo/visibility";
 import { readStudy } from "@/lib/study-shape";
 import { BUSINESS_TZ } from "@/lib/time";
 
 const SHORT: Record<TextProvider, string> = { gemini: "Gemini", claude: "Claude", openai: "ChatGPT" };
 const ORDER = TEXT_PROVIDERS.map((p) => p.id);
+
+/** Estilo de la píldora según el tono de la mención. */
+const TONE_PILL: Record<MentionSentiment, string> = { positiva: "done", neutral: "scheduled", negativa: "failed" };
 
 /** Estilo de la píldora según el puntaje. */
 const tone = (score: number | null) => (score === null ? "draft" : score >= 60 ? "done" : score >= 25 ? "partial" : "failed");
@@ -42,6 +57,15 @@ export async function VisibilityPanel({ businessId }: { businessId: string }) {
     return lang === "en" ? x.en : x.es;
   };
   const errors = last ? providerErrors(last.results) : [];
+  const toneLabel = (s: MentionSentiment) => ({ positiva: t("Positiva", "Positive"), neutral: t("Neutral", "Neutral"), negativa: t("Negativa", "Negative") })[s];
+  const badge = (r: VisibilityResult) =>
+    r.sentiment ? (
+      <span className={`pill ${TONE_PILL[r.sentiment.sentiment]}`} title={r.sentiment.reason || undefined}>
+        {toneLabel(r.sentiment.sentiment)}
+      </span>
+    ) : null;
+  const sent = last?.sentiment;
+  const mentionedCount = last ? last.results.filter((r) => r.mentioned && !r.error).length : 0;
   const mark = (r: VisibilityResult | undefined) => {
     if (!r) return <span className="muted">—</span>;
     if (r.error)
@@ -129,6 +153,54 @@ export async function VisibilityPanel({ businessId }: { businessId: string }) {
             )}
           </div>
 
+          {sent && mentionedCount > 0 && (
+            <div className="stack" style={{ gap: 8 }}>
+              <span className="lbl">{t("Cómo hablan de ti", "How they talk about you")}</span>
+              {sent.status === "ok" && sent.total > 0 ? (
+                <>
+                  <p className="small" style={{ margin: 0 }}>
+                    <strong>{lang === "en" ? sentimentText(sent).en : sentimentText(sent).es}</strong>
+                  </p>
+                  <div className="tags">
+                    {(["positiva", "neutral", "negativa"] as const).map((k) =>
+                      sent[k] ? (
+                        <span key={k} className={`pill ${TONE_PILL[k]}`}>
+                          {toneLabel(k)}: {sent[k]}
+                        </span>
+                      ) : null,
+                    )}
+                  </div>
+                  {sent.attributes.length > 0 && (
+                    <>
+                      <span className="lbl" style={{ marginTop: 4 }}>{t("Lo que dicen de ti", "What they say about you")}</span>
+                      <div className="tags">
+                        {sent.attributes.map((a) => (
+                          <span key={a.name} className="tag" title={t(`En ${a.count} respuesta(s)`, `In ${a.count} answer(s)`)}>
+                            {a.name} · {a.count}
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  {sent.negativa > 0 && (
+                    <p className="note" style={{ margin: 0 }}>
+                      {t(
+                        "Alguna IA habla mal de ti: abre esa respuesta abajo para ver la cita. Casi siempre sale de reseñas o quejas en internet; responde esas reseñas con calma y pide reseñas a tus clientes contentos.",
+                        "An AI says something negative about you: open that answer below to see the quote. It usually comes from reviews or complaints online; reply to those reviews calmly and ask happy customers for reviews.",
+                      )}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="small muted" style={{ margin: 0 }}>
+                  {sent.status === "skipped"
+                    ? t("No alcanzó el tiempo para leer el tono de las menciones en esta revisión. Vuelve a revisar para verlo.", "There wasn't time to read the tone of the mentions in this check. Run it again to see it.")
+                    : t("No se pudo leer el tono de las menciones en esta revisión (la IA no contestó). El resto de la revisión sí está completo; vuelve a revisar para verlo.", "We couldn't read the tone of the mentions in this check (the AI didn't answer). The rest of the check is complete; run it again to see it.")}
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="table-wrap">
             <table>
               <thead>
@@ -180,6 +252,12 @@ export async function VisibilityPanel({ businessId }: { businessId: string }) {
               {t(
                 "«#1» quiere decir que fuiste el primer negocio que nombró. «Páginas que más citan» son los sitios de donde sacan la información: estar bien en esos sitios (directorios, reseñas) ayuda a que te nombren.",
                 "“#1” means you were the first business it named. “Websites they cite most” are where they get their information: being listed well on those sites (directories, reviews) helps them name you.",
+              )}
+            </p>
+            <p>
+              {t(
+                "«Cómo hablan de ti» dice si cada IA que te nombra lo hace bien (positiva: te recomienda o te elogia), solo te lista (neutral) o habla mal (negativa: quejas o advertencias). «Lo que dicen de ti» son las cualidades que te asocian, como precio o garantía: si no ves las que te importan, ponlas claras en tu página y en tu Perfil de Google.",
+                "“How they talk about you” says whether each AI that names you does it well (positive: it recommends or praises you), just lists you (neutral) or speaks badly (negative: complaints or warnings). “What they say about you” are the qualities they link to you, like price or warranty: if the ones you care about are missing, make them clear on your website and your Google Business Profile.",
               )}
             </p>
           </HowToRead>
@@ -235,7 +313,10 @@ export async function VisibilityPanel({ businessId }: { businessId: string }) {
                   <span className="small">
                     <strong>{SHORT[r.provider]}</strong> · {r.question}
                   </span>
-                  {mark(r)}
+                  <span className="row" style={{ gap: 6, flexWrap: "nowrap", flexShrink: 0 }}>
+                    {badge(r)}
+                    {mark(r)}
+                  </span>
                 </summary>
                 <div className="stack" style={{ gap: 8, marginTop: 10 }}>
                   {r.error ? (
@@ -244,7 +325,26 @@ export async function VisibilityPanel({ businessId }: { businessId: string }) {
                       {why(r) !== r.error && <span className="small" style={{ display: "block", fontWeight: 400, marginTop: 4 }}>{t("Mensaje original:", "Original message:")} {r.error}</span>}
                     </p>
                   ) : (
-                    <p className="small vis-answer-text">{r.answer || "—"}</p>
+                    <>
+                      {r.sentiment && (
+                        <div className="stack" style={{ gap: 4 }}>
+                          {r.sentiment.quote && (
+                            <blockquote className="small" style={{ margin: 0, paddingLeft: 10, borderLeft: "3px solid var(--line-strong)", fontStyle: "italic", overflowWrap: "anywhere" }}>
+                              «{r.sentiment.quote}»
+                            </blockquote>
+                          )}
+                          <span className="small">
+                            {badge(r)} {r.sentiment.reason}
+                          </span>
+                          {r.sentiment.attributes.length > 0 && (
+                            <span className="small muted">
+                              {t("Te asocia con:", "Links you with:")} {r.sentiment.attributes.join(", ")}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      <p className="small vis-answer-text">{r.answer || "—"}</p>
+                    </>
                   )}
                   {r.competitors.length > 0 && (
                     <span className="small muted">

@@ -1,0 +1,100 @@
+/* Visitas de tu competencia: tarjetas de comparación, gráfica del historial y mejores páginas. */
+
+/* Colores de la gráfica: fijos por sitio (tú = 1). Validados para daltonismo en claro y en "noche". */
+.root {
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  min-width: 0;
+}
+:global(html[data-theme="noche"]) .root {
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+}
+.root [data-slot="0"] { --c: var(--series-1); }
+.root [data-slot="1"] { --c: var(--series-2); }
+.root [data-slot="2"] { --c: var(--series-3); }
+.root [data-slot="3"] { --c: var(--series-4); }
+
+/* ---------- Tarjetas: tú contra cada competidor ---------- */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 12px; }
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  border-top: 4px solid var(--c, var(--line-strong));
+  background: var(--surface);
+}
+.tile.you { background: var(--surface-hover); }
+.tileHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.domain { font-weight: 700; overflow-wrap: anywhere; min-width: 0; }
+.big { font: 800 28px/1.1 var(--display); letter-spacing: -0.6px; }
+.big small { font-size: 14px; font-weight: 600; color: var(--muted); letter-spacing: 0; }
+.facts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--muted); }
+.facts strong { color: var(--ink); font-weight: 700; }
+.change { font-size: 13px; line-height: 1.4; }
+.up { color: var(--teal-text); font-weight: 700; }
+.down { color: var(--err-text); font-weight: 700; }
+
+/* ---------- La gráfica ---------- */
+.chart { margin: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; }
+.legend li { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.legendName { font-weight: 700; overflow-wrap: anywhere; }
+.swatch { width: 14px; height: 4px; border-radius: 2px; background: var(--c); flex-shrink: 0; }
+.plotArea {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: 200px auto;
+  column-gap: 8px;
+  row-gap: 6px;
+  min-width: 0;
+}
+.yAxis { position: relative; font-size: 11px; color: var(--muted); min-width: 28px; text-align: right; }
+.yAxis span { position: absolute; right: 0; transform: translateY(-50%); white-space: nowrap; }
+.plot { position: relative; min-width: 0; margin: 0 6px; }
+.grid { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid var(--line); }
+.svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.line { fill: none; stroke: var(--c); stroke-width: 2px; stroke-linejoin: round; stroke-linecap: round; }
+.dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: var(--c);
+  box-shadow: 0 0 0 2px var(--surface);
+  cursor: default;
+}
+/* Área de toque más grande que el punto, para el tooltip. */
+.dot::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; }
+.dot:hover { transform: scale(1.4); }
+.xAxis { grid-column: 2; position: relative; height: 16px; font-size: 11px; color: var(--muted); margin: 0 6px; }
+.xAxis span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.xAxis span.first { transform: none; }
+.xAxis span.lastLabel { transform: translateX(-100%); }
+
+/* ---------- Mejores páginas ---------- */
+.pages { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  min-width: 0;
+}
+.pageUrl { font-weight: 600; font-size: 14px; overflow-wrap: anywhere; word-break: break-word; }
+.pageMeta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; color: var(--muted); align-items: center; }
+.pageMeta a { font-weight: 700; white-space: nowrap; }
+.compPages > summary { cursor: pointer; font-weight: 700; min-height: 36px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.compPages[open] > summary { margin-bottom: 8px; }

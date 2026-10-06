@@ -969,3 +969,54 @@ Rules:
   if (summary.length < 40 || !steps.length) throw invalidReply();
   return { summary, steps };
 }
+
+// ---------- Tono de las menciones en las IAs (visibilidad en IA) ----------
+
+const MentionsSchema = z.object({
+  answers: z.array(
+    z.object({
+      id: z.number().int().describe("The answer id"),
+      sentiment: z.enum(["positive", "neutral", "negative"]).describe("How the answer talks about the business"),
+      reason: z.string().describe("One short plain sentence explaining the sentiment"),
+      quote: z.string().describe("The exact words of the answer where the business is mentioned, copied verbatim, max 200 characters"),
+      attributes: z.array(z.string()).describe("Up to 5 qualities the answer associates with the business, 1-3 words each (e.g. price, warranty, speed)"),
+    }),
+  ),
+});
+
+export type MentionSentiment = "positiva" | "neutral" | "negativa";
+export type MentionClass = { id: number; sentiment: MentionSentiment; reason: string; quote: string; attributes: string[] };
+
+const SENTIMENT_ES: Record<"positive" | "neutral" | "negative", MentionSentiment> = { positive: "positiva", neutral: "neutral", negative: "negativa" };
+
+/**
+ * Lee en UNA sola llamada todas las respuestas de las IAs que mencionan al negocio y dice, por cada una, el tono
+ * (positiva / neutral / negativa), por qué en una frase, la cita exacta y las cualidades que le asocian.
+ */
+export async function classifyMentions(input: {
+  business: { name: string; website?: string; aiText?: string };
+  answers: { id: number; question: string; text: string }[];
+  lang: UiLang;
+}): Promise<MentionClass[]> {
+  if (!input.answers.length) return [];
+  const es = input.lang !== "en";
+  const system = `You read answers that AI assistants (ChatGPT, Gemini, Claude) gave to customers, and judge how each answer talks about one specific business: "${input.business.name}"${input.business.website ? ` (${input.business.website})` : ""}.
+Rules:
+- sentiment: "positive" if the answer recommends it or praises it, "negative" if it warns against it or mentions complaints or problems, "neutral" if it only lists it or describes it without judging.
+- reason: one short plain sentence for a non-technical owner, ${es ? "in Spanish with correct accents" : "in plain US English"}.
+- quote: copy verbatim the words of the answer where the business is mentioned (max 200 characters). Do not translate or paraphrase.
+- attributes: up to 5 qualities the answer associates with this business (not with other businesses), 1-3 words each, lowercase, ${es ? "in Spanish (e.g. precio, garantía, rapidez, experiencia, atención al cliente)" : "in English (e.g. price, warranty, speed, experience, customer service)"}. Empty list if none.
+- Return every answer id. Never invent facts that are not in the answer.`;
+  const user = input.answers.map((a) => `<answer id="${a.id}">\nQuestion: ${a.question}\n${a.text.slice(0, 3500)}\n</answer>`).join("\n\n");
+  const r = await ask(input.business.aiText ?? "", MentionsSchema, system, user, 4000);
+  const ids = new Set(input.answers.map((a) => a.id));
+  return r.answers
+    .filter((a) => ids.has(a.id))
+    .map((a) => ({
+      id: a.id,
+      sentiment: SENTIMENT_ES[a.sentiment] ?? "neutral",
+      reason: a.reason.replace(/\s+/g, " ").trim().slice(0, 300),
+      quote: a.quote.replace(/\s+/g, " ").trim().slice(0, 200),
+      attributes: [...new Set(a.attributes.map((x) => x.toLowerCase().replace(/\s+/g, " ").trim().slice(0, 40)).filter(Boolean))].slice(0, 5),
+    }));
+}
