@@ -2,10 +2,11 @@
 // Docs: https://docs.dataforseo.com/v3/serp/google/organic/live/advanced/
 // Precio (desde sept. 2025, https://dataforseo.com/update/important-serp-api-remains-fully-operational-pricing-update):
 // modo live = US$0.002 la primera página de 10 resultados + US$0.0015 cada página extra. Con depth 20 → US$0.0035 por palabra.
+// Con varias zonas se revisa cada palabra en cada zona (palabras × zonas × US$0.0035) y se guarda un reporte por zona.
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { BiError, bi } from "@/lib/i18n";
-import { dataForSeoEnabled, dfsPost, readTrackedKeywords } from "@/lib/seo/dataforseo";
+import { dataForSeoEnabled, dfsPost, readTrackedKeywords, readZones, type Zone } from "@/lib/seo/dataforseo";
 import { saveReport } from "@/lib/seo/reports";
 
 /** Cuántos resultados se piden por palabra clave (2 páginas de Google). */
@@ -17,7 +18,7 @@ export const RANK_DEVICE = "mobile" as const;
 /** Máximo de palabras clave por revisión (igual que en los ajustes). */
 export const RANK_MAX_KEYWORDS = 25;
 
-const CONCURRENCY = 4;
+const CONCURRENCY = 8;
 const CALL_TIMEOUT_MS = 60_000;
 
 export type RankTop = { position: number; domain: string; title: string; url: string };
@@ -306,56 +307,93 @@ export type RankInput = {
   /** Dominio o dirección web del negocio. */
   domain: string;
   businessName: string;
-  locationCode: number;
-  /** Nombre de la zona, para mostrar. */
-  location?: string;
+  /** Las zonas a revisar (la primera es la principal). */
+  zones: Zone[];
   language: string;
 };
 
-/** Revisa en Google (celular, primeros 20) cada palabra clave. Si todas fallan, lanza el error. */
-export async function checkRankings(input: RankInput): Promise<RankReport> {
+/** Cada palabra en cada zona: una consulta a Google por par. */
+export function rankJobs(zones: Zone[], keywords: string[]): { zone: Zone; keyword: string }[] {
+  const list = [...new Set(keywords.map((k) => k.trim()).filter(Boolean))].slice(0, RANK_MAX_KEYWORDS);
+  return zones.flatMap((zone) => list.map((keyword) => ({ zone, keyword })));
+}
+
+export type ZoneRunResult = { zoneCode: number; row: RankRow; cost: number };
+
+/**
+ * Arma un reporte por zona con las filas de cada una. Una zona donde fallaron todas las palabras
+ * no se guarda (queda en `failed`) para no tapar su revisión anterior.
+ */
+export function buildZoneReports(
+  zones: Zone[],
+  language: string,
+  results: ZoneRunResult[],
+  createdAt = new Date().toISOString(),
+): { reports: RankReport[]; failed: { zone: Zone; error: { es: string; en: string } }[] } {
+  const reports: RankReport[] = [];
+  const failed: { zone: Zone; error: { es: string; en: string } }[] = [];
+  for (const zone of zones) {
+    const mine = results.filter((r) => r.zoneCode === zone.code);
+    if (!mine.length) continue;
+    const rows = mine.map((r) => r.row);
+    const firstError = rows.find((r) => r.error)?.error;
+    if (rows.every((r) => r.error)) {
+      failed.push({ zone, error: firstError ?? { es: "Falló", en: "Failed" } });
+      continue;
+    }
+    const cost = mine.reduce((s, r) => s + r.cost, 0);
+    reports.push({
+      location: zone.name,
+      locationCode: zone.code,
+      language,
+      device: RANK_DEVICE,
+      rows,
+      cost: Math.round(cost * 10000) / 10000,
+      createdAt,
+      ...summarize(rows),
+    });
+  }
+  return { reports, failed };
+}
+
+/**
+ * Revisa en Google (celular, primeros 20) cada palabra clave en cada zona, con máximo 8 consultas a la vez
+ * en total. Devuelve un reporte por zona. Si todo falla, lanza el error.
+ */
+export async function checkRankings(input: RankInput): Promise<ReturnType<typeof buildZoneReports>> {
   const domain = siteDomain(input.domain);
-  const keywords = [...new Set(input.keywords.map((k) => k.trim()).filter(Boolean))].slice(0, RANK_MAX_KEYWORDS);
-  let cost = 0;
-  const rows = await pool(keywords, CONCURRENCY, async (keyword): Promise<RankRow> => {
+  const jobs = rankJobs(input.zones, input.keywords);
+  const results = await pool(jobs, CONCURRENCY, async ({ zone, keyword }): Promise<ZoneRunResult> => {
     try {
       const r = await dfsPost<SerpResult>(
         "/serp/google/organic/live/advanced",
-        { keyword, location_code: input.locationCode, language_code: input.language, device: RANK_DEVICE, depth: RANK_DEPTH },
+        { keyword, location_code: zone.code, language_code: input.language, device: RANK_DEVICE, depth: RANK_DEPTH },
         CALL_TIMEOUT_MS,
       );
-      cost += r.cost;
-      return parseSerp(keyword, r.result[0], domain, input.businessName);
+      return { zoneCode: zone.code, row: parseSerp(keyword, r.result[0], domain, input.businessName), cost: r.cost };
     } catch (e) {
-      return { keyword, position: null, url: null, localPack: null, top: [], features: [], error: biOf(e) };
+      return { zoneCode: zone.code, row: { keyword, position: null, url: null, localPack: null, top: [], features: [], error: biOf(e) }, cost: 0 };
     }
   });
-  if (rows.length && rows.every((r) => r.error)) {
-    const e = rows[0].error!;
+  const out = buildZoneReports(input.zones, input.language, results);
+  if (!out.reports.length && out.failed.length) {
+    const e = out.failed[0].error;
     throw bi(e.es, e.en);
   }
-  return {
-    location: input.location ?? "",
-    locationCode: input.locationCode,
-    language: input.language,
-    device: RANK_DEVICE,
-    rows,
-    cost: Math.round(cost * 10000) / 10000,
-    createdAt: new Date().toISOString(),
-    ...summarize(rows),
-  };
+  return out;
 }
 
 /** Lo que necesita un negocio para revisar posiciones; devuelve lo que falta o los datos listos. */
-export function rankSetup(b: { website: string; seoLocationCode: number | null; seoKeywords: unknown }):
-  | { ok: true; domain: string; locationCode: number; keywords: string[] }
+export function rankSetup(b: { website: string; seoLocations?: unknown; seoLocationCode: number | null; seoLocationName?: string; seoKeywords: unknown }):
+  | { ok: true; domain: string; zones: Zone[]; keywords: string[] }
   | { ok: false; missing: "website" | "location" | "keywords" } {
   const domain = siteDomain(b.website);
   if (!domain) return { ok: false, missing: "website" };
-  if (!b.seoLocationCode) return { ok: false, missing: "location" };
+  const zones = readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName);
+  if (!zones.length) return { ok: false, missing: "location" };
   const keywords = readTrackedKeywords(b.seoKeywords).slice(0, RANK_MAX_KEYWORDS);
   if (!keywords.length) return { ok: false, missing: "keywords" };
-  return { ok: true, domain, locationCode: b.seoLocationCode, keywords };
+  return { ok: true, domain, zones, keywords };
 }
 
 const DAY_MS = 20 * 3600_000;
@@ -365,16 +403,20 @@ const RUN_MARK = "rank-run";
 
 /**
  * Revisión diaria automática: busca UN negocio con la revisión diaria encendida cuya última revisión tenga
- * más de 20 horas y lo revisa. Si un intento falla, se vuelve a probar en 2 horas.
+ * más de 20 horas y lo revisa en todas sus zonas. Si un intento falla, se vuelve a probar en 2 horas.
+ * "Última revisión" = el reporte "rank" más nuevo de cualquier zona: todas las zonas de una corrida se guardan
+ * juntas, así que una zona que falló esa vez espera a la corrida del día siguiente (o a una revisión a mano).
  */
 export async function runDueRankChecks(now = new Date()): Promise<{ businessId: string; ok: boolean; cost?: number; error?: string } | null> {
   if (!dataForSeoEnabled()) return null;
   const candidates = await db.business.findMany({
-    where: { seoDaily: true, seoLocationCode: { not: null }, website: { not: "" } },
+    // Las zonas se revisan con rankSetup (readZones), no con este filtro.
+    where: { seoDaily: true, website: { not: "" } },
     select: {
       id: true,
       name: true,
       website: true,
+      seoLocations: true,
       seoLocationCode: true,
       seoLocationName: true,
       seoLanguage: true,
@@ -404,16 +446,16 @@ export async function runDueRankChecks(now = new Date()): Promise<{ businessId: 
   await db.seoReport.deleteMany({ where: { businessId: b.id, kind: RUN_MARK, createdAt: { lt: new Date(now.getTime() - 7 * 24 * 3600_000) } } });
 
   try {
-    const report = await checkRankings({
+    const { reports, failed } = await checkRankings({
       keywords: setup.keywords,
       domain: setup.domain,
       businessName: b.name,
-      locationCode: setup.locationCode,
-      location: b.seoLocationName,
+      zones: setup.zones,
       language: b.seoLanguage === "en" ? "en" : "es",
     });
-    await saveReport(b.id, "rank", report as unknown as Prisma.InputJsonValue);
-    return { businessId: b.id, ok: true, cost: report.cost };
+    for (const report of reports) await saveReport(b.id, "rank", report as unknown as Prisma.InputJsonValue);
+    const cost = Math.round(reports.reduce((s, r) => s + r.cost, 0) * 10000) / 10000;
+    return { businessId: b.id, ok: true, cost, ...(failed.length ? { error: `zonas sin revisar: ${failed.map((f) => f.zone.code).join(", ")}` } : {}) };
   } catch (e) {
     return { businessId: b.id, ok: false, error: e instanceof Error ? e.message : String(e) };
   }

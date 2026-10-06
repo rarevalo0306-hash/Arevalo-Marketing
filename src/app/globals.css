@@ -188,7 +188,7 @@ input[type="checkbox"] { accent-color: var(--brand-2); }
 .pill.draft { background: #f0ebff; color: #5a3fc0; }
 .pill.scheduled, .pill.publishing { background: var(--brand-soft); color: var(--brand); }
 
-.table-wrap { overflow-x: auto; }
+.table-wrap { overflow-x: auto; position: relative; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { text-align: left; padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { font-weight: 700; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }

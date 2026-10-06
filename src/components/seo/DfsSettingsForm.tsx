@@ -30,7 +30,11 @@ type Props = {
 export function DfsSettingsForm({ action, initial, suggested, fromStudy }: Props) {
   const { t } = useT();
   const [result, run, saving] = useActionState(action, null);
-  const [country, setCountry] = useState("us");
+  // Empieza en el país de la zona principal (el nombre de Google termina con el país en inglés).
+  const [country, setCountry] = useState<string>(() => {
+    const main = initial.zones[0]?.name.split(",").pop()?.trim().toLowerCase();
+    return COUNTRIES.find(([, , en]) => en.toLowerCase() === main)?.[0] ?? "us";
+  });
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<DfsLocation[]>([]);
   const [error, setError] = useState("");

@@ -1,8 +1,9 @@
 // Palabras clave con datos reales de Google Ads (DataForSEO): cuánta gente busca cada palabra al mes,
 // cuánto pagan los anunciantes por clic, la competencia en anuncios y los últimos 12 meses.
-// Cada corrida hace 2 llamadas "live" (unos $0.075 cada una): volúmenes y, aparte, ideas nuevas.
+// Cada corrida hace, por cada zona elegida, 1 llamada "live" de volúmenes (unos $0.075) y, solo para la zona
+// principal, 1 llamada más de ideas nuevas. Con 3 zonas: 4 llamadas ≈ $0.30.
 import { intlLocale, type UiLang } from "@/lib/i18n";
-import { dfsPost } from "@/lib/seo/dataforseo";
+import { dfsPost, type Zone } from "@/lib/seo/dataforseo";
 
 export type Competition = "high" | "medium" | "low";
 
@@ -40,6 +41,13 @@ export const MAX_MEASURED = 100;
 /** keywords_for_keywords acepta hasta 20; con 5 bastan para buenas ideas. */
 export const MAX_SEEDS = 5;
 export const MAX_IDEAS = 50;
+/** Precio aproximado de cada llamada "live" de Google Ads en DataForSEO (USD). */
+export const KEYWORDS_CALL_COST = 0.075;
+
+/** Costo estimado de actualizar: una llamada de volúmenes por zona + una de ideas (solo la zona principal). */
+export function keywordsCostEstimate(zones: number): number {
+  return Math.round(KEYWORDS_CALL_COST * (Math.max(1, zones) + 1) * 1000) / 1000;
+}
 
 /** Así viene cada palabra de search_volume y keywords_for_keywords. */
 type ApiMonth = { year?: unknown; month?: unknown; search_volume?: unknown };
@@ -216,6 +224,8 @@ export async function keywordReport(opts: {
   locationCode: number;
   locationName?: string;
   language: "es" | "en";
+  /** Buscar ideas nuevas (cuesta otra llamada). Solo para la zona principal. Por defecto sí. */
+  ideas?: boolean;
 }): Promise<KeywordsReport> {
   const keywords = uniqueKeywords(opts.keywords, MAX_MEASURED);
   const base = { location_code: opts.locationCode, language_code: opts.language };
@@ -228,7 +238,7 @@ export async function keywordReport(opts: {
   let ideas: KwRow[] = [];
   let ideasFailed = false;
   const seeds = pickSeeds(opts.seeds.length ? opts.seeds : keywords, rows);
-  if (seeds.length) {
+  if (seeds.length && opts.ideas !== false) {
     try {
       const r = await dfsPost<unknown>("/keywords_data/google_ads/keywords_for_keywords/live", { ...base, keywords: seeds, sort_by: "search_volume" }, 120_000);
       cost += r.cost;
@@ -248,4 +258,52 @@ export async function keywordReport(opts: {
     createdAt: new Date().toISOString(),
     ...(ideasFailed ? { ideasFailed: true } : {}),
   };
+}
+
+// ---------- Varias zonas ----------
+
+/**
+ * Las búsquedas al mes de una palabra en cada zona, en el orden de las zonas.
+ * undefined = esa zona no tiene reporte o no midió esa palabra; null = Google no tiene datos.
+ */
+export function zoneVolumes(keyword: string, zones: Zone[], byZone: Map<number, KeywordsReport>): (number | null | undefined)[] {
+  const key = keyword.trim().toLowerCase();
+  return zones.map((z) => {
+    const report = byZone.get(z.code);
+    if (!report) return undefined;
+    const row = reportLookup(report).get(key);
+    return row ? row.volume : undefined;
+  });
+}
+
+/** Suma de las búsquedas de las zonas que tienen el dato; null si ninguna lo tiene. */
+export function zoneTotal(volumes: (number | null | undefined)[]): number | null {
+  const known = volumes.filter((v): v is number => typeof v === "number");
+  return known.length ? known.reduce((a, b) => a + b, 0) : null;
+}
+
+export type ZoneKwRow = {
+  /** Los datos de la zona principal (tendencia, competencia, CPC). */
+  row: KwRow;
+  /** Búsquedas al mes en cada zona (ver zoneVolumes). */
+  volumes: (number | null | undefined)[];
+};
+
+/**
+ * Une las palabras de todas las zonas: tendencia, competencia y CPC de la zona principal, y una columna
+ * de búsquedas por zona. Ordenadas por las búsquedas en la zona principal y luego por el total.
+ */
+export function mergeZoneRows(keywords: string[], zones: Zone[], byZone: Map<number, KeywordsReport>): ZoneKwRow[] {
+  const main = zones[0] ? byZone.get(zones[0].code) : undefined;
+  const lookup = reportLookup(main ?? null);
+  const seen = new Set<string>();
+  const out: ZoneKwRow[] = [];
+  for (const k of keywords) {
+    const key = k.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const row = lookup.get(key) ?? { keyword: key, volume: null, cpc: null, competition: null, competitionIndex: null, trend: [] };
+    out.push({ row, volumes: zoneVolumes(key, zones, byZone) });
+  }
+  return out.sort((a, b) => (b.row.volume ?? -1) - (a.row.volume ?? -1) || (zoneTotal(b.volumes) ?? -1) - (zoneTotal(a.volumes) ?? -1) || a.row.keyword.localeCompare(b.row.keyword));
 }

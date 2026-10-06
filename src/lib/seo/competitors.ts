@@ -4,9 +4,10 @@
 // 2) Para ti y los 3 primeros: las búsquedas por las que salen en Google (con volumen) y sus visitas estimadas.
 // 3) Oportunidades: búsquedas donde ellos están en la primera página y tú no apareces (o estás después del 20).
 // DataForSEO Labs solo acepta países (docs.dataforseo.com/v3/dataforseo_labs/locations_and_languages): si la zona
-// del negocio es una ciudad o un estado, se usa su país.
+// del negocio es una ciudad o un estado, se usa su país. Con varias zonas se usa el país de la zona principal
+// (una sola corrida, mismo costo); los competidores locales salen de las posiciones de TODAS las zonas.
 import { bi } from "@/lib/i18n";
-import { dfsGet, dfsPost } from "@/lib/seo/dataforseo";
+import { dfsGet, dfsPost, type Zone } from "@/lib/seo/dataforseo";
 
 export type CompetitorSource = "labs" | "serp" | "owner";
 
@@ -203,18 +204,48 @@ export function readRankRows(json: unknown): RankRow[] {
   return rows;
 }
 
-/** Cuántas veces sale cada dominio en el top `topN` de tus búsquedas (sin ti ni directorios). */
+/** Las filas de varios reportes de posiciones (uno por zona), juntas. */
+export function readRankRowsMany(jsons: unknown[]): RankRow[] {
+  return jsons.flatMap((j) => readRankRows(j));
+}
+
+/** Cuántas búsquedas distintas hay entre las filas (la misma palabra en dos zonas cuenta una vez). */
+export function distinctKeywords(rows: RankRow[]): number {
+  return new Set(rows.map((r) => r.keyword.trim().toLowerCase())).size;
+}
+
+/**
+ * En cuántas de tus búsquedas sale cada dominio en el top `topN` (sin ti ni directorios).
+ * Con varias zonas, cada búsqueda cuenta una vez aunque salga arriba en varias zonas.
+ */
 export function serpCandidates(rows: RankRow[], self: string, topN = 5): { domain: string; hits: number }[] {
-  const hits = new Map<string, number>();
+  const hits = new Map<string, Set<string>>();
   for (const row of rows) {
+    const keyword = row.keyword.trim().toLowerCase();
     const seen = new Set<string>();
     for (const d of row.domains.slice(0, topN)) {
       if (sameSite(d, self) || isDirectory(d) || [...seen].some((s) => sameSite(s, d))) continue;
       seen.add(d);
-      hits.set(d, (hits.get(d) ?? 0) + 1);
+      hits.set(d, (hits.get(d) ?? new Set<string>()).add(keyword));
     }
   }
-  return [...hits].map(([domain, n]) => ({ domain, hits: n })).sort((a, b) => b.hits - a.hits || a.domain.localeCompare(b.domain));
+  return [...hits].map(([domain, set]) => ({ domain, hits: set.size })).sort((a, b) => b.hits - a.hits || a.domain.localeCompare(b.domain));
+}
+
+/** El país de una zona: la zona misma si es un país, o lo último del nombre ("Miami,Florida,United States"). */
+export function zoneCountry(zone: Pick<Zone, "name" | "type">): string {
+  if (zone.type === "Country") return zone.name.trim();
+  return zone.name.split(",").pop()?.trim() ?? "";
+}
+
+/** Los países de las zonas, sin repetir y en orden (el primero es el de la zona principal). */
+export function distinctCountries(zones: Pick<Zone, "name" | "type">[]): string[] {
+  const out: string[] = [];
+  for (const z of zones) {
+    const c = zoneCountry(z);
+    if (c && !out.some((o) => o.toLowerCase() === c.toLowerCase())) out.push(c);
+  }
+  return out;
 }
 
 export type LabsCompetitor = { domain: string; overlap: number | null; keywords: number | null; traffic: number | null };
@@ -455,8 +486,8 @@ type RunInput = {
   locationName: string;
   language: string;
   ownerDomains: string[];
-  /** El último reporte de posiciones (kind "rank"), tal cual se guardó. */
-  rankJson: unknown;
+  /** El último reporte de posiciones (kind "rank") de cada zona, tal cual se guardaron. */
+  rankJsons: unknown[];
 };
 
 /** Hace la búsqueda completa: ~5 llamadas a DataForSEO Labs (unos USD 0.05 a 0.10). */
@@ -474,7 +505,7 @@ export async function runCompetitorsReport(input: RunInput): Promise<Competitors
       en: `DataForSEO has no ${input.language === "en" ? "English" : "Spanish"} data for ${location.countryName}; used "${location.language}".`,
     });
 
-  const rows = readRankRows(input.rankJson);
+  const rows = readRankRowsMany(input.rankJsons);
 
   // 1) Competidores según DataForSEO (todo el país).
   let labs: LabsCompetitor[] = [];
@@ -544,7 +575,7 @@ export async function runCompetitorsReport(input: RunInput): Promise<Competitors
     you: { domain: self, keywords: youData.keywords, traffic: youData.traffic, overlap: null, top: youData.top },
     gap,
     ownerDomains: input.ownerDomains,
-    rankKeywords: rows.length,
+    rankKeywords: distinctKeywords(rows),
     notes,
     cost: Math.round(cost * 10000) / 10000,
     createdAt: new Date().toISOString(),
