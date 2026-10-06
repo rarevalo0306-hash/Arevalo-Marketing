@@ -568,3 +568,42 @@ tr.comp-you td { background: var(--brand-soft); }
 .wr-list li.on { background: var(--surface-hover); border-radius: 12px; padding-left: 8px; padding-right: 8px; }
 .wr-start { display: flex; flex-wrap: wrap; gap: 10px; }
 .wr-start .field { flex: 1 1 220px; min-width: 0; }
+
+/* ---------- Mapa de calor en Google Maps ---------- */
+.mr-place { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); flex-wrap: wrap; }
+.mr-place-pin { font-size: 22px; }
+.mr-wrap { overflow-wrap: anywhere; }
+.mr-cands { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 12px; }
+.mr-cand { display: flex; flex-direction: column; gap: 6px; padding: 14px; border: 1.5px solid var(--line); border-radius: 14px; background: var(--surface); min-width: 0; overflow-wrap: anywhere; }
+.mr-cand.on { border-color: var(--brand-2); box-shadow: 0 0 0 3px var(--brand-ring); }
+.mr-cand .btn { margin-top: auto; }
+.mr-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 12px; align-items: end; }
+.mr-map-box { display: flex; flex-direction: column; gap: 8px; }
+/* isolation: los paneles de Leaflet usan z-index altos; así no tapan el menú de la app. */
+.mr-map { position: relative; z-index: 0; isolation: isolate; width: 100%; height: 420px; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); background: #eef1f6; }
+@media (max-width: 640px) { .mr-map { height: 320px; } }
+.mr-map .leaflet-popup-content { margin: 10px 12px; font: 500 13.5px/1.45 var(--body); }
+.mr-icon { background: none; border: 0; }
+.mr-dot {
+  display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 50%;
+  font: 800 13px/1 var(--body); color: #fff; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(15, 27, 45, 0.35);
+}
+.mr-dot.mr-top3 { background: #16a34a; }
+.mr-dot.mr-good { background: #a3d93b; color: #1d3305; }
+.mr-dot.mr-mid { background: #f59e0b; color: #3d2400; }
+.mr-dot.mr-low { background: #dc2626; }
+.mr-dot.mr-none { background: #8b95a3; font-size: 11px; }
+.mr-dot.mr-error { background: repeating-linear-gradient(45deg, #b8c0cc 0 4px, #d9dee6 4px 8px); color: #3a4452; }
+.mr-dot-sm { width: 14px; height: 14px; border-width: 1.5px; box-shadow: none; }
+.mr-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); }
+.mr-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.mr-pop { display: flex; flex-direction: column; gap: 4px; color: #0f1b2d; }
+.mr-pop p { margin: 0; }
+.mr-pop-head { font-size: 12px; font-weight: 700; color: #5d6b7e; }
+.mr-pop-bad { color: #a11d1d; }
+.mr-pop-top { margin: 0; padding-left: 20px; }
+.mr-pop-top li.mine { font-weight: 800; color: #12756e; }
+.mr-hist { all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; width: 100%; min-width: 0; }
+.mr-hist:focus-visible { outline: 3px solid var(--brand-ring); outline-offset: 2px; border-radius: 8px; }
+.mr-hist:disabled { cursor: progress; }
+.mr-hist-nums { white-space: nowrap; font-variant-numeric: tabular-nums; }

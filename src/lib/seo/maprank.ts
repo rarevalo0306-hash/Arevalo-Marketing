@@ -10,79 +10,26 @@
 import { bi } from "@/lib/i18n";
 import { dfsPost, type DfsResult, type Zone } from "@/lib/seo/dataforseo";
 import { biOf, domainMatches, normalizeName, pool, siteDomain } from "@/lib/seo/rank";
+import {
+  isMapSize,
+  isMapSpacing,
+  type LatLng,
+  MAP_DEPTH,
+  MAP_DEVICE,
+  type MapItem,
+  type MapPlace,
+  type MapPoint,
+  type MapReport,
+  NOT_FOUND_RANK,
+  zoomFor,
+} from "@/lib/seo/maprank-shared";
 
-/** Tamaños de cuadrícula: 3×3, 5×5 o 7×7 puntos. */
-export const MAP_SIZES = [3, 5, 7] as const;
-export type MapSize = (typeof MAP_SIZES)[number];
-/** Distancia entre puntos (km). */
-export const MAP_SPACINGS = [0.5, 1, 2, 3, 5] as const;
-/** Resultados por búsqueda: en celular Google Maps da máximo 20. */
-export const MAP_DEPTH = 20;
-/** Costo de cada búsqueda en Google Maps, modo live (USD). */
-export const MAP_COST_PER_POINT = 0.002;
-/** Los clientes locales buscan desde el celular. */
-export const MAP_DEVICE = "mobile" as const;
-/** Lugar que se usa en el promedio cuando el negocio no sale en los 20 primeros (como el ARP de Local Falcon). */
-export const NOT_FOUND_RANK = MAP_DEPTH + 1;
-/** Cuántos mapas guardados se conservan por negocio. */
-export const MAP_KEEP = 30;
+export * from "@/lib/seo/maprank-shared";
 
 const CONCURRENCY = 8;
 const CALL_TIMEOUT_MS = 60_000;
 /** La página tiene maxDuration 300 s: después de esto ya no se empiezan búsquedas nuevas. */
 const RUN_BUDGET_MS = 230_000;
-
-export type LatLng = { lat: number; lng: number };
-
-/** El negocio en Google Maps (Business.seoMapPlace). */
-export type MapPlace = {
-  title: string;
-  cid: string;
-  placeId: string;
-  featureId: string;
-  address: string;
-  lat: number;
-  lng: number;
-  domain: string;
-  rating: number | null;
-  reviews: number | null;
-};
-
-/** Un negocio en los resultados de Google Maps. */
-export type MapItem = MapPlace & { rank: number; category: string; url: string };
-
-export type MapTop = { title: string; rank: number; cid?: string };
-export type MapPoint = {
-  lat: number;
-  lng: number;
-  /** Lugar del negocio en ese punto. null = no sale en los 20 primeros. */
-  rank: number | null;
-  /** Los 3 primeros negocios en ese punto. */
-  top3: MapTop[];
-  error?: { es: string; en: string };
-};
-export type MapCompetitor = { title: string; cid?: string; points: number; avgRank: number };
-
-export type MapReport = {
-  keyword: string;
-  place: { title: string; cid: string };
-  center: LatLng;
-  size: number;
-  spacingKm: number;
-  zoom: number;
-  language: string;
-  /** Fila por fila, de norte a sur y de oeste a este. */
-  points: MapPoint[];
-  /** Lugar promedio (los puntos donde no sale cuentan como 21). null si ningún punto se pudo revisar. */
-  avgRank: number | null;
-  /** % de los puntos revisados donde sale en los 3 primeros (0-100). */
-  top3Share: number;
-  /** En cuántos puntos sale (en los 20 primeros). */
-  found: number;
-  competitors: MapCompetitor[];
-  cost: number;
-  createdAt: string;
-};
 
 const str = (v: unknown) => (typeof v === "string" ? v : typeof v === "number" && Number.isFinite(v) ? String(v) : "");
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -123,32 +70,11 @@ export function distanceKm(a: LatLng, b: LatLng): number {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-/**
- * Zoom del mapa de Google para cada búsqueda. Google Maps busca "en esta zona": lo que se ve en la pantalla.
- * Un celular (~400 px de ancho) muestra ≈ 400 × 156 543 m × cos(lat) / 2^zoom de ancho:
- * en Managua o Miami ≈ 1.9 km a 15z, ≈ 3.8 km a 14z y ≈ 7.6 km a 13z. Se elige el zoom con el que cada punto
- * "ve" más o menos su propio pedazo de la cuadrícula (y un poco de los vecinos), como alguien que busca en su barrio:
- * 0.5-1 km → 15z, 2 km → 14z, 3-5 km → 13z.
- */
-export function zoomFor(spacingKm: number): number {
-  if (spacingKm <= 1) return 15;
-  if (spacingKm <= 2) return 14;
-  return 13;
-}
-
 /** "12.1364,-86.2514,15z" (máximo 7 decimales, como pide DataForSEO). */
 export function coordinate(p: LatLng, zoom: number): string {
   const fix = (n: number) => String(round(n, 7));
   return `${fix(p.lat)},${fix(p.lng)},${Math.min(21, Math.max(3, Math.round(zoom)))}z`;
 }
-
-/** Costo estimado de un mapa (USD): una búsqueda por punto. */
-export function mapCostEstimate(size: number): number {
-  return round(size * size * MAP_COST_PER_POINT, 4);
-}
-
-export const isMapSize = (n: number): n is MapSize => (MAP_SIZES as readonly number[]).includes(n);
-export const isMapSpacing = (n: number) => (MAP_SPACINGS as readonly number[]).includes(n);
 
 // ---------- Lectura de la respuesta de Google Maps ----------
 
@@ -298,17 +224,6 @@ export function summarizeMap(points: MapPoint[], place: { title: string; cid: st
     .slice(0, 10);
 
   return { avgRank, top3Share: ok.length ? Math.round((top3 / ok.length) * 100) : 0, found, competitors };
-}
-
-/** Color de un punto: verde 1-3, verde-amarillo 4-7, naranja 8-10, rojo 11-20, gris si no sale, "!" si falló. */
-export type RankBand = "top3" | "good" | "mid" | "low" | "none" | "error";
-export function rankBand(rank: number | null, error?: unknown): RankBand {
-  if (error) return "error";
-  if (rank === null) return "none";
-  if (rank <= 3) return "top3";
-  if (rank <= 7) return "good";
-  if (rank <= 10) return "mid";
-  return "low";
 }
 
 // ---------- Lectura segura de lo guardado ----------

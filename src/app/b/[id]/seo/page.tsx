@@ -5,6 +5,7 @@ import { CompetitorsPanel } from "@/components/seo/CompetitorsPanel";
 import { DfsSettingsPanel } from "@/components/seo/DfsSettingsPanel";
 import { GapPanel } from "@/components/seo/GapPanel";
 import { KeywordsPanel } from "@/components/seo/KeywordsPanel";
+import { MapRankPanel } from "@/components/seo/MapRankPanel";
 import { RankPanel } from "@/components/seo/RankPanel";
 import { SearchConsolePanel } from "@/components/seo/SearchConsolePanel";
 import { VisibilityPanel } from "@/components/seo/VisibilityPanel";
@@ -15,8 +16,9 @@ import { getT } from "@/lib/i18n-server";
 // La auditoría recorre el sitio y la visibilidad en IA hace varias búsquedas: puede tardar.
 export const maxDuration = 300;
 
-export default async function SeoPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function SeoPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ mapa?: string }> }) {
   const { id } = await params;
+  const { mapa } = await searchParams;
   const b = await db.business.findUniqueOrThrow({ where: { id }, select: { name: true, color: true } });
   const { t } = await getT();
   return (
@@ -35,6 +37,7 @@ export default async function SeoPage({ params }: { params: Promise<{ id: string
         <KeywordsPanel businessId={id} />
         <WriterCard businessId={id} />
         <RankPanel businessId={id} />
+        <MapRankPanel businessId={id} mapId={mapa} />
         <AlertsPanel businessId={id} />
         <CompetitorsPanel businessId={id} />
         <GapPanel businessId={id} />
