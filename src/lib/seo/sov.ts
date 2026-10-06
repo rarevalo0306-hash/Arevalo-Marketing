@@ -254,9 +254,14 @@ export function mapShare(maps: MapReport[], top = SHARE_TOP): MapShare | null {
   };
 }
 
+/** Los mapas agrupados por búsqueda, cada grupo del más nuevo al más viejo. `maps`: del más nuevo al más viejo. */
+export function mapGroups(maps: MapReport[]): MapReport[][] {
+  return [...groupNewestFirst(maps, mapKey).values()];
+}
+
 /** El último mapa de cada búsqueda, y el anterior de las búsquedas que tienen dos. `maps`: del más nuevo al más viejo. */
 export function latestMaps(maps: MapReport[]): { latest: MapReport[]; pairs: [MapReport, MapReport][] } {
-  const groups = [...groupNewestFirst(maps, mapKey).values()];
+  const groups = mapGroups(maps);
   return { latest: groups.map((g) => g[0]), pairs: groups.filter((g) => g.length >= 2).map((g) => [g[0], g[1]]) };
 }
 
@@ -313,6 +318,61 @@ export function aiChange(now: VisibilityReport | null | undefined, before: Visib
   const a = now ? aiShare(now) : null;
   const b = before ? aiShare(before) : null;
   return a && b && a.mentions && b.mentions ? points(a.you, b.you) : null;
+}
+
+// ---------- Las tres partes juntas ----------
+
+export type MarketSummary = {
+  organic: OrganicShare | null;
+  /** Cambio frente a la revisión con la que se compara (puntos porcentuales). */
+  organicDelta: number | null;
+  map: MapShare | null;
+  mapDelta: number | null;
+  ai: AiShare | null;
+  aiDelta: number | null;
+};
+
+/**
+ * Tu parte de Google, del mapa y de las IAs, y cuánto cambió. Lo usan el panel, el resumen en palabras simples, el
+ * correo de cada lunes y el reporte en PDF; cada uno elige con qué revisión comparar:
+ * - `rankByZone`: por zona, [la revisión actual, la de comparación (opcional)]. Las zonas sin código (0) deben venir ya
+ *   con el de la zona principal, para que encuentren sus búsquedas al mes.
+ * - `keywords`: el último reporte de palabras de cada zona (el de la zona principal primero).
+ * - `maps`: por búsqueda, [el mapa actual, el de comparación (opcional)].
+ * - `ai`: [la revisión actual, la de comparación (opcional)].
+ * Sin página web no se calcula la parte de Google (no se sabe cuál es tu sitio).
+ */
+export function marketSummary(input: {
+  website: string;
+  rankByZone?: RankReport[][];
+  keywords?: KeywordsReport[];
+  maps?: MapReport[][];
+  ai?: (VisibilityReport | null | undefined)[];
+}): MarketSummary {
+  const zones = (input.rankByZone ?? []).filter((g) => g.length > 0);
+  const opts = { website: input.website, keywords: input.keywords ?? [] };
+  const organic = input.website.trim() && zones.length ? organicShare(zones.map((g) => g[0]), opts) : null;
+  const maps = (input.maps ?? []).filter((g) => g.length > 0);
+  const map = maps.length ? mapShare(maps.map((g) => g[0])) : null;
+  const [aiNow, aiBefore] = input.ai ?? [];
+  const ai = aiNow ? aiShare(aiNow) : null;
+  return {
+    organic,
+    organicDelta: organic ? organicChange(zones, opts) : null,
+    map,
+    mapDelta: map ? mapChange(maps.filter((g) => g.length >= 2).map((g) => [g[0], g[1]] as [MapReport, MapReport])) : null,
+    ai,
+    aiDelta: ai ? aiChange(aiNow, aiBefore) : null,
+  };
+}
+
+/** ¿Hay algo que mostrar? */
+export const hasMarket = (m: MarketSummary | null | undefined): m is MarketSummary => Boolean(m && (m.organic || m.map || m.ai));
+
+/** Tu parte en una de las tres, en % (1 decimal), y cuánto era en la revisión de comparación (null si no hay). */
+export function shareChange(you: number, delta: number | null): { now: number; before: number | null; diff: number | null } {
+  const now = Math.round(you * 1000) / 10;
+  return { now, before: delta === null ? null : Math.round((now - delta) * 10) / 10, diff: delta };
 }
 
 // ---------- Veredictos en una línea ----------

@@ -9,7 +9,11 @@ import { FONTS, fontId } from "@/lib/design-shapes";
 import { intlLocale, translator, type UiLang } from "@/lib/i18n";
 import { BUSINESS_TZ } from "@/lib/time";
 import { isPrivateHost } from "@/lib/seo/audit";
+import { hintText, HINT_EASY } from "@/lib/seo/backlinks";
+import { severityLabel } from "@/lib/seo/cannibal";
 import { rankBand, type RankBand } from "@/lib/seo/maprank-shared";
+import { aiVerdict, mapVerdict, organicVerdict } from "@/lib/seo/sov";
+import { visitsText } from "@/lib/seo/traffic";
 import {
   channelLabel,
   isEmptyReport,
@@ -715,6 +719,109 @@ function AiSectionView({ d, c }: { d: ReportData; c: Ctx }) {
   );
 }
 
+// ---------- Tu parte del mercado ----------
+
+/** Una barra de 0 a 100 %: tu parte (color de la marca), una marca gris donde está el líder y una negra donde estabas. */
+function ShareBar({ you, leader, before, c }: { you: number; leader: number | null; before: number | null; c: Ctx }) {
+  const W = 200;
+  const H = 10;
+  const x = (n: number) => (Math.max(0, Math.min(100, n)) / 100) * W;
+  return (
+    <Svg width={W} height={H + 2} viewBox={`0 -1 ${W} ${H + 2}`}>
+      <Rect x={0} y={0} width={W} height={H} fill="#eef1f5" rx={5} ry={5} />
+      <Rect x={0} y={0} width={x(you)} height={H} fill={c.pal.primary} rx={5} ry={5} />
+      {leader !== null ? <Rect x={Math.max(0, x(leader) - 1.5)} y={-1} width={3} height={H + 2} fill="#9ca3af" /> : null}
+      {before !== null ? <Rect x={Math.max(0, x(before) - 1)} y={-1} width={2} height={H + 2} fill={INK} /> : null}
+    </Svg>
+  );
+}
+
+function MarketSectionView({ d, c }: { d: ReportData; c: Ctx }) {
+  const m = d.market;
+  if (!m) return null;
+  const rows: { key: string; label: string; you: Delta; leader: { label: string; share: number } | null; verdict: { es: string; en: string } }[] = [];
+  if (m.organic) rows.push({ key: "g", label: "Google", you: m.organic.you, leader: m.organic.share.leader, verdict: organicVerdict(m.organic.share) });
+  if (m.map) rows.push({ key: "m", label: c.t("Mapa de Google", "Google Maps"), you: m.map.you, leader: m.map.share.leader, verdict: mapVerdict(m.map.share) });
+  if (m.ai) rows.push({ key: "a", label: c.t("IAs", "AI assistants"), you: m.ai.you, leader: m.ai.share.leader, verdict: aiVerdict(m.ai.share) });
+  return (
+    <View wrap={false}>
+      <SectionTitle
+        title={c.t("Tu parte del mercado", "Your share of the market")}
+        subtitle={c.t("De todo lo que se reparten tus búsquedas en Google, el mapa y las IAs, cuánto te llevas tú (estimado con tus revisiones guardadas).", "Of everything your Google searches, the map and the AIs hand out, how much goes to you (estimated from your saved checks).")}
+        c={c}
+      />
+      <Card>
+        {rows.map((r, i) => (
+          <View key={r.key} style={{ marginBottom: i < rows.length - 1 ? 7 : 0 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Text style={{ width: 80, fontSize: 9, fontFamily: BODY_BOLD, color: INK }}>{r.label}</Text>
+              <ShareBar you={r.you.now ?? 0} leader={r.leader ? r.leader.share * 100 : null} before={r.you.before} c={c} />
+              <Text style={{ width: 34, fontSize: 9.5, fontFamily: BODY_BOLD, color: INK }}>{c.pct(r.you.now ?? 0)}</Text>
+              <DeltaTag d={r.you} c={c} unit=" pts" size={7} />
+            </View>
+            <Text style={{ fontSize: 8, color: MUTED, marginTop: 2, marginLeft: 88, lineHeight: 1.3 }}>{trunc(r.verdict[c.lang], 170)}</Text>
+          </View>
+        ))}
+      </Card>
+      <Note>
+        {c.t(
+          "Google: parte de los clics posibles según dónde sales. Mapa: parte de los puntos donde sales entre los 3 primeros. IAs: parte de las veces que nombran un negocio. La marca gris es el competidor que más se lleva; la negra, cómo estabas al empezar el periodo.",
+          "Google: share of the possible clicks based on where you rank. Map: share of the points where you're in the top 3. AIs: share of the times they name a business. The gray mark is the competitor that gets the most; the black one, where you stood when the period started.",
+        )}
+      </Note>
+    </View>
+  );
+}
+
+// ---------- Cómo hablan de ti las IAs ----------
+
+function SentimentSectionView({ d, c }: { d: ReportData; c: Ctx }) {
+  const s = d.sentiment;
+  if (!s) return null;
+  const tile = (label: string, n: number, before: number | undefined, color: string, lowerIsBetter = false) => {
+    const diff = before === undefined ? null : n - before;
+    const better = diff === null ? 0 : lowerIsBetter ? -diff : diff;
+    return (
+      <View style={{ flex: 1, borderWidth: 1, borderColor: LINE, borderRadius: 8, padding: 8, borderLeftWidth: 4, borderLeftColor: color }}>
+        <Text style={{ fontSize: 7, color: MUTED, textTransform: "uppercase", letterSpacing: 0.4 }}>{label}</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 3 }}>
+          <Text style={{ fontFamily: c.head.family, fontWeight: c.head.bold, fontSize: 15, color: INK }}>{n}</Text>
+          <DeltaTag d={{ now: n, before: before ?? null, diff, tone: !diff ? "neutral" : better > 0 ? "good" : "bad" }} c={c} lowerIsBetter={lowerIsBetter} size={7} />
+        </View>
+      </View>
+    );
+  };
+  return (
+    <View wrap={false}>
+      <SectionTitle title={c.t("Cómo hablan de ti las IAs", "How the AIs talk about you")} subtitle={c.t("El tono de cada respuesta que te menciona: bien, neutral o mal.", "The tone of each answer that mentions you: good, neutral or bad.")} c={c} />
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        {tile(c.t("Positivas", "Positive"), s.positiva, s.before?.positiva, BAND.top3)}
+        {tile(c.t("Neutrales", "Neutral"), s.neutral, s.before?.neutral, BAND.none)}
+        {tile(c.t("Negativas", "Negative"), s.negativa, s.before?.negativa, BAND.low, true)}
+      </View>
+      {s.attributes.length ? (
+        <Text style={{ fontSize: 8.5, color: INK, marginTop: 6 }}>
+          <Text style={{ fontFamily: BODY_BOLD }}>{c.t("Te asocian con: ", "They link you with: ")}</Text>
+          {trunc(s.attributes.join(", "), 160)}
+        </Text>
+      ) : null}
+      {s.negatives.map((n, i) => (
+        <View key={i} style={{ marginTop: 5, padding: 6, borderRadius: 6, backgroundColor: "#fef3f2" }}>
+          <Text style={{ fontSize: 8.5, color: BAD, fontFamily: BODY_BOLD }}>
+            {n.provider}
+            {n.reason ? <Text style={{ fontFamily: BODY, color: INK }}>{`: ${trunc(n.reason, 170)}`}</Text> : null}
+          </Text>
+          {n.quote ? <Text style={{ fontSize: 8, color: MUTED, marginTop: 2 }}>{c.t(`«${trunc(n.quote, 180)}»`, `“${trunc(n.quote, 180)}”`)}</Text> : null}
+        </View>
+      ))}
+      <Note>
+        {c.t(`${s.total} ${s.total === 1 ? "mención revisada" : "menciones revisadas"} el ${c.day(s.date)}`, `${s.total} ${s.total === 1 ? "mention" : "mentions"} checked on ${c.day(s.date)}`)}
+        {s.before ? c.t("; las flechas comparan con la revisión del inicio del periodo.", "; arrows compare with the check from the start of the period.") : "."}
+      </Note>
+    </View>
+  );
+}
+
 // ---------- Tu sitio ----------
 
 function ScoreBar({ score }: { score: number }) {
@@ -832,6 +939,149 @@ function GscView({ d, c }: { d: ReportData; c: Ctx }) {
       <Note>
         {c.t(`Del ${range(g.start, g.end)}, comparado con ${range(g.prevStart, g.prevEnd)} (datos de Google, que llegan con 2-3 días de retraso).`, `From ${range(g.start, g.end)}, compared with ${range(g.prevStart, g.prevEnd)} (Google data, which arrives 2-3 days late).`)}
       </Note>
+    </View>
+  );
+}
+
+// ---------- Páginas que compiten entre sí ----------
+
+function CannibalSectionView({ d, c }: { d: ReportData; c: Ctx }) {
+  const k = d.cannibal;
+  if (!k) return null;
+  const color = (sev: string) => (sev === "alta" ? BAD : sev === "media" ? BAND.mid : MUTED);
+  return (
+    <View wrap={false}>
+      <SectionTitle
+        title={c.t("Páginas que compiten entre sí", "Pages competing with each other")}
+        subtitle={c.t("Cuando dos páginas tuyas salen para la misma búsqueda, se reparten los clics y ninguna sube.", "When two of your pages show up for the same search, they split the clicks and neither climbs.")}
+        c={c}
+      />
+      {k.issues.map((i, n) => (
+        <View key={n} style={{ borderWidth: 1, borderColor: LINE, borderLeftWidth: 4, borderLeftColor: color(i.severity), borderRadius: 6, padding: 7, marginBottom: 5 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Text style={{ fontSize: 7, color: "#ffffff", backgroundColor: color(i.severity), paddingHorizontal: 4, paddingVertical: 1.5, borderRadius: 3, fontFamily: BODY_BOLD }}>{severityLabel(i.severity, c.t).toUpperCase()}</Text>
+            <Text style={{ fontSize: 9.5, fontFamily: BODY_BOLD, color: INK, flex: 1 }}>{c.t(`«${trunc(i.query, 70)}»`, `“${trunc(i.query, 70)}”`)}</Text>
+          </View>
+          <Text style={{ fontSize: 7.5, color: MUTED, marginTop: 2 }}>{trunc(i.pages.join("  ·  "), 150)}</Text>
+          <Text style={{ fontSize: 8.5, color: INK, marginTop: 3, lineHeight: 1.35 }}>{trunc(i.fix[c.lang], 260)}</Text>
+        </View>
+      ))}
+      <Note>
+        {k.total > k.issues.length ? c.t(`Se muestran ${k.issues.length} de ${k.total} búsquedas. `, `Showing ${k.issues.length} of ${k.total} searches. `) : ""}
+        {k.source === "gsc"
+          ? c.t("Según Search Console (búsquedas reales).", "Based on Search Console (real searches).")
+          : k.source === "rank"
+            ? c.t("Según tus revisiones de posiciones de los últimos 30 días.", "Based on your ranking checks from the last 30 days.")
+            : c.t("Según la revisión de tu página (títulos repetidos).", "Based on your website check (repeated titles).")}
+      </Note>
+    </View>
+  );
+}
+
+// ---------- Enlaces ----------
+
+function LinksSectionView({ d, c }: { d: ReportData; c: Ctx }) {
+  const l = d.links;
+  if (!l) return null;
+  const hints = hintText(c.t);
+  const n = (v: number | null) => (v === null ? "—" : c.int.format(v));
+  return (
+    <View wrap={false}>
+      <SectionTitle title={c.t("Enlaces hacia tu página", "Links to your website")} subtitle={c.t("Cada sitio que te enlaza es como una recomendación para Google: mientras más y mejores, más arriba sales.", "Every site that links to you is like a recommendation for Google: the more (and better), the higher you rank.")} c={c} />
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <Stat width="23.5%" c={c} label={c.t("Sitios que te enlazan", "Sites linking to you")} value={n(l.referringDomains.now)} delta={<DeltaTag d={l.referringDomains} c={c} />} />
+        <Stat width="23.5%" c={c} label={c.t("Fuerza (0-1000)", "Strength (0-1000)")} value={n(l.rank.now)} delta={<DeltaTag d={l.rank} c={c} />} />
+        <Stat width="23.5%" c={c} label={c.t("Nuevos (último mes)", "New (last month)")} value={n(l.newDomains)} />
+        <Stat width="23.5%" c={c} label={c.t("Perdidos (último mes)", "Lost (last month)")} value={n(l.lostDomains)} />
+      </View>
+      {l.competitors.length ? (
+        <Text style={{ fontSize: 8.5, color: INK, marginTop: 6 }}>
+          <Text style={{ fontFamily: BODY_BOLD }}>{c.t("Tu competencia: ", "Your competitors: ")}</Text>
+          {l.competitors.map((x) => c.t(`${x.domain} ${n(x.referringDomains)} sitios`, `${x.domain} ${n(x.referringDomains)} sites`)).join("  ·  ")}
+        </Text>
+      ) : null}
+      {l.gap.length ? (
+        <View style={{ marginTop: 8 }}>
+          <View style={{ flexDirection: "row", paddingHorizontal: 8, paddingVertical: 4, backgroundColor: c.pal.soft, borderRadius: 4 }}>
+            <Th flex={2}>{c.t("Dónde conseguir enlaces", "Where to get links")}</Th>
+            <Th flex={1.4}>{c.t("Tipo", "Type")}</Th>
+            <Th flex={4}>{c.t("Cómo", "How")}</Th>
+          </View>
+          {l.gap.map((g, i) => (
+            <View key={i} style={{ flexDirection: "row", paddingHorizontal: 8, paddingVertical: 3.5, borderBottomWidth: 0.5, borderColor: LINE, backgroundColor: i % 2 ? ZEBRA : "#ffffff" }}>
+              <Text style={{ flex: 2, fontSize: 8.5, color: INK, fontFamily: BODY_BOLD }}>{trunc(g.domain, 32)}</Text>
+              <Text style={{ flex: 1.4, fontSize: 8, color: HINT_EASY[g.hint] ? GOOD : MUTED }}>{hints[g.hint].label}</Text>
+              <Text style={{ flex: 4, fontSize: 8, color: INK, lineHeight: 1.3 }}>{trunc(hints[g.hint].how, 130)}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+      <Note>
+        {c.t(`Revisión del ${c.day(l.date)}`, `Check from ${c.day(l.date)}`)}
+        {l.stale ? c.t(" (la última, de antes del periodo)", " (the latest one, from before the period)") : ""}
+        {l.gapTotal > l.gap.length ? c.t(`. Hay ${l.gapTotal} sitios que enlazan a tu competencia y a ti no; se muestran los ${l.gap.length} primeros.`, `. ${l.gapTotal} sites link to your competitors but not to you; showing the first ${l.gap.length}.`) : "."}
+      </Note>
+    </View>
+  );
+}
+
+// ---------- Visitas de tu competencia ----------
+
+function TrafficSectionView({ d, c }: { d: ReportData; c: Ctx }) {
+  const tr = d.traffic;
+  if (!tr) return null;
+  const n = (v: number | null) => (v === null ? "—" : c.int.format(Math.round(v)));
+  const v = (x: number) => visitsText(x, c.lang);
+  return (
+    <View wrap={false}>
+      <SectionTitle
+        title={c.t("Visitas de tu competencia", "Your competitors' visits")}
+        subtitle={c.t(`Visitas al mes que cada sitio recibe desde Google${tr.country ? ` en ${tr.country}` : ""} (estimadas por DataForSEO).`, `Monthly visits each site gets from Google${tr.country ? ` in ${tr.country}` : ""} (estimated by DataForSEO).`)}
+        c={c}
+      />
+      <Card style={{ padding: 0 }}>
+        <View style={{ flexDirection: "row", paddingHorizontal: 10, paddingVertical: 5, borderBottomWidth: 1, borderColor: LINE }}>
+          <Th flex={2.6}>{c.t("Sitio", "Site")}</Th>
+          <Th flex={1.1} align="right">{c.t("Visitas/mes", "Visits/mo")}</Th>
+          <Th flex={1.1} align="right">{c.t("Búsquedas", "Keywords")}</Th>
+          <Th flex={0.9} align="right">Top 10</Th>
+          <Th flex={1.8} align="right">{c.t("Hace 12 meses / hoy", "12 months ago / now")}</Th>
+        </View>
+        {tr.rows.map((r, i) => (
+          <View key={r.domain} style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 4.5, backgroundColor: r.isYou ? c.pal.soft : i % 2 ? ZEBRA : "#ffffff" }}>
+            <Text style={{ flex: 2.6, fontSize: 9, fontFamily: r.isYou ? BODY_BOLD : BODY, color: INK }}>
+              {trunc(r.domain, 34)}
+              {r.isYou ? c.t(" (tú)", " (you)") : ""}
+            </Text>
+            {r.noData ? (
+              <Text style={{ flex: 4.9, fontSize: 8, color: MUTED, textAlign: "right" }}>{c.t("Sin datos (sitio muy nuevo o muy chico)", "No data (site too new or too small)")}</Text>
+            ) : (
+              <>
+                <Text style={{ flex: 1.1, fontSize: 9, fontFamily: BODY_BOLD, color: INK, textAlign: "right" }}>{n(r.etv)}</Text>
+                <Text style={{ flex: 1.1, fontSize: 9, color: INK, textAlign: "right" }}>{n(r.keywords)}</Text>
+                <Text style={{ flex: 0.9, fontSize: 9, color: INK, textAlign: "right" }}>{n(r.top10)}</Text>
+                <View style={{ flex: 1.8, flexDirection: "row", justifyContent: "flex-end", alignItems: "center", gap: 3 }}>
+                  {r.year ? (
+                    <>
+                      <Text style={{ fontSize: 8.5, color: MUTED }}>{v(r.year.from)}</Text>
+                      <ArrowRight color={r.year.to > r.year.from ? GOOD : r.year.to < r.year.from ? BAD : MUTED} />
+                      <Text style={{ fontSize: 8.5, fontFamily: BODY_BOLD, color: r.year.to > r.year.from ? GOOD : r.year.to < r.year.from ? BAD : INK }}>{v(r.year.to)}</Text>
+                    </>
+                  ) : (
+                    <Text style={{ fontSize: 8.5, color: MUTED }}>—</Text>
+                  )}
+                </View>
+              </>
+            )}
+          </View>
+        ))}
+      </Card>
+      {tr.lines.map((x, i) => (
+        <Text key={i} style={{ fontSize: 8.5, color: INK, marginTop: i ? 2 : 6, lineHeight: 1.35 }}>
+          {trunc(x[c.lang], 240)}
+        </Text>
+      ))}
+      <Note>{c.t(`Datos del ${c.day(tr.date)}${tr.month ? ` (último mes: ${tr.month})` : ""}. Son estimaciones: sirven para comparar, no son visitas exactas.`, `Data from ${c.day(tr.date)}${tr.month ? ` (latest month: ${tr.month})` : ""}. These are estimates: good for comparing, not exact visits.`)}</Note>
     </View>
   );
 }
@@ -977,9 +1227,14 @@ export function ReportDocument({ data: d, opts }: { data: ReportData; opts: PdfO
             <Summary d={d} c={c} summary={opts.summary} />
             <RankSectionView d={d} c={c} />
             <MapsSectionView d={d} c={c} />
+            <MarketSectionView d={d} c={c} />
             <GbpSectionView d={d} c={c} />
             <AiSectionView d={d} c={c} />
+            <SentimentSectionView d={d} c={c} />
             <SiteSectionView d={d} c={c} />
+            <CannibalSectionView d={d} c={c} />
+            <LinksSectionView d={d} c={c} />
+            <TrafficSectionView d={d} c={c} />
             <OpportunitiesView d={d} c={c} />
             <PostsView d={d} c={c} />
           </>

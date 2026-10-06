@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from "fs";
+import path from "path";
 import { describe, expect, it } from "vitest";
 import {
   aiAlerts,
@@ -5,15 +7,29 @@ import {
   buildWeeklyEmail,
   closestWeekBefore,
   isWeeklyDue,
+  newNegativeMentions,
   parseAlertEmails,
   rankAlerts,
   readGapRecommendations,
+  shareDrop,
+  weeklyCannibal,
   weeklyGbp,
+  weeklyLinks,
+  weeklyMarket,
   weeklyMovers,
+  weeklyTraffic,
   type WeeklyData,
 } from "@/lib/seo/alerts";
-import type { RankReport, RankRow } from "@/lib/seo/rank";
-import type { VisibilityReport, VisibilityResult } from "@/lib/seo/visibility";
+import { readBacklinksReport } from "@/lib/seo/backlinks";
+import { buildCannibal } from "@/lib/seo/cannibal";
+import { readKeywordsReport } from "@/lib/seo/keywords";
+import { readMapReport, type MapReport } from "@/lib/seo/maprank";
+import { readRankReport, type RankReport, type RankRow } from "@/lib/seo/rank";
+import { marketSummary } from "@/lib/seo/sov";
+import { readTrafficReport } from "@/lib/seo/traffic";
+import { readVisibilityReport, type VisibilityReport, type VisibilityResult } from "@/lib/seo/visibility";
+import fameseg from "./fixtures/fameseg.json";
+import { backlinksSaved, backlinksSavedBefore, cannibalPageQueries, cannibalRange, famesegAiWithTone, mapBefore, mapNow, trafficSaved } from "./fixtures/seo-tools";
 
 const row = (keyword: string, position: number | null, extra: Partial<RankRow> = {}): RankRow => ({
   keyword,
@@ -338,5 +354,125 @@ describe("isWeeklyDue", () => {
     expect(isWeeklyDue(now, at("2026-10-03T13:00:00Z"), NY)).toBe(false);
     expect(isWeeklyDue(now, at("2026-10-05T12:01:00Z"), NY)).toBe(false);
     expect(isWeeklyDue(now, at("2026-09-28T12:05:00Z"), NY)).toBe(true);
+  });
+});
+
+// ---------- Herramientas nuevas: tu parte del mercado, tono de las IAs, enlaces, visitas y páginas que compiten ----------
+
+describe("weekly email: new tools", () => {
+  const website = fameseg.business.website;
+  const famesegRank = readRankReport(fameseg.reports.rank.data)!;
+  const keywords = readKeywordsReport(fameseg.reports.keywords.data)!;
+  const famesegAi = readVisibilityReport(fameseg.reports.ai.data)!;
+  const toned = readVisibilityReport(famesegAiWithTone())!;
+  const maps = [[readMapReport(mapNow), readMapReport(mapBefore)] as MapReport[]];
+  const cannibal = buildCannibal({ businessName: "Fameseg", website, gsc: { pageQueries: cannibalPageQueries, range: cannibalRange }, ranks: [], audit: null });
+
+  const full: WeeklyData = {
+    ...empty,
+    zones: [{ label: "Nicaragua", cur: famesegRank, prev: null }],
+    audit: { score: 78, date: "2026-10-02T12:00:00.000Z" },
+    recommendations: [{ keyword: "portones corredizos", volume: 320, why: "gap" }],
+    ai: { date: "2026-10-01T12:00:00.000Z", cur: toned, prev: famesegAi },
+    market: weeklyMarket(marketSummary({ website, rankByZone: [[famesegRank]], keywords: [keywords], maps, ai: [toned, famesegAi] })),
+    links: weeklyLinks(readBacklinksReport(backlinksSaved), readBacklinksReport(backlinksSavedBefore)),
+    traffic: weeklyTraffic(readTrafficReport(trafficSaved)),
+    cannibal: weeklyCannibal(cannibal),
+  };
+
+  it("builds each part from the saved reports", () => {
+    expect(full.market).toMatchObject({ map: 0.5, mapDelta: 25, organicDelta: null, aiDelta: 0 });
+    expect(full.market!.organic).toBeCloseTo(6.43 / 60.125, 6);
+    expect(full.links).toEqual({ referringDomains: 12, prevReferringDomains: 10, newDomains: 3, lostDomains: 1, gap: 8, date: "2026-09-20T12:00:00.000Z" });
+    expect(full.traffic).toMatchObject({ you: { domain: "fameseg.com", etv: 3, year: { from: 1, to: 3 } }, rival: { domain: "cormetal.com.ni", etv: 45, year: { from: 20, to: 45 } } });
+    expect(full.cannibal).toEqual({ urgent: 1, query: "cortinas metalicas", pages: 2 });
+    expect(weeklyCannibal({ ...cannibal, issues: cannibal.issues.filter((i) => i.severity !== "alta") })).toBeNull();
+    expect(weeklyTraffic(readTrafficReport({ domains: [{ domain: "x.com", isYou: true, history: [] }] }))).toBeNull();
+    expect(weeklyMarket(marketSummary({ website: "" }))).toBeNull();
+    expect(weeklyLinks(null)).toBeNull();
+  });
+
+  it("finds negative mentions that weren't there before", () => {
+    expect(newNegativeMentions(famesegAi, toned)).toEqual([{ provider: "openai", question: toned.results.find((r) => r.sentiment?.sentiment === "negativa")!.question, reason: "Dice que algunos clientes se quejan de demoras en la instalación" }]);
+    // La misma mención negativa en las dos revisiones no es nueva.
+    expect(newNegativeMentions(toned, toned)).toEqual([]);
+    // Sin tono leído no avisa nada.
+    expect(newNegativeMentions(null, famesegAi)).toEqual([]);
+  });
+
+  it("adds the new sections, short and in both languages", () => {
+    const es = buildWeeklyEmail(biz, full, "es", opts);
+    expect(es.html).toContain("Tu parte del mercado");
+    expect(es.html).toContain("Google: 11% · Mapa: 50% (+25 pts) · IAs: 17%");
+    expect(es.html).toContain("Cómo hablan de ti las IAs");
+    expect(es.html).toContain("4 menciones: 3 positivas, 1 negativa.");
+    expect(es.html).toContain("Nueva mención negativa: ChatGPT, en");
+    expect(es.html).toContain("Páginas que compiten entre sí");
+    expect(es.html).toContain("Urgente: para &quot;cortinas metalicas&quot;, 2 de tus páginas compiten entre sí");
+    expect(es.html).toContain("Sitios que te enlazan: 12 (+2)");
+    expect(es.html).toContain("En el último mes: 3 nuevos y 1 perdido · 8 sitios enlazan a tu competencia y a ti no.");
+    expect(es.html).toContain("Visitas al mes desde Google: tú unas 3 · Cormetal unas 45.");
+    expect(es.html).toContain("En un año, Cormetal pasó de 20 a 45 visitas al mes; tú de 1 a 3.");
+    const en = buildWeeklyEmail(biz, full, "en", opts);
+    expect(en.html).toContain("Your share of the market");
+    expect(en.html).toContain("Google: 11% · Map: 50% (+25 pts) · AIs: 17%");
+    expect(en.html).toContain("4 mentions: 3 positive, 1 negative.");
+    expect(en.html).toContain("Sites linking to you: 12 (+2)");
+    expect(en.text).toContain("Over a year, Cormetal went from 20 to 45 visits a month; you from 1 to 3.");
+    expect(en.html).toContain("Urgent: for &quot;cortinas metalicas&quot;");
+    const dir = process.env.REPORT_PDF_DIR;
+    if (dir) {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(path.join(dir, "weekly.html"), es.html);
+      writeFileSync(path.join(dir, "weekly-en.html"), en.html);
+    }
+  });
+
+  it("each new section appears only with data, and values are escaped", () => {
+    const none = buildWeeklyEmail(biz, { ...empty, ai: { date: "2026-10-01T12:00:00.000Z", cur: famesegAi, prev: null } }, "es", opts).html;
+    for (const h of ["Tu parte del mercado", "Cómo hablan de ti las IAs", "Enlaces hacia tu página", "Visitas de tu competencia", "Páginas que compiten entre sí"]) expect(none).not.toContain(h);
+    const evil = buildWeeklyEmail(
+      biz,
+      {
+        ...empty,
+        cannibal: { urgent: 2, query: "<b>cortinas</b>", pages: 3 },
+        traffic: { you: null, rival: { domain: "<i>evil</i>.com", etv: 9, year: null }, date: "" },
+      },
+      "es",
+      opts,
+    );
+    expect(evil.html).not.toMatch(/<b>cortinas|<i>evil/);
+    expect(evil.html).toContain("&lt;b&gt;cortinas&lt;/b&gt;");
+    expect(evil.html).toContain("(y 1 búsqueda más)");
+    expect(evil.html).toContain("&lt;i&gt;evil&lt;/i&gt; unas 9");
+  });
+});
+
+describe("rank alert: share of Google drop", () => {
+  const website = fameseg.business.website;
+  const prev = readRankReport(fameseg.reports.rank.data)!;
+  const keywords = readKeywordsReport(fameseg.reports.keywords.data)!;
+  // "cortinas metálicas managua" (la que más se busca) pasa del 2.º lugar a no salir.
+  const cur: RankReport = {
+    ...prev,
+    rows: prev.rows.map((r) => (r.keyword === "cortinas metálicas managua" ? { ...r, position: null, url: null, top: r.top.filter((t) => t.domain !== "fameseg.com") } : r)),
+  };
+
+  it("detects a drop of 5 points or more, and nothing for small moves", () => {
+    expect(shareDrop([[cur, prev]], website, [keywords])).toEqual({ from: 11, to: 1 });
+    expect(shareDrop([[prev, cur]], website, [keywords])).toBeNull();
+    expect(shareDrop([[prev, prev]], website, [keywords])).toBeNull();
+    expect(shareDrop([[cur, prev]], "", [keywords])).toBeNull();
+    expect(shareDrop([], website)).toBeNull();
+  });
+
+  it("adds the line first in the alert email and counts it", () => {
+    const share = shareDrop([[cur, prev]], website, [keywords]);
+    const e = buildAlertEmail(biz, [{ zone: "Nicaragua", bad: [], good: [] }], "es", opts, { share });
+    expect(e.subject).toBe("Aviso: 1 cambio en tus posiciones en Google — Techos <Pérez>");
+    expect(e.html).toContain("Tu parte de los clics en tus búsquedas de Google bajó del 11% al 1%");
+    const en = buildAlertEmail(biz, [], "en", opts, { share });
+    expect(en.html).toContain("Your share of the clicks on your Google searches dropped from 11% to 1%");
+    expect(buildAlertEmail(biz, [], "es", opts).html).not.toContain("Tu parte de Google");
   });
 });

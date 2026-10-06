@@ -36,7 +36,17 @@ const DORAL = 1015117;
 
 const KEYWORDS = ["techos miami", "reparación de techos", "roofing company", "goteras en el techo", "techos de tejas", "instalación de techos", "roof repair near me", "techos planos"];
 
-const rankRow = (keyword: string, position: number | null) => ({ keyword, position, url: position ? "https://arevalo.com/techos" : null, localPack: null, top: [], features: [] });
+const RIVALS = ["perezroofing.com", "yelp.com", "techosya.com", "angi.com", "roofpros.com"];
+/** Los 5 primeros de Google: tu página en su lugar (si está entre los 5) y la competencia en los demás. */
+const topFor = (position: number | null) => {
+  let k = 0;
+  return [1, 2, 3, 4, 5].map((p) =>
+    p === position
+      ? { position: p, domain: "arevalo-roofing.com", url: "https://arevalo-roofing.com/techos", title: "Techos en Miami" }
+      : { position: p, domain: RIVALS[k], url: `https://${RIVALS[k++]}/`, title: "" },
+  );
+};
+const rankRow = (keyword: string, position: number | null) => ({ keyword, position, url: position ? "https://arevalo-roofing.com/techos" : null, localPack: null, top: topFor(position), features: [] });
 const rankRep = (code: number, location: string, positions: (number | null)[], createdAt: string) => ({
   location,
   locationCode: code,
@@ -46,6 +56,55 @@ const rankRep = (code: number, location: string, positions: (number | null)[], c
   cost: 0.03,
   createdAt,
 });
+
+/** Enlaces guardados (backlinks.ts): `referring` sitios te enlazan; con o sin la lista de dónde conseguir enlaces. */
+function backlinksRep(referring: number, rank: number, gap: boolean) {
+  const g = (domain: string, hint: string, linksTo: string[], r: number) => ({ domain, rank: r, linksTo, backlinks: 2, spamScore: 3, hint });
+  return {
+    domain: "arevalo-roofing.com",
+    summary: { domain: "arevalo-roofing.com", rank, backlinks: referring * 6, referringDomains: referring, newDomains1m: 4, lostDomains1m: 1, trend: [] },
+    referring: [],
+    referringTotal: referring,
+    competitors: [
+      { domain: "perezroofing.com", rank: 320, backlinks: 900, referringDomains: 120, ok: true },
+      { domain: "techosya.com", rank: 150, backlinks: 120, referringDomains: 25, ok: true },
+    ],
+    gap: gap
+      ? [
+          g("miamichamber.com", "association", ["perezroofing.com", "techosya.com"], 420),
+          g("yelp.com", "directory", ["perezroofing.com", "techosya.com"], 900),
+          g("miaminewtimes.com", "news", ["perezroofing.com"], 610),
+          g("abcsupply.com", "supplier", ["perezroofing.com"], 480),
+          g("houzz.com", "directory", ["techosya.com"], 700),
+          g("floridaroof.com", "association", ["perezroofing.com"], 300),
+          g("roofingtalk.com", "forum", ["perezroofing.com"], 120),
+        ]
+      : [],
+    gapSpamHidden: 0,
+    notes: [],
+    cost: 0.2,
+    createdAt: "2026-09-21T12:00:00Z",
+  };
+}
+
+/** Visitas de la competencia guardadas (traffic.ts): Pérez Roofing crece; tú también, más despacio. */
+function trafficRep() {
+  const h = (values: [string, number][]) => values.map(([month, etv]) => ({ month, etv, keywords: Math.round(etv / 3), top3: Math.round(etv / 40), top10: Math.round(etv / 15), value: etv * 2 }));
+  return {
+    domain: "arevalo-roofing.com",
+    country: "United States",
+    location: null,
+    domains: [
+      { domain: "arevalo-roofing.com", isYou: true, history: h([["2025-09", 140], ["2026-03", 210], ["2026-09", 260]]), pages: [] },
+      { domain: "perezroofing.com", isYou: false, history: h([["2025-09", 900], ["2026-03", 1300], ["2026-09", 1850]]), pages: [] },
+      { domain: "techosya.com", isYou: false, history: h([["2025-09", 300], ["2026-03", 280], ["2026-09", 240]]), pages: [] },
+      { domain: "roofpros.com", isYou: false, history: [], pages: [] },
+    ],
+    notes: [],
+    cost: 0.06,
+    createdAt: "2026-09-24T12:00:00Z",
+  };
+}
 
 function richInputs(): ReportInputs {
   const row = (data: unknown, createdAt: string): RawRow => ({ data, createdAt: at(createdAt) });
@@ -122,8 +181,33 @@ function richInputs(): ReportInputs {
         ),
       ],
       ai: [
-        row({ questions: ["¿Quién arregla techos en Miami?"], results: [{ question: "q1", provider: "gemini", mentioned: true }, { question: "q2", provider: "gemini", mentioned: true }, { question: "q1", provider: "openai", mentioned: false }, { question: "q2", provider: "openai", mentioned: true }], score: 75 }, "2026-09-28T12:00:00Z"),
-        row({ questions: ["¿Quién arregla techos en Miami?"], results: [{ question: "q1", provider: "gemini", mentioned: true }, { question: "q2", provider: "gemini", mentioned: false }, { question: "q1", provider: "openai", mentioned: false }, { question: "q2", provider: "openai", mentioned: false }], score: 25 }, "2026-08-28T12:00:00Z"),
+        row(
+          {
+            questions: ["¿Quién arregla techos en Miami?"],
+            results: [
+              { question: "q1", provider: "gemini", mentioned: true, competitors: ["Techos Pérez", "Roof Pros"], sentiment: { sentiment: "positiva", reason: "Lo recomienda por su garantía", quote: "Arévalo Roofing da 10 años de garantía", attributes: ["garantía", "precio justo"] } },
+              { question: "q2", provider: "gemini", mentioned: true, competitors: ["Techos Pérez"], sentiment: { sentiment: "positiva", reason: "Destaca la rapidez", quote: "Arévalo Roofing responde rápido", attributes: ["rapidez", "garantía"] } },
+              { question: "q1", provider: "openai", mentioned: false, competitors: ["Techos Pérez", "Roof Pros", "Miami Roofing Co"] },
+              { question: "q2", provider: "openai", mentioned: true, competitors: ["Techos Pérez"], sentiment: { sentiment: "negativa", reason: "Menciona quejas por demoras en los presupuestos", quote: "algunos clientes de Arévalo Roofing se quejan de demoras", attributes: ["demoras"] } },
+            ],
+            score: 75,
+            sentiment: { status: "ok" },
+          },
+          "2026-09-28T12:00:00Z",
+        ),
+        row(
+          {
+            questions: ["¿Quién arregla techos en Miami?"],
+            results: [
+              { question: "q1", provider: "gemini", mentioned: true, competitors: ["Techos Pérez", "Roof Pros"] },
+              { question: "q2", provider: "gemini", mentioned: false, competitors: ["Techos Pérez", "Roof Pros"] },
+              { question: "q1", provider: "openai", mentioned: false, competitors: ["Techos Pérez", "Miami Roofing Co"] },
+              { question: "q2", provider: "openai", mentioned: false, competitors: ["Techos Pérez"] },
+            ],
+            score: 25,
+          },
+          "2026-08-28T12:00:00Z",
+        ),
       ],
       audit: [
         row({ pages: [{ url: "https://arevalo-roofing.com/" }, { url: "https://arevalo-roofing.com/techos" }], issues: [{ id: "missing-description", pages: ["https://arevalo-roofing.com/techos"], count: 1 }, { id: "images-no-alt", pages: ["a", "b"], count: 2 }, { id: "no-sitemap", pages: [], count: 1 }, { id: "thin-content", pages: ["a"], count: 1 }], site: {}, pagespeed: {}, score: 74 }, "2026-09-22T12:00:00Z"),
@@ -152,6 +236,13 @@ function richInputs(): ReportInputs {
               { key: "arevalo roofing", clicks: 120, impressions: 800, ctr: 0.15, position: 1.2 },
               { key: "techos miami", clicks: 41, impressions: 2100, ctr: 0.02, position: 8.4 },
             ],
+            // Dos páginas se reparten «techos miami» (urgente) y otras dos «reparación de goteras» (leve).
+            pageQueries: [
+              { page: "https://arevalo-roofing.com/techos", query: "techos miami", clicks: 25, impressions: 1200, position: 8.1 },
+              { page: "https://arevalo-roofing.com/blog/cuanto-cuesta-un-techo-en-miami", query: "techos miami", clicks: 16, impressions: 900, position: 9.2 },
+              { page: "https://arevalo-roofing.com/goteras", query: "reparación de goteras", clicks: 8, impressions: 300, position: 6 },
+              { page: "https://arevalo-roofing.com/blog/goteras-en-el-techo", query: "reparación de goteras", clicks: 0, impressions: 20, position: 28 },
+            ],
           },
           "2026-09-29T12:00:00Z",
         ),
@@ -174,6 +265,8 @@ function richInputs(): ReportInputs {
         row({ keyword: "cuánto cuesta un techo nuevo en miami", draft: { markdown: "# Hola\n\nTexto" }, score: 86 }, "2026-09-26T12:00:00Z"),
         row({ keyword: "señales de que tu techo necesita reparación", draft: { markdown: "Texto" }, score: 74 }, "2026-09-12T12:00:00Z"),
       ],
+      backlinks: [row(backlinksRep(34, 186, true), "2026-09-21T12:00:00Z"), row(backlinksRep(29, 171, false), "2026-08-21T12:00:00Z")],
+      traffic: [row(trafficRep(), "2026-09-24T12:00:00Z")],
     },
     posts: [
       ...["facebook", "facebook", "facebook", "instagram", "instagram", "instagram", "instagram", "google", "google", "email"].map((channel, i) => ({ channel, at: at(`2026-09-${String(2 + i * 2).padStart(2, "0")}T15:00:00Z`) })),
@@ -356,9 +449,11 @@ describe("buildReport", () => {
 describe("KPIs, facts and summaries", () => {
   const d = buildReport(richInputs(), monthPeriod(), NOW);
 
-  it("has the 6 KPI tiles", () => {
+  it("has the 8 KPI tiles", () => {
     const k = reportKpis(d);
-    expect(k.map((x) => x.id)).toEqual(["avgPosition", "top10", "mapTop3", "rating", "ai", "posts"]);
+    expect(k.map((x) => x.id)).toEqual(["avgPosition", "top10", "mapTop3", "rating", "ai", "share", "links", "posts"]);
+    expect(k.find((x) => x.id === "links")!.delta).toMatchObject({ now: 34, before: 29, tone: "good" });
+    expect(k.find((x) => x.id === "share")!.delta.tone).toBe("good");
     expect(k.find((x) => x.id === "posts")!.delta).toMatchObject({ now: 10, before: 6, tone: "good" });
   });
 
@@ -429,6 +524,87 @@ describe("KPIs, facts and summaries", () => {
   });
 });
 
+describe("new tools in the report", () => {
+  const d = buildReport(richInputs(), monthPeriod(), NOW);
+
+  it("share of the market: Google, map and AIs at the end of the period vs. the start", () => {
+    const m = d.market!;
+    expect(m.organic!.you).toMatchObject({ now: 3.4, before: 2, diff: 1.4, tone: "good" });
+    expect(m.organic!.share.leader?.label).toBe("perezroofing.com");
+    expect(m.map!.you).toMatchObject({ now: 52, before: 16, tone: "good" });
+    expect(m.ai!.you).toMatchObject({ now: 30, before: 12.5, tone: "good" });
+    expect(m.date).toBe("2026-09-29T12:05:00.000Z");
+  });
+
+  it("how the AIs talk about you, links, competitors' visits and pages competing with each other", () => {
+    expect(d.sentiment).toMatchObject({ positiva: 2, neutral: 0, negativa: 1, total: 3, before: null, attributes: ["garantía", "demoras", "precio justo", "rapidez"] });
+    expect(d.sentiment!.negatives).toEqual([{ provider: "ChatGPT", reason: "Menciona quejas por demoras en los presupuestos", quote: "algunos clientes de Arévalo Roofing se quejan de demoras" }]);
+    expect(d.links).toMatchObject({ referringDomains: { now: 34, before: 29, tone: "good" }, rank: { now: 186, before: 171 }, newDomains: 4, lostDomains: 1, gapTotal: 7, stale: false });
+    expect(d.links!.gap.map((g) => g.domain)).toEqual(["miamichamber.com", "yelp.com", "miaminewtimes.com", "abcsupply.com", "houzz.com"]);
+    expect(d.traffic!.rows.map((r) => [r.domain, r.etv, r.year])).toEqual([
+      ["arevalo-roofing.com", 260, { from: 140, to: 260 }],
+      ["perezroofing.com", 1850, { from: 900, to: 1850 }],
+      ["techosya.com", 240, { from: 300, to: 240 }],
+      ["roofpros.com", null, null],
+    ]);
+    expect(d.traffic!.rows[3].noData).toBe(true);
+    expect(d.traffic!.lines[0].es).toBe("Hoy Perezroofing es quien más visitas recibe desde Google: unas 1850 al mes, 7 veces más que tú.");
+    expect(d.cannibal).toMatchObject({ source: "gsc", total: 2, urgent: 1 });
+    expect(d.cannibal!.issues[0]).toMatchObject({ query: "techos miami", severity: "alta", pages: ["arevalo-roofing.com/techos", "arevalo-roofing.com/blog/cuanto-cuesta-un-techo-en-miami"] });
+    expect(d.cannibal!.issues[0].fix.es).toContain("Enlaza desde la página secundaria a la principal con el texto «techos miami»");
+    expect(d.cannibal!.issues[0].fix.en).toContain("Link from the secondary page to the main one");
+  });
+
+  it("each part is missing without its data (old businesses keep working)", () => {
+    const inputs = richInputs();
+    delete inputs.rows.backlinks;
+    delete inputs.rows.traffic;
+    inputs.rows.gsc = inputs.rows.gsc!.map((r) => ({ ...r, data: { ...(r.data as object), pageQueries: undefined } }));
+    inputs.rows.ai = inputs.rows.ai!.map((r) => ({ ...r, data: { ...(r.data as object), sentiment: undefined } }));
+    const old = buildReport(inputs, monthPeriod(), NOW);
+    expect(old.links).toBeNull();
+    expect(old.traffic).toBeNull();
+    expect(old.sentiment).toBeNull();
+    // Sin Search Console por página, las posiciones de 30 días no tienen dos páginas tuyas para la misma palabra.
+    expect(old.cannibal).toBeNull();
+    expect(reportKpis(old).map((k) => k.id)).not.toContain("links");
+    const e = buildReport(emptyInputs(), monthPeriod(), NOW);
+    expect([e.market, e.sentiment, e.links, e.traffic, e.cannibal]).toEqual([null, null, null, null, null]);
+    const onlyLinks = emptyInputs();
+    onlyLinks.rows.backlinks = richInputs().rows.backlinks;
+    expect(isEmptyReport(buildReport(onlyLinks, monthPeriod(), NOW))).toBe(false);
+  });
+
+  it("adds the facts (both languages) so the summary can mention them without inventing numbers", () => {
+    const es = summaryFacts(d, "es", TZ);
+    const fact = (area: string) => es.find((f) => f.area === area)!.text;
+    expect(fact("market")).toBe(
+      "Parte del mercado: Google: el negocio se lleva el 3,4 % de los clics posibles de sus búsquedas (antes 2 %); los directorios y redes, el 24 %; el competidor que más se lleva es perezroofing.com (30 %). Mapa de Google: sale entre los 3 primeros en el 52 % de los puntos (antes 16 %); Techos Pérez, en el 84 %. IAs: 30 % de las veces que nombran un negocio (antes 12,5 %); Techos Pérez, 40 %.",
+    );
+    expect(fact("sentiment")).toBe(
+      "Cómo hablan las IAs del negocio: 3 menciones: 2 positivas, 1 negativa; lo asocian con garantía, demoras, precio justo. Mención negativa de ChatGPT: Menciona quejas por demoras en los presupuestos.",
+    );
+    expect(fact("links")).toContain("Enlaces: 34 sitios enlazan al sitio (antes 29; mejoró 5); fuerza 186 de 1000; en el último mes 4 nuevos y 1 perdido");
+    expect(fact("traffic")).toContain("Visitas al mes desde Google (estimadas, United States): el negocio unas 260; Perezroofing unas 1850; Techosya unas 240.");
+    expect(fact("cannibal")).toMatch(/^Páginas que compiten entre sí: 2 búsquedas \(1 urgente\); la primera, «techos miami»: Enlaza/);
+    const en = summaryFacts(d, "en", TZ).map((f) => f.text);
+    expect(en.some((f) => f.startsWith("Share of the market: Google: the business gets 3.4% of the possible clicks"))).toBe(true);
+    expect(en.some((f) => f.startsWith("Links: 34 sites link to the website"))).toBe(true);
+    // Lo que diga la IA con estos números pasa el control de números inventados.
+    expect(numbersGrounded("Te llevas el 3,4 % de los clics, 34 sitios te enlazan y Perezroofing recibe 1850 visitas.", es.map((f) => f.text))).toBe(true);
+  });
+
+  it("what changed and the next steps use them too", () => {
+    const c = whatChanged(d, "es").map((x) => x.text);
+    expect(c).toContain("Tu parte de los clics de Google pasó del 2 % al 3,4 %.");
+    expect(c).toContain("Sitios que te enlazan: de 29 a 34.");
+    expect(c).toContain("Una IA habló mal de ti en 1 respuesta.");
+    const s = ruleSummary(d, "es", TZ);
+    expect(s.steps[1]).toMatch(/^Para «techos miami» tienes páginas que compiten entre sí: enlaza desde la página secundaria/);
+    expect(s.steps[2]).toBe("Mira qué dice ChatGPT de ti en «Visibilidad en las IAs» y responde a eso en tu página y en tus reseñas.");
+  });
+});
+
 describe("email attachments", () => {
   it("formats attachments for Brevo and Resend", () => {
     const files = [{ name: "r.pdf", content: Buffer.from("%PDF-1.4") }];
@@ -490,6 +666,9 @@ describe("renderReportPdf (smoke)", () => {
     const ms = Date.now() - started;
     expect(pdf.subarray(0, 4).toString()).toBe("%PDF");
     expect(pdf.length).toBeGreaterThan(10_000);
+    // Con todas las secciones (también las nuevas) el reporte sigue siendo corto.
+    const pages = (pdf.toString("latin1").match(/\/Type\s*\/Page[^s]/g) ?? []).length;
+    expect(pages).toBeLessThanOrEqual(7);
     if (out) {
       mkdirSync(out, { recursive: true });
       writeFileSync(path.join(out, "report-rich.pdf"), pdf);
