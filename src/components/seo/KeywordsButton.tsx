@@ -6,10 +6,14 @@ import { useT } from "@/components/I18n";
 
 type Props = {
   action: (prev: KeywordsResult, f: FormData) => Promise<KeywordsResult>;
+  /** Cuántas zonas se van a medir (una llamada de volúmenes por zona). */
+  zones?: number;
+  /** Costo estimado en USD (keywordsCostEstimate). */
+  estimate?: number;
 };
 
 /** Mientras se consulta a Google Ads: pasos aproximados y el tiempo que lleva. */
-function Working({ pending }: { pending: boolean }) {
+function Working({ pending, zones }: { pending: boolean; zones: number }) {
   const { t } = useT();
   const [seconds, setSeconds] = useState(0);
   useEffect(() => {
@@ -20,9 +24,14 @@ function Working({ pending }: { pending: boolean }) {
   }, [pending]);
   if (!pending) return null;
   const steps: [number, string][] = [
-    [0, t("Pidiendo a Google Ads cuánta gente busca cada palabra…", "Asking Google Ads how many people search each keyword…")],
+    [
+      0,
+      zones > 1
+        ? t(`Pidiendo a Google Ads cuánta gente busca cada palabra en tus ${zones} zonas…`, `Asking Google Ads how many people search each keyword in your ${zones} areas…`)
+        : t("Pidiendo a Google Ads cuánta gente busca cada palabra…", "Asking Google Ads how many people search each keyword…"),
+    ],
     [10, t("Buscando ideas de palabras nuevas…", "Looking for new keyword ideas…")],
-    [30, t("Guardando el reporte…", "Saving the report…")],
+    [Math.max(30, zones * 10), t("Guardando los reportes…", "Saving the reports…")],
   ];
   const now = steps.findLastIndex(([at]) => seconds >= at);
   return (
@@ -31,25 +40,33 @@ function Working({ pending }: { pending: boolean }) {
         {steps.map(([, label], i) => <li key={label} className={i < now ? "done" : i === now ? "now" : ""}>{label}</li>)}
       </ul>
       <p className="small muted">
-        {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")} · {t("Suele tardar menos de un minuto. No cierres esta página.", "It usually takes less than a minute. Don't close this page.")}
+        {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")} ·{" "}
+        {zones > 2
+          ? t("Puede tardar uno o dos minutos. No cierres esta página.", "It can take a minute or two. Don't close this page.")
+          : t("Suele tardar menos de un minuto. No cierres esta página.", "It usually takes less than a minute. Don't close this page.")}
       </p>
     </div>
   );
 }
 
 /** Botón para traer las búsquedas reales (cuesta unos centavos de DataForSEO). */
-export function KeywordsButton({ action }: Props) {
-  const { t } = useT();
+export function KeywordsButton({ action, zones = 1, estimate = 0.15 }: Props) {
+  const { t, lang } = useT();
+  const cost = new Intl.NumberFormat(lang === "en" ? "en-US" : "es", { style: "currency", currency: "USD", maximumFractionDigits: 3 }).format(estimate);
   const [result, run, pending] = useActionState(action, null);
   return (
     <form action={run} className="stack" style={{ gap: 12 }}>
       {!pending && (
         <div className="row">
           <button type="submit" className="btn ai">{t("Actualizar búsquedas", "Update searches")}</button>
-          <span className="small muted">{t("Usa unos $0.15 de tu saldo de DataForSEO.", "Uses about $0.15 of your DataForSEO balance.")}</span>
+          <span className="small muted">
+            {zones > 1
+              ? t(`Usa unos ${cost} de tu saldo de DataForSEO (${zones} zonas + ideas en la principal).`, `Uses about ${cost} of your DataForSEO balance (${zones} areas + ideas in the main one).`)
+              : t(`Usa unos ${cost} de tu saldo de DataForSEO.`, `Uses about ${cost} of your DataForSEO balance.`)}
+          </span>
         </div>
       )}
-      <Working pending={pending} />
+      <Working pending={pending} zones={zones} />
       {result && !pending && <p className={result.ok ? "note ok" : "note error"} role="status">{result.message}</p>}
     </form>
   );

@@ -6,8 +6,10 @@ import { aiEnabled, researchProvider, TEXT_PROVIDERS } from "@/lib/ai";
 import { db } from "@/lib/db";
 import { intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
-import { readKeywordsReport, reportLookup, volumeFormat } from "@/lib/seo/keywords";
+import { readZones, zoneLabel } from "@/lib/seo/dataforseo";
+import { readKeywordsReport, reportLookup, volumeFormat, zoneTotal, zoneVolumes } from "@/lib/seo/keywords";
 import { latestReports } from "@/lib/seo/reports";
+import { latestByZone } from "@/lib/seo/zones";
 import { campaignIdea, EMPTY_INPUT, readInput, readStudy } from "@/lib/study-shape";
 import { BUSINESS_TZ } from "@/lib/time";
 
@@ -40,8 +42,11 @@ export default async function EstudioPage({ params }: { params: Promise<{ id: st
   const researcher = researchProvider(b.aiText);
   const create = (idea: string) => `/b/${id}/publicar?${new URLSearchParams({ idea: idea.slice(0, 2000), magic: "1" })}`;
   // Volúmenes reales de Google Ads (DataForSEO), si ya se trajeron en SEO y visibilidad.
-  const kwRow = study ? (await latestReports(id, "keywords", 1))[0] : undefined;
-  const kwReport = kwRow ? readKeywordsReport(kwRow.data) : null;
+  // Un reporte por zona: se muestra el de la zona principal y, si hay más zonas con datos, el total en el título.
+  const zones = readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName);
+  const kwReports = study ? (await latestReports(id, "keywords", 20)).map((r) => readKeywordsReport(r.data)) : [];
+  const byZone = latestByZone(kwReports, zones);
+  const kwReport = (zones[0] && byZone.get(zones[0].code)) || [...byZone.values()][0] || (zones.length ? null : (kwReports.find(Boolean) ?? null));
   const realVolume = reportLookup(kwReport);
   const volume = volumeFormat(lang);
   const hasReal = study ? study.keywords.some((k) => realVolume.get(k.keyword.trim().toLowerCase())?.volume != null) : false;
@@ -177,6 +182,8 @@ export default async function EstudioPage({ params }: { params: Promise<{ id: st
                     <tbody>
                       {study.keywords.map((k, i) => {
                         const real = realVolume.get(k.keyword.trim().toLowerCase())?.volume;
+                        const perZone = byZone.size > 1 ? zoneVolumes(k.keyword, zones, byZone) : [];
+                        const total = perZone.filter((v) => typeof v === "number").length > 1 ? zoneTotal(perZone) : null;
                         return (
                           <tr key={i}>
                             <td><strong>{k.keyword}</strong> <span className="small muted">{k.lang.toUpperCase()}</span></td>
@@ -185,9 +192,23 @@ export default async function EstudioPage({ params }: { params: Promise<{ id: st
                               <span className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
                                 <span className={`pill ${LEVEL[k.volume][0]}`}>{pick(LEVEL[k.volume])}</span>
                                 {real != null && (
-                                  <span className="small kw-real" style={{ whiteSpace: "nowrap" }} title={t("Búsquedas reales al mes según Google Ads", "Real monthly searches from Google Ads")}>
+                                  <span
+                                    className="small kw-real"
+                                    style={{ whiteSpace: "nowrap" }}
+                                    title={
+                                      t("Búsquedas reales al mes según Google Ads", "Real monthly searches from Google Ads") +
+                                      (kwReport?.location ? ` (${zoneLabel(kwReport.location)})` : "") +
+                                      (total !== null
+                                        ? `. ${t("Total en tus zonas", "Total in your areas")}: ${volume.format(total)} (${zones
+                                            .map((z, i) => (typeof perZone[i] === "number" ? `${zoneLabel(z.name)}: ${volume.format(perZone[i] as number)}` : ""))
+                                            .filter(Boolean)
+                                            .join(" · ")})`
+                                        : "")
+                                    }
+                                  >
                                     {volume.format(real)}
                                     {t("/mes", "/mo")} <span className="tag">{t("real", "real")}</span>
+                                    {total !== null && <span className="muted"> · Σ {volume.format(total)}</span>}
                                   </span>
                                 )}
                               </span>
@@ -204,9 +225,14 @@ export default async function EstudioPage({ params }: { params: Promise<{ id: st
                 {hasReal && kwReport && (
                   <p className="small muted">
                     {t(
-                      `Los volúmenes marcados "real" vienen de Google Ads (DataForSEO) para ${kwReport.location || "tu zona"}. Los demás son estimados de la IA.`,
-                      `Volumes marked "real" come from Google Ads (DataForSEO) for ${kwReport.location || "your area"}. The rest are AI estimates.`,
+                      `Los volúmenes marcados "real" vienen de Google Ads (DataForSEO) para ${zoneLabel(kwReport.location) || "tu zona"}. Los demás son estimados de la IA.`,
+                      `Volumes marked "real" come from Google Ads (DataForSEO) for ${zoneLabel(kwReport.location) || "your area"}. The rest are AI estimates.`,
                     )}
+                    {byZone.size > 1 &&
+                      t(
+                        ` «Σ» es el total en tus ${byZone.size} zonas con datos (pasa el cursor para ver cada una).`,
+                        ` “Σ” is the total across your ${byZone.size} areas with data (hover to see each one).`,
+                      )}
                   </p>
                 )}
               </section>
