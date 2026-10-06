@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { aiEnabled, designTemplates, studyBusiness, planWeek, readBrandBook, stormPlan, suggestBrandKit, type BrandKitSuggestion, TEXT_PROVIDERS, toPostFields, writePost, type AiPost, type Lang } from "@/lib/ai";
+import { aiEnabled, designTemplates, interviewQuestions, studyBusiness, planWeek, readBrandBook, stormPlan, suggestBrandKit, type BrandKitSuggestion, TEXT_PROVIDERS, toPostFields, writePost, type AiPost, type Lang } from "@/lib/ai";
 import { brevoDomains, brevoEnvKey } from "@/lib/brevo";
 import { CHANNEL_IDS, channelDef, type ChannelId } from "@/lib/channels";
 import { decryptJson, encryptJson } from "@/lib/crypto";
@@ -20,7 +20,7 @@ import { publishPost, retryPost } from "@/lib/publish";
 import { PUBLISHERS } from "@/lib/publishers";
 import { safeEqual, SESSION_COOKIE, sessionToken } from "@/lib/session";
 import { stormEvent, stormSchedule } from "@/lib/storm";
-import { GOALS, StudyInput } from "@/lib/study-shape";
+import { GOALS, type Interview, StudyInput } from "@/lib/study-shape";
 import { localToUtc } from "@/lib/time";
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
@@ -627,13 +627,19 @@ export async function deleteTemplate(businessId: string, templateId: string) {
 // ---------- Estudio del negocio ----------
 
 export type StudyResult = { ok: boolean; message: string } | null;
+export type InterviewResult = { ok: true; interview: Interview } | { ok: false; error: string };
 
-/** La IA estudia el negocio (y su mercado en internet) y guarda el estudio. Lo usa todo lo que escribe y diseña después. */
-export async function generateStudy(businessId: string, _prev: StudyResult, f: FormData): Promise<StudyResult> {
-  const b = await business(businessId);
-  if (!aiEnabled()) return { ok: false, message: "Falta la clave de la IA en la configuración del servidor." };
+function studyInputFrom(f: FormData): StudyInput {
   const goal = str(f, "goal");
-  const input = StudyInput.parse({
+  let answers: unknown = [];
+  try {
+    answers = JSON.parse(str(f, "answers") || "[]");
+  } catch {}
+  const list = (Array.isArray(answers) ? answers : [])
+    .map((a) => ({ question: String(a?.question ?? "").slice(0, 300), answer: String(a?.answer ?? "").trim().slice(0, 1000) }))
+    .filter((a) => a.question && a.answer)
+    .slice(0, 10);
+  return StudyInput.parse({
     services: str(f, "services").slice(0, 2000),
     customers: str(f, "customers").slice(0, 1000),
     zone: str(f, "zone").slice(0, 300),
@@ -641,14 +647,38 @@ export async function generateStudy(businessId: string, _prev: StudyResult, f: F
     different: str(f, "different").slice(0, 1000),
     goal: GOALS.some((g) => g[0] === goal) ? goal : "llamadas",
     lang: lang(str(f, "lang")),
+    answers: list,
   });
+}
+
+/** Primer paso del estudio: la IA lee lo básico y devuelve preguntas a la medida del negocio. */
+export async function studyInterview(businessId: string, f: FormData): Promise<InterviewResult> {
+  const b = await business(businessId);
+  if (!aiEnabled()) return { ok: false, error: "Falta la clave de la IA en la configuración del servidor." };
+  const input = studyInputFrom(f);
+  if (!input.services && !b.aiProfile.trim() && !b.website) return { ok: false, error: "Cuéntale a la IA qué vendes o qué servicios das." };
+  try {
+    return { ok: true, interview: await interviewQuestions(b, input) };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** La IA estudia el negocio (y su mercado en internet) y guarda el estudio. Lo usa todo lo que escribe y diseña después. */
+export async function generateStudy(businessId: string, _prev: StudyResult, f: FormData): Promise<StudyResult> {
+  const b = await business(businessId);
+  if (!aiEnabled()) return { ok: false, message: "Falta la clave de la IA en la configuración del servidor." };
+  const input = studyInputFrom(f);
   if (!input.services && !b.aiProfile.trim() && !b.website) return { ok: false, message: "Cuéntale a la IA qué vende tu negocio (o pon tu sitio web en Ajustes)." };
   // Se guardan las respuestas aunque la IA falle, para no tener que escribirlas otra vez.
   await db.business.update({ where: { id: businessId }, data: { studyInput: input } });
   try {
-    const study = await studyBusiness(b, input, { research: f.get("research") === "on" });
+    const { study, researchError } = await studyBusiness(b, input, { research: f.get("research") === "on" });
     await db.business.update({ where: { id: businessId }, data: { study, studyAt: new Date() } });
     revalidatePath(`/b/${businessId}`, "layout");
+    if (researchError) {
+      return { ok: false, message: `El estudio quedó listo, pero no se pudo investigar en internet (${researchError}). Se hizo con lo que ya sabe la IA; puedes actualizarlo más tarde.` };
+    }
     return {
       ok: true,
       message: study.researched

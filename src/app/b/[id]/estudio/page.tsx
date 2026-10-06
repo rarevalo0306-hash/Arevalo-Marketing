@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { generateStudy, saveStudyProfile } from "@/app/actions";
+import { generateStudy, saveStudyProfile, studyInterview } from "@/app/actions";
 import { PageHead } from "@/components/PageHead";
 import { StudyForm } from "@/components/StudyForm";
 import { aiEnabled, researchProvider, TEXT_PROVIDERS } from "@/lib/ai";
@@ -48,11 +48,11 @@ export default async function EstudioPage({ params }: { params: Promise<{ id: st
                 <span className="btn">Actualizar</span>
               </summary>
               <div style={{ marginTop: 18 }}>
-                <StudyForm action={generateStudy.bind(null, id)} input={input} researcher={researcher && TEXT_PROVIDERS.find((p) => p.id === researcher)!.name} has />
+                <StudyForm action={generateStudy.bind(null, id)} interview={studyInterview.bind(null, id)} input={input} researcher={researcher && TEXT_PROVIDERS.find((p) => p.id === researcher)!.name} has />
               </div>
             </details>
           ) : (
-            <StudyForm action={generateStudy.bind(null, id)} input={input} researcher={researcher && TEXT_PROVIDERS.find((p) => p.id === researcher)!.name} has={false} />
+            <StudyForm action={generateStudy.bind(null, id)} interview={studyInterview.bind(null, id)} input={input} researcher={researcher && TEXT_PROVIDERS.find((p) => p.id === researcher)!.name} has={false} />
           )}
 
           {study && (
