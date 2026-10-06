@@ -11,6 +11,7 @@ import { MapRankPanel } from "@/components/seo/MapRankPanel";
 import { OnPagePanel } from "@/components/seo/OnPagePanel";
 import { RankPanel } from "@/components/seo/RankPanel";
 import { SearchConsolePanel } from "@/components/seo/SearchConsolePanel";
+import { TrafficPanel } from "@/components/seo/TrafficPanel";
 import { SeoGuide } from "@/components/seo/SeoGuide";
 import { VisibilityPanel } from "@/components/seo/VisibilityPanel";
 import { WriterCard } from "@/components/seo/WriterCard";
@@ -48,6 +49,7 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
         <ReportCard businessId={id} />
         <CompetitorsPanel businessId={id} />
         <GapPanel businessId={id} />
+        <TrafficPanel businessId={id} />
         <OnPagePanel businessId={id} />
         <AuditPanel businessId={id} />
         <VisibilityPanel businessId={id} />
