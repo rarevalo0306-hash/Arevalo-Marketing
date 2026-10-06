@@ -8,6 +8,7 @@ import {
   parseAlertEmails,
   rankAlerts,
   readGapRecommendations,
+  weeklyGbp,
   weeklyMovers,
   type WeeklyData,
 } from "@/lib/seo/alerts";
@@ -230,6 +231,48 @@ describe("buildWeeklyEmail", () => {
     expect(e.html).toContain("Tus posiciones en Google");
     expect(e.html).not.toContain("Lo que más subió");
     expect(e.html).not.toContain("(+");
+  });
+});
+
+describe("weekly email: Google Business Profile", () => {
+  const now = new Date("2026-10-05T12:00:00.000Z");
+  const saved = {
+    version: 1,
+    total: 128,
+    rating: 4.7,
+    cost: 0.0075,
+    createdAt: "2026-10-04T12:00:00.000Z",
+    reviews: [
+      { id: "r1", name: "Ana", rating: 5, text: "Excelente", timestamp: "2026-10-03T10:00:00.000Z", ownerAnswer: "" },
+      { id: "r2", name: "Luis", rating: 2, text: "Lento", timestamp: "2026-10-01T10:00:00.000Z", ownerAnswer: "Lo sentimos" },
+      { id: "r3", name: "Eva", rating: 4, text: "Bien", timestamp: "2026-09-01T10:00:00.000Z", ownerAnswer: "" },
+    ],
+  };
+
+  it("weeklyGbp counts new reviews in the last 7 days and unanswered ones", () => {
+    expect(weeklyGbp(saved, now)).toEqual({ rating: 4.7, total: 128, newLast7: 2, unanswered: 2, date: "2026-10-04T12:00:00.000Z" });
+  });
+
+  it("weeklyGbp is defensive with broken data", () => {
+    expect(weeklyGbp(null, now)).toBeNull();
+    expect(weeklyGbp({ reviews: "nope" }, now)).toBeNull();
+    expect(weeklyGbp({ reviews: [null, { id: "" }, { id: "x", timestamp: "garbage" }] }, now)).toMatchObject({ newLast7: 0, unanswered: 1, total: null });
+  });
+
+  it("adds the section only when there's review data", () => {
+    expect(buildWeeklyEmail(biz, empty, "es", opts).html).not.toContain("Tu perfil de Google");
+    expect(buildWeeklyEmail(biz, { ...empty, gbp: null }, "es", opts).html).not.toContain("Tu perfil de Google");
+    const gbp = weeklyGbp(saved, now);
+    const es = buildWeeklyEmail(biz, { ...empty, gbp }, "es", opts);
+    expect(es.html).toContain("Tu perfil de Google");
+    expect(es.html).toContain("Calificación: 4,7 ★ (128 reseñas)");
+    expect(es.html).toContain("Reseñas nuevas en los últimos 7 días: 2");
+    expect(es.html).toContain("Reseñas sin contestar: 2");
+    expect(es.html).not.toContain("Todavía no hay datos");
+    const en = buildWeeklyEmail(biz, { ...empty, gbp: { ...gbp!, unanswered: 0, newLast7: 0 } }, "en", opts);
+    expect(en.html).toContain("Your Google Business Profile");
+    expect(en.text).toContain("No new reviews in the last 7 days.");
+    expect(en.text).toContain("All your reviews are answered.");
   });
 });
 
