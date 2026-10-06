@@ -2,7 +2,7 @@ import { connectBrevo, deleteConnection, saveConnection, testConnection } from "
 import { ConnectionCard } from "@/components/ConnectionCard";
 import { PageHead } from "@/components/PageHead";
 import { brevoDomains, brevoEnvKey } from "@/lib/brevo";
-import { CHANNELS } from "@/lib/channels";
+import { CHANNEL_IDS, CHANNELS } from "@/lib/channels";
 import { decryptJson } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
@@ -21,7 +21,7 @@ export default async function ConexionesPage({
   const { t } = await getT();
   const metaUrl = metaEnabled() ? `/api/meta/start?b=${id}` : null;
   const googleUrl = googleEnabled() ? `/api/google/start?b=${id}` : null;
-  const b = await db.business.findUniqueOrThrow({ where: { id }, include: { connections: true } });
+  const b = await db.business.findUniqueOrThrow({ where: { id }, include: { connections: { where: { channel: { in: CHANNEL_IDS } } } } });
   const connected = b.connections.length;
   const brevo = brevoEnvKey() ? { domains: await brevoDomains(), defaultName: b.name, connect: connectBrevo.bind(null, id) } : null;
   return (

@@ -503,3 +503,152 @@ Write the full marketing study.`;
   const study = await ask(business.aiText ?? "", StudySchema, system, user, 20000);
   return { study: { ...study, sources: research?.sources ?? [], researched: Boolean(research?.notes) }, researchError };
 }
+
+// ---------- Visibilidad en IA ----------
+
+export type SearchAnswer = { text: string; sources: StudySource[] };
+
+/** Corta una promesa que tarda demasiado (la petición puede seguir de fondo, pero ya no se espera). */
+function withTimeout<T>(p: Promise<T>, ms: number, name: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(bi(`${name} tardó demasiado en contestar (más de ${Math.round(ms / 1000)} s).`, `${name} took too long to answer (over ${Math.round(ms / 1000)} s).`)),
+      ms,
+    );
+  });
+  return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
+}
+
+const httpSources = (list: StudySource[]) => {
+  const seen = new Set<string>();
+  return list.filter((s) => /^https?:\/\//.test(s.url) && !seen.has(s.url) && seen.add(s.url));
+};
+
+async function searchGemini(system: string, question: string): Promise<SearchAnswer> {
+  const data = await geminiFetch(
+    JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents: [{ role: "user", parts: [{ text: question }] }],
+      tools: [{ google_search: {} }],
+      generationConfig: { maxOutputTokens: 4000 },
+    }),
+  );
+  const sources = (data.candidates?.[0]?.groundingMetadata?.groundingChunks ?? []).map((c) => ({ url: c.web?.uri ?? "", title: c.web?.title ?? "" }));
+  return { text: geminiText(data), sources: httpSources(sources) };
+}
+
+async function searchClaude(system: string, question: string, signal: AbortSignal): Promise<SearchAnswer> {
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 1 });
+  const content: Anthropic.Beta.BetaContentBlock[] = [];
+  for (let i = 0; i < 3; i++) {
+    const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: question }];
+    if (content.length) messages.push({ role: "assistant", content });
+    const response = await client.beta.messages.create(
+      {
+        model: "claude-opus-5-5",
+        max_tokens: 4000,
+        betas: ["server-side-fallback-2026-07-01"],
+        fallbacks: "default",
+        output_config: { effort: "low" },
+        system,
+        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 3 }],
+        messages,
+      },
+      { signal },
+    );
+    if (response.stop_reason === "refusal") throw refused();
+    content.push(...response.content);
+    if (response.stop_reason !== "pause_turn") break;
+  }
+  // Primero las páginas que Claude citó en la respuesta, después el resto de lo que encontró.
+  const cited: StudySource[] = [];
+  const found: StudySource[] = [];
+  for (const block of content) {
+    if (block.type === "text") {
+      for (const c of block.citations ?? []) if (c.type === "web_search_result_location") cited.push({ url: c.url, title: c.title ?? "" });
+    } else if (block.type === "web_search_tool_result" && Array.isArray(block.content)) {
+      for (const r of block.content) if (r.type === "web_search_result") found.push({ url: r.url, title: r.title });
+    }
+  }
+  const text = content.map((b) => (b.type === "text" ? b.text : "")).join("");
+  return { text, sources: httpSources([...cited, ...found]) };
+}
+
+type OpenAIResponse = {
+  output_text?: string;
+  error?: { message?: string } | null;
+  output?: {
+    type?: string;
+    action?: { sources?: { url?: string; title?: string }[] };
+    content?: { type?: string; text?: string; refusal?: string; annotations?: { type?: string; url?: string; title?: string }[] }[];
+  }[];
+};
+
+/** ChatGPT con búsqueda web (Responses API, herramienta "web_search"). */
+async function searchOpenAI(system: string, question: string, signal: AbortSignal): Promise<SearchAnswer> {
+  const model = process.env.OPENAI_MODEL || "gpt-5-mini";
+  const res = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    signal,
+    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model,
+      instructions: system,
+      input: question,
+      tools: [{ type: "web_search" }],
+      tool_choice: "auto",
+      include: ["web_search_call.action.sources"],
+      max_output_tokens: 8000,
+      // Los modelos que razonan (gpt-5, o3…) aceptan el esfuerzo; "minimal" no funciona con la búsqueda web.
+      ...(/^(gpt-5|o\d)/.test(model) ? { reasoning: { effort: "low" } } : {}),
+    }),
+  });
+  const body = await res.text();
+  if (!res.ok) {
+    if (res.status === 401) throw bi("OpenAI rechazó la clave (OPENAI_API_KEY).", "OpenAI rejected the key (OPENAI_API_KEY).");
+    if (res.status === 429)
+      throw bi(
+        "ChatGPT llegó a su límite o tu cuenta de OpenAI no tiene saldo (platform.openai.com/settings/organization/billing).",
+        "ChatGPT hit its limit or your OpenAI account is out of credit (platform.openai.com/settings/organization/billing).",
+      );
+    throw bi(`ChatGPT respondió ${res.status}: ${body.slice(0, 300)}`, `ChatGPT responded ${res.status}: ${body.slice(0, 300)}`);
+  }
+  const data = JSON.parse(body) as OpenAIResponse;
+  const cited: StudySource[] = [];
+  const found: StudySource[] = [];
+  let text = "";
+  let refusal = "";
+  for (const item of data.output ?? []) {
+    if (item.type === "web_search_call") for (const s of item.action?.sources ?? []) found.push({ url: s.url ?? "", title: s.title ?? "" });
+    if (item.type !== "message") continue;
+    for (const c of item.content ?? []) {
+      if (c.type === "output_text") {
+        text += c.text ?? "";
+        for (const a of c.annotations ?? []) if (a.type === "url_citation") cited.push({ url: a.url ?? "", title: a.title ?? "" });
+      } else if (c.type === "refusal") refusal = c.refusal ?? "";
+    }
+  }
+  if (!text && data.output_text) text = data.output_text;
+  if (!text && refusal) throw refused();
+  return { text, sources: httpSources([...cited, ...found]) };
+}
+
+/**
+ * Hace una pregunta a una IA como lo haría un cliente, con búsqueda en internet, y devuelve la respuesta
+ * y las páginas que usó. Si tarda más de `timeoutMs`, falla con un error claro.
+ */
+export async function searchAnswer(provider: TextProvider, question: string, opts: { system: string; timeoutMs?: number }): Promise<SearchAnswer> {
+  const ms = opts.timeoutMs ?? 60000;
+  const name = TEXT_PROVIDERS.find((p) => p.id === provider)?.name ?? provider;
+  const env = TEXT_PROVIDERS.find((p) => p.id === provider)?.env;
+  if (!env || !process.env[env]) throw bi(`Falta la clave de ${name} (${env}).`, `The ${name} key (${env}) is missing.`);
+  const ctrl = new AbortController();
+  const run =
+    provider === "gemini" ? searchGemini(opts.system, question) : provider === "claude" ? searchClaude(opts.system, question, ctrl.signal) : searchOpenAI(opts.system, question, ctrl.signal);
+  try {
+    return await withTimeout(run, ms, name);
+  } finally {
+    ctrl.abort();
+  }
+}

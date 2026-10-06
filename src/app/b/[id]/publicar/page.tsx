@@ -1,8 +1,8 @@
 import { aiDesign, aiImage, aiVideoCheck, aiVideoStart, aiWrite, createPost, getUploadUrl } from "@/app/actions";
 import { Composer } from "@/components/Composer";
 import { PageHead } from "@/components/PageHead";
-import type { ChannelId } from "@/lib/channels";
 import { aiEnabled } from "@/lib/ai";
+import { CHANNEL_IDS, type ChannelId } from "@/lib/channels";
 import { db } from "@/lib/db";
 import { BUILTIN_TEMPLATES, builtinTemplateName, needsPhoto, TemplateSpec } from "@/lib/design-shapes";
 import { falEnabled } from "@/lib/fal";
@@ -23,7 +23,7 @@ export default async function PublicarPage({
   const { id } = await params;
   const q = await searchParams;
   const { lang, t } = await getT();
-  const b = await db.business.findUniqueOrThrow({ where: { id }, include: { connections: { select: { channel: true } }, templates: { orderBy: { createdAt: "asc" } } } });
+  const b = await db.business.findUniqueOrThrow({ where: { id }, include: { connections: { where: { channel: { in: CHANNEL_IDS } }, select: { channel: true } }, templates: { orderBy: { createdAt: "asc" } } } });
   const specs = b.templates.map((t) => TemplateSpec.safeParse(t.spec)).filter((r) => r.success).map((r) => r.data!);
   // Las plantillas de fábrica se muestran en el idioma de la app; el compositor las manda por número, no por nombre.
   const templates = specs.length

@@ -1,10 +1,11 @@
 import { cookies } from "next/headers";
 import { encryptJson } from "@/lib/crypto";
 import { db } from "@/lib/db";
-import { GOOGLE_COOKIE, googleExchange, listLocations, saveGoogleLocation } from "@/lib/google-oauth";
-import { errorText, type T } from "@/lib/i18n";
+import { GOOGLE_COOKIE, googleExchange, googleStatePurpose, listLocations, saveGoogleLocation } from "@/lib/google-oauth";
+import { errorText, type T, type UiLang } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { readState } from "@/lib/meta-oauth";
+import { explainGscError, GSC_COOKIE, listGscSites, matchSite, saveGscSite, tryFirstGscReport } from "@/lib/seo/gsc";
 
 export const dynamic = "force-dynamic";
 
@@ -28,13 +29,58 @@ function explain(msg: string, t: T): string {
   return t(`Google respondió: ${msg}`, `Google responded: ${msg}`);
 }
 
+/** "Conectar Search Console": guarda el sitio que corresponde a la página del negocio, o deja elegir. */
+async function searchConsole(url: URL, businessId: string, lang: UiLang, t: T) {
+  const seo = (params: Record<string, string>, path = "seo") => back(businessId, params, path);
+  if (url.searchParams.get("error"))
+    return seo({
+      gsc: "error",
+      msg: t(
+        "No se dio el permiso para ver Search Console (o cancelaste). Vuelve a intentarlo y acepta el permiso.",
+        "Permission to view Search Console wasn't granted (or you canceled). Try again and accept the permission.",
+      ),
+    });
+  try {
+    const { refreshToken, accessToken } = await googleExchange(url.searchParams.get("code") ?? "");
+    const sites = await listGscSites(accessToken);
+    if (!sites.length)
+      return seo({
+        gsc: "error",
+        msg: t(
+          "Esa cuenta de Google no tiene tu página en Search Console. Agrégala y verifícala en search.google.com/search-console y vuelve a conectar.",
+          "That Google account doesn't have your website in Search Console. Add and verify it at search.google.com/search-console, then connect again.",
+        ),
+      });
+    const b = await db.business.findUniqueOrThrow({ where: { id: businessId }, select: { website: true } });
+    const site = matchSite(b.website, sites) ?? (sites.length === 1 && !b.website.trim() ? sites[0] : null);
+    if (!site) {
+      // Ninguno coincide con la página del negocio: guardamos el permiso (cifrado, 15 minutos) y la persona elige.
+      (await cookies()).set(GSC_COOKIE, encryptJson({ refreshToken, businessId, sites }), {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        maxAge: 15 * 60,
+      });
+      return seo({}, "seo/gsc");
+    }
+    await saveGscSite(businessId, refreshToken, site);
+    await tryFirstGscReport(businessId);
+    return seo({ gsc: "ok" });
+  } catch (e) {
+    return seo({ gsc: "error", msg: explainGscError(errorText(e, lang), t).slice(0, 400) });
+  }
+}
+
 // Google devuelve a la persona aquí después de iniciar sesión y dar permiso.
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const { lang, t } = await getT();
-  const businessId = readState(url.searchParams.get("state") ?? "");
+  const { purpose, businessId } = googleStatePurpose(readState(url.searchParams.get("state") ?? "") ?? "");
   if (!businessId || !(await db.business.findUnique({ where: { id: businessId }, select: { id: true } })))
     return new Response(t("El enlace de conexión venció o no es válido. Vuelve a intentarlo desde Conexiones.", "The connection link expired or isn't valid. Try again from Connections."), { status: 400 });
+
+  if (purpose === "gsc") return searchConsole(url, businessId, lang, t);
 
   if (url.searchParams.get("error")) return back(businessId, { google: "error", msg: t("Cancelaste la conexión con Google.", "You canceled the Google connection.") });
 

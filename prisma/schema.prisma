@@ -44,6 +44,20 @@ model Business {
   contacts    Contact[]
   posts       Post[]
   templates   Template[]
+  seoReports  SeoReport[]
+}
+
+/// Reportes de SEO de un negocio: auditoría del sitio, visibilidad en las IAs y Search Console.
+/// `kind`: audit | ai | gsc. `data` tiene la forma que define cada módulo en src/lib/seo/.
+model SeoReport {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  kind       String
+  data       Json
+  createdAt  DateTime @default(now())
+
+  @@index([businessId, kind, createdAt])
 }
 
 /// Plantilla de diseño de un negocio (la crea la IA con su marca). `spec` sigue TemplateSpec (src/lib/design-shapes.ts).

@@ -8,25 +8,36 @@ import { fetchJson, form } from "@/lib/publishers/http";
 
 export const GOOGLE_COOKIE = "am_google";
 export const GOOGLE_SCOPE = "https://www.googleapis.com/auth/business.manage";
+/** Search Console ("Tus búsquedas en Google"): solo lectura, se pide aparte del Perfil de Negocio. */
+export const GSC_SCOPE = "https://www.googleapis.com/auth/webmasters.readonly";
+
+/** Para qué se pide el permiso de Google: publicar en el Perfil de Negocio o leer Search Console. */
+export type GooglePurpose = "profile" | "gsc";
 
 export const googleEnabled = () => Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 
 const baseUrl = () => (process.env.PUBLIC_BASE_URL || "http://localhost:3000").replace(/\/+$/, "");
 export const googleRedirectUri = () => `${baseUrl()}/api/google/callback`;
 
-export function googleAuthUrl(businessId: string): string {
+export function googleAuthUrl(businessId: string, purpose: GooglePurpose = "profile"): string {
   const q = new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID!,
     redirect_uri: googleRedirectUri(),
     response_type: "code",
-    scope: GOOGLE_SCOPE,
+    scope: purpose === "gsc" ? GSC_SCOPE : GOOGLE_SCOPE,
     // offline + consent: Google entrega un refresh token que no vence mientras no se revoque.
     access_type: "offline",
     prompt: "consent",
     include_granted_scopes: "true",
-    state: makeState(businessId),
+    // Search Console usa el mismo regreso (/api/google/callback); el propósito va dentro del state firmado.
+    state: makeState(purpose === "gsc" ? `gsc:${businessId}` : businessId),
   });
   return `https://accounts.google.com/o/oauth2/v2/auth?${q}`;
+}
+
+/** Separa el propósito del negocio en lo que devuelve readState (sin prefijo = Perfil de Negocio). */
+export function googleStatePurpose(value: string): { purpose: GooglePurpose; businessId: string } {
+  return value.startsWith("gsc:") ? { purpose: "gsc", businessId: value.slice(4) } : { purpose: "profile", businessId: value };
 }
 
 /** Cambia el código por un refresh token (para guardar) y un access token (para usar ya). */
