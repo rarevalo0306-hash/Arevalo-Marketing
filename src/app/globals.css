@@ -428,3 +428,12 @@ html[data-theme="noche"] .tag { background: rgba(47, 128, 255, 0.18); color: #b9
 html[data-theme="noche"] .tag.neg { background: rgba(255, 90, 90, 0.16); color: #ffb3b3; }
 /* En el celular la barra de abajo no tiene espacio para todo: el Estudio se abre desde el Inicio. */
 @media (max-width: 900px) { .navlinks .navlink.nav-desk { display: none; } }
+/* Entrevista del estudio: preguntas de la IA con respuestas para tocar */
+.interview-q { border: 1px solid var(--line); border-radius: 16px; padding: 16px; margin: 0; display: flex; flex-direction: column; gap: 10px; background: var(--surface); }
+.interview-q legend { padding: 0; float: left; width: 100%; }
+.opts { display: flex; flex-wrap: wrap; gap: 8px; }
+.opt { border: 1.5px solid var(--line-strong); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 8px 14px; font: 600 14px var(--body); cursor: pointer; min-height: 40px; transition: border-color 0.15s, background 0.15s; }
+.opt:hover { border-color: var(--brand-2); }
+.opt.on { background: var(--brand-2); border-color: var(--brand-2); color: #fff; }
+.opt.on::before { content: "✓ "; }
+html[data-theme="noche"] .opt.on { background: #2f80ff; border-color: #2f80ff; }

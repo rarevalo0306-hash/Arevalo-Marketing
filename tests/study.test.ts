@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { campaignIdea, htmlToText, readStudy, type Study, studyContext, studyIdeas, topKeywords } from "@/lib/study-shape";
+import { campaignIdea, EMPTY_INPUT, htmlToText, readInput, readStudy, type Study, studyContext, studyIdeas, topKeywords } from "@/lib/study-shape";
 
 const kw = (keyword: string, intent: Study["keywords"][number]["intent"], volume: Study["keywords"][number]["volume"], difficulty: Study["keywords"][number]["difficulty"]) => ({
   keyword, lang: "es" as const, intent, volume, difficulty, idea: `Idea ${keyword}`,
@@ -78,5 +78,16 @@ describe("htmlToText", () => {
     expect(t).toContain("Huracán, agua y fuego");
     expect(t).not.toContain("var x");
     expect(t).not.toContain("nota");
+  });
+});
+
+describe("readInput", () => {
+  it("lee respuestas guardadas antes de la entrevista (sin preguntas)", () => {
+    const old = { services: "Cortinas", customers: "", zone: "Managua", competitors: "", different: "", goal: "llamadas", lang: "es" };
+    expect(readInput(old)?.answers).toEqual([]);
+  });
+  it("guarda las respuestas de la entrevista", () => {
+    const input = { ...EMPTY_INPUT, services: "Cortinas", answers: [{ question: "¿Qué tipos haces?", answer: "Enrollables, motorizadas" }] };
+    expect(readInput(input)?.answers[0].answer).toBe("Enrollables, motorizadas");
   });
 });

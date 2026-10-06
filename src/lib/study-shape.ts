@@ -20,10 +20,27 @@ export const StudyInput = z.object({
   different: z.string().max(1000),
   goal: z.enum(GOALS.map((g) => g[0]) as [Goal, ...Goal[]]),
   lang: z.enum(["es", "en", "both"]),
+  /** Las preguntas que hizo la IA en la entrevista y lo que contestó el dueño. */
+  answers: z.array(z.object({ question: z.string().max(300), answer: z.string().max(1000) })).max(10).default([]),
 });
 export type StudyInput = z.infer<typeof StudyInput>;
 
-export const EMPTY_INPUT: StudyInput = { services: "", customers: "", zone: "", competitors: "", different: "", goal: "llamadas", lang: "es" };
+export const EMPTY_INPUT: StudyInput = { services: "", customers: "", zone: "", competitors: "", different: "", goal: "llamadas", lang: "es", answers: [] };
+
+/** Preguntas que la IA le hace al dueño, a la medida de su negocio, antes de hacer el estudio. */
+export const InterviewSchema = z.object({
+  questions: z
+    .array(
+      z.object({
+        question: z.string().describe("A short, friendly question in Spanish with correct accents, addressed with tú"),
+        why: z.string().describe("Very short reason in Spanish (max 12 words) why this helps the marketing"),
+        options: z.array(z.string()).describe("3 to 7 likely answers in Spanish, 1-4 words each, specific to this business and area"),
+        multiple: z.boolean().describe("true if the owner can pick several options"),
+      }),
+    )
+    .describe("4 to 6 questions"),
+});
+export type Interview = z.infer<typeof InterviewSchema>;
 
 const ES = "in Spanish with correct accents";
 

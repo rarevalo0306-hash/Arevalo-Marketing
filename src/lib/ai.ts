@@ -5,7 +5,7 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import type { ChannelId } from "@/lib/channels";
 import { FONTS, TemplateSpec } from "@/lib/design-shapes";
-import { GOALS, htmlToText, type SavedStudy, type StudyInput, StudySchema, type StudySource, studyContext } from "@/lib/study-shape";
+import { GOALS, htmlToText, type Interview, InterviewSchema, type SavedStudy, type StudyInput, StudySchema, type StudySource, studyContext } from "@/lib/study-shape";
 
 export const TEXT_PROVIDERS = [
   { id: "gemini", name: "Google Gemini", env: "GEMINI_API_KEY" },
@@ -361,7 +361,7 @@ async function researchGemini(system: string, user: string): Promise<Research> {
       systemInstruction: { parts: [{ text: system }] },
       contents: [{ role: "user", parts: [{ text: user }] }],
       tools: [{ google_search: {} }],
-      generationConfig: { maxOutputTokens: 8000 },
+      generationConfig: { maxOutputTokens: 16000 },
     }),
   );
   const sources = (data.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [])
@@ -369,6 +369,9 @@ async function researchGemini(system: string, user: string): Promise<Research> {
     .filter((s) => /^https?:\/\//.test(s.url));
   return { notes: geminiText(data), sources };
 }
+
+/** Las respuestas de la entrevista como texto para la IA. */
+const answersText = (input: StudyInput) => input.answers.filter((a) => a.answer.trim()).map((a) => `- ${a.question} ${a.answer}`).join("\n");
 
 /** Investiga el mercado local en internet: competidores, cómo busca la gente, temporadas. */
 async function researchMarket(business: BusinessAi, input: StudyInput, provider: "claude" | "gemini"): Promise<Research> {
@@ -379,14 +382,15 @@ What it sells: ${input.services || business.aiProfile.slice(0, 1500)}
 Area served: ${input.zone || "(not given)"}
 Customers: ${input.customers || "(not given)"}
 Competitors the owner named: ${input.competitors || "(none)"}
-
+${answersText(input) ? `More details from the owner:\n${answersText(input)}\n` : ""}
 Find and report:
 1. Main local competitors in that area (names, what they emphasize).
-2. The exact phrases people in that area search on Google for these services, in Spanish and English, including "near me" and city versions; which look competitive.
+2. The exact phrases people in that area search on Google for these services, in the languages spoken there, including "near me" and city versions; which look competitive.
 3. Seasonality and local events or risks that change demand.
-4. Facts about the area useful for marketing (main cities or neighborhoods, Spanish-speaking population if relevant).
+4. Facts about the area useful for marketing (main cities or neighborhoods, who lives or does business there).
 5. What this business's own website says about it, if it has one.`;
   const r = provider === "claude" ? await researchClaude(system, user) : await researchGemini(system, user);
+  if (!r.notes.trim()) throw new Error("la búsqueda no devolvió resultados");
   const seen = new Set<string>();
   const sources = r.sources.filter((s) => !seen.has(s.url) && seen.add(s.url)).slice(0, 15);
   return { notes: r.notes.slice(0, 20000), sources };
@@ -404,12 +408,45 @@ async function websiteText(url: string): Promise<string> {
   }
 }
 
+/** Antes del estudio, la IA lee lo básico y prepara preguntas a la medida del negocio, con respuestas para tocar. */
+export async function interviewQuestions(business: BusinessAi, input: StudyInput): Promise<Interview> {
+  const site = await websiteText(business.website);
+  const system = `You are a friendly local marketing consultant interviewing a small business owner before writing their marketing strategy.
+Ask only what you need to understand what to advertise, to whom and where: the specific products or services and which sell best, the cities or neighborhoods, the type of customer, how customers contact them, what they offer that others don't (warranty, speed, financing, free quote, experience), price level, busy seasons.
+Rules:
+- Do not ask what the owner already answered or what the website already says.
+- Make the options specific to this kind of business and this area (real city names, real product types), so the owner can answer by tapping.
+- Short, plain Spanish with correct accents, using tú. No markdown.`;
+  const user = `Business: ${business.name}${business.website ? ` (${business.website})` : ""}
+What it sells: ${input.services || "(not answered)"}
+Area: ${input.zone || "(not answered)"}
+Ideal customers: ${input.customers || "(not answered)"}
+Current profile: ${business.aiProfile.trim().slice(0, 1500) || "(empty)"}
+Website text: ${site.slice(0, 4000) || "(not available)"}
+
+Write 4 to 6 questions.`;
+  const r = await ask(business.aiText ?? "", InterviewSchema, system, user, 4000);
+  return { questions: r.questions.slice(0, 6).map((q) => ({ ...q, options: q.options.slice(0, 8) })) };
+}
+
 /** Estudio del negocio: perfil, público, mercado local, palabras clave SEO, anuncios e ideas de campaña. */
-export async function studyBusiness(business: BusinessAi, input: StudyInput, opts: { research: boolean }): Promise<SavedStudy> {
+export async function studyBusiness(
+  business: BusinessAi,
+  input: StudyInput,
+  opts: { research: boolean },
+): Promise<{ study: SavedStudy; researchError: string | null }> {
   const provider = opts.research ? researchProvider(business.aiText ?? "") : null;
+  let researchError: string | null = null;
   const [site, research] = await Promise.all([
     websiteText(business.website),
-    provider ? researchMarket(business, input, provider).catch(() => null) : Promise.resolve(null),
+    provider
+      ? researchMarket(business, input, provider).catch((e: Error) => {
+          // Si la investigación falla, el estudio se hace igual con lo que sabe la IA, y se le avisa al dueño por qué.
+          console.error("Investigación del estudio falló:", e);
+          researchError = e.message;
+          return null;
+        })
+      : Promise.resolve(null),
   ]);
   const goal = GOALS.find((g) => g[0] === input.goal)?.[1] ?? input.goal;
   const langs = { es: "Spanish", en: "English", both: "Spanish and English" }[input.lang];
@@ -430,7 +467,7 @@ Owner's answers:
 - Area served: ${input.zone || "(not answered)"}
 - Competitors: ${input.competitors || "(not answered)"}
 - What makes it different: ${input.different || "(not answered)"}
-
+${answersText(input) ? `\nInterview (questions you asked the owner and their answers; treat the answers as facts about the business):\n${answersText(input)}\n` : ""}
 Current profile:
 <profile>
 ${business.aiProfile.trim() || "(empty)"}
@@ -448,5 +485,5 @@ ${research?.notes || "(no web research)"}
 
 Write the full marketing study.`;
   const study = await ask(business.aiText ?? "", StudySchema, system, user, 20000);
-  return { ...study, sources: research?.sources ?? [], researched: Boolean(research?.notes) };
+  return { study: { ...study, sources: research?.sources ?? [], researched: Boolean(research?.notes) }, researchError };
 }
