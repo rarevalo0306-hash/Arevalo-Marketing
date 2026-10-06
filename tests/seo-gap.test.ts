@@ -5,9 +5,17 @@ import {
   mergeGap,
   opportunityScore,
   parseIntersection,
+  businessTopicVocab,
+  gbpCategory,
+  isRelevantKeyword,
   pickGapCompetitors,
   readGapReport,
+  relevantGapRows,
+  splitGapRows,
+  topicVocab,
 } from "@/lib/seo/gap";
+import { readCompetitorsReport } from "@/lib/seo/competitors";
+import fameseg from "./fixtures/fameseg.json";
 
 // Forma real de domain_intersection/live (docs.dataforseo.com/v3/dataforseo_labs/google/domain_intersection/live).
 const item = (keyword: string, volume: number | null, first: number | null, second?: number, extra: { kd?: number | null; intent?: string | null; cpc?: number | null } = {}) => ({
@@ -209,5 +217,67 @@ describe("readGapReport", () => {
     expect(readGapReport({ rows: [] })).toBeNull();
     const r = readGapReport({ domain: "mio.com", rows: [] });
     expect(r).toMatchObject({ domain: "mio.com", competitors: [], rows: [], notes: [], cost: 0, location: { language: "es", countryCode: 0 } });
+  });
+});
+
+describe("pickGapCompetitors sin directorios", () => {
+  it("con el reporte de Fameseg deja fuera a Páginas Amarillas", () => {
+    expect(pickGapCompetitors(readCompetitorsReport(fameseg.reports.competitors.data))).toEqual(["arteytecnica.com", "cormetal.com.ni"]);
+  });
+  it("respeta un directorio que agregó el dueño", () => {
+    const c = (domain: string, source: string) => ({ domain, analyzed: true, source }) as never;
+    expect(pickGapCompetitors({ competitors: [c("paginasamarillas.com.ni", "owner"), c("facebook.com", "serp"), c("a.com", "labs")] })).toEqual(["paginasamarillas.com.ni", "a.com"]);
+  });
+});
+
+describe("relevancia de las búsquedas (Fameseg: cortinas metálicas y portones en Managua)", () => {
+  const vocab = businessTopicVocab(fameseg.business);
+  const report = readGapReport(fameseg.reports.gap.data)!;
+
+  it("arma el vocabulario con las palabras que sigue y el estudio, sin lugares ni palabras genéricas", () => {
+    expect(vocab).toEqual(expect.arrayContaining(["cortina", "metalic", "porton", "automat", "tubular", "america", "acero", "motor"]));
+    for (const w of ["managua", "nicaragu", "manteni", "fabrica", "tipo", "reparac", "masaya"]) expect(vocab).not.toContain(w);
+  });
+
+  it("oculta las búsquedas que no tienen que ver y deja las de portones", () => {
+    const { relevant, hidden } = splitGapRows(report.rows, vocab);
+    const kept = relevant.map((r) => r.keyword);
+    const gone = hidden.map((r) => r.keyword);
+    for (const k of ["gas cerca de mí", "super express 14 de septiembre", "concentrix nic 2", "restaurante eskimo managua", "el eskimo nicaragua", "motel barato en managua", "7 sur managua", "sur", "resina epoxica nicaragua", "grama artificial", "dentista cerca de mí", "fesame", "inmenicsa"])
+      expect(gone, k).toContain(k);
+    expect(kept).toEqual(["portones corredizos", "portón corredizo", "porton corredizo", "portón", "portones automatizados", "portones de metal", "portones automaticos"]);
+    expect(relevantGapRows(report.rows, vocab)).toEqual(relevant);
+    expect(relevant.length + hidden.length).toBe(report.rows.length);
+  });
+
+  it("también sirve para el adelanto del reporte de competencia (todas eran de Páginas Amarillas)", () => {
+    const comp = readCompetitorsReport(fameseg.reports.competitors.data)!;
+    const kept = relevantGapRows(comp.gap, vocab).map((g) => g.keyword);
+    expect(kept).toEqual([]);
+    for (const k of ["super mercado la union", "ministerio de salud concepción palacios minsa central", "gas cerca de mí"]) expect(isRelevantKeyword(k, vocab), k).toBe(false);
+  });
+
+  it("acepta plurales, acentos y variantes", () => {
+    expect(isRelevantKeyword("Cortina Metálica precio", vocab)).toBe(true);
+    expect(isRelevantKeyword("motores para portones", vocab)).toBe(true);
+    expect(isRelevantKeyword("mantenimiento de aire acondicionado managua", vocab)).toBe(false);
+  });
+
+  it("sin vocabulario no oculta nada", () => {
+    expect(topicVocab({})).toEqual([]);
+    expect(relevantGapRows([{ keyword: "lo que sea" }], [])).toEqual([{ keyword: "lo que sea" }]);
+  });
+
+  it("usa la categoría del Perfil de Google si la hay", () => {
+    expect(gbpCategory({ profile: { category: "Proveedor de toldos" } })).toBe("Proveedor de toldos");
+    expect(gbpCategory(null)).toBe("");
+    const v = topicVocab({ keywords: ["cortinas metálicas"], category: "Proveedor de toldos" });
+    expect(isRelevantKeyword("toldos para negocio", v)).toBe(true);
+  });
+
+  it("los reportes nuevos guardan aparte las que no tienen que ver", () => {
+    const r = readGapReport({ ...fameseg.reports.gap.data, rows: report.rows.slice(0, 2), offTopic: report.rows.slice(2, 4) })!;
+    expect(r.offTopic?.map((x) => x.keyword)).toEqual(report.rows.slice(2, 4).map((x) => x.keyword));
+    expect(readGapReport(fameseg.reports.gap.data)!.offTopic).toEqual([]);
   });
 });

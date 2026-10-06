@@ -21,8 +21,10 @@ import {
   serpCandidates,
   type LabsCountry,
   type RankedKeyword,
+  withoutDirectories,
   zoneCountry,
 } from "@/lib/seo/competitors";
+import fameseg from "./fixtures/fameseg.json";
 
 const kw = (keyword: string, position: number, volume: number | null = 100): RankedKeyword => ({ keyword, position, volume, url: `https://x.com/${keyword}` });
 
@@ -252,5 +254,81 @@ describe("varias zonas", () => {
         { name: "" },
       ]),
     ).toEqual(["Nicaragua", "United States"]);
+  });
+});
+
+describe("isDirectory: directorios, redes, marketplaces, gobierno y noticias (datos de Fameseg, Nicaragua)", () => {
+  it("reconoce directorios y clasificados de Latinoamérica en cualquier terminación", () => {
+    for (const d of [
+      "paginasamarillas.com.ni",
+      "www.paginasamarillas.es",
+      "amarillas.com.mx",
+      "yellowpages.ca",
+      "encuentra24.com",
+      "diredi.com",
+      "es.cybo.com",
+      "starofservice.com.ni",
+      "findglocal.com",
+      "waze.com",
+      "facebook.com",
+      "www.instagram.com",
+      "youtube.com",
+      "tiktok.com",
+      "ni.linkedin.com",
+      "es.wikipedia.org",
+      "yelp.es",
+      "tripadvisor.com.mx",
+      "articulo.mercadolibre.com.ni",
+      "olx.com.br",
+    ])
+      expect(isDirectory(d), d).toBe(true);
+  });
+  it("acepta direcciones completas", () => {
+    expect(isDirectory("https://www.paginasamarillas.com.ni/servicios/cortinas-metalicas")).toBe(true);
+    expect(isDirectory("http://diredi.com/nicaragua/const-metal-managua-nicaragua/")).toBe(true);
+  });
+  it("gobierno, universidades y noticias tampoco son competencia", () => {
+    for (const d of ["minsa.gob.ni", "usa.gov", "gov.uk", "www.gov.uk", "hmrc.gov.uk", "gob.mx", "impo.gub.uy", "repositorio.unan.edu.ni", "harvard.edu", "laprensani.com", "100noticias.com.ni", "miaminews.com", "diariolibre.com"])
+      expect(isDirectory(d), d).toBe(true);
+  });
+  it("no confunde negocios reales", () => {
+    for (const d of ["fameseg.com", "arteytecnica.com", "cormetal.com.ni", "cortinasmetalicasurgentes.com", "portoneselectricosbasilio.com", "inmenicsa.com", "gobernadorplumbing.com", "educarte.com", "angiehomes.com"])
+      expect(isDirectory(d), d).toBe(false);
+  });
+  it("no elige directorios como competidores en serpCandidates ni en mergeCandidates", () => {
+    const rows = readRankRows(fameseg.reports.rank.data);
+    const serp = serpCandidates(rows, "fameseg.com", 5).map((c) => c.domain);
+    expect(serp).not.toContain("paginasamarillas.com.ni");
+    expect(serp).not.toContain("diredi.com");
+    expect(serp).not.toContain("waze.com");
+    expect(serp).not.toContain("encuentra24.com");
+    expect(serp).toEqual(expect.arrayContaining(["portoneselectricosbasilio.com", "cormetal.com.ni", "arteytecnica.com", "cortinasmetalicasurgentes.com"]));
+    const merged = mergeCandidates({
+      self: "fameseg.com",
+      labs: [{ domain: "paginasamarillas.com.ni", overlap: 2, keywords: 1460, traffic: 6699 }, { domain: "cormetal.com.ni", overlap: 1, keywords: 2, traffic: 1 }],
+      serp: [{ domain: "diredi.com", hits: 1 }, { domain: "arteytecnica.com", hits: 1 }],
+      owner: [],
+    });
+    expect(merged.map((c) => c.domain).sort()).toEqual(["arteytecnica.com", "cormetal.com.ni"]);
+  });
+});
+
+describe("withoutDirectories (reportes guardados)", () => {
+  it("oculta Páginas Amarillas y DireDi del reporte de Fameseg, y las búsquedas que solo ellos ganaban", () => {
+    const report = readCompetitorsReport(fameseg.reports.competitors.data)!;
+    const { report: shown, hidden } = withoutDirectories(report);
+    expect(hidden).toEqual(["paginasamarillas.com.ni", "diredi.com"]);
+    expect(shown.competitors.map((c) => c.domain)).toEqual(["arteytecnica.com", "cormetal.com.ni", "cortinasmetalicasurgentes.com"]);
+    expect(shown.gap).toEqual([]);
+  });
+  it("deja los que agregó el dueño aunque parezcan directorio", () => {
+    const report = readCompetitorsReport(fameseg.reports.competitors.data)!;
+    const owned = { ...report, competitors: report.competitors.map((c) => (c.domain === "diredi.com" ? { ...c, source: "owner" as const } : c)) };
+    expect(withoutDirectories(owned).hidden).toEqual(["paginasamarillas.com.ni"]);
+  });
+  it("sin directorios no cambia nada", () => {
+    const report = readCompetitorsReport(fameseg.reports.competitors.data)!;
+    const clean = { ...report, competitors: report.competitors.filter((c) => !isDirectory(c.domain)) };
+    expect(withoutDirectories(clean).report).toBe(clean);
   });
 });

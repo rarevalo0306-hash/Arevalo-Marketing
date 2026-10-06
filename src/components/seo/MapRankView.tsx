@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { loadMapReport } from "@/app/actions-seo-maprank";
 import { useT } from "@/components/I18n";
+import { HowToRead } from "@/components/seo/HowToRead";
 import { MapRankMap } from "@/components/seo/MapRankMap";
 import { intlLocale } from "@/lib/i18n";
 import { NOT_FOUND_RANK, type MapReport, type MapTiles } from "@/lib/seo/maprank-shared";
@@ -119,6 +120,13 @@ export function MapRankView({ businessId, initial, history, placeTitle, tiles }:
         {failed > 0 && t(` ${failed} puntos no se pudieron revisar («!»); no cuentan en los números.`, ` ${failed} points couldn't be checked (“!”); they don't count in the numbers.`)}
       </p>
       {error && <p className="note error">{error}</p>}
+      <HowToRead title={t("Cómo leer este mapa", "How to read this map")}>
+        <ul>
+          <li>{t("Cada punto es una persona buscando desde ese lugar; el número es el lugar en que le sale tu negocio en Google Maps.", "Each point is a person searching from that spot; the number is where your business shows up for them on Google Maps.")}</li>
+          <li>{t("1 a 3 (verde): te ven sin bajar. 4 a 10: hay que bajar un poco. 11 a 20: casi nadie llega. 20+: no sales.", "1 to 3 (green): they see you without scrolling. 4 to 10: they have to scroll a bit. 11 to 20: almost nobody gets there. 20+: you don't show up.")}</li>
+          <li>{t("Es normal salir mejor cerca de tu negocio y peor lejos. Para ampliar la zona: más reseñas, fotos y tu ciudad en el perfil.", "It's normal to rank better near your business and worse farther away. To widen your area: more reviews, photos, and your city in the profile.")}</li>
+        </ul>
+      </HowToRead>
 
       <div className="stack" style={{ gap: 8 }}>
         <span className="lbl">{t("Quién te gana en el mapa", "Who beats you on the map")}</span>

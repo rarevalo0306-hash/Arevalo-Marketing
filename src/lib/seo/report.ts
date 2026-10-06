@@ -10,7 +10,7 @@ import { BUSINESS_TZ, localToUtc } from "@/lib/time";
 import { AI_NAMES, alertRecipients, renderEmail, type BuiltEmail, type EmailBlock, type EmailOpts, weeklyMovers, type Mover } from "@/lib/seo/alerts";
 import { ISSUE_TEXT, readAuditReport, type Severity } from "@/lib/seo/audit";
 import { readTrackedKeywords, readZones, zoneLabel, type Zone } from "@/lib/seo/dataforseo";
-import { readGapReport, type GapType } from "@/lib/seo/gap";
+import { businessTopicVocab, readGapReport, relevantGapRows, type GapType } from "@/lib/seo/gap";
 import { readGbpReport, readReviewsReport } from "@/lib/seo/gbp";
 import { asGscReport } from "@/lib/seo/gsc";
 import { readKeywordsReport, reportLookup, type KeywordsReport } from "@/lib/seo/keywords";
@@ -158,6 +158,8 @@ export type ReportBusiness = {
   seoLocations: unknown;
   seoLocationCode: number | null;
   seoLocationName: string;
+  /** Estudio del negocio: sirve para saber qué búsquedas tienen que ver con él. */
+  study?: unknown;
 };
 
 /** Lo que se lee de la base de datos para armar el reporte. Cada lista va del más nuevo al más viejo. */
@@ -191,6 +193,7 @@ export async function loadReportInputs(businessId: string, period: ReportPeriod)
       seoLocations: true,
       seoLocationCode: true,
       seoLocationName: true,
+      study: true,
     },
   });
   const until = { lte: period.to };
@@ -571,10 +574,11 @@ function gscSection(inputs: ReportInputs, period: ReportPeriod): GscSection | nu
 
 function gapSection(inputs: ReportInputs, period: ReportPeriod): GapSection | null {
   const cur = atOrBefore(parsed(inputs.rows.gap, readGapReport), period.to);
-  if (!cur || !cur.rep.rows.length) return null;
+  const rows = cur ? relevantGapRows(cur.rep.rows, businessTopicVocab(inputs.business)) : [];
+  if (!cur || !rows.length) return null;
   return {
     date: iso(cur.at),
-    rows: [...cur.rep.rows]
+    rows: [...rows]
       .sort((a, b) => b.opportunity - a.opportunity || (b.volume ?? -1) - (a.volume ?? -1))
       .slice(0, 5)
       .map((r) => ({

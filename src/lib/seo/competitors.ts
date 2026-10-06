@@ -63,47 +63,124 @@ export type CompetitorsReport = {
   createdAt: string;
 };
 
-/** Directorios, redes y buscadores: salen arriba en todo, pero no son competencia directa. */
+/**
+ * Directorios, redes sociales, buscadores, mapas, clasificados y marketplaces: salen arriba en todo, pero no son
+ * competencia directa. Se comparan con cada parte del dominio menos la terminación, así que cubren cualquier país
+ * (yelp.com, m.facebook.com, google.com.mx, paginasamarillas.com.ni, es.cybo.com, encuentra24.com…).
+ */
 export const DIRECTORY_SITES = [
-  "yelp",
+  // Redes sociales y videos
   "facebook",
-  "google",
-  "youtube",
-  "wikipedia",
-  "angi",
-  "angieslist",
-  "bbb",
   "instagram",
-  "linkedin",
-  "nextdoor",
-  "thumbtack",
-  "homeadvisor",
-  "mapquest",
-  "yellowpages",
-  "superpages",
-  "manta",
+  "youtube",
   "tiktok",
+  "linkedin",
   "twitter",
   "pinterest",
   "reddit",
   "quora",
-  "houzz",
-  "porch",
-  "bark",
-  "craigslist",
-  "indeed",
-  "glassdoor",
-  "tripadvisor",
-  "foursquare",
-  "chamberofcommerce",
-  "birdeye",
+  "whatsapp",
+  "telegram",
+  "snapchat",
+  "nextdoor",
+  // Buscadores, mapas y grandes plataformas
+  "google",
   "bing",
   "yahoo",
   "apple",
   "amazon",
+  "waze",
+  "mapquest",
+  "foursquare",
+  "wikipedia",
+  "wikiwand",
+  "fandom",
+  "blogspot",
+  "wordpress",
+  "wixsite",
+  // Directorios y reseñas (EE. UU.)
+  "yelp",
+  "angi",
+  "angieslist",
+  "bbb",
+  "thumbtack",
+  "homeadvisor",
+  "yellowpages",
+  "superpages",
+  "manta",
+  "houzz",
+  "porch",
+  "bark",
+  "chamberofcommerce",
+  "birdeye",
+  "tripadvisor",
+  "trustpilot",
+  "buildzoom",
+  "expertise",
+  "brownbook",
+  "hotfrog",
+  "cylex",
+  "infobel",
+  "tuugo",
+  "find-us-here",
+  "storeboard",
+  "kompass",
+  "europages",
+  // Directorios y clasificados de Latinoamérica y España
+  "paginasamarillas",
+  "amarillas",
+  "paginas-amarillas",
+  "guiamais",
+  "encuentra24",
+  "diredi",
+  "cybo",
+  "starofservice",
+  "findglocal",
+  "infoisinfo",
+  "habitissimo",
+  "cronoshare",
+  "doctoralia",
+  "nicaraguacompanies",
+  "empresite",
+  "infoempresas",
+  "guialocal",
+  "guiaempresas",
+  "dondeir",
+  "clasificados",
+  // Marketplaces y empleo
+  "mercadolibre",
+  "mercadolivre",
+  "olx",
+  "ebay",
+  "etsy",
+  "alibaba",
+  "aliexpress",
+  "temu",
+  "craigslist",
+  "indeed",
+  "glassdoor",
+  "computrabajo",
+  "tecoloco",
+  "bumeran",
+  // Noticias
+  "laprensani",
+  "elnuevodiario",
+  "confidencial",
+  "100noticias",
+  "articulo66",
+  "despacho505",
+  "elpais",
+  "infobae",
+  "cnn",
+  "bbc",
+  "nytimes",
 ] as const;
 
 const DIRECTORY_SET = new Set<string>(DIRECTORY_SITES);
+/** Gobierno, ejército y universidades: .gov, .gob.ni, .gov.uk, .gub.uy, .gouv.fr, .mil, .edu, .edu.ni. */
+const PUBLIC_LABELS = new Set(["gov", "gob", "gub", "gouv", "govt", "mil", "edu"]);
+/** Sitios de noticias por su nombre ("noticiasdenicaragua.com", "miaminews.com", "diariolibre.com"). */
+const NEWS_RE = /noticia|periodico|diario|^news|news$/;
 
 // ---------- Ayudantes puros ----------
 
@@ -130,12 +207,21 @@ export function sameSite(a: string, b: string): boolean {
   return a === b || a.endsWith(`.${b}`) || b.endsWith(`.${a}`);
 }
 
-/** Directorios, redes sociales y buscadores (yelp.com, m.facebook.com, google.com.mx, es.wikipedia.org…). */
+/**
+ * Directorios, redes sociales, buscadores, marketplaces, gobierno y noticias: no son competencia directa
+ * (yelp.com, m.facebook.com, google.com.mx, es.wikipedia.org, paginasamarillas.com.ni, minsa.gob.ni, usa.gov…).
+ * Acepta un dominio o una dirección completa.
+ */
 export function isDirectory(domain: string): boolean {
-  const labels = domain.toLowerCase().split(".");
-  return labels.slice(0, -1).some((l) => DIRECTORY_SET.has(l));
+  const d = normalizeDomain(domain) ?? String(domain ?? "").trim().toLowerCase();
+  const labels = d.split(".").filter(Boolean);
+  if (labels.length < 2) return false;
+  if (labels.slice(0, -1).some((l) => DIRECTORY_SET.has(l))) return true;
+  // La terminación del gobierno o de una universidad: .gov, .gob.ni, .gov.uk, .edu.ni; o el portal mismo (gov.uk, gob.mx).
+  if (labels.slice(1).some((l) => PUBLIC_LABELS.has(l))) return true;
+  if (labels.length === 2 && PUBLIC_LABELS.has(labels[0]) && labels[1].length === 2) return true;
+  return NEWS_RE.test(brandToken(d));
 }
-
 /** El nombre del sitio sin terminación: "joesplumbing.co.uk" → "joesplumbing". */
 export function brandToken(domain: string): string {
   const labels = domain.split(".");
@@ -322,6 +408,21 @@ export function computeGap(you: RankedKeyword[], competitors: { domain: string; 
   return [...gap.values()].sort((a, b) => (b.volume ?? -1) - (a.volume ?? -1) || a.competitorPosition - b.competitorPosition || a.keyword.localeCompare(b.keyword)).slice(0, limit);
 }
 
+/**
+ * Para mostrar un reporte guardado: quita los directorios, redes y marketplaces (Páginas Amarillas, Facebook…)
+ * que se colaron como competidores en corridas viejas, y las búsquedas que solo ellos ganaban.
+ * Los que agregó el dueño se quedan aunque parezcan directorio. `hidden` dice cuáles se quitaron.
+ */
+export function withoutDirectories(report: CompetitorsReport): { report: CompetitorsReport; hidden: string[] } {
+  const hidden = report.competitors.filter((c) => c.source !== "owner" && isDirectory(c.domain)).map((c) => c.domain);
+  if (!hidden.length) return { report, hidden };
+  const gone = (d: string) => hidden.some((h) => sameSite(h, d));
+  return {
+    report: { ...report, competitors: report.competitors.filter((c) => !gone(c.domain)), gap: report.gap.filter((g) => !gone(g.bestCompetitor)) },
+    hidden,
+  };
+}
+
 // ---------- Lectura de respuestas de DataForSEO ----------
 
 /** competitors_domain: items[] con domain, intersections y full_domain_metrics.organic (count, etv). */
@@ -488,6 +589,8 @@ type RunInput = {
   ownerDomains: string[];
   /** El último reporte de posiciones (kind "rank") de cada zona, tal cual se guardaron. */
   rankJsons: unknown[];
+  /** Si una búsqueda tiene que ver con el negocio (isRelevantKeyword de gap.ts); las demás no se cuentan como oportunidad. */
+  relevant?: (keyword: string) => boolean;
 };
 
 /** Hace la búsqueda completa: ~5 llamadas a DataForSEO Labs (unos USD 0.05 a 0.10). */
@@ -566,7 +669,8 @@ export async function runCompetitorsReport(input: RunInput): Promise<Competitors
   if (mine.status === "fulfilled") for (const c of competitors) if (c.overlap === null && c.analyzed) c.overlap = c.top.filter((k) => myKeys.has(k.keyword)).length;
 
   // Sin tus búsquedas no se puede saber dónde no sales: no se inventan oportunidades.
-  const gap = mine.status === "fulfilled" ? computeGap(youData.top, competitors.filter((c) => c.analyzed), 30) : [];
+  const relevant = input.relevant ?? (() => true);
+  const gap = mine.status === "fulfilled" ? computeGap(youData.top, competitors.filter((c) => c.analyzed), 500).filter((g) => relevant(g.keyword)).slice(0, 30) : [];
 
   return {
     domain: self,

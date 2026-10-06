@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { runOnPage, suggestPageFix } from "@/app/actions-seo-onpage";
 import { CopyButton } from "@/components/seo/ArticleTools";
+import { HowToRead } from "@/components/seo/HowToRead";
 import { ScoreDial } from "@/components/seo/ArticleView";
 import { KeywordPicker, OnPageRunButton, RecheckButton, SuggestButton } from "@/components/seo/OnPageTools";
 import { aiEnabled, TEXT_PROVIDERS } from "@/lib/ai";
@@ -172,6 +173,13 @@ export async function OnPagePanel({ businessId }: { businessId: string }) {
 
   return shell(
     <>
+      <HowToRead title={t("Cómo leer esto", "How to read this")}>
+        <ul>
+          <li>{t("Cada página de tu sitio tiene una búsqueda por la que debería salir. La nota de 0 a 100 compara tu página con las que salen primero en Google para esa búsqueda: 80 o más está bien; menos de 50, le falta bastante.", "Each page on your site has a search it should show up for. The 0-100 score compares your page with the ones ranking first on Google for that search: 80 or more is good; under 50, it's missing a lot.")}</li>
+          <li>{t("Los cambios van en orden: arriba los que más ayudan. Empieza por el título y el primer párrafo.", "Changes are in order: the most helpful first. Start with the title and the first paragraph.")}</li>
+          <li>{t("Si la búsqueda elegida no es la correcta, cámbiala antes de seguir los consejos.", "If the chosen search isn't the right one, change it before following the advice.")}</li>
+        </ul>
+      </HowToRead>
       <p className="small muted">
         {t("Última revisión:", "Last check:")} {fmt.format(new Date(report.createdAt))} · {zoneLabel(report.zone.name) || report.zone.name} · DataForSEO {costText(report.cost)}
         {report.stoppedEarly && t(" · se acabó el tiempo antes de revisar todas", " · ran out of time before checking them all")}

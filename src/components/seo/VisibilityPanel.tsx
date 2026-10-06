@@ -5,7 +5,8 @@ import { db } from "@/lib/db";
 import { intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { latestReports } from "@/lib/seo/reports";
-import { customerLang, questionsFromStudy, readVisibilityReport, sourceDomain, visibilityProviders, type VisibilityResult } from "@/lib/seo/visibility";
+import { HowToRead } from "@/components/seo/HowToRead";
+import { customerLang, errorKind, explainError, providerErrors, questionsFromStudy, readVisibilityReport, sourceDomain, visibilityProviders, type VisibilityResult } from "@/lib/seo/visibility";
 import { readStudy } from "@/lib/study-shape";
 import { BUSINESS_TZ } from "@/lib/time";
 
@@ -36,9 +37,19 @@ export async function VisibilityPanel({ businessId }: { businessId: string }) {
   const cell = (question: string, provider: TextProvider) => last?.results.find((r) => r.question === question && r.provider === provider);
   const trend = [...reports].reverse().filter((r) => r.report!.score !== null);
 
+  const why = (r: VisibilityResult) => {
+    const x = explainError(r.provider, r.error ?? "");
+    return lang === "en" ? x.en : x.es;
+  };
+  const errors = last ? providerErrors(last.results) : [];
   const mark = (r: VisibilityResult | undefined) => {
     if (!r) return <span className="muted">—</span>;
-    if (r.error) return <span className="vis-mark warn" title={r.error}>⚠ <span className="small">{t("Error", "Error")}</span></span>;
+    if (r.error)
+      return (
+        <span className="vis-mark warn" title={why(r)}>
+          ⚠ <span className="small">{errorKind(r.error) === "limit" ? t("Límite", "Limit") : t("No contestó", "No answer")}</span>
+        </span>
+      );
     if (r.mentioned)
       return (
         <span className="vis-mark yes" title={t("Te menciona", "Mentions you")}>
@@ -49,7 +60,7 @@ export async function VisibilityPanel({ businessId }: { businessId: string }) {
   };
 
   return (
-    <section className="card">
+    <section className="card" id="ia">
       <div className="stack" style={{ gap: 4 }}>
         <h2>{t("Visibilidad en IA", "AI visibility")}</h2>
         <p className="small muted">
@@ -94,8 +105,8 @@ export async function VisibilityPanel({ businessId }: { businessId: string }) {
                 {resultProviders.map((p) => {
                   const s = last.byProvider[p];
                   return (
-                    <span key={p} className={`pill ${tone(s?.score ?? null)}`}>
-                      {SHORT[p]}: {s?.score === null || !s ? "—" : `${s.score}%`}
+                    <span key={p} className={`pill ${s && s.total === 0 ? "partial" : tone(s?.score ?? null)}`} title={s && s.errors ? t(`${s.errors} pregunta(s) sin respuesta`, `${s.errors} question(s) without an answer`) : undefined}>
+                      {SHORT[p]}: {!s || s.total === 0 ? t("no se pudo revisar", "couldn't be checked") : s.score === null ? "—" : `${s.score}%`}
                       {s && s.total ? <span style={{ fontWeight: 500 }}>({s.mentioned}/{s.total})</span> : null}
                     </span>
                   );
@@ -136,12 +147,42 @@ export async function VisibilityPanel({ businessId }: { businessId: string }) {
               </tbody>
             </table>
           </div>
+          {errors.length > 0 && (
+            <div className="note">
+              {errors.map((e) => (
+                <span key={e.provider} style={{ display: "block" }}>
+                  ⚠{" "}
+                  {e.failed === e.total
+                    ? t(`${SHORT[e.provider]} no se pudo revisar (no contestó ninguna pregunta): `, `${SHORT[e.provider]} couldn't be checked (it didn't answer any question): `)
+                    : t(`${SHORT[e.provider]} no contestó ${e.failed} de ${e.total} preguntas: `, `${SHORT[e.provider]} didn't answer ${e.failed} of ${e.total} questions: `)}
+                  {lang === "en" ? e.reason.en : e.reason.es}
+                </span>
+              ))}
+              <span className="small" style={{ display: "block", marginTop: 4 }}>
+                {t("Esas preguntas no cuentan en tu porcentaje (ni a favor ni en contra).", "Those questions don't count in your percentage (neither for nor against you).")}
+              </span>
+            </div>
+          )}
           <p className="small muted">
             {t(
-              "✓ te menciona (#lugar entre los negocios que nombra) · ✗ no te menciona · ⚠ esa IA falló. Las respuestas de las IAs cambian de un día a otro y según quién pregunta: tómalo como una muestra, no como una garantía.",
-              "✓ mentions you (#position among the businesses it names) · ✗ doesn't mention you · ⚠ that AI failed. AI answers change from day to day and depending on who asks: treat this as a sample, not a guarantee.",
+              "✓ te menciona (#lugar entre los negocios que nombra) · ✗ no te menciona · ⚠ esa IA no contestó (pasa el dedo o el mouse para ver por qué). Las respuestas de las IAs cambian de un día a otro y según quién pregunta: tómalo como una muestra, no como una garantía.",
+              "✓ mentions you (#position among the businesses it names) · ✗ doesn't mention you · ⚠ that AI didn't answer (hover or tap to see why). AI answers change from day to day and depending on who asks: treat this as a sample, not a guarantee.",
             )}
           </p>
+          <HowToRead title={t("Cómo leer esto", "How to read this")}>
+            <p>
+              {t(
+                "El porcentaje es en cuántas respuestas te nombran las IAs cuando un cliente pregunta por lo que vendes. 60 % o más es muy bueno; menos de 25 % quiere decir que casi nunca te recomiendan.",
+                "The percentage is how many answers name you when a customer asks the AIs for what you sell. 60% or more is very good; under 25% means they almost never recommend you.",
+              )}
+            </p>
+            <p>
+              {t(
+                "«#1» quiere decir que fuiste el primer negocio que nombró. «Páginas que más citan» son los sitios de donde sacan la información: estar bien en esos sitios (directorios, reseñas) ayuda a que te nombren.",
+                "“#1” means you were the first business it named. “Websites they cite most” are where they get their information: being listed well on those sites (directories, reviews) helps them name you.",
+              )}
+            </p>
+          </HowToRead>
 
           <div className="grid-2" style={{ gap: 18 }}>
             <div className="stack" style={{ gap: 8 }}>
@@ -198,7 +239,10 @@ export async function VisibilityPanel({ businessId }: { businessId: string }) {
                 </summary>
                 <div className="stack" style={{ gap: 8, marginTop: 10 }}>
                   {r.error ? (
-                    <p className="note error">{r.error}</p>
+                    <p className="note error">
+                      {why(r)}
+                      {why(r) !== r.error && <span className="small" style={{ display: "block", fontWeight: 400, marginTop: 4 }}>{t("Mensaje original:", "Original message:")} {r.error}</span>}
+                    </p>
                   ) : (
                     <p className="small vis-answer-text">{r.answer || "—"}</p>
                   )}

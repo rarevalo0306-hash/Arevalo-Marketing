@@ -1,11 +1,14 @@
 import Link from "next/link";
 import { runRankCheck } from "@/app/actions-seo-rank";
+import { HowToRead } from "@/components/seo/HowToRead";
 import { RankButton } from "@/components/seo/RankButton";
+import help from "@/components/seo/SeoHelp.module.css";
 import { db } from "@/lib/db";
 import { intlLocale, type T } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { dataForSeoEnabled, type Zone, zoneLabel } from "@/lib/seo/dataforseo";
 import { compareRuns, RANK_COST_PER_KEYWORD, RANK_DEPTH, rankSetup, readRankReport, type Change, type RankReport, type RankRow } from "@/lib/seo/rank";
+import { positionText, rowAdvice, VERDICTS } from "@/lib/seo/plain";
 import { latestReports } from "@/lib/seo/reports";
 import { groupByZone } from "@/lib/seo/zones";
 import { BUSINESS_TZ } from "@/lib/time";
@@ -109,7 +112,7 @@ export async function RankPanel({ businessId }: { businessId: string }) {
 
   if (!setup.ok) {
     return (
-      <section className="card">
+      <section className="card" id="posiciones">
         {header}
         <p className="note">
           {setup.missing === "website" ? (
@@ -177,20 +180,50 @@ export async function RankPanel({ businessId }: { businessId: string }) {
     );
   };
 
-  /** Posición orgánica + lugar en el mapa, compacto: "3 ▲1 · 📍2". */
+  const pick = (x: { es: string; en: string }) => (lang === "en" ? x.en : x.es);
+  const writeHref = (kw: string) => `/b/${businessId}/seo/escribir?kw=${encodeURIComponent(kw)}`;
+
+  /** Posición en Google y en el mapa, en palabras: "2° en Google ▲1" / "📍 3° en el mapa". */
   const cell = (row: RankRow | undefined, c: Change | undefined) => {
     if (!row) return <span className="muted small" title={t("Esta palabra todavía no se revisó en esta zona", "This keyword hasn't been checked in this area yet")}>·</span>;
     if (row.error) return <span className="pill failed" title={lang === "en" ? row.error.en : row.error.es}>{t("Falló", "Failed")}</span>;
+    const p = positionText(row);
     return (
-      <>
-        <strong title={row.position === null ? t(`No sales en los primeros ${RANK_DEPTH}`, `Not in the top ${RANK_DEPTH}`) : undefined}>{row.position ?? "—"}</strong> <Move c={c} t={t} />
-        {row.localPack &&
-          (row.localPack.position !== null ? (
-            <span className="small" title={t("Tu lugar en el mapa de Google", "Your spot on Google's map")}> · 📍{row.localPack.position}</span>
-          ) : (
-            <span className="small muted" title={t("Hay mapa, pero no sales en él", "There's a map, but you're not in it")}> · 📍—</span>
-          ))}
-      </>
+      <span className={help.pos}>
+        <span className={help.posMain}>
+          {pick(p.organic)} <Move c={c} t={t} />
+        </span>
+        <span className={help.posMap} title={t("Los 3 negocios con mapa que Google muestra arriba de los resultados", "The 3 businesses with a map that Google shows above the results")}>
+          📍 {pick(p.map)}
+        </span>
+      </span>
+    );
+  };
+
+  /** Qué quiere decir la posición y qué hacer; avisa si la página que sale trata de otra cosa. */
+  const meaning = (row: RankRow | undefined) => {
+    if (!row || row.error) return <span className="muted small">—</span>;
+    const a = rowAdvice(row);
+    const v = VERDICTS[a.verdict];
+    return (
+      <span className={help.meaning}>
+        <span>
+          <span className={`pill ${v.pill}`}>{pick(v.label)}</span>
+        </span>
+        <span>{pick(v.meaning)}</span>
+        {a.mismatch && (
+          <span className={help.mismatch}>
+            {t(
+              `Google muestra tu página «${a.page}» para esta búsqueda, pero esa página no habla específicamente de eso. Una página o artículo sobre «${row.keyword}» te ayudaría a subir. `,
+              `Google shows your page “${a.page}” for this search, but that page isn't specifically about it. A page or article about “${row.keyword}” would help you move up. `,
+            )}
+            <Link href={writeHref(row.keyword)}>{t("Escribir artículo →", "Write article →")}</Link>
+          </span>
+        )}
+        {!a.mismatch && (a.verdict === "none" || a.verdict === "far" || a.verdict === "close" || a.verdict === "map") && (
+          <Link href={writeHref(row.keyword)}>{t("Escribir artículo →", "Write article →")}</Link>
+        )}
+      </span>
     );
   };
 
@@ -235,7 +268,7 @@ export async function RankPanel({ businessId }: { businessId: string }) {
   );
 
   return (
-    <section className="card">
+    <section className="card" id="posiciones">
       {header}
       <p className="small muted">
         {newest ? (
@@ -284,6 +317,7 @@ export async function RankPanel({ businessId }: { businessId: string }) {
                   <span className="stat-label">{t("Posición promedio", "Average position")}</span>
                   <span className="stat-value">{report.avgPosition === null ? "—" : one.format(report.avgPosition)}</span>
                   {delta(report.avgPosition, previous?.avgPosition, true)}
+                  <span className={help.statHelp}>{t("El lugar promedio donde sí sales. Más bajo es mejor: 1 = primero.", "Your average spot where you do show up. Lower is better: 1 = first.")}</span>
                 </div>
                 <div className="stat">
                   <span className="stat-label">{t("En los 3 primeros", "In the top 3")}</span>
@@ -292,6 +326,7 @@ export async function RankPanel({ businessId }: { businessId: string }) {
                     <small> / {report.rows.length}</small>
                   </span>
                   {delta(report.inTop3, previous?.inTop3)}
+                  <span className={help.statHelp}>{t("Palabras donde sales 1°, 2° o 3°: ahí se van casi todos los clics.", "Keywords where you're #1, #2 or #3: almost all clicks go there.")}</span>
                 </div>
                 <div className="stat">
                   <span className="stat-label">{t("En la primera página (top 10)", "On page one (top 10)")}</span>
@@ -300,6 +335,7 @@ export async function RankPanel({ businessId }: { businessId: string }) {
                     <small> / {report.rows.length}</small>
                   </span>
                   {delta(report.inTop10, previous?.inTop10)}
+                  <span className={help.statHelp}>{t("Palabras donde sales en la primera página (lugares 1 a 10).", "Keywords where you're on page one (spots 1 to 10).")}</span>
                 </div>
                 <div className="stat">
                   <span className="stat-label" title={t("100 % = primer lugar en todas tus palabras clave. Pesa más salir arriba, porque ahí está la mayoría de los clics.", "100% = first place for all your keywords. Higher spots weigh more, since that's where most clicks go.")}>
@@ -310,6 +346,7 @@ export async function RankPanel({ businessId }: { businessId: string }) {
                     <small>%</small>
                   </span>
                   {delta(report.visibility, previous?.visibility, false, "%")}
+                  <span className={help.statHelp}>{t("Qué parte de los clics posibles te llegan. 100 % = primer lugar en todas.", "How much of the possible clicks reach you. 100% = first place on all.")}</span>
                 </div>
               </div>
             </div>
@@ -363,7 +400,7 @@ export async function RankPanel({ businessId }: { businessId: string }) {
                   <th>{t("Palabra clave", "Keyword")}</th>
                   {multi ? (
                     perZone.map(({ zone }, i) => (
-                      <th key={zone.code} className="rank-num" title={zone.name}>
+                      <th key={zone.code} title={zone.name}>
                         {label(zone)}
                         {i === 0 && <span className="small muted"> ★</span>}
                       </th>
@@ -371,6 +408,7 @@ export async function RankPanel({ businessId }: { businessId: string }) {
                   ) : (
                     <th>{t("Posición", "Position")}</th>
                   )}
+                  <th>{multi ? t("¿Qué significa? ★", "What does it mean? ★") : t("¿Qué significa?", "What does it mean?")}</th>
                   <th>{t("Tu página que sale", "Your page that ranks")}</th>
                   <th>{multi ? t("Tendencia ★", "Trend ★") : t("Tendencia", "Trend")}</th>
                 </tr>
@@ -391,8 +429,9 @@ export async function RankPanel({ businessId }: { businessId: string }) {
                       <td><strong>{k}</strong></td>
                       {perZone.map((z) => {
                         const row = rowOf(z.report, k);
-                        return <td key={z.zone.code} className="rank-num">{cell(row, row ? z.changes[row.keyword] : undefined)}</td>;
+                        return <td key={z.zone.code}>{cell(row, row ? z.changes[row.keyword] : undefined)}</td>;
                       })}
+                      <td>{meaning(rowOf(report, k) ?? perZone.map((z) => rowOf(z.report, k)).find(Boolean))}</td>
                       <td className="small rank-url">
                         {url ? <a href={url} target="_blank" rel="noopener noreferrer">{shortUrl(url)}</a> : <span className="muted">—</span>}
                       </td>
@@ -405,12 +444,22 @@ export async function RankPanel({ businessId }: { businessId: string }) {
           </div>
           <p className="small muted">
             {t(
-              `«—» = no sales en los primeros ${RANK_DEPTH}. «📍» = tu lugar entre los negocios del mapa de Google («📍—» hay mapa pero no sales; sin 📍, Google no mostró mapa). ▲ subiste / ▼ bajaste lugares desde la revisión anterior de esa zona.`,
-              `“—” = not in the top ${RANK_DEPTH}. “📍” = your spot among the businesses on Google's map (“📍—” there's a map but you're not on it; no 📍, Google showed no map). ▲ moved up / ▼ moved down since that area's last check.`,
+              `«No sales (top ${RANK_DEPTH})» = no estás en los primeros ${RANK_DEPTH} resultados. «📍» = tu lugar entre los 3 negocios del mapa de Google. ▲ subiste / ▼ bajaste lugares desde la revisión anterior de esa zona.`,
+              `“Not in top ${RANK_DEPTH}” = you're not in the first ${RANK_DEPTH} results. “📍” = your spot among the 3 businesses on Google's map. ▲ moved up / ▼ moved down since that area's last check.`,
             )}
             {multi && t(" ★ = tu zona principal (la tendencia es de esa zona).", " ★ = your main area (the trend is for that area).")}
             {history.length > 1 && ` ${t("Tendencia desde", "Trend since")} ${short.format(history[0].savedAt)}.`}
           </p>
+          <HowToRead title={t("Cómo leer tus posiciones", "How to read your rankings")}>
+            <ul>
+              <li>{t("1 = el primero que sale en Google. 1 a 3: excelente, ahí se van la mayoría de los clics.", "1 = the first result on Google. 1 to 3: excellent, most clicks go there.")}</li>
+              <li>{t("4 a 10: primera página. Te ven, pero menos.", "4 to 10: page one. People see you, but less.")}</li>
+              <li>{t("11 a 20: segunda página. Casi nadie llega ahí.", "11 to 20: page two. Almost nobody gets there.")}</li>
+              <li>{t(`«No sales»: no estás en los primeros ${RANK_DEPTH}. Para esa búsqueda casi nadie te encuentra.`, `“Not showing”: you're not in the top ${RANK_DEPTH}. Almost nobody finds you for that search.`)}</li>
+              <li>{t("El mapa son los 3 negocios con mapa que Google pone arriba de todo en búsquedas locales. Depende de tu Perfil de Google y tus reseñas, no de tu página web.", "The map is the 3 businesses with a map that Google puts above everything on local searches. It depends on your Google profile and reviews, not your website.")}</li>
+              <li>{t("«Tu página que sale» es la página de tu sitio que Google eligió. Si trata de otra cosa, crea una página o un artículo sobre esa búsqueda.", "“Your page that ranks” is the page of your site Google picked. If it's about something else, create a page or article about that search.")}</li>
+            </ul>
+          </HowToRead>
 
           <div className="stack" style={{ gap: 8 }}>
             <span className="lbl">

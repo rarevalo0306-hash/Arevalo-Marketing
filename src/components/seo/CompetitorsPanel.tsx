@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { runCompetitors } from "@/app/actions-seo-competitors";
 import { CompetitorsForm } from "@/components/seo/CompetitorsForm";
+import { HowToRead } from "@/components/seo/HowToRead";
 import { db } from "@/lib/db";
 import { intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
-import { distinctCountries, normalizeDomain, readCompetitorsReport, type CompetitorSource, type DomainStats } from "@/lib/seo/competitors";
+import { distinctCountries, normalizeDomain, readCompetitorsReport, sameSite, withoutDirectories, type CompetitorSource, type DomainStats, type GapKeyword } from "@/lib/seo/competitors";
 import { dataForSeoEnabled, readZones, zoneLabel } from "@/lib/seo/dataforseo";
+import { businessTopicVocab, gbpCategory, isRelevantKeyword } from "@/lib/seo/gap";
 import { latestReports } from "@/lib/seo/reports";
 import { BUSINESS_TZ } from "@/lib/time";
 
@@ -15,7 +17,7 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
   const { lang, t } = await getT();
   const b = await db.business.findUnique({
     where: { id: businessId },
-    select: { website: true, seoLocations: true, seoLocationCode: true, seoLocationName: true },
+    select: { website: true, seoLocations: true, seoLocationCode: true, seoLocationName: true, seoKeywords: true, study: true },
   });
   if (!b) return null;
   const zones = readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName);
@@ -36,7 +38,7 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
 
   if (!self || !zones.length) {
     return (
-      <section className="card">
+      <section className="card" id="competencia">
         {header}
         <p className="note">
           {!self ? (
@@ -52,8 +54,14 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
     );
   }
 
-  const [row] = await latestReports(businessId, "competitors", 1);
-  const report = row ? readCompetitorsReport(row.data) : null;
+  const [[row], [gbpRow]] = await Promise.all([latestReports(businessId, "competitors", 1), latestReports(businessId, "gbp", 1)]);
+  const saved = row ? readCompetitorsReport(row.data) : null;
+  // Directorios (Páginas Amarillas, Facebook…) que se colaron en reportes viejos: no son competencia directa.
+  const { report, hidden: hiddenDirs } = saved ? withoutDirectories(saved) : { report: null, hidden: [] as string[] };
+  // Las búsquedas que no tienen que ver con lo que vende el negocio (o que solo ganaba un directorio) se ocultan.
+  const vocab = businessTopicVocab({ ...b, category: gbpRow ? gbpCategory(gbpRow.data) : null });
+  const gapShown: GapKeyword[] = report ? report.gap.filter((g) => isRelevantKeyword(g.keyword, vocab)) : [];
+  const gapHidden: GapKeyword[] = saved ? saved.gap.filter((g) => !gapShown.some((x) => x.keyword === g.keyword)) : [];
   const fmt = new Intl.DateTimeFormat(intlLocale(lang), { dateStyle: "long", timeStyle: "short", timeZone: BUSINESS_TZ });
   const number = new Intl.NumberFormat(intlLocale(lang), { maximumFractionDigits: 0 });
   const money = new Intl.NumberFormat(intlLocale(lang), { style: "currency", currency: "USD", maximumFractionDigits: 3 });
@@ -71,7 +79,7 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
   const maxTraffic = Math.max(1, ...all.map((d) => d.traffic ?? 0));
 
   return (
-    <section className="card">
+    <section className="card" id="competencia">
       {header}
       <p className="small muted">
         {t("Tu página:", "Your website:")} <a href={href(self)} target="_blank" rel="noopener noreferrer">{self}</a>
@@ -126,6 +134,14 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
             <ul className="small muted comp-notes">
               {report.notes.map((x, i) => <li key={i}>{lang === "en" ? x.en : x.es}</li>)}
             </ul>
+          )}
+          {hiddenDirs.length > 0 && (
+            <p className="small muted">
+              {t(
+                `Ocultamos directorios como Páginas Amarillas (${hiddenDirs.join(", ")}): no son tu competencia directa. Vuelve a buscar para que entren otros competidores en su lugar.`,
+                `We hid directories like Yellow Pages (${hiddenDirs.join(", ")}): they're not your direct competition. Search again so other competitors take their place.`,
+              )}
+            </p>
           )}
 
           {report.competitors.length === 0 ? (
@@ -221,7 +237,7 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
 
           <div className="stack" style={{ gap: 8 }}>
             <span className="lbl">{t("Búsquedas donde ellos salen y tú no", "Searches where they show up and you don't")}</span>
-            {report.gap.length === 0 ? (
+            {gapShown.length === 0 ? (
               <p className="small muted">
                 {report.competitors.some((c) => c.analyzed)
                   ? t("No encontramos búsquedas donde ellos estén en la primera página y tú no. ¡Bien!", "We didn't find searches where they're on page one and you aren't. Nice!")
@@ -230,7 +246,7 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
             ) : (
               <>
                 <ul className="comp-gap">
-                  {report.gap.slice(0, 5).map((g) => (
+                  {gapShown.slice(0, 5).map((g) => (
                     <li key={g.keyword}>
                       <div className="stack" style={{ gap: 2, minWidth: 0 }}>
                         <strong>{g.keyword}</strong>
@@ -248,7 +264,34 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
                 </a>
               </>
             )}
+            {gapHidden.length > 0 && (
+              <details>
+                <summary className="btn link" style={{ display: "inline-flex", minHeight: 0, padding: 0 }}>
+                  {t(
+                    `Ocultamos ${gapHidden.length} ${gapHidden.length === 1 ? "búsqueda que no tiene" : "búsquedas que no tienen"} que ver con tu negocio · Mostrarlas igual`,
+                    `We hid ${gapHidden.length} ${gapHidden.length === 1 ? "search that has" : "searches that have"} nothing to do with your business · Show them anyway`,
+                  )}
+                </summary>
+                <ul className="small muted study-list" style={{ marginTop: 8 }}>
+                  {gapHidden.map((g) => (
+                    <li key={g.keyword}>
+                      {g.keyword}
+                      {g.volume !== null && ` · ${t(`${n(g.volume)} al mes`, `${n(g.volume)} a month`)}`} · {g.bestCompetitor}
+                      {hiddenDirs.some((d) => sameSite(d, g.bestCompetitor)) && ` (${t("directorio", "directory")})`}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
           </div>
+          <HowToRead title={t("Cómo leer esto", "How to read this")}>
+            <ul>
+              <li>{t("«Búsquedas en Google»: cuántas búsquedas distintas le traen visitas a ese sitio. Más = más fuerte en Google.", "“Google searches”: how many different searches bring visits to that site. More = stronger on Google.")}</li>
+              <li>{t("«Visitas al mes (est.)»: un cálculo de cuántas visitas les llegan desde Google. Sirve para comparar, no es exacto.", "“Visits a month (est.)”: an estimate of how many visits they get from Google. Good for comparing, not exact.")}</li>
+              <li>{t("«En común contigo»: búsquedas donde salen los dos. Muchas = compiten por los mismos clientes.", "“In common with you”: searches where you both show up. Many = you compete for the same customers.")}</li>
+              <li>{t("No contamos directorios, redes sociales ni páginas del gobierno (Páginas Amarillas, Facebook, Waze…): salen arriba en todo, pero no te quitan clientes de la misma forma.", "We don't count directories, social networks or government sites (Yellow Pages, Facebook, Waze…): they rank high for everything, but they don't take customers from you the same way.")}</li>
+            </ul>
+          </HowToRead>
 
           <p className="small muted">
             {t(

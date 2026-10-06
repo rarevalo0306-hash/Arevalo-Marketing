@@ -1,0 +1,2534 @@
+{
+ "_note": "Datos reales de Fameseg (cortinas metálicas, Managua) guardados el 2026-10-06, recortados para las pruebas.",
+ "business": {
+  "name": "Fameseg",
+  "website": "https://fameseg.com",
+  "seoKeywords": [
+   "cortinas metálicas managua",
+   "portones automáticos nicaragua",
+   "mantenimiento de cortinas metálicas",
+   "cortinas tubulares managua",
+   "portones tipo americano nicaragua"
+  ],
+  "seoLocations": [
+   {
+    "code": 2558,
+    "name": "Nicaragua",
+    "type": "Country"
+   }
+  ],
+  "seoLocationCode": 2558,
+  "seoLocationName": "Nicaragua",
+  "study": {
+   "ads": {
+    "budgetTip": "Inicie con un presupuesto diario moderado enfocado en campañas hacia WhatsApp en Managua, midiendo el costo por mensaje recibido para ajustar la inversión de forma progresiva.",
+    "metaAudience": "Hombres y mujeres de 30 a 60 años en Managua y principales departamentos de Nicaragua, interesados en seguridad para el hogar, mejoras en el hogar, negocios, comercios y bienes raíces.",
+    "googleKeywords": [
+     "cortinas metalicas managua",
+     "portones automaticos nicaragua",
+     "fabrica de cortinas metalicas",
+     "portones tipo americano",
+     "mantenimiento cortinas metalicas"
+    ],
+    "negativeKeywords": [
+     "empleo",
+     "trabajo",
+     "gratis",
+     "manual",
+     "segunda mano"
+    ]
+   },
+   "avoid": [
+    "Dar precios exactos sin conocer las medidas y requerimientos del cliente",
+    "Mencionar marcas de motores o materiales externos sin verificar disponibilidad",
+    "Garantizar resultados de seguridad absoluta frente a eventos extremos de delincuencia"
+   ],
+   "market": {
+    "area": "El mercado abarca principalmente Managua y todos los departamentos de Nicaragua, con alta demanda en zonas comerciales, bodegas industriales y áreas residenciales.",
+    "places": [
+     "Managua",
+     "Masaya",
+     "Granada",
+     "Chinandega",
+     "León",
+     "Estelí",
+     "Rivas"
+    ],
+    "competitors": [
+     {
+      "name": "Talleres y herreros locales independientes",
+      "note": "Suelen carecer de taller formal, garantías por escrito y capacidad de respuesta rápida."
+     }
+    ],
+    "seasonality": [
+     "Todo el año: Alta demanda por apertura y remodelación de comercios",
+     "Meses previos a fin de año: Incremento en proyectos de seguridad para negocios y bodegas"
+    ],
+    "opportunities": [
+     "Posicionar la automatización de portones y cortinas como solución moderna",
+     "Promover la garantía por escrito de 24 meses frente a competidores informales",
+     "Captar clientes de bodegas y comercios que exigen rapidez en la cotización"
+    ]
+   },
+   "caveats": "Los volúmenes de búsqueda y niveles de dificultad son estimaciones de la IA y no datos oficiales de Google. Se recomienda verificar los datos de contacto y disponibilidad de stock antes de lanzar campañas.",
+   "pillars": [
+    {
+     "name": "Fabricación y Calidad",
+     "share": 35,
+     "description": "Mostrar el proceso en el taller propio en Managua y el control de calidad."
+    },
+    {
+     "name": "Automatización y Comodidad",
+     "share": 25,
+     "description": "Destacar motores para abrir cortinas y portones desde el celular o un botón."
+    },
+    {
+     "name": "Proyectos y Seguridad",
+     "share": 40,
+     "description": "Casos de éxito en comercios, bodegas y viviendas con garantía de 24 meses."
+    }
+   ],
+   "sources": [],
+   "summary": "Fameseg es una empresa ubicada en Managua, Nicaragua, dedicada a la fabricación, instalación, automatización y mantenimiento de cortinas metálicas, portones y equipos de seguridad para comercios, viviendas, bodegas y oficinas en todo el país. Su principal oportunidad de marketing consiste en destacar su fabricación propia y su garantía de 24 meses por escrito para generar confianza y captar clientes que buscan seguridad y comodidad. A través de contenidos enfocados en WhatsApp, la marca puede aumentar las llamadas y mensajes de prospectos interesados.",
+   "keywords": [
+    {
+     "idea": "Cortinas metálicas a la medida en Managua con garantía",
+     "lang": "es",
+     "intent": "local",
+     "volume": "medio",
+     "keyword": "cortinas metálicas Managua",
+     "difficulty": "baja"
+    },
+    {
+     "idea": "Automatiza tu portón o cortina metálica en Nicaragua",
+     "lang": "es",
+     "intent": "local",
+     "volume": "medio",
+     "keyword": "portones automáticos Nicaragua",
+     "difficulty": "baja"
+    },
+    {
+     "idea": "Protege tu local comercial con cortinas tubulares ventiladas",
+     "lang": "es",
+     "intent": "comercial",
+     "volume": "bajo",
+     "keyword": "cortinas tubulares Managua",
+     "difficulty": "baja"
+    },
+    {
+     "idea": "Elegancia y silencio con portones tipo americano",
+     "lang": "es",
+     "intent": "comercial",
+     "volume": "bajo",
+     "keyword": "portones tipo americano Nicaragua",
+     "difficulty": "baja"
+    },
+    {
+     "idea": "Evita fallas con nuestro mantenimiento preventivo",
+     "lang": "es",
+     "intent": "local",
+     "volume": "bajo",
+     "keyword": "mantenimiento de cortinas metálicas",
+     "difficulty": "baja"
+    }
+   ],
+   "services": [
+    {
+     "name": "Cortinas de acero",
+     "description": "Cortinas enrollables de acero y galvanizadas, fabricadas a la medida para proteger comercios y bodegas."
+    },
+    {
+     "name": "Cortinas tubulares",
+     "description": "Diseño de tubos que permite ver el interior del local y mantener la ventilación sin sacrificar la seguridad."
+    },
+    {
+     "name": "Motores y automatización",
+     "description": "Sistemas para abrir y cerrar cortinas y portones con un botón o directamente desde el celular."
+    },
+    {
+     "name": "Portones tipo americano",
+     "description": "Portones seccionales elegantes y silenciosos, ideales para garajes residenciales."
+    },
+    {
+     "name": "Mantenimiento y reparación",
+     "description": "Servicio preventivo y correctivo para alargar la vida útil de cortinas, portones y motores."
+    },
+    {
+     "name": "Equipos de seguridad",
+     "description": "Equipos de protección personal e higiene ocupacional para empresas e industrias."
+    }
+   ],
+   "audiences": [
+    {
+     "name": "Dueño de comercio o local",
+     "pains": [
+      "Temor a robos o vandalismo en el local",
+      "Cortinas metálicas antiguas que se traban",
+      "Falta de respuesta rápida de proveedores actuales"
+     ],
+     "channels": "WhatsApp, Facebook, Google Search",
+     "description": "Comerciantes y emprendedores que necesitan proteger su mercadería y fachada frente a robos o daños."
+    },
+    {
+     "name": "Propietario de vivienda o bodega",
+     "pains": [
+      "Portones pesados que requieren esfuerzo físico",
+      "Falta de automatización para mayor comodidad",
+      "Incertidumbre sobre la calidad y durabilidad del portón"
+     ],
+     "channels": "Facebook, Instagram, WhatsApp",
+     "description": "Personas que buscan mejorar la seguridad y el acceso cómodo a su casa, garaje o bodega."
+    }
+   ],
+   "campaigns": [
+    {
+     "hook": "¿Necesitas proteger tu negocio con una cortina metálica resistente?",
+     "photo": "A modern commercial storefront with a newly installed secure rolling metal shutter.",
+     "title": "Cotiza en 1 hora",
+     "video": "Vertical video showing a metal rolling shutter smoothly opening with a motor, with text overlay about 24-month warranty.",
+     "message": "Fabricamos a la medida en nuestro taller en Managua con garantía de 24 meses. Escríbenos por WhatsApp y recibe tu cotización en 1 hora.",
+     "audience": "Dueño de comercio o local"
+    },
+    {
+     "hook": "Dale un toque elegante y silencioso a tu garaje residencial.",
+     "photo": "A sleek, modern sectional garage door closed on a nice residential home.",
+     "title": "Portones tipo americano",
+     "video": "Short vertical clip of a quiet sectional garage door operating smoothly via remote control.",
+     "message": "Nuestros portones tipo americano combinan seguridad y diseño impecable. Instalamos en todo el país. Contáctanos por WhatsApp.",
+     "audience": "Propietario de vivienda o bodega"
+    },
+    {
+     "hook": "¿Te imaginas abrir tu cortina metálica o portón desde tu celular?",
+     "photo": "A hand holding a smartphone with an open gate control app in front of a secured property.",
+     "title": "Automatización desde el celular",
+     "video": "Vertical screen recording simulation of a mobile app opening a gate, transitioning to the gate opening.",
+     "message": "Actualiza tu acceso con nuestros motores y sistemas de automatización. Pide más información por WhatsApp.",
+     "audience": "Dueño de comercio o local"
+    }
+   ],
+   "objections": [
+    {
+     "answer": "Sí, realizamos instalaciones en Managua y en cualquier departamento de todo el país.",
+     "objection": "¿Tienen cobertura fuera de Managua?"
+    },
+    {
+     "answer": "Sí, respaldamos tanto la fabricación como la instalación con una garantía por escrito de 24 meses.",
+     "objection": "¿Ofrecen garantía por su trabajo?"
+    },
+    {
+     "answer": "Entregamos su cotización sin compromiso en un plazo de 1 hora por WhatsApp en nuestro horario de atención.",
+     "objection": "¿Cuánto tardan en cotizar?"
+    }
+   ],
+   "researched": false,
+   "visualStyle": "Professional, clean, and industrial photography. Natural daylight showcasing metal textures, neat workshop operations in Managua, and finished installations on commercial storefronts and modern homes. Warm and trustworthy lighting with no human faces shown.",
+   "differentiators": [
+    "Fabricación propia en nuestro taller en Managua sin intermediarios",
+    "Garantía de 24 meses por escrito en cada trabajo de fabricación e instalación",
+    "Cobertura en Managua y en todos los departamentos de Nicaragua",
+    "Cotización sin compromiso en 1 hora por WhatsApp en horario de atención"
+   ],
+   "suggestedProfile": "Fameseg es su fabricante y proveedor de confianza en Nicaragua para cortinas metálicas, portones y sistemas de automatización. Con taller propio en Managua, fabricamos e instalamos soluciones a la medida para comercios, bodegas, oficinas y viviendas particulares en todo el país. Ofrecemos cortinas de acero, cortinas tubulares, portones tipo americano, motores para apertura automática y un servicio completo de mantenimiento preventivo y correctivo. Nos diferenciamos por ofrecer garantía de 24 meses por escrito en cada trabajo, control total de la calidad desde la fábrica y cotizaciones sin compromiso en 1 hora durante nuestro horario de atención de lunes a sábado. Contáctenos hoy mismo al teléfono +505 0000-0000, PBX +505 0000-0000, o escríbanenos directamente por WhatsApp al +505 0000-0000 para proteger su negocio o su casa. Visítenos en Edificio Armando Guido, 2 cuadras al este y 1 cuadra al sur, Managua, Nicaragua, o escriba a ventas@example.com."
+  }
+ },
+ "reports": {
+  "keywords": {
+   "createdAt": "2026-10-06T07:10:08.879",
+   "data": {
+    "cost": 0.18,
+    "ideas": [
+     {
+      "cpc": null,
+      "trend": [
+       10,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       10,
+       0,
+       0,
+       0,
+       10
+      ],
+      "volume": 10,
+      "keyword": "mantenimiento a cortinas metalicas",
+      "competition": "low",
+      "competitionIndex": 0
+     },
+     {
+      "cpc": null,
+      "trend": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       10,
+       0
+      ],
+      "volume": 10,
+      "keyword": "engrasar cortina metalica",
+      "competition": null,
+      "competitionIndex": null
+     },
+     {
+      "cpc": null,
+      "trend": [
+       0,
+       0,
+       10,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "volume": 10,
+      "keyword": "engrasar cortinas metalicas",
+      "competition": null,
+      "competitionIndex": null
+     },
+     {
+      "cpc": null,
+      "trend": [
+       10,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "volume": 10,
+      "keyword": "mantenimiento cortina metalica",
+      "competition": null,
+      "competitionIndex": null
+     },
+     {
+      "cpc": null,
+      "trend": [
+       0,
+       10,
+       10,
+       10,
+       10,
+       10,
+       10,
+       10,
+       0,
+       0,
+       10,
+       0
+      ],
+      "volume": 10,
+      "keyword": "mantenimiento cortinas metalicas",
+      "competition": null,
+      "competitionIndex": null
+     },
+     {
+      "cpc": null,
+      "trend": [
+       0,
+       10,
+       0,
+       0,
+       10,
+       0,
+       0,
+       10,
+       0,
+       10,
+       10,
+       0
+      ],
+      "volume": 10,
+      "keyword": "mantenimiento de cortinas metálicas enrollables",
+      "competition": null,
+      "competitionIndex": null
+     },
+     {
+      "cpc": null,
+      "trend": [
+       0,
+       0,
+       0,
+       0,
+       10,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "volume": 10,
+      "keyword": "mantenimiento de persianas metalicas",
+      "competition": null,
+      "competitionIndex": null
+     }
+    ],
+    "keywords": [
+     {
+      "cpc": 0.81,
+      "trend": [
+       50,
+       50,
+       70,
+       50,
+       70,
+       50,
+       30,
+       20,
+       30,
+       40,
+       20,
+       40
+      ],
+      "volume": 40,
+      "keyword": "cortinas metálicas managua",
+      "competition": "low",
+      "competitionIndex": 1
+     },
+     {
+      "cpc": 3.01,
+      "trend": [
+       10,
+       0,
+       10,
+       0,
+       0,
+       0,
+       10,
+       10,
+       10,
+       10,
+       10,
+       10
+      ],
+      "volume": 10,
+      "keyword": "mantenimiento de cortinas metálicas",
+      "competition": "low",
+      "competitionIndex": 4
+     },
+     {
+      "cpc": null,
+      "trend": [],
+      "volume": null,
+      "keyword": "cortinas tubulares managua",
+      "competition": null,
+      "competitionIndex": null
+     },
+     {
+      "cpc": null,
+      "trend": [],
+      "volume": null,
+      "keyword": "portones automáticos nicaragua",
+      "competition": null,
+      "competitionIndex": null
+     },
+     {
+      "cpc": null,
+      "trend": [],
+      "volume": null,
+      "keyword": "portones tipo americano nicaragua",
+      "competition": null,
+      "competitionIndex": null
+     }
+    ],
+    "language": "es",
+    "location": "Nicaragua",
+    "createdAt": "2026-10-06T07:10:08.877Z",
+    "locationCode": 2558
+   }
+  },
+  "rank": {
+   "createdAt": "2026-10-06T07:10:52.525",
+   "data": {
+    "cost": 0.02,
+    "rows": [
+     {
+      "top": [
+       {
+        "url": "https://www.facebook.com/cortyportinds/",
+        "title": "CortyPort Industrial - Cortinas Metalicas Enrollables | Managua",
+        "domain": "facebook.com",
+        "position": 1
+       },
+       {
+        "url": "https://fameseg.com/blog/cuanto-cuesta-una-cortina-metalica-en-nicaragua",
+        "title": "¿Cuánto cuesta una cortina metálica en Nicaragua? Lo que define el precio",
+        "domain": "fameseg.com",
+        "position": 2
+       },
+       {
+        "url": "https://www.paginasamarillas.com.ni/servicios/cortinas-metalicas",
+        "title": "Cortinas Metalicas en Nicaragua",
+        "domain": "paginasamarillas.com.ni",
+        "position": 3
+       },
+       {
+        "url": "https://www.facebook.com/p/Cortinas-Metalicas-Metalcort-100063996886616/",
+        "title": "Cortinas Metalicas Metalcort | Managua",
+        "domain": "facebook.com",
+        "position": 4
+       },
+       {
+        "url": "https://www.facebook.com/cortinasmetalicasorlandocruz/",
+        "title": "Taller de cortinas metalica orlando cruz | Managua",
+        "domain": "facebook.com",
+        "position": 5
+       }
+      ],
+      "url": "https://fameseg.com/blog/cuanto-cuesta-una-cortina-metalica-en-nicaragua",
+      "keyword": "cortinas metálicas managua",
+      "features": [
+       "local_pack",
+       "images",
+       "video",
+       "people_also_ask"
+      ],
+      "position": 2,
+      "localPack": {
+       "names": [
+        "CortyPort Industrial (Cortinas Metalicas)",
+        "Cortinas Metalicas METALFA",
+        "INDUMECAR (Cortinas Metálicas)"
+       ],
+       "position": null
+      }
+     },
+     {
+      "top": [
+       {
+        "url": "https://www.waze.com/es-419/live-map/directions/portones-electricos-managua?to=place.w.179372153.1793918141.8271903",
+        "title": "Portones Eléctricos - Managua, Nicaragua",
+        "domain": "waze.com",
+        "position": 1
+       },
+       {
+        "url": "https://www.facebook.com/100063546071415/videos/-portones-autom%C3%A1ticos-automatizando-nicaragua-con-seguridad-y-estilo-quieres-may/1054417784041169/",
+        "title": "Portones Automáticos – ¡Automatizando Nicaragua con ...",
+        "domain": "facebook.com",
+        "position": 2
+       },
+       {
+        "url": "https://portoneselectricosbasilio.com/portones-casas.html",
+        "title": "Portones eléctricos en Nicaragua — Portones para Casas",
+        "domain": "portoneselectricosbasilio.com",
+        "position": 3
+       },
+       {
+        "url": "https://www.cormetal.com.ni/newpage1",
+        "title": "Suministros para portones eléctricos en Nicaragua",
+        "domain": "cormetal.com.ni",
+        "position": 4
+       },
+       {
+        "url": "https://www.facebook.com/franklinflorezperez/",
+        "title": "Portones Eléctricos Nicaragua | Masaya",
+        "domain": "facebook.com",
+        "position": 5
+       }
+      ],
+      "url": null,
+      "keyword": "portones automáticos nicaragua",
+      "features": [
+       "ai_overview",
+       "local_pack",
+       "video",
+       "short_videos"
+      ],
+      "position": null,
+      "localPack": {
+       "names": [
+        "Portones Automáticos Joel",
+        "Portones Automáticos"
+       ],
+       "position": null
+      }
+     },
+     {
+      "top": [
+       {
+        "url": "https://www.facebook.com/espanacortinasmetalicas/posts/-tu-cortina-met%C3%A1lica-necesita-revisi%C3%B3n-no-esperes-a-que-una-falla-deje-tu-negoci/1045719478466091/",
+        "title": "🔧 ¿TU CORTINA METÁLICA NECESITA REVISIÓN? ...",
+        "domain": "facebook.com",
+        "position": 1
+       },
+       {
+        "url": "https://www.encuentra24.com/nicaragua-es/anuncios-casificados-construccion-y-mantenimiento-reparacion-y-mantenimiento/cortinas-metalicas/32731688",
+        "title": "Cortinas Metálicas | Ciudad Managua",
+        "domain": "encuentra24.com",
+        "position": 2
+       },
+       {
+        "url": "https://www.facebook.com/portoneshyl/videos/-instalaci%C3%B3n-reparaci%C3%B3n-y-mantenimiento-de-cortinas-met%C3%A1licas-sonidos-extra%C3%B1os-n/28653641340899526/",
+        "title": "Instalación, reparación y mantenimiento de cortinas ...",
+        "domain": "facebook.com",
+        "position": 3
+       },
+       {
+        "url": "https://www.facebook.com/TiendaJJTwins/videos/cortinas-met%C3%A1licasmantenimiento-preventivo-engrase-de-rieles-y-resortescambio-de/5444784778897832/",
+        "title": "Cortinas Metálicas: Mantenimiento preventivo, engrase de rieles y ...",
+        "domain": "facebook.com",
+        "position": 4
+       },
+       {
+        "url": "https://cortinasmetalicasurgentes.com/cortinas-automaticas-mantenimiento/",
+        "title": "➡️ Mantenimiento y limpieza de cortinas metálicas automáticas",
+        "domain": "cortinasmetalicasurgentes.com",
+        "position": 5
+       }
+      ],
+      "url": null,
+      "keyword": "mantenimiento de cortinas metálicas",
+      "features": [
+       "local_pack",
+       "people_also_ask",
+       "video",
+       "images",
+       "short_videos"
+      ],
+      "position": null,
+      "localPack": {
+       "names": [
+        "Cortinas Metalicas METALFA",
+        "CortyPort Industrial (Cortinas Metalicas)",
+        "Fameseg"
+       ],
+       "position": 3
+      }
+     },
+     {
+      "top": [
+       {
+        "url": "http://diredi.com/nicaragua/const-metal-managua-nicaragua/",
+        "title": "CONST-METAL - DireDi.com",
+        "domain": "diredi.com",
+        "position": 1
+       },
+       {
+        "url": "https://www.facebook.com/groups/280586755957088/posts/1508125989869819/",
+        "title": "Bellezas de chineros de madera cotiza el de su preferencia envíos y créditos ...",
+        "domain": "facebook.com",
+        "position": 2
+       },
+       {
+        "url": "https://www.instagram.com/p/CtHwQbvpkyi/",
+        "title": "👨🏻‍🏭 tu seguridad para nosotros es una prioridad 👨🏻‍🔧 con el equipo de ...",
+        "domain": "instagram.com",
+        "position": 3
+       },
+       {
+        "url": "https://fameseg.com/blog/equipos-de-proteccion-personal-que-necesita-su-empresa",
+        "title": "Equipos de protección personal: qué necesita su empresa en Nicaragua",
+        "domain": "fameseg.com",
+        "position": 4
+       },
+       {
+        "url": "https://www.instagram.com/reel/Ddt4u7HxbXd/",
+        "title": "Reel by LA MUNCH  (@melcar1987) · September 25, 2026",
+        "domain": "instagram.com",
+        "position": 5
+       }
+      ],
+      "url": "https://fameseg.com/blog/equipos-de-proteccion-personal-que-necesita-su-empresa",
+      "keyword": "cortinas tubulares managua",
+      "features": [
+       "local_pack",
+       "images"
+      ],
+      "position": 4,
+      "localPack": {
+       "names": [
+        "CortyPort Industrial (Cortinas Metalicas)",
+        "Cortinas Master Lux",
+        "Fameseg"
+       ],
+       "position": 3
+      }
+     },
+     {
+      "top": [
+       {
+        "url": "https://www.facebook.com/p/Portones-El%C3%A9ctricos-de-Nicaragua-100063596544867/",
+        "title": "Portones Eléctricos de Nicaragua",
+        "domain": "facebook.com",
+        "position": 1
+       },
+       {
+        "url": "https://www.facebook.com/100064039208243/videos/portones-americanos-con-puertas-integradaslistoahora-solo-abres-tu-puerta-sin-us/5000329373326811/?locale=ms_MY",
+        "title": "Portones Americanos con puertas integradas! Listo! Ahora solo abres tu ...",
+        "domain": "facebook.com",
+        "position": 2
+       },
+       {
+        "url": "https://arteytecnica.com/blog/2025/11/19/instalacion-de-porton-levatizo-o-abatiente-automatico-tipo-americano-en-residencia-en-jinotega-nicaragua/",
+        "title": "Instalacion de porton levatizo o abatiente automatico tipo ...",
+        "domain": "arteytecnica.com",
+        "position": 3
+       },
+       {
+        "url": "https://www.facebook.com/100063546071415/videos/portones-autom%C3%A1ticosautomatizando-nicaragua-porton-seccional-am%C3%A9ricanosmanagua-c/3167347163515135/",
+        "title": "PORTONES AUTOMÁTICOS AUTOMATIZANDO NICARAGUA 🇳 ...",
+        "domain": "facebook.com",
+        "position": 4
+       },
+       {
+        "url": "https://www.instagram.com/reel/DXR7bZ1D4A4/",
+        "title": "Portones automáticos #portonesautomaticos ...",
+        "domain": "instagram.com",
+        "position": 5
+       }
+      ],
+      "url": "https://fameseg.com/cobertura/managua",
+      "keyword": "portones tipo americano nicaragua",
+      "features": [
+       "ai_overview",
+       "images",
+       "knowledge_graph",
+       "google_reviews",
+       "video",
+       "people_also_ask",
+       "short_videos"
+      ],
+      "position": 15,
+      "localPack": null
+     }
+    ],
+    "device": "mobile",
+    "inTop3": 1,
+    "inTop10": 2,
+    "language": "es",
+    "location": "Nicaragua",
+    "createdAt": "2026-10-06T07:10:52.523Z",
+    "visibility": 15,
+    "avgPosition": 7,
+    "locationCode": 2558
+   }
+  },
+  "competitors": {
+   "createdAt": "2026-10-06T07:11:57.834",
+   "data": {
+    "gap": [
+     {
+      "volume": 5400,
+      "keyword": "gas cerca de mí",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 5
+     },
+     {
+      "volume": 3600,
+      "keyword": "super mercado la union",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 6
+     },
+     {
+      "volume": 3600,
+      "keyword": "supermercado union",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 6
+     },
+     {
+      "volume": 1600,
+      "keyword": "ministerio de salud concepción palacios minsa central",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 5
+     },
+     {
+      "volume": 1600,
+      "keyword": "restaurante eskimo managua",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 7
+     },
+     {
+      "volume": 1600,
+      "keyword": "el eskimo restaurante",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 8
+     },
+     {
+      "volume": 1000,
+      "keyword": "auto hotel el paraíso",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 4
+     },
+     {
+      "volume": 1000,
+      "keyword": "mitrab #nicaragua",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 5
+     },
+     {
+      "volume": 1000,
+      "keyword": "hotel moctezuma",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 6
+     },
+     {
+      "volume": 880,
+      "keyword": "ferreteria richardson nicaragua",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 4
+     },
+     {
+      "volume": 880,
+      "keyword": "farmavalue nicaragua",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 6
+     },
+     {
+      "volume": 720,
+      "keyword": "ferretería la grapa",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 6
+     },
+     {
+      "volume": 720,
+      "keyword": "cargotrans nicaragua",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 9
+     },
+     {
+      "volume": 590,
+      "keyword": "2 que 3 sport bar",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 4
+     },
+     {
+      "volume": 590,
+      "keyword": "aceitera el real nicaragua",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 4
+     },
+     {
+      "volume": 590,
+      "keyword": "credimax nicaragua",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 4
+     },
+     {
+      "volume": 590,
+      "keyword": "libreria san jerónimo",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 8
+     },
+     {
+      "volume": 590,
+      "keyword": "librería san jerónimo",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 8
+     },
+     {
+      "volume": 590,
+      "keyword": "club terraza managua",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 9
+     },
+     {
+      "volume": 590,
+      "keyword": "bioanalisis laboratorio",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 10
+     },
+     {
+      "volume": 480,
+      "keyword": "cerrajerias",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 2
+     },
+     {
+      "volume": 480,
+      "keyword": "farmacia la guadalupana",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 2
+     },
+     {
+      "volume": 480,
+      "keyword": "farmacias la guadalupana",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 2
+     },
+     {
+      "volume": 480,
+      "keyword": "amunicsa",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 3
+     },
+     {
+      "volume": 480,
+      "keyword": "concentrix nic 2",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 3
+     },
+     {
+      "volume": 480,
+      "keyword": "correos nicaragua",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 3
+     },
+     {
+      "volume": 480,
+      "keyword": "edt nicaragua",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 3
+     },
+     {
+      "volume": 480,
+      "keyword": "servitotal",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 3
+     },
+     {
+      "volume": 480,
+      "keyword": "fetesa portezuelo",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 6
+     },
+     {
+      "volume": 480,
+      "keyword": "motel barato en managua",
+      "yourPosition": null,
+      "bestCompetitor": "paginasamarillas.com.ni",
+      "competitorPosition": 6
+     }
+    ],
+    "you": {
+     "top": [
+      {
+       "url": "https://fameseg.com/cotizar",
+       "volume": 110,
+       "keyword": "fesame",
+       "position": 17
+      },
+      {
+       "url": "https://fameseg.com/",
+       "volume": 90,
+       "keyword": "inmenicsa",
+       "position": 18
+      }
+     ],
+     "domain": "fameseg.com",
+     "overlap": null,
+     "traffic": 1.283062815666199,
+     "keywords": 2
+    },
+    "cost": 0.0697,
+    "notes": [],
+    "domain": "fameseg.com",
+    "location": {
+     "code": 2558,
+     "name": "Nicaragua",
+     "local": false,
+     "language": "es",
+     "countryIso": "NI",
+     "countryCode": 2558,
+     "countryName": "Nicaragua"
+    },
+    "createdAt": "2026-10-06T07:11:57.831Z",
+    "competitors": [
+     {
+      "top": [
+       {
+        "url": "https://www.paginasamarillas.com.ni/managua/servicios/gas-distribuidores-de-gas-propano",
+        "volume": 5400,
+        "keyword": "gas cerca de mí",
+        "position": 5
+       },
+       {
+        "url": "https://www.paginasamarillas.com.ni/empresas/supermercados-la-union/managua-30209150?ad=51162434",
+        "volume": 3600,
+        "keyword": "super mercado la union",
+        "position": 6
+       },
+       {
+        "url": "https://www.paginasamarillas.com.ni/empresas/supermercados-la-union/managua-30209150?ad=51162434",
+        "volume": 3600,
+        "keyword": "supermercado union",
+        "position": 6
+       },
+       {
+        "url": "https://www.paginasamarillas.com.ni/empresas/restaurante-el-eskimo/managua-30190489?ad=51163504",
+        "volume": 1600,
+        "keyword": "el eskimo restaurante",
+        "position": 8
+       },
+       {
+        "url": "https://www.paginasamarillas.com.ni/empresas/ministerio-de-salud-concepcion-palacios/managua-33386166?ad=52108732",
+        "volume": 1600,
+        "keyword": "ministerio de salud concepción palacios minsa central",
+        "position": 5
+       }
+      ],
+      "domain": "paginasamarillas.com.ni",
+      "source": "serp",
+      "overlap": 2,
+      "traffic": 6699.586766526103,
+      "analyzed": true,
+      "keywords": 1460,
+      "serpHits": 1
+     },
+     {
+      "top": [
+       {
+        "url": "https://arteytecnica.com/sermons/la-armadura-de-dios/",
+        "volume": 320,
+        "keyword": "la armadura de dios",
+        "position": 7
+       },
+       {
+        "url": "https://arteytecnica.com/blog/2025/12/07/instalacion-portones-corredizos-automatizados-videportero-con-control-de-seguridad-y-acceso-por-internet-en-managua-nicaragua/",
+        "volume": 320,
+        "keyword": "portones corredizos",
+        "position": 10
+       },
+       {
+        "url": "https://arteytecnica.com/blog/2026/05/15/instalacion-de-portones-automatizados-corredizos-y-videoportero-en-leon-nicaragua/",
+        "volume": 210,
+        "keyword": "porton corredizo",
+        "position": 9
+       },
+       {
+        "url": "https://arteytecnica.com/blog/2025/02/14/instalacion-de-portones-electricos-automatizados-para-resindencias-en-nicaragua/",
+        "volume": 210,
+        "keyword": "portón corredizo",
+        "position": 6
+       },
+       {
+        "url": "https://arteytecnica.com/blog/2024/12/13/instalacion-de-grama-artificial-en-nicaragua/",
+        "volume": 170,
+        "keyword": "grama artificial",
+        "position": 5
+       }
+      ],
+      "domain": "arteytecnica.com",
+      "source": "serp",
+      "overlap": 0,
+      "traffic": 27.71274653077126,
+      "analyzed": true,
+      "keywords": 12,
+      "serpHits": 1
+     },
+     {
+      "top": [
+       {
+        "url": "https://www.cormetal.com.ni/ventanas-y-puertas-de-pvc",
+        "volume": 90,
+        "keyword": "puerta de pvc",
+        "position": 6
+       },
+       {
+        "url": "https://www.cormetal.com.ni/ventanas-y-puertas-de-pvc",
+        "volume": 70,
+        "keyword": "puertas de pvc en managua",
+        "position": 7
+       }
+      ],
+      "domain": "cormetal.com.ni",
+      "source": "serp",
+      "overlap": 0,
+      "traffic": 1.445050358772278,
+      "analyzed": true,
+      "keywords": 2,
+      "serpHits": 1
+     },
+     {
+      "top": [],
+      "domain": "cortinasmetalicasurgentes.com",
+      "source": "serp",
+      "overlap": null,
+      "traffic": null,
+      "analyzed": false,
+      "keywords": null,
+      "serpHits": 1
+     },
+     {
+      "top": [],
+      "domain": "diredi.com",
+      "source": "serp",
+      "overlap": null,
+      "traffic": null,
+      "analyzed": false,
+      "keywords": null,
+      "serpHits": 1
+     }
+    ],
+    "ownerDomains": [],
+    "rankKeywords": 5
+   }
+  },
+  "gap": {
+   "createdAt": "2026-10-06T07:12:33.831",
+   "data": {
+    "cost": 0.087,
+    "rows": [
+     {
+      "cpc": 0.07000000029802322,
+      "type": "missing",
+      "intent": "transactional",
+      "volume": 5400,
+      "keyword": "gas cerca de mí",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 5
+       }
+      ],
+      "opportunity": 97,
+      "yourPosition": null
+     },
+     {
+      "cpc": 0.05999999865889549,
+      "type": "missing",
+      "intent": "commercial",
+      "volume": 1600,
+      "keyword": "el eskimo nicaragua",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 11
+       }
+      ],
+      "opportunity": 76.9,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "transactional",
+      "volume": 590,
+      "keyword": "2 que 3 sport bar",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 4
+       }
+      ],
+      "opportunity": 72.1,
+      "yourPosition": null
+     },
+     {
+      "cpc": 0.1700000017881393,
+      "type": "missing",
+      "intent": "transactional",
+      "volume": 480,
+      "keyword": "concentrix nic 2",
+      "difficulty": 1,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 3
+       }
+      ],
+      "opportunity": 69.2,
+      "yourPosition": null
+     },
+     {
+      "cpc": 0.1000000014901161,
+      "type": "missing",
+      "intent": "commercial",
+      "volume": 720,
+      "keyword": "cargotrans nicaragua",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 9
+       }
+      ],
+      "opportunity": 68.6,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "commercial",
+      "volume": 590,
+      "keyword": "aceitera el real nicaragua",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 4
+       }
+      ],
+      "opportunity": 66.5,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "transactional",
+      "volume": 320,
+      "keyword": "portones corredizos",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "arteytecnica.com",
+        "position": 10
+       }
+      ],
+      "opportunity": 65.2,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "commercial",
+      "volume": 480,
+      "keyword": "cerrajerias",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 2
+       }
+      ],
+      "opportunity": 64.4,
+      "yourPosition": null
+     },
+     {
+      "cpc": 0.2099999934434891,
+      "type": "missing",
+      "intent": "commercial",
+      "volume": 480,
+      "keyword": "dentista cerca de mí",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 16
+       }
+      ],
+      "opportunity": 64.4,
+      "yourPosition": null
+     },
+     {
+      "cpc": 0.6299999952316284,
+      "type": "missing",
+      "intent": "commercial",
+      "volume": 480,
+      "keyword": "motel barato en managua",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 6
+       }
+      ],
+      "opportunity": 64.4,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "commercial",
+      "volume": 480,
+      "keyword": "subasta managua",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 9
+       }
+      ],
+      "opportunity": 64.4,
+      "yourPosition": null
+     },
+     {
+      "cpc": 0.3199999928474426,
+      "type": "missing",
+      "intent": "commercial",
+      "volume": 480,
+      "keyword": "taller de motocicletas",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 9
+       }
+      ],
+      "opportunity": 64.4,
+      "yourPosition": null
+     },
+     {
+      "cpc": 0.05999999865889549,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 1600,
+      "keyword": "restaurante eskimo managua",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 7
+       }
+      ],
+      "opportunity": 64.1,
+      "yourPosition": null
+     },
+     {
+      "cpc": 0.75,
+      "type": "missing",
+      "intent": "commercial",
+      "volume": 480,
+      "keyword": "restaurante tip top managua",
+      "difficulty": 3,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 18
+       }
+      ],
+      "opportunity": 63,
+      "yourPosition": null
+     },
+     {
+      "cpc": 0.1099999994039536,
+      "type": "missing",
+      "intent": "commercial",
+      "volume": 590,
+      "keyword": "ferreterias near me",
+      "difficulty": 9,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 15
+       }
+      ],
+      "opportunity": 62.3,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "commercial",
+      "volume": 390,
+      "keyword": "lavandería cerca de mi",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 16
+       }
+      ],
+      "opportunity": 62.2,
+      "yourPosition": null
+     },
+     {
+      "cpc": 0.02999999932944775,
+      "type": "missing",
+      "intent": "commercial",
+      "volume": 390,
+      "keyword": "pasteleria en managua",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 9
+       }
+      ],
+      "opportunity": 62.2,
+      "yourPosition": null
+     },
+     {
+      "cpc": 0.02999999932944775,
+      "type": "missing",
+      "intent": "commercial",
+      "volume": 390,
+      "keyword": "pastelerias en managua",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 7
+       }
+      ],
+      "opportunity": 62.2,
+      "yourPosition": null
+     },
+     {
+      "cpc": 0.1099999994039536,
+      "type": "missing",
+      "intent": "commercial",
+      "volume": 390,
+      "keyword": "super express 14 de septiembre",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 15
+       }
+      ],
+      "opportunity": 62.2,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "transactional",
+      "volume": 210,
+      "keyword": "portón corredizo",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "arteytecnica.com",
+        "position": 6
+       }
+      ],
+      "opportunity": 60.4,
+      "yourPosition": null
+     },
+     {
+      "cpc": 0.05000000074505806,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 1000,
+      "keyword": "auto hotel el paraíso",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 4
+       }
+      ],
+      "opportunity": 60,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 1000,
+      "keyword": "mitrab #nicaragua",
+      "difficulty": 2,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 5
+       }
+      ],
+      "opportunity": 59.2,
+      "yourPosition": null
+     },
+     {
+      "cpc": 0.1599999964237213,
+      "type": "missing",
+      "intent": "transactional",
+      "volume": 170,
+      "keyword": "grama artificial",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "arteytecnica.com",
+        "position": 5
+       }
+      ],
+      "opportunity": 58.1,
+      "yourPosition": null
+     },
+     {
+      "cpc": 0.01999999955296516,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 720,
+      "keyword": "am:pm nicaragua",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 11
+       }
+      ],
+      "opportunity": 57.2,
+      "yourPosition": null
+     },
+     {
+      "cpc": 0.01999999955296516,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 720,
+      "keyword": "ampm nicaragua",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 13
+       }
+      ],
+      "opportunity": 57.2,
+      "yourPosition": null
+     },
+     {
+      "cpc": 0.03999999910593033,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 720,
+      "keyword": "el asador nicaragua",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 19
+       }
+      ],
+      "opportunity": 57.2,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "transactional",
+      "volume": 140,
+      "keyword": "puertas de vidrio",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "arteytecnica.com",
+        "position": 9
+       }
+      ],
+      "opportunity": 55.9,
+      "yourPosition": null
+     },
+     {
+      "cpc": 0.1299999952316284,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 590,
+      "keyword": "bioanalisis laboratorio",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 10
+       }
+      ],
+      "opportunity": 55.4,
+      "yourPosition": null
+     },
+     {
+      "cpc": 3.369999885559082,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 590,
+      "keyword": "incasa masaya",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 15
+       }
+      ],
+      "opportunity": 55.4,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 590,
+      "keyword": "la colonia carretera sur",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 16
+       }
+      ],
+      "opportunity": 55.4,
+      "yourPosition": null
+     },
+     {
+      "cpc": 0.05000000074505806,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 590,
+      "keyword": "laboratorio galo",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 14
+       }
+      ],
+      "opportunity": 55.4,
+      "yourPosition": null
+     },
+     {
+      "cpc": 0.3100000023841858,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 590,
+      "keyword": "mcdonald's chinandega",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 20
+       }
+      ],
+      "opportunity": 55.4,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 480,
+      "keyword": "7 sur managua",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 13
+       }
+      ],
+      "opportunity": 53.6,
+      "yourPosition": null
+     },
+     {
+      "cpc": 0.6200000047683716,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 480,
+      "keyword": "bac numero",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 11
+       }
+      ],
+      "opportunity": 53.6,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 480,
+      "keyword": "barracudas",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 7
+       }
+      ],
+      "opportunity": 53.6,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 480,
+      "keyword": "bertha calderon",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 9
+       }
+      ],
+      "opportunity": 53.6,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 480,
+      "keyword": "centros de rehabilitación para drogadictos en nicaragua gratis",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 20
+       }
+      ],
+      "opportunity": 53.6,
+      "yourPosition": null
+     },
+     {
+      "cpc": 0.4900000095367432,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 480,
+      "keyword": "edt nicaragua",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 3
+       }
+      ],
+      "opportunity": 53.6,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 480,
+      "keyword": "ingenio montelimar",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 9
+       }
+      ],
+      "opportunity": 53.6,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 480,
+      "keyword": "meson sur",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 7
+       }
+      ],
+      "opportunity": 53.6,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 480,
+      "keyword": "mesón sur",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 8
+       }
+      ],
+      "opportunity": 53.6,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 480,
+      "keyword": "número de disnorte dissur",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 14
+       }
+      ],
+      "opportunity": 53.6,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 480,
+      "keyword": "número de disnorte-dissur",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 14
+       }
+      ],
+      "opportunity": 53.6,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 480,
+      "keyword": "servitotal",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 3
+       }
+      ],
+      "opportunity": 53.6,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 480,
+      "keyword": "urbanización villa sol",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 12
+       }
+      ],
+      "opportunity": 53.6,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "commercial",
+      "volume": 170,
+      "keyword": "resina epoxica nicaragua",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "arteytecnica.com",
+        "position": 6
+       }
+      ],
+      "opportunity": 53.6,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 210,
+      "keyword": "porton corredizo",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "arteytecnica.com",
+        "position": 9
+       },
+       {
+        "domain": "cormetal.com.ni",
+        "position": 20
+       }
+      ],
+      "opportunity": 53.5,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 480,
+      "keyword": "amunicsa",
+      "difficulty": 2,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 3
+       }
+      ],
+      "opportunity": 52.9,
+      "yourPosition": null
+     },
+     {
+      "cpc": 0.07000000029802322,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 390,
+      "keyword": "doctor pie",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 13
+       }
+      ],
+      "opportunity": 51.8,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 390,
+      "keyword": "monisa",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 14
+       }
+      ],
+      "opportunity": 51.8,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 390,
+      "keyword": "paisas nicaragua",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 4
+       }
+      ],
+      "opportunity": 51.8,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 390,
+      "keyword": "pediatra",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 14
+       }
+      ],
+      "opportunity": 51.8,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 170,
+      "keyword": "portón",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "arteytecnica.com",
+        "position": 4
+       },
+       {
+        "domain": "cormetal.com.ni",
+        "position": 18
+       }
+      ],
+      "opportunity": 51.4,
+      "yourPosition": null
+     },
+     {
+      "cpc": 1.049999952316284,
+      "type": "missing",
+      "intent": "transactional",
+      "volume": 50,
+      "keyword": "portones automatizados",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "arteytecnica.com",
+        "position": 2
+       },
+       {
+        "domain": "cormetal.com.ni",
+        "position": 19
+       }
+      ],
+      "opportunity": 51.1,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "transactional",
+      "volume": 90,
+      "keyword": "puerta de pvc",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "cormetal.com.ni",
+        "position": 6
+       }
+      ],
+      "opportunity": 50.9,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "transactional",
+      "volume": 90,
+      "keyword": "puertas de pvc",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "cormetal.com.ni",
+        "position": 14
+       }
+      ],
+      "opportunity": 50.9,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 320,
+      "keyword": "la armadura de dios",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "arteytecnica.com",
+        "position": 7
+       }
+      ],
+      "opportunity": 50.1,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "transactional",
+      "volume": 70,
+      "keyword": "portones de metal",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "cormetal.com.ni",
+        "position": 14
+       }
+      ],
+      "opportunity": 48.1,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "transactional",
+      "volume": 70,
+      "keyword": "resina epoxi para piso",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "arteytecnica.com",
+        "position": 11
+       }
+      ],
+      "opportunity": 48.1,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "transactional",
+      "volume": 70,
+      "keyword": "resina epoxica para pisos",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "arteytecnica.com",
+        "position": 9
+       }
+      ],
+      "opportunity": 48.1,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "weak",
+      "intent": "informational",
+      "volume": 110,
+      "keyword": "fesame",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 3
+       }
+      ],
+      "opportunity": 47,
+      "yourPosition": 17
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 480,
+      "keyword": "sur",
+      "difficulty": 20,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 15
+       }
+      ],
+      "opportunity": 46.1,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "weak",
+      "intent": "informational",
+      "volume": 90,
+      "keyword": "inmenicsa",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "paginasamarillas.com.ni",
+        "position": 7
+       }
+      ],
+      "opportunity": 45.1,
+      "yourPosition": 18
+     },
+     {
+      "cpc": 1.769999980926514,
+      "type": "missing",
+      "intent": "commercial",
+      "volume": 70,
+      "keyword": "puertas de pvc en managua",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "cormetal.com.ni",
+        "position": 7
+       }
+      ],
+      "opportunity": 44.4,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "commercial",
+      "volume": 70,
+      "keyword": "resina epóxica nicaragua precio",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "arteytecnica.com",
+        "position": 5
+       }
+      ],
+      "opportunity": 44.4,
+      "yourPosition": null
+     },
+     {
+      "cpc": 1.049999952316284,
+      "type": "missing",
+      "intent": "transactional",
+      "volume": 50,
+      "keyword": "portones automaticos",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "arteytecnica.com",
+        "position": 2
+       }
+      ],
+      "opportunity": 44.4,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "informational",
+      "volume": 140,
+      "keyword": "plantas ornamentales en nicaragua",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "arteytecnica.com",
+        "position": 19
+       }
+      ],
+      "opportunity": 43,
+      "yourPosition": null
+     },
+     {
+      "cpc": null,
+      "type": "missing",
+      "intent": "commercial",
+      "volume": 50,
+      "keyword": "precio de puertas en nicaragua",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "cormetal.com.ni",
+        "position": 15
+       }
+      ],
+      "opportunity": 41,
+      "yourPosition": null
+     },
+     {
+      "cpc": 0.5,
+      "type": "missing",
+      "intent": "commercial",
+      "volume": 40,
+      "keyword": "ventanas pvc nicaragua",
+      "difficulty": 0,
+      "competitors": [
+       {
+        "domain": "cormetal.com.ni",
+        "position": 11
+       }
+      ],
+      "opportunity": 38.7,
+      "yourPosition": null
+     }
+    ],
+    "notes": [],
+    "domain": "fameseg.com",
+    "location": {
+     "code": 2558,
+     "name": "Nicaragua",
+     "local": false,
+     "language": "es",
+     "countryIso": "NI",
+     "countryCode": 2558,
+     "countryName": "Nicaragua"
+    },
+    "createdAt": "2026-10-06T07:12:33.827Z",
+    "competitors": [
+     "paginasamarillas.com.ni",
+     "arteytecnica.com",
+     "cormetal.com.ni"
+    ]
+   }
+  },
+  "ai": {
+   "createdAt": "2026-10-06T07:13:56.135",
+   "data": {
+    "lang": "es",
+    "score": 80,
+    "results": [
+     {
+      "error": "Gemini llegó a su límite por ahora. Espera un minuto o activa la facturación en Google AI Studio.",
+      "answer": "",
+      "sources": [],
+      "position": null,
+      "provider": "gemini",
+      "question": "Busco cortinas metálicas Managua. ¿A quién me recomiendas?",
+      "mentioned": false,
+      "competitors": []
+     },
+     {
+      "answer": "Perfecto — te puedo recomendar varias empresas en Managua que fabrican, instalan y mantienen cortinas metálicas (manuales y automáticas). ¿Es para un local comercial, una cochera o uso industrial? ¿Necesitas motor/automatización? Eso me ayuda a afinar la recomendación y, si quieres, pedir cotizacion",
+      "sources": [
+       {
+        "url": "https://fameseg.com/cobertura/managua?utm_source=openai",
+        "title": "Cortinas metálicas en Managua: fabricación e instalación | FAMESEG"
+       },
+       {
+        "url": "https://metalnicasa.com/?utm_source=openai",
+        "title": "Cortinas Metálicas de Nicaragua - Metalnica S.A"
+       }
+      ],
+      "position": 1,
+      "provider": "openai",
+      "question": "Busco cortinas metálicas Managua. ¿A quién me recomiendas?",
+      "mentioned": true,
+      "competitors": [
+       "Metalníca S.A.",
+       "Metalcort",
+       "Inmenicsa",
+       "Grupo Sarti"
+      ]
+     },
+     {
+      "error": "Gemini llegó a su límite por ahora. Espera un minuto o activa la facturación en Google AI Studio.",
+      "answer": "",
+      "sources": [],
+      "position": null,
+      "provider": "gemini",
+      "question": "Busco portones automáticos Nicaragua. ¿A quién me recomiendas?",
+      "mentioned": false,
+      "competitors": []
+     },
+     {
+      "answer": "Puedo ayudarte. Antes de recomendarte la mejor opción: ¿en qué ciudad de Nicaragua estás (Managua, León, Chinandega, otra)? ¿Necesitas un portón corredizo o batiente (o automatizar uno ya existente)? ¿Buscas solo instalación, o también fabricación y mantenimiento?\n\nMientras me respondes, te paso alg",
+      "sources": [
+       {
+        "url": "https://www.cormetal.com.ni/?utm_source=openai",
+        "title": "Portones eléctricos en Nicaragua con Cormetal S.A."
+       },
+       {
+        "url": "https://fameseg.com/?utm_source=openai",
+        "title": "FAMESEG — Cortinas metálicas, portones y automatización en Nicaragua"
+       }
+      ],
+      "position": 2,
+      "provider": "openai",
+      "question": "Busco portones automáticos Nicaragua. ¿A quién me recomiendas?",
+      "mentioned": true,
+      "competitors": [
+       "Cormetal S.A.",
+       "Portones Eléctricos Espinoza",
+       "Electroparking",
+       "Portones M y R",
+       "Inmenicsa",
+       "Portones Eléctricos Danilo Salinas"
+      ]
+     },
+     {
+      "error": "Gemini llegó a su límite por ahora. Espera un minuto o activa la facturación en Google AI Studio.",
+      "answer": "",
+      "sources": [],
+      "position": null,
+      "provider": "gemini",
+      "question": "Busco mantenimiento de cortinas metálicas. ¿A quién me recomiendas?",
+      "mentioned": false,
+      "competitors": []
+     },
+     {
+      "answer": "Puedo ayudarte — pero para recomendar empresas concretas necesito saber en qué ciudad o código postal estás (y si es para uso residencial o comercial). ¿Dónde te encuentras?\n\nMientras me lo indicas, te dejo recomendaciones generales y qué preguntar al solicitar presupuesto para mantenimiento de cort",
+      "sources": [],
+      "position": null,
+      "provider": "openai",
+      "question": "Busco mantenimiento de cortinas metálicas. ¿A quién me recomiendas?",
+      "mentioned": false,
+      "competitors": []
+     },
+     {
+      "error": "Gemini llegó a su límite por ahora. Espera un minuto o activa la facturación en Google AI Studio.",
+      "answer": "",
+      "sources": [],
+      "position": null,
+      "provider": "gemini",
+      "question": "Busco cortinas tubulares Managua. ¿A quién me recomiendas?",
+      "mentioned": false,
+      "competitors": []
+     },
+     {
+      "answer": "Perfecto — te doy 3 opciones en Managua según tipo (cortinas tubulares metálicas para negocios/seguridad y cortinas enrollables/roller para interiores), con por qué elegirlas y qué preguntarles. ¿Son para una casa (interior) o para un local/seguridad? Si me dices medidas aproximadas y uso puedo busc",
+      "sources": [
+       {
+        "url": "https://fameseg.com/cobertura/managua?utm_source=openai",
+        "title": "Cortinas metálicas en Managua: fabricación e instalación | FAMESEG"
+       },
+       {
+        "url": "https://inmenicsa.com/?utm_source=openai",
+        "title": "Inicio » Inmenicsa"
+       }
+      ],
+      "position": 1,
+      "provider": "openai",
+      "question": "Busco cortinas tubulares Managua. ¿A quién me recomiendas?",
+      "mentioned": true,
+      "competitors": [
+       "Inmenicsa",
+       "Persianas Decorativas",
+       "Tecnolite",
+       "Alumividrio"
+      ]
+     },
+     {
+      "error": "Gemini llegó a su límite por ahora. Espera un minuto o activa la facturación en Google AI Studio.",
+      "answer": "",
+      "sources": [],
+      "position": null,
+      "provider": "gemini",
+      "question": "¿A quién me recomiendas para cortinas de acero en Managua?",
+      "mentioned": false,
+      "competitors": []
+     },
+     {
+      "answer": "Claro — puedo recomendarte varias empresas en Managua que fabrican e instalan cortinas de acero (enrollables / metálicas). ¿Cuál es tu necesidad principal — comercio o casa, tamaño aproximado del vano, y prefieres manual o motorizada? Con eso puedo ayudarte a pedir cotizaciones. Mientras tanto, aquí",
+      "sources": [
+       {
+        "url": "https://fameseg.com/?utm_source=openai",
+        "title": "FAMESEG — Cortinas metálicas, portones y automatización en Nicaragua"
+       },
+       {
+        "url": "https://www.cormetal.com.ni/?utm_source=openai",
+        "title": "Portones eléctricos en Nicaragua con Cormetal S.A."
+       }
+      ],
+      "position": 1,
+      "provider": "openai",
+      "question": "¿A quién me recomiendas para cortinas de acero en Managua?",
+      "mentioned": true,
+      "competitors": [
+       "Cormetal S.A.",
+       "Metalfa",
+       "Metalníca",
+       "CortyPort Industrial",
+       "Inmenicsa",
+       "General Panel"
+      ]
+     }
+    ],
+    "questions": [
+     "Busco cortinas metálicas Managua. ¿A quién me recomiendas?",
+     "Busco portones automáticos Nicaragua. ¿A quién me recomiendas?",
+     "Busco mantenimiento de cortinas metálicas. ¿A quién me recomiendas?",
+     "Busco cortinas tubulares Managua. ¿A quién me recomiendas?",
+     "¿A quién me recomiendas para cortinas de acero en Managua?"
+    ],
+    "startedAt": "2026-10-06T07:13:34.345Z",
+    "byProvider": {
+     "gemini": {
+      "score": null,
+      "total": 0,
+      "errors": 5,
+      "mentioned": 0
+     },
+     "openai": {
+      "score": 80,
+      "total": 5,
+      "errors": 0,
+      "mentioned": 4
+     }
+    },
+    "finishedAt": "2026-10-06T07:13:56.133Z",
+    "topDomains": [
+     {
+      "count": 4,
+      "domain": "es.wikipedia.org"
+     },
+     {
+      "count": 4,
+      "domain": "inmenicsa.com"
+     },
+     {
+      "count": 4,
+      "domain": "reddit.com"
+     },
+     {
+      "count": 3,
+      "domain": "minsa.gob.ni"
+     },
+     {
+      "count": 3,
+      "domain": "repositorio.unan.edu.ni"
+     },
+     {
+      "count": 3,
+      "domain": "sajurin.enriquebolanos.org"
+     },
+     {
+      "count": 3,
+      "domain": "starofservice.com.ni"
+     },
+     {
+      "count": 2,
+      "domain": "cormetal.com.ni"
+     },
+     {
+      "count": 2,
+      "domain": "es.cybo.com"
+     },
+     {
+      "count": 2,
+      "domain": "findglocal.com"
+     }
+    ],
+    "topCompetitors": [
+     {
+      "name": "Inmenicsa",
+      "count": 4
+     },
+     {
+      "name": "Cormetal S.A.",
+      "count": 2
+     },
+     {
+      "name": "Alumividrio",
+      "count": 1
+     },
+     {
+      "name": "CortyPort Industrial",
+      "count": 1
+     },
+     {
+      "name": "Electroparking",
+      "count": 1
+     },
+     {
+      "name": "General Panel",
+      "count": 1
+     },
+     {
+      "name": "Grupo Sarti",
+      "count": 1
+     },
+     {
+      "name": "Metalcort",
+      "count": 1
+     },
+     {
+      "name": "Metalfa",
+      "count": 1
+     },
+     {
+      "name": "Metalníca",
+      "count": 1
+     }
+    ],
+    "recommendations": [
+     {
+      "title": "Crea una página de preguntas frecuentes sobre mantenimiento",
+      "detail": "La inteligencia artificial no te mencionó en la pregunta sobre mantenimiento de cortinas metálicas. Publica una sección dedicada a resolver dudas sobre reparación y mantenimiento en Managua, León, Masaya y otras ciudades para que las IA te incluyan."
+     },
+     {
+      "title": "Completa tu perfil en directorios citados por la IA",
+      "detail": "Las respuestas de ChatGPT citan con frecuencia directorios como starofservice.com.ni y es.cybo.com donde compites con marcas como Inmenicsa y Cormetal S.A. Asegúrate de tener presencia activa y datos actualizados en estos sitios."
+     },
+     {
+      "title": "Optimiza los títulos con tus servicios y ciudades",
+      "detail": "Competidores como Inmenicsa y Cormetal aparecen por términos amplios en Nicaragua. Asegúrate de que las páginas clave de fameseg.com incluyan claramente términos como portones automáticos y cortinas de acero junto a tus zonas de cobertura."
+     }
+    ]
+   }
+  }
+ }
+}

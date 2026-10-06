@@ -10,6 +10,7 @@ import { fetchJson } from "@/lib/publishers/http";
 import { escapeHtml } from "@/lib/text";
 import { BUSINESS_TZ } from "@/lib/time";
 import { readAuditReport } from "@/lib/seo/audit";
+import { businessTopicVocab, relevantGapRows } from "@/lib/seo/gap";
 import { readReviewsReport } from "@/lib/seo/gbp";
 import { readZones, zoneLabel } from "@/lib/seo/dataforseo";
 import { asGscReport } from "@/lib/seo/gsc";
@@ -612,7 +613,7 @@ export function closestWeekBefore(cur: RankReport, older: RankReport[]): RankRep
 export async function gatherWeekly(businessId: string, now = new Date()): Promise<WeeklyData> {
   const b = await db.business.findUniqueOrThrow({
     where: { id: businessId },
-    select: { seoLocations: true, seoLocationCode: true, seoLocationName: true, seoKeywords: true },
+    select: { seoLocations: true, seoLocationCode: true, seoLocationName: true, seoKeywords: true, study: true },
   });
   const zones = readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName);
   const latest = (kind: string, take = 1) => db.seoReport.findMany({ where: { businessId, kind }, orderBy: { createdAt: "desc" }, take, select: { data: true, createdAt: true } });
@@ -651,11 +652,13 @@ export async function gatherWeekly(businessId: string, now = new Date()): Promis
   const audit = auditRows[0] ? readAuditReport(auditRows[0].data) : null;
   const gsc = gscRows[0] ? asGscReport(gscRows[0].data) : null;
 
-  let recommendations = gapRows[0] ? readGapRecommendations(gapRows[0].data) : [];
+  // Solo búsquedas que tienen que ver con el negocio (los reportes viejos pueden traer de todo).
+  const vocab = businessTopicVocab(b);
+  let recommendations = gapRows[0] ? relevantGapRows(readGapRecommendations(gapRows[0].data, 50), vocab).slice(0, 3) : [];
   if (!recommendations.length && kwRows[0]) {
     const kw = readKeywordsReport(kwRows[0].data);
     const tracked = new Set((Array.isArray(b.seoKeywords) ? b.seoKeywords : []).map((k) => String(k).toLowerCase()));
-    recommendations = (kw?.ideas ?? [])
+    recommendations = relevantGapRows(kw?.ideas ?? [], vocab)
       .filter((i) => !tracked.has(i.keyword.toLowerCase()) && (i.volume ?? 0) > 0)
       .sort((a, c) => (c.volume ?? 0) - (a.volume ?? 0))
       .slice(0, 3)

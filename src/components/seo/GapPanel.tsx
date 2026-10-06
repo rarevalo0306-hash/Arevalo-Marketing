@@ -3,12 +3,13 @@ import { trackGapKeyword } from "@/app/actions-seo-competitors";
 import { runGap } from "@/app/actions-seo-gap";
 import { GapButton } from "@/components/seo/GapButton";
 import { GapTable } from "@/components/seo/GapTable";
+import { HowToRead } from "@/components/seo/HowToRead";
 import { db } from "@/lib/db";
 import { intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { normalizeDomain, readCompetitorsReport } from "@/lib/seo/competitors";
 import { dataForSeoEnabled, readTrackedKeywords, readZones } from "@/lib/seo/dataforseo";
-import { gapCostEstimate, pickGapCompetitors, readGapReport } from "@/lib/seo/gap";
+import { businessTopicVocab, gapCostEstimate, gbpCategory, pickGapCompetitors, readGapReport, splitGapRows } from "@/lib/seo/gap";
 import { latestReports } from "@/lib/seo/reports";
 import { BUSINESS_TZ } from "@/lib/time";
 
@@ -38,7 +39,7 @@ export async function GapPanel({ businessId }: { businessId: string }) {
 
   const b = await db.business.findUnique({
     where: { id: businessId },
-    select: { website: true, seoLocations: true, seoLocationCode: true, seoLocationName: true, seoKeywords: true },
+    select: { website: true, seoLocations: true, seoLocationCode: true, seoLocationName: true, seoKeywords: true, study: true },
   });
   if (!b) return null;
   const self = normalizeDomain(b.website);
@@ -53,7 +54,7 @@ export async function GapPanel({ businessId }: { businessId: string }) {
   if (!zones.length)
     return empty(t("Primero elige la zona donde buscan tus clientes (arriba, en Datos reales de Google).", "First pick the area where your customers search (above, in Real Google data)."));
 
-  const [[compRow], [row]] = await Promise.all([latestReports(businessId, "competitors", 1), latestReports(businessId, "gap", 1)]);
+  const [[compRow], [row], [gbpRow]] = await Promise.all([latestReports(businessId, "competitors", 1), latestReports(businessId, "gap", 1), latestReports(businessId, "gbp", 1)]);
   const competitors = pickGapCompetitors(compRow ? readCompetitorsReport(compRow.data) : null);
   if (!competitors.length)
     return empty(
@@ -64,6 +65,10 @@ export async function GapPanel({ businessId }: { businessId: string }) {
     );
 
   const report = row ? readGapReport(row.data) : null;
+  // Solo las búsquedas que tienen que ver con lo que vende el negocio; las demás se pueden ver con un botón.
+  const vocab = businessTopicVocab({ ...b, category: gbpRow ? gbpCategory(gbpRow.data) : null });
+  const split = report ? splitGapRows(report.rows, vocab) : { relevant: [], hidden: [] };
+  const offTopic = [...split.hidden, ...(report?.offTopic ?? [])];
   const tracked = readTrackedKeywords(b.seoKeywords).map((k) => k.toLowerCase());
   const fmt = new Intl.DateTimeFormat(intlLocale(lang), { dateStyle: "long", timeStyle: "short", timeZone: BUSINESS_TZ });
   const money = new Intl.NumberFormat(intlLocale(lang), { style: "currency", currency: "USD", maximumFractionDigits: 3 });
@@ -112,7 +117,7 @@ export async function GapPanel({ businessId }: { businessId: string }) {
               {report.notes.map((x, i) => <li key={i}>{lang === "en" ? x.en : x.es}</li>)}
             </ul>
           )}
-          {report.rows.length === 0 ? (
+          {split.relevant.length + offTopic.length === 0 ? (
             <p className="small muted">
               {t(
                 "No encontramos búsquedas donde tu competencia te gane. Vuelve a revisar en unas semanas o agrega otros competidores arriba.",
@@ -120,7 +125,7 @@ export async function GapPanel({ businessId }: { businessId: string }) {
               )}
             </p>
           ) : (
-            <GapTable businessId={businessId} rows={report.rows} tracked={tracked} track={trackGapKeyword.bind(null, businessId)} />
+            <GapTable businessId={businessId} rows={split.relevant} offTopic={offTopic} tracked={tracked} track={trackGapKeyword.bind(null, businessId)} />
           )}
           <p className="small muted">
             {t(
@@ -128,6 +133,14 @@ export async function GapPanel({ businessId }: { businessId: string }) {
               `Searches, rankings and difficulty are DataForSEO estimates for ${report.location.countryName || "your country"} on Google (not by city). Difficulty goes from 0 to 100: under 30 is easy.`,
             )}
           </p>
+          <HowToRead title={t("Cómo leer esto", "How to read this")}>
+            <ul>
+              <li>{t("«Te faltan»: búsquedas donde tu competencia sale en Google y tú no. Escribir un artículo sobre ellas es la forma más directa de empezar a salir.", "“You're missing”: searches where your competitors show up on Google and you don't. Writing an article about them is the most direct way to start showing up.")}</li>
+              <li>{t("«Estás más abajo»: sí sales, pero ellos están más arriba. Mejora la página que ya tienes.", "“You rank lower”: you do show up, but they're higher. Improve the page you already have.")}</li>
+              <li>{t("Dificultad de 0 a 100: qué tan difícil es llegar a la primera página. Fácil (menos de 30) primero.", "Difficulty from 0 to 100: how hard it is to reach page one. Start with easy ones (under 30).")}</li>
+              <li>{t("Solo mostramos búsquedas que tienen que ver con lo que vendes (según tus palabras clave y tu estudio). Las demás las puedes ver con «Mostrarlas igual».", "We only show searches related to what you sell (based on your keywords and your study). You can see the rest with “Show them anyway”.")}</li>
+            </ul>
+          </HowToRead>
         </>
       )}
     </section>
