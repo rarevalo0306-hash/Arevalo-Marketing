@@ -1,5 +1,5 @@
 // Imágenes y videos con IA a través de fal.ai (FLUX para fotos, Kling para convertir una foto en video).
-import { PublishError } from "@/lib/publishers/http";
+import { bi } from "@/lib/i18n";
 
 export const falEnabled = () => Boolean(process.env.FAL_KEY);
 
@@ -21,9 +21,9 @@ async function fal<T>(url: string, init?: RequestInit): Promise<T> {
   });
   const body = await res.text();
   if (!res.ok) {
-    if (body.includes("TOP_UP") || body.includes("Exhausted balance")) throw new PublishError("Tu cuenta de fal.ai no tiene saldo. Recárgala en fal.ai/dashboard/billing.");
-    if (res.status === 401 || res.status === 403) throw new PublishError("fal.ai rechazó la clave (FAL_KEY). Revisa que esté bien copiada.");
-    throw new PublishError(`fal.ai respondió ${res.status}: ${body.slice(0, 300)}`);
+    if (body.includes("TOP_UP") || body.includes("Exhausted balance")) throw bi("Tu cuenta de fal.ai no tiene saldo. Recárgala en fal.ai/dashboard/billing.", "Your fal.ai account is out of credit. Top it up at fal.ai/dashboard/billing.");
+    if (res.status === 401 || res.status === 403) throw bi("fal.ai rechazó la clave (FAL_KEY). Revisa que esté bien copiada.", "fal.ai rejected the key (FAL_KEY). Check that it was copied correctly.");
+    throw bi(`fal.ai respondió ${res.status}: ${body.slice(0, 300)}`, `fal.ai responded ${res.status}: ${body.slice(0, 300)}`);
   }
   return JSON.parse(body) as T;
 }
@@ -35,7 +35,7 @@ export async function generateImage(description: string, shape: Shape = "square"
     body: JSON.stringify({ prompt: `${description.trim()}. ${STYLE}`, image_size: SIZES[shape], num_images: 1, output_format: "jpeg", enable_safety_checker: true }),
   });
   const url = out.images?.[0]?.url;
-  if (!url || out.has_nsfw_concepts?.[0]) throw new PublishError("La IA no pudo crear esa imagen. Prueba con otra descripción.");
+  if (!url || out.has_nsfw_concepts?.[0]) throw bi("La IA no pudo crear esa imagen. Prueba con otra descripción.", "The AI couldn't create that image. Try a different description.");
   return url;
 }
 
@@ -66,10 +66,10 @@ export function isFalQueueUrl(u: string): boolean {
 }
 
 export async function videoResult(job: VideoJob): Promise<{ done: false } | { done: true; url: string }> {
-  if (!isFalQueueUrl(job.statusUrl) || !isFalQueueUrl(job.responseUrl)) throw new PublishError("Dirección de video no válida.");
+  if (!isFalQueueUrl(job.statusUrl) || !isFalQueueUrl(job.responseUrl)) throw bi("Dirección de video no válida.", "Invalid video address.");
   const st = await fal<{ status: string }>(job.statusUrl);
   if (st.status !== "COMPLETED") return { done: false };
   const out = await fal<{ video?: { url: string } }>(job.responseUrl);
-  if (!out.video?.url) throw new PublishError("fal.ai terminó pero no devolvió el video. Intenta de nuevo.");
+  if (!out.video?.url) throw bi("fal.ai terminó pero no devolvió el video. Intenta de nuevo.", "fal.ai finished but didn't return the video. Please try again.");
   return { done: true, url: out.video.url };
 }

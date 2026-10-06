@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react";
 import type { TestResult } from "@/app/actions";
-import type { ChannelDef } from "@/lib/channels";
+import { useT } from "@/components/I18n";
+import { channelText, type ChannelDef } from "@/lib/channels";
 
 type Props = {
   channel: ChannelDef;
@@ -20,7 +21,9 @@ type Props = {
   brevo?: { domains: string[]; defaultName: string; connect: (f: FormData) => Promise<TestResult> } | null;
 };
 
-export function ConnectionCard({ channel, connected, values, secretSet, save, remove, test, oauthUrl, oauthName = "Facebook", brevo }: Props) {
+export function ConnectionCard({ channel: def, connected, values, secretSet, save, remove, test, oauthUrl, oauthName = "Facebook", brevo }: Props) {
+  const { lang, t } = useT();
+  const channel = channelText(def, lang);
   const [open, setOpen] = useState(false);
   const [result, setResult] = useState<TestResult>(null);
   const [pending, start] = useTransition();
@@ -33,9 +36,9 @@ export function ConnectionCard({ channel, connected, values, secretSet, save, re
           <h2 style={{ fontSize: 17, fontFamily: "var(--body)", fontWeight: 600 }}>{channel.name}</h2>
           <div className="small muted">{channel.what}</div>
         </div>
-        <span className={connected ? "pill connected" : "pill"}>{connected ? "Conectado" : "No conectado"}</span>
+        <span className={connected ? "pill connected" : "pill"}>{connected ? t("Conectado", "Connected") : t("No conectado", "Not connected")}</span>
       </div>
-      <p className="small" style={{ color: "#3f4246" }}><strong style={{ color: "var(--ink)" }}>Necesitas: </strong>{channel.need}</p>
+      <p className="small" style={{ color: "#3f4246" }}><strong style={{ color: "var(--ink)" }}>{t("Necesitas: ", "You need: ")}</strong>{channel.need}</p>
 
       {open && (
         <form
@@ -58,13 +61,13 @@ export function ConnectionCard({ channel, connected, values, secretSet, save, re
                 type={f.secret ? "password" : "text"}
                 autoComplete="off"
                 defaultValue={values[f.key]}
-                placeholder={f.secret && secretSet[f.key] ? "•••••••• (guardado; déjalo vacío para no cambiarlo)" : f.placeholder}
+                placeholder={f.secret && secretSet[f.key] ? t("•••••••• (guardado; déjalo vacío para no cambiarlo)", "•••••••• (saved; leave it blank to keep it)") : f.placeholder}
               />
             </div>
           ))}
           <div className="row">
-            <button className="btn on" type="submit" disabled={pending}>{pending ? "Guardando y probando…" : "Guardar y probar"}</button>
-            <button className="btn" type="button" onClick={() => setOpen(false)}>Cerrar</button>
+            <button className="btn on" type="submit" disabled={pending}>{pending ? t("Guardando y probando…", "Saving and testing…") : t("Guardar y probar", "Save and test")}</button>
+            <button className="btn" type="button" onClick={() => setOpen(false)}>{t("Cerrar", "Close")}</button>
           </div>
         </form>
       )}
@@ -75,17 +78,17 @@ export function ConnectionCard({ channel, connected, values, secretSet, save, re
           className="stack"
           style={{ gap: 10, padding: 14, borderRadius: 10, background: "var(--ground)" }}
         >
-          <div className="small" style={{ fontWeight: 600 }}>{connected ? "Cambiar el remitente" : "Conectar en un paso"}</div>
+          <div className="small" style={{ fontWeight: 600 }}>{connected ? t("Cambiar el remitente", "Change the sender") : t("Conectar en un paso", "Connect in one step")}</div>
           <div className="stack" style={{ gap: 4 }}>
-            <label className="small" htmlFor={`${channel.id}-bname`}>Nombre que ven tus clientes</label>
+            <label className="small" htmlFor={`${channel.id}-bname`}>{t("Nombre que ven tus clientes", "Name your customers see")}</label>
             <input id={`${channel.id}-bname`} name="name" className="field" defaultValue={brevo.defaultName} />
           </div>
           <div className="stack" style={{ gap: 4 }}>
-            <label className="small" htmlFor={`${channel.id}-bemail`}>Email que envía</label>
-            <input id={`${channel.id}-bemail`} name="email" type="email" className="field" placeholder={brevo.domains[0] ? `info@${brevo.domains[0]}` : "info@tunegocio.com"} required />
-            {brevo.domains.length > 0 && <span className="small muted">Puede ser cualquier email de: {brevo.domains.join(", ")}</span>}
+            <label className="small" htmlFor={`${channel.id}-bemail`}>{t("Email que envía", "Sending email")}</label>
+            <input id={`${channel.id}-bemail`} name="email" type="email" className="field" placeholder={brevo.domains[0] ? `info@${brevo.domains[0]}` : t("info@tunegocio.com", "info@yourbusiness.com")} required />
+            {brevo.domains.length > 0 && <span className="small muted">{t("Puede ser cualquier email de: ", "It can be any email at: ")}{brevo.domains.join(", ")}</span>}
           </div>
-          <div><button className="btn on" type="submit" disabled={pending}>{pending ? "Conectando…" : "Conectar Email"}</button></div>
+          <div><button className="btn on" type="submit" disabled={pending}>{pending ? t("Conectando…", "Connecting…") : t("Conectar Email", "Connect Email")}</button></div>
         </form>
       )}
 
@@ -95,32 +98,32 @@ export function ConnectionCard({ channel, connected, values, secretSet, save, re
         {connected && !open && (
           <>
             <button className="btn" type="button" disabled={pending} onClick={() => start(async () => setResult(await test()))}>
-              {pending ? "Probando…" : "Probar conexión"}
+              {pending ? t("Probando…", "Testing…") : t("Probar conexión", "Test connection")}
             </button>
             <button
               className="btn danger"
               type="button"
               disabled={pending}
               onClick={() => {
-                if (confirm(`¿Desconectar ${channel.name}?`)) start(async () => { await remove(); setResult(null); });
+                if (confirm(t(`¿Desconectar ${channel.name}?`, `Disconnect ${channel.name}?`))) start(async () => { await remove(); setResult(null); });
               }}
             >
-              Desconectar
+              {t("Desconectar", "Disconnect")}
             </button>
           </>
         )}
         {!open && oauthUrl && (
           <>
-            <button className="btn link" type="button" onClick={() => setOpen(true)}>Pegar datos a mano</button>
-            <a className="btn on" href={oauthUrl}>{connected ? `Volver a conectar con ${oauthName}` : `Conectar con ${oauthName}`}</a>
+            <button className="btn link" type="button" onClick={() => setOpen(true)}>{t("Pegar datos a mano", "Enter details manually")}</button>
+            <a className="btn on" href={oauthUrl}>{connected ? t(`Volver a conectar con ${oauthName}`, `Reconnect with ${oauthName}`) : t(`Conectar con ${oauthName}`, `Connect with ${oauthName}`)}</a>
           </>
         )}
         {!open && !oauthUrl && brevo && (
-          <button className="btn link" type="button" onClick={() => setOpen(true)}>Usar otra cuenta (pegar clave)</button>
+          <button className="btn link" type="button" onClick={() => setOpen(true)}>{t("Usar otra cuenta (pegar clave)", "Use another account (paste key)")}</button>
         )}
         {!open && !oauthUrl && !brevo && (
           <button className="btn outline" type="button" onClick={() => setOpen(true)}>
-            {connected ? "Editar datos" : `Conectar ${channel.name}`}
+            {connected ? t("Editar datos", "Edit details") : t(`Conectar ${channel.name}`, `Connect ${channel.name}`)}
           </button>
         )}
       </div>

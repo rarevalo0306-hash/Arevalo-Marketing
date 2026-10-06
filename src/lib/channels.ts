@@ -1,4 +1,7 @@
 // Definición de canales y reglas compartidas entre el compositor (navegador) y el servidor.
+// Los textos de CHANNELS están en español; channelText(def, lang) da la versión en el idioma de la app.
+
+import { intlLocale, translator, type UiLang } from "@/lib/i18n";
 
 export type ChannelId = "facebook" | "instagram" | "tiktok" | "google" | "seo" | "email" | "sms";
 export type MediaType = "none" | "photo" | "video";
@@ -126,6 +129,93 @@ export const CHANNELS: ChannelDef[] = [
   },
 ];
 
+type ChannelTextEn = {
+  name?: string;
+  kind: string;
+  what: string;
+  need: string;
+  /** Solo los campos con texto en español; los nombres técnicos (Client key, API key…) se quedan igual. */
+  fields?: Record<string, { label?: string; help?: string; placeholder?: string }>;
+};
+
+/** Textos en inglés de cada canal (los ids, límites y campos no cambian). */
+const CHANNELS_EN: Record<ChannelId, ChannelTextEn> = {
+  facebook: {
+    kind: "Post",
+    what: "Posts on the business's Page",
+    need: "The business's Facebook Page and a Page token with the pages_manage_posts permission (from developers.facebook.com).",
+    fields: { pageId: { label: "Page ID" }, accessToken: { label: "Page access token" } },
+  },
+  instagram: {
+    kind: "Post or Reel",
+    what: "Posts and Reels",
+    need: "An Instagram professional account linked to the Facebook Page, and a token with the instagram_content_publish permission.",
+    fields: { igUserId: { label: "Instagram account ID" }, accessToken: { label: "Access token" } },
+  },
+  tiktok: {
+    kind: "Video",
+    what: "Videos",
+    need: "An app on developers.tiktok.com with the Content Posting API (video.publish). TikTok only accepts videos.",
+  },
+  google: {
+    kind: "Business Profile",
+    what: "Updates on your Business Profile (Maps)",
+    need: "A verified Business Profile. Click \"Connect with Google\" and sign in with the account that owns the profile.",
+    fields: {
+      accountId: { label: "Account ID", placeholder: "accounts/123… → just the number" },
+      locationId: { label: "Location ID", placeholder: "just the number" },
+    },
+  },
+  seo: {
+    name: "Website / SEO",
+    kind: "Article on your website",
+    what: "A new article on your website, in Spanish and English",
+    need: "Your website on GitHub (with Vercel) set up to receive articles, and a GitHub token with permission to write to that repository.",
+    fields: {
+      repo: { label: "GitHub repository" },
+      branch: { label: "Branch that Vercel publishes" },
+      siteUrl: { label: "Website address" },
+      githubToken: { label: "GitHub token (fine-grained, Contents: write permission)" },
+    },
+  },
+  email: {
+    kind: "Newsletter",
+    what: "Email to contacts who agreed to receive it",
+    need: "A Brevo account (brevo.com, 300 free emails a day) or a Resend account (resend.com) with your domain verified, plus its API key.",
+    fields: {
+      from: { label: "Sender", placeholder: "Your Business <info@yourbusiness.com>" },
+      apiKey: { label: "Brevo API key (xkeysib-…) or Resend API key (re_…)" },
+    },
+  },
+  sms: {
+    name: "Text (SMS)",
+    kind: "Text message",
+    what: "Text messages to contacts who agreed to receive them",
+    need: "A Twilio account with a number registered to send SMS (in the US this requires A2P 10DLC registration).",
+    fields: { from: { label: "Sending number" } },
+  },
+};
+
+/** El canal con sus textos (nombre, tipo, qué publica, qué necesitas y campos) en el idioma de la app. */
+export function channelText(def: ChannelDef, lang: UiLang): ChannelDef {
+  if (lang !== "en") return def;
+  const en = CHANNELS_EN[def.id];
+  return {
+    ...def,
+    name: en.name ?? def.name,
+    kind: en.kind,
+    what: en.what,
+    need: en.need,
+    fields: def.fields.map((f) => ({ ...f, ...en.fields?.[f.key] })),
+  };
+}
+
+/** Nombre visible de un canal en el idioma de la app (o el id si no existe). */
+export function channelName(id: string, lang: UiLang = "es"): string {
+  const def = CHANNELS.find((c) => c.id === id);
+  return def ? channelText(def, lang).name : id;
+}
+
 export const CHANNEL_IDS = CHANNELS.map((c) => c.id);
 
 export function channelDef(id: string): ChannelDef | undefined {
@@ -139,7 +229,9 @@ export type Draft = {
   mediaType: MediaType;
 };
 
-export type Note = { text: string; blocking: boolean };
+export type NoteId = "empty" | "needsVideo" | "needsMedia" | "noSubject" | "noTitle" | "shortArticle" | "smsParts" | "tooLong";
+/** `id` identifica el aviso sin depender del idioma del texto. */
+export type Note = { id: NoteId; text: string; blocking: boolean };
 
 /** Segmentos de SMS (GSM-7: 160 en uno, 153 por parte si son varios; Unicode: 70/67). */
 export function smsSegments(body: string): number {
@@ -154,35 +246,50 @@ export function smsBody(text: string): string {
   return text.trim() + SMS_FOOTER;
 }
 
-/** Avisos para un canal. Los `blocking` impiden publicar en ese canal. */
-export function notesFor(channel: ChannelId, d: Draft): Note[] {
+/** Avisos para un canal, en el idioma pedido (español por defecto). Los `blocking` impiden publicar en ese canal. */
+export function notesFor(channel: ChannelId, d: Draft, lang: UiLang = "es"): Note[] {
+  const t = translator(lang);
   const notes: Note[] = [];
   const len = d.text.length;
   const def = channelDef(channel)!;
-  if (!d.text.trim()) notes.push({ text: "Escribe tu mensaje.", blocking: true });
+  if (!d.text.trim()) notes.push({ id: "empty", text: t("Escribe tu mensaje.", "Write your message."), blocking: true });
   if (channel === "tiktok" && d.mediaType !== "video")
-    notes.push({ text: "TikTok necesita un video para publicar.", blocking: true });
+    notes.push({ id: "needsVideo", text: t("TikTok necesita un video para publicar.", "TikTok needs a video to post."), blocking: true });
   if (channel === "instagram" && d.mediaType === "none")
-    notes.push({ text: "Instagram necesita una foto o un video.", blocking: true });
+    notes.push({ id: "needsMedia", text: t("Instagram necesita una foto o un video.", "Instagram needs a photo or a video."), blocking: true });
   if (channel === "email" && !d.subject.trim())
-    notes.push({ text: "Falta el asunto del email.", blocking: true });
+    notes.push({ id: "noSubject", text: t("Falta el asunto del email.", "The email subject is missing."), blocking: true });
   if (channel === "seo" && !d.seoTitle.trim())
-    notes.push({ text: "Falta el título del artículo.", blocking: true });
+    notes.push({ id: "noTitle", text: t("Falta el título del artículo.", "The article title is missing."), blocking: true });
   if (channel === "seo" && d.text.trim() && d.text.trim().length < 200)
-    notes.push({ text: "Para un buen artículo en Google conviene escribir al menos un par de párrafos.", blocking: false });
+    notes.push({
+      id: "shortArticle",
+      text: t(
+        "Para un buen artículo en Google conviene escribir al menos un par de párrafos.",
+        "For a good article on Google, it's best to write at least a couple of paragraphs.",
+      ),
+      blocking: false,
+    });
   if (channel === "sms") {
     const parts = smsSegments(smsBody(d.text));
     if (parts > 1)
       notes.push({
-        text: `Se enviará en ${parts} mensajes de texto por contacto. Acórtalo para que cueste menos.`,
+        id: "smsParts",
+        text: t(
+          `Se enviará en ${parts} mensajes de texto por contacto. Acórtalo para que cueste menos.`,
+          `This will go out as ${parts} text messages per contact. Shorten it so it costs less.`,
+        ),
         blocking: false,
       });
   }
-  if (def.limit && channel !== "sms" && len > def.limit)
+  if (def.limit && channel !== "sms" && len > def.limit) {
+    const max = def.limit.toLocaleString(intlLocale(lang));
     notes.push({
-      text: `Muy largo para ${def.name}: máximo ${def.limit.toLocaleString("es")} caracteres.`,
+      id: "tooLong",
+      text: t(`Muy largo para ${def.name}: máximo ${max} caracteres.`, `Too long for ${channelText(def, lang).name}: ${max} characters max.`),
       blocking: true,
     });
+  }
   return notes;
 }
 

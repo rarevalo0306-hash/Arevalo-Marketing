@@ -3,7 +3,8 @@
 import { createHmac, randomBytes } from "crypto";
 import { encryptJson } from "@/lib/crypto";
 import { db } from "@/lib/db";
-import { fetchJson, PublishError } from "@/lib/publishers/http";
+import { bi } from "@/lib/i18n";
+import { fetchJson } from "@/lib/publishers/http";
 import { safeEqual } from "@/lib/session";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
@@ -89,7 +90,7 @@ export async function listPages(userToken: string): Promise<MetaPage[]> {
 
 /** Guarda Facebook (y la cuenta de Instagram vinculada, si hay) para el negocio. */
 export async function saveMetaPage(businessId: string, page: MetaPage): Promise<{ instagram: string | null }> {
-  if (!page.access_token) throw new PublishError("Facebook no entregó el permiso para publicar en esa página.");
+  if (!page.access_token) throw bi("Facebook no entregó el permiso para publicar en esa página.", "Facebook didn't grant permission to post on that Page.");
   const upsert = (channel: string, values: Record<string, string>, label: string) =>
     db.connection.upsert({
       where: { businessId_channel: { businessId, channel } },

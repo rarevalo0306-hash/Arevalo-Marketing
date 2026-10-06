@@ -2,8 +2,9 @@
 // sin copiar tokens a mano.
 import { encryptJson } from "@/lib/crypto";
 import { db } from "@/lib/db";
+import { bi } from "@/lib/i18n";
 import { makeState } from "@/lib/meta-oauth";
-import { fetchJson, form, PublishError } from "@/lib/publishers/http";
+import { fetchJson, form } from "@/lib/publishers/http";
 
 export const GOOGLE_COOKIE = "am_google";
 export const GOOGLE_SCOPE = "https://www.googleapis.com/auth/business.manage";
@@ -40,7 +41,7 @@ export async function googleExchange(code: string): Promise<{ refreshToken: stri
       grant_type: "authorization_code",
     }),
   });
-  if (!t.refresh_token) throw new PublishError("Google no entregó el permiso permanente. Vuelve a intentarlo.");
+  if (!t.refresh_token) throw bi("Google no entregó el permiso permanente. Vuelve a intentarlo.", "Google didn't grant permanent access. Please try again.");
   return { refreshToken: t.refresh_token, accessToken: t.access_token };
 }
 
