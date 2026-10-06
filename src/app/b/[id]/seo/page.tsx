@@ -1,4 +1,5 @@
 import { PageHead } from "@/components/PageHead";
+import { ReportCard } from "@/components/seo/ReportCard";
 import { AlertsPanel } from "@/components/seo/AlertsPanel";
 import { AuditPanel } from "@/components/seo/AuditPanel";
 import { CompetitorsPanel } from "@/components/seo/CompetitorsPanel";
@@ -42,6 +43,7 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
         <MapRankPanel businessId={id} mapId={mapa} />
         <GbpPanel businessId={id} />
         <AlertsPanel businessId={id} />
+        <ReportCard businessId={id} />
         <CompetitorsPanel businessId={id} />
         <GapPanel businessId={id} />
         <OnPagePanel businessId={id} />

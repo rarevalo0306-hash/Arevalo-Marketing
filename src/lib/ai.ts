@@ -927,3 +927,45 @@ export async function draftReviewReplies(input: {
   }
   return out;
 }
+
+// ---------- Resumen del reporte en PDF ----------
+
+const ReportSummarySchema = z.object({
+  summary: z.string().describe("Executive summary: 4 to 6 short sentences in plain language, no markdown, no lists"),
+  steps: z.array(z.string()).describe("Exactly 3 recommended next steps, one short sentence each, most important first"),
+});
+
+/** Quita lo que no se ve bien en un PDF: asteriscos y numerales de markdown, viñetas y espacios de más. */
+const plainLine = (s: string, max: number) =>
+  s
+    .replace(/[*_#`>]+/g, "")
+    .replace(/^\s*(?:[-•]|\d+[.)])\s*/, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max);
+
+/**
+ * Resumen del reporte de SEO para el dueño (4-6 frases) y 3 próximos pasos, escritos SOLO con los datos que se le pasan.
+ * Quien lo llama revisa que no haya números inventados y, si falla, usa el resumen sin IA.
+ */
+export async function writeReportSummary(input: {
+  business: { name: string; website?: string; aiText?: string };
+  facts: string[];
+  lang: UiLang;
+}): Promise<{ summary: string; steps: string[] }> {
+  const es = input.lang !== "en";
+  const system = `You write the executive summary of a monthly SEO and marketing report for the owner of "${input.business.name}"${input.business.website ? ` (${input.business.website})` : ""}, a small local business. The owner is not technical.
+
+Rules:
+- Use ONLY the facts given between <facts>. Never invent or estimate numbers, percentages, dates, rankings, competitors or causes. Do not do arithmetic: if you mention a number, copy it exactly as it appears in the facts.
+- The summary has 4 to 6 short sentences: what went well, what needs attention, and the overall picture. Plain, warm, direct words; no jargon (say "first page of Google" instead of "SERP"); no hype, no promises of results.
+- Then exactly 3 next steps, concrete actions the owner (or the app) can take this month, based on the facts. One sentence each.
+- No markdown, no emoji, no bullet characters, no headings.
+- ${es ? "Write in Spanish with correct accents and opening punctuation (¿…?, ¡…!). Address the owner as «tú»." : "Write in natural US English. Address the owner as \"you\"."}`;
+  const user = `<facts>\n${input.facts.map((f) => `- ${f}`).join("\n")}\n</facts>\n\nWrite the summary and the 3 next steps.`;
+  const r = await ask(input.business.aiText ?? "", ReportSummarySchema, system, user, 4000);
+  const summary = plainLine(r.summary, 1400);
+  const steps = r.steps.map((s) => plainLine(s, 260)).filter(Boolean).slice(0, 3);
+  if (summary.length < 40 || !steps.length) throw invalidReply();
+  return { summary, steps };
+}
