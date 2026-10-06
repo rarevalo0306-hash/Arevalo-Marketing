@@ -607,3 +607,36 @@ tr.comp-you td { background: var(--brand-soft); }
 .mr-hist:focus-visible { outline: 3px solid var(--brand-ring); outline-offset: 2px; border-radius: 8px; }
 .mr-hist:disabled { cursor: progress; }
 .mr-hist-nums { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* ---------- Revisión de tus páginas (on-page) ---------- */
+.op-start { gap: 8px; padding: 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-2); }
+.op-start-list { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 10px; font-size: 14px; }
+.op-start-list li { overflow-wrap: anywhere; }
+.op-start-list li > a { display: block; }
+.op-page { display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); min-width: 0; scroll-margin-top: 80px; }
+.op-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.op-dial-empty { width: 56px; height: 56px; font-weight: 800; }
+.op-title { overflow-wrap: anywhere; }
+.op-url { overflow-wrap: anywhere; word-break: break-all; }
+.op-kw { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
+.op-kw-tag { overflow-wrap: anywhere; max-width: 100%; }
+.op-kw .btn.link.op-change { min-height: 0; padding: 0; }
+.op-picker { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 420px; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); }
+.op-picker .field { width: 100%; min-width: 0; }
+.op-picker .btn.link { min-height: 0; }
+.op-ideas { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.op-idea { display: flex; flex-direction: column; gap: 4px; font-size: 14px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); overflow-wrap: anywhere; }
+.op-cat { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.op-cat > span { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 6px; background: var(--brand-soft); color: var(--brand); font-size: 11px; text-transform: none; }
+.op-cat-preguntas > span { background: #f0ebff; color: #5a3fc0; }
+.op-cat-enlaces > span { background: var(--teal-soft); color: var(--teal-text); }
+.op-cat-tecnico > span { background: var(--warn-bg); color: var(--warn-text); }
+.op-cat-competencia > span { background: var(--err-bg); color: var(--err-text); }
+.op-detail { margin: 2px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--ink); }
+.op-stats { overflow-wrap: anywhere; }
+.op-winners summary.btn.link { display: inline-flex; min-height: 0; padding: 0; }
+.op-win { overflow-wrap: anywhere; min-width: 160px; }
+.op-suggest { gap: 10px; padding: 14px; border-radius: 12px; border: 1px solid var(--line); }
+.op-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
+.op-actions > form { min-width: 0; }
+.op-actions .btn { white-space: normal; text-align: left; }

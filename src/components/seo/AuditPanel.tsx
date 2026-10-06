@@ -59,7 +59,7 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
 
   if (!website) {
     return (
-      <section className="card">
+      <section className="card" id="auditoria">
         {header}
         <p className="note">
           {t("Para revisar tu página, primero agrega su dirección en ", "To check your website, first add its address in ")}
@@ -81,7 +81,7 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
   };
 
   return (
-    <section className="card">
+    <section className="card" id="auditoria">
       {header}
       <p className="small muted">
         {t("Página:", "Website:")} <a href={website.startsWith("http") ? website : `https://${website}`} target="_blank" rel="noopener noreferrer">{website}</a>
@@ -238,6 +238,11 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
               </ul>
             )}
           </div>
+
+          <p className="small muted">
+            {t("¿Quieres ideas página por página, comparadas con los que ganan en Google? Ve a ", "Want page-by-page ideas, compared with the pages winning on Google? Go to ")}
+            <a href="#paginas">{t("Revisión de tus páginas", "Your pages check")}</a>.
+          </p>
 
           {report.pages.length > 0 && (
             <details>
