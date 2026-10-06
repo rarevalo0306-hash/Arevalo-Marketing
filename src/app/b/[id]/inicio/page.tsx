@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { MagicPrompt } from "@/components/MagicPrompt";
 import { aiEnabled } from "@/lib/ai";
-import { channelName, CHANNELS } from "@/lib/channels";
+import { CHANNEL_IDS, channelName, CHANNELS } from "@/lib/channels";
 import { db } from "@/lib/db";
 import { ideasFor } from "@/lib/ideas";
 import { intlLocale, type T, type UiLang } from "@/lib/i18n";
@@ -37,7 +37,7 @@ export default async function InicioPage({ params }: { params: Promise<{ id: str
   const { id } = await params;
   const { lang, t } = await getT();
   const fmt = new Intl.DateTimeFormat(intlLocale(lang), { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: BUSINESS_TZ });
-  const b = await db.business.findUniqueOrThrow({ where: { id }, include: { connections: { select: { channel: true } } } });
+  const b = await db.business.findUniqueOrThrow({ where: { id }, include: { connections: { where: { channel: { in: CHANNEL_IDS } }, select: { channel: true } } } });
   const weekAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000);
   const [recent, lastWeek, drafts, next] = await Promise.all([
     db.post.findMany({ where: { businessId: id }, include: { targets: { select: { channel: true } } }, orderBy: { createdAt: "desc" }, take: 4 }),

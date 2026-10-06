@@ -4,7 +4,7 @@ import { PageHead } from "@/components/PageHead";
 import { PlanForm } from "@/components/PlanForm";
 import { StormForm } from "@/components/StormForm";
 import { aiEnabled } from "@/lib/ai";
-import { channelName, CHANNELS } from "@/lib/channels";
+import { CHANNEL_IDS, channelName, CHANNELS } from "@/lib/channels";
 import { db } from "@/lib/db";
 import { intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
@@ -17,7 +17,7 @@ export default async function PlanPage({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   const { lang, t } = await getT();
   const fmt = new Intl.DateTimeFormat(intlLocale(lang), { dateStyle: "full", timeStyle: "short", timeZone: BUSINESS_TZ });
-  const b = await db.business.findUniqueOrThrow({ where: { id }, include: { connections: { select: { channel: true } } } });
+  const b = await db.business.findUniqueOrThrow({ where: { id }, include: { connections: { where: { channel: { in: CHANNEL_IDS } }, select: { channel: true } } } });
   const drafts = await db.post.findMany({ where: { businessId: id, status: "draft" }, include: { targets: true }, orderBy: { scheduledAt: "asc" } });
   const connected = new Set(b.connections.map((c) => c.channel));
   const today = new Date().toLocaleDateString("en-CA", { timeZone: BUSINESS_TZ });
