@@ -17,6 +17,8 @@ export type GscPending = { refreshToken: string; businessId: string; sites: stri
 export type GscRow = { key: string; clicks: number; impressions: number; ctr: number; position: number };
 export type GscTotals = { clicks: number; impressions: number; ctr: number; position: number };
 export type GscRange = { start: string; end: string };
+/** Una búsqueda en una página: con qué búsquedas sale cada página (para elegir la palabra clave de cada página). */
+export type GscPageQuery = { page: string; query: string; clicks: number; impressions: number; position: number };
 
 /** Lo que se guarda en SeoReport.data (kind "gsc"). ctr va de 0 a 1, como lo entrega Google. */
 export type GscReport = {
@@ -38,6 +40,8 @@ export type GscReport = {
   opportunities: GscRow[];
   /** Arriba (posición ≤ 5) pero casi nadie hace clic (CTR < 2 %). */
   lowCtr: GscRow[];
+  /** Pares página + búsqueda con más impresiones (hasta 500). Vacío en reportes viejos. */
+  pageQueries: GscPageQuery[];
 };
 
 // ---------- Elegir el sitio que corresponde a la página del negocio ----------
@@ -165,6 +169,10 @@ function toRow(r: ApiRow): GscRow {
   return { key: String(r.keys?.[0] ?? ""), clicks: num(r.clicks), impressions: num(r.impressions), ctr: num(r.ctr), position: num(r.position) };
 }
 
+function toPair(r: ApiRow): GscPageQuery {
+  return { page: String(r.keys?.[0] ?? ""), query: String(r.keys?.[1] ?? ""), clicks: num(r.clicks), impressions: num(r.impressions), position: num(r.position) };
+}
+
 const totalsOf = (rows: ApiRow[]): GscTotals => {
   const { clicks, impressions, ctr, position } = toRow(rows[0] ?? {});
   return { clicks, impressions, ctr, position };
@@ -195,7 +203,7 @@ export async function searchConsoleReport(conn: { secret: string }, now = new Da
   const siteUrl = creds.siteUrl;
   const token = await googleAccess(creds.refreshToken);
   const { range, previousRange } = gscRanges(now);
-  const [totals, previous, queries, pages, devices, countries] = await Promise.all([
+  const [totals, previous, queries, pages, devices, countries, pairs] = await Promise.all([
     query(token, siteUrl, range, [], 1),
     query(token, siteUrl, previousRange, [], 1),
     // Se piden más búsquedas de las que se muestran para encontrar oportunidades con pocos clics.
@@ -203,6 +211,8 @@ export async function searchConsoleReport(conn: { secret: string }, now = new Da
     query(token, siteUrl, range, ["page"], 20),
     query(token, siteUrl, range, ["device"], 5),
     query(token, siteUrl, range, ["country"], 5),
+    // Qué búsquedas trae cada página (para la revisión de páginas). Si falla, el reporte sale igual.
+    query(token, siteUrl, range, ["page", "query"], 500).catch(() => [] as ApiRow[]),
   ]);
   const allQueries = queries.map(toRow);
   return {
@@ -219,6 +229,7 @@ export async function searchConsoleReport(conn: { secret: string }, now = new Da
     countries: countries.map(toRow),
     opportunities: findOpportunities(allQueries),
     lowCtr: findLowCtr(allQueries),
+    pageQueries: pairs.map(toPair).filter((p) => p.page && p.query),
   };
 }
 
@@ -266,6 +277,12 @@ export function asGscReport(data: unknown): GscReport | null {
     countries: rowsOf(o.countries),
     opportunities: rowsOf(o.opportunities),
     lowCtr: rowsOf(o.lowCtr),
+    pageQueries: Array.isArray(o.pageQueries)
+      ? o.pageQueries
+          .map(obj)
+          .map((r) => ({ page: String(r.page ?? ""), query: String(r.query ?? ""), clicks: num(r.clicks), impressions: num(r.impressions), position: num(r.position) }))
+          .filter((r) => r.page && r.query)
+      : [],
   };
 }
 

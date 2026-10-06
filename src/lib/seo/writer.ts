@@ -161,7 +161,8 @@ export function stem(word: string): string {
 const tokens = (s: string) => norm(s).split(" ").filter(Boolean);
 /** Palabras con significado (sin palabras vacías ni números sueltos). */
 const meaningful = (s: string) => tokens(s).filter((w) => !STOPWORDS.has(w) && !/^\d+$/.test(w) && w.length > 1);
-const stems = (s: string) => meaningful(s).map(stem);
+/** Raíces de las palabras con significado de un texto. */
+export const stems = (s: string) => meaningful(s).map(stem);
 
 /** ¿El texto contiene la palabra clave? Todas sus palabras con significado, en cualquier orden y aceptando plurales. */
 export function hasKeyword(text: string, keyword: string): boolean {
@@ -182,7 +183,7 @@ function hasPhrase(textStems: string[], phrase: string): boolean {
   return false;
 }
 
-const countWords = (s: string) => s.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+export const countWords = (s: string) => s.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
 
 // ---------- Markdown ----------
 

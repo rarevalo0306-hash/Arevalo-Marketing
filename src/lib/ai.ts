@@ -777,3 +777,67 @@ ${failing.map((f) => `- ${f}`).join("\n") || "- (none: just polish it)"}
 Rewrite the article to fix every problem above. Keep what already works, the same facts and the same language. Return all fields.`;
   return ask(business.aiText ?? "", SeoArticleSchema, seoWriterRules(business, keyword, language, brief), user, 24000);
 }
+
+// ---------- Revisión de páginas: título, descripción y subtítulos para una página que ya existe ----------
+
+const OnPageFixSchema = z.object({
+  title: z.string().describe("SEO title for Google: at most 60 characters, the keyword near the start, then the area or the business name if it fits"),
+  metaDescription: z.string().describe("Meta description: between 120 and 160 characters, includes the keyword, says what the page offers and invites the visitor to call or write"),
+  h1: z.string().describe("Main heading (H1) at the top of the page: includes the keyword, different from the SEO title, under 70 characters"),
+  h2s: z
+    .array(z.string())
+    .describe("3 to 5 subheadings (H2) for the sections this page should have, in order; at least one includes the keyword or a close variation; use the topics and questions given where they fit this business"),
+});
+export type OnPageFix = z.infer<typeof OnPageFixSchema>;
+
+/** Propone título SEO, meta descripción, H1 y subtítulos para una página del sitio, solo con datos reales del negocio. */
+export async function suggestOnPageFix(input: {
+  business: SeoBusiness;
+  keyword: string;
+  language: "es" | "en";
+  /** Zona de Google ("Managua,Nicaragua"). */
+  zone: string;
+  page: { url: string; title: string; metaDescription: string; h1: string; h2s: string[]; words: number };
+  brief: { headings: string[]; questions: string[]; terms: string[]; serpTitles: string[] };
+}): Promise<OnPageFix> {
+  const { business, keyword, language, zone, page, brief } = input;
+  const study = studyContext(business.study);
+  const place = zone.split(",").map((p) => p.trim()).filter((p, i, all) => p && all.indexOf(p) === i).slice(0, 2).join(", ");
+  const list = (items: string[]) => (items.length ? items.map((x) => `- ${x}`).join("\n") : "(none)");
+  const system = `You are a senior SEO specialist for local small businesses. You improve one existing page of the website of "${business.name}"${business.website ? ` (${business.website})` : ""} so it ranks on Google for the search "${keyword}"${place ? ` in ${place}` : ""}.
+
+What the business told you about itself (the ONLY facts you may state about it):
+<business_profile>
+${business.aiProfile.trim() || "(no profile yet — keep statements about the business generic)"}
+</business_profile>
+${study ? `\nMarketing study of this business (strategy only, NOT a source of facts about the business):\n<marketing_study>\n${study}\n</marketing_study>\n` : ""}${business.brandVoice?.trim() ? `\nBrand voice (follow it):\n<brand_voice>\n${business.brandVoice.trim()}\n</brand_voice>\n` : ""}
+Rules:
+- Never invent facts about the business: no prices, discounts, statistics, years of experience, awards, licenses, guarantees, reviews, hours, phone numbers or results unless they appear in the business profile.
+- If the business is a public adjuster or insurance-related: never promise or imply a result, a payout or "more money".
+- Keep what the page is about: improve its current title, description and headings; don't turn it into a different page.
+- Use the keyword naturally, never stuffed. Mention the area where it reads naturally.
+- Plain words a customer understands. No emoji, no markdown, no quotes around the texts.
+- ${language === "es" ? "Write everything in Spanish (the language customers search in), with correct accents, ñ and opening punctuation (¿…?, ¡…!)." : "Write everything in natural US English."}`;
+  const user = `The page now:
+URL: ${page.url}
+SEO title: ${page.title || "(none)"}
+Meta description: ${page.metaDescription || "(none)"}
+H1: ${page.h1 || "(none)"}
+H2 subheadings: ${page.h2s.length ? page.h2s.join(" | ") : "(none)"}
+Words on the page: ${page.words}
+
+Topics the top-ranking pages cover:
+${list(brief.headings)}
+
+Questions people ask on Google:
+${list(brief.questions.slice(0, 6))}
+
+Related terms the winners use:
+${brief.terms.join(", ") || "(none)"}
+
+Titles of the current top results on Google:
+${list(brief.serpTitles.slice(0, 8))}
+
+Write a better SEO title, meta description, H1 and 3 to 5 H2 subheadings for this page.`;
+  return ask(business.aiText ?? "", OnPageFixSchema, system, user, 8000);
+}

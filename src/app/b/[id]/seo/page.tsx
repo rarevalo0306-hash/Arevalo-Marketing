@@ -6,6 +6,7 @@ import { DfsSettingsPanel } from "@/components/seo/DfsSettingsPanel";
 import { GapPanel } from "@/components/seo/GapPanel";
 import { KeywordsPanel } from "@/components/seo/KeywordsPanel";
 import { MapRankPanel } from "@/components/seo/MapRankPanel";
+import { OnPagePanel } from "@/components/seo/OnPagePanel";
 import { RankPanel } from "@/components/seo/RankPanel";
 import { SearchConsolePanel } from "@/components/seo/SearchConsolePanel";
 import { VisibilityPanel } from "@/components/seo/VisibilityPanel";
@@ -41,6 +42,7 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
         <AlertsPanel businessId={id} />
         <CompetitorsPanel businessId={id} />
         <GapPanel businessId={id} />
+        <OnPagePanel businessId={id} />
         <AuditPanel businessId={id} />
         <VisibilityPanel businessId={id} />
         <SearchConsolePanel businessId={id} />
