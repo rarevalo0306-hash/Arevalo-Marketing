@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { deletePost, publishNow, retry } from "@/app/actions";
 import { PageHead } from "@/components/PageHead";
-import { channelDef } from "@/lib/channels";
+import { channelName } from "@/lib/channels";
 import { db } from "@/lib/db";
 import { intlLocale, type UiLang } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
@@ -90,7 +90,7 @@ export default async function HistorialPage({ params, searchParams }: { params: 
                 <div>
                   {p.targets.map((x) => (
                     <div key={x.id} className="target">
-                      <span style={{ fontWeight: 600 }}>{channelDef(x.channel)?.name ?? x.channel}</span>
+                      <span style={{ fontWeight: 600 }}>{channelName(x.channel, lang)}</span>
                       <span className="row">
                         {x.externalUrl && <a href={x.externalUrl} target="_blank" rel="noreferrer" className="small">{t("Ver publicación", "View post")}</a>}
                         <span className={`pill ${x.status}`}>{TARGET_STATUS[lang][x.status] ?? x.status}</span>

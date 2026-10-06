@@ -5,7 +5,8 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Arevalo Marketing",
     short_name: "Marketing",
-    description: "Publica una vez y sale en todos tus canales, con IA.",
+    // El manifiesto no lee la cookie del idioma: la descripción va en los dos idiomas.
+    description: "Publica una vez y sale en todos tus canales, con IA. / Post once and it goes out on all your channels, with AI.",
     start_url: "/",
     display: "standalone",
     background_color: "#0b1220",

@@ -57,7 +57,7 @@ export default async function NegocioPage({ params }: { params: Promise<{ id: st
               <label className="lbl" htmlFor="aiImage">{t("IA para fotos", "AI for photos")}</label>
               <select id="aiImage" name="aiImage" className="field" defaultValue={b.aiImage}>
                 <option value="">{t("Automático", "Automatic")}</option>
-                {availableImage().map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {availableImage().map((p) => <option key={p.id} value={p.id}>{t(p.name, p.nameEn)}</option>)}
               </select>
             </div>
           </div>

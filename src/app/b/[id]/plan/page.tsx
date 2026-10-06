@@ -4,7 +4,7 @@ import { PageHead } from "@/components/PageHead";
 import { PlanForm } from "@/components/PlanForm";
 import { StormForm } from "@/components/StormForm";
 import { aiEnabled } from "@/lib/ai";
-import { CHANNELS, channelDef } from "@/lib/channels";
+import { channelName, CHANNELS } from "@/lib/channels";
 import { db } from "@/lib/db";
 import { intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
@@ -22,7 +22,7 @@ export default async function PlanPage({ params }: { params: Promise<{ id: strin
   const connected = new Set(b.connections.map((c) => c.channel));
   const today = new Date().toLocaleDateString("en-CA", { timeZone: BUSINESS_TZ });
   const nowLocal = `${today}T${new Date().toLocaleTimeString("en-GB", { timeZone: BUSINESS_TZ, hour: "2-digit", minute: "2-digit" })}`;
-  const channelList = CHANNELS.map((c) => ({ id: c.id, name: c.name, connected: connected.has(c.id) }));
+  const channelList = CHANNELS.map((c) => ({ id: c.id, name: channelName(c.id, lang), connected: connected.has(c.id) }));
 
   return (
     <>
@@ -74,7 +74,7 @@ export default async function PlanPage({ params }: { params: Promise<{ id: strin
                   )}
                   {p.targets.map((x) => (
                     <div key={x.id} className="stack" style={{ gap: 4 }}>
-                      <label className="small" style={{ fontWeight: 600 }} htmlFor={`${p.id}-${x.channel}`}>{channelDef(x.channel)?.name ?? x.channel}</label>
+                      <label className="small" style={{ fontWeight: 600 }} htmlFor={`${p.id}-${x.channel}`}>{channelName(x.channel, lang)}</label>
                       <textarea
                         id={`${p.id}-${x.channel}`}
                         name={`v_${x.channel}`}

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { MagicPrompt } from "@/components/MagicPrompt";
 import { aiEnabled } from "@/lib/ai";
-import { CHANNELS, channelDef } from "@/lib/channels";
+import { channelName, CHANNELS } from "@/lib/channels";
 import { db } from "@/lib/db";
 import { ideasFor } from "@/lib/ideas";
 import { intlLocale, type T, type UiLang } from "@/lib/i18n";
@@ -137,7 +137,7 @@ export default async function InicioPage({ params }: { params: Promise<{ id: str
                   )}
                   <span className="recent-text">
                     <span className="recent-title">{p.text.slice(0, 90)}{p.text.length > 90 ? "…" : ""}</span>
-                    <span className="small muted">{p.targets.map((x) => channelDef(x.channel)?.name ?? x.channel).join(" · ")}</span>
+                    <span className="small muted">{p.targets.map((x) => channelName(x.channel, lang)).join(" · ")}</span>
                   </span>
                   <span className={`pill ${p.status}`}>{STATUS[lang][p.status] ?? p.status}</span>
                 </Link>
