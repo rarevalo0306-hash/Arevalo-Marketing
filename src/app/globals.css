@@ -509,3 +509,20 @@ html[data-theme="noche"] .opt.on { background: #2f80ff; border-color: #2f80ff; }
 .rank-top { margin: 0; padding-left: 26px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; overflow-wrap: anywhere; }
 .rank-top li.mine { font-weight: 700; color: var(--teal-text); }
 .rank-top li.mine a { color: inherit; }
+
+/* SEO: competencia */
+.comp-card { display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); min-width: 0; }
+.comp-domain { font-weight: 800; overflow-wrap: anywhere; }
+.comp-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.comp-stats div { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); }
+.comp-stats strong { font: 800 22px/1.1 var(--display); font-variant-numeric: tabular-nums; }
+.comp-top { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.comp-top li { display: flex; justify-content: space-between; gap: 10px; overflow-wrap: anywhere; }
+.comp-top li .muted { white-space: nowrap; }
+.comp-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.comp-meter { flex: 1; min-width: 60px; margin-top: 0; }
+tr.comp-you td { background: var(--brand-soft); }
+.comp-gap { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.comp-gap li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 10px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.comp-gap li:last-child { border-bottom: 0; }
+.comp-notes { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
