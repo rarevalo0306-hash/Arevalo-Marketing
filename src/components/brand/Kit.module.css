@@ -1,0 +1,78 @@
+/* Kit de marca listo para usar. Colores con variables para que se vea bien en Claro, Noche y Vidrio. */
+
+.inlineLink { color: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+
+.form { display: flex; flex-direction: column; gap: 14px; padding: 16px; border: 1px solid var(--line); border-radius: var(--r-md, 12px); background: var(--surface-2); min-width: 0; }
+
+.langs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border: 0; margin: 0; padding: 0; min-width: 0; }
+.langs legend { float: left; margin-right: 6px; padding: 0; }
+.langOpt { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); color: var(--ink); font-size: 14px; font-weight: 600; cursor: pointer; }
+.langOpt input { position: absolute; opacity: 0; pointer-events: none; }
+.langOpt:hover { background: var(--surface-hover); }
+.langOpt:has(input:focus-visible) { outline: 2px solid var(--brand); outline-offset: 2px; }
+.langOn { border-color: var(--brand-2); background: var(--brand-soft); color: var(--ink); box-shadow: inset 0 0 0 1px var(--brand-2); }
+
+.taglines { display: grid; gap: 10px; min-width: 0; }
+.taglines .field { width: 100%; }
+
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+
+.progress { display: inline-flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; color: var(--ink); }
+.spinner { width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--line-strong); border-top-color: var(--brand); animation: spin 0.9s linear infinite; flex-shrink: 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+
+.group { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.groupTitle { font-size: 16px; padding-top: 6px; border-top: 1px solid var(--line); padding-top: 14px; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 14px; }
+
+.item { margin: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r-md, 12px); background: var(--surface); overflow: hidden; min-width: 0; }
+.wide { grid-column: 1 / -1; }
+@media (min-width: 900px) { .wide { flex-direction: row; } .wide > .signature { flex: 1 1 50%; } .wide > .body { flex: 1 1 50%; } }
+
+.preview { display: flex; align-items: center; justify-content: center; height: 190px; padding: 14px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+.preview img { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; display: block; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.checker { background-color: #ffffff; background-image: linear-gradient(45deg, #dfe3ea 25%, transparent 25%), linear-gradient(-45deg, #dfe3ea 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #dfe3ea 75%), linear-gradient(-45deg, transparent 75%, #dfe3ea 75%); background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0; }
+.checker img { box-shadow: none; }
+/* El logo blanco se muestra sobre oscuro para que se vea. */
+.onDark { background-color: #1e293b; background-image: linear-gradient(45deg, #273449 25%, transparent 25%), linear-gradient(-45deg, #273449 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #273449 75%), linear-gradient(-45deg, transparent 75%, #273449 75%); }
+.previewSmall img { max-width: 120px; max-height: 120px; border-radius: 12px; }
+
+.body { display: flex; flex-direction: column; gap: 10px; padding: 14px; flex: 1; min-width: 0; }
+.head { display: flex; flex-direction: column; gap: 2px; }
+.size { font-variant-numeric: tabular-nums; }
+.download { align-self: flex-start; margin-top: auto; }
+
+.howto summary { cursor: pointer; font-size: 14px; font-weight: 700; color: var(--brand-2); display: inline-flex; align-items: center; gap: 6px; min-height: 32px; }
+.howto summary::before { content: "▸"; color: var(--muted); }
+.howto[open] summary::before { content: "▾"; }
+.places { display: flex; flex-direction: column; gap: 10px; padding: 6px 0 2px; }
+.place { font-size: 13.5px; color: var(--ink); }
+.place ol { margin: 4px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 3px; color: var(--ink-2, var(--ink)); }
+
+.sizes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.sizes li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+.sizes li:first-child { border-top: 0; padding-top: 0; }
+.sizeName { display: flex; flex-direction: column; gap: 1px; font-size: 14px; font-weight: 600; min-width: 0; }
+.sizeName > span + span { font-weight: 400; }
+
+.signature { display: flex; align-items: center; justify-content: center; padding: 18px; background: var(--surface-2); border-bottom: 1px solid var(--line); min-width: 0; overflow-x: auto; }
+@media (min-width: 900px) { .wide > .signature { border-bottom: 0; border-right: 1px solid var(--line); } }
+/* La firma se ve como en un correo: siempre sobre blanco. */
+.sigPaper { background: #ffffff; color: #333333; padding: 18px 20px; border-radius: 10px; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12); max-width: 100%; overflow-x: auto; }
+.sigFields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 10px; }
+.sigFields .field { width: 100%; }
+
+/* Noche: los azules de la marca se ven muy oscuros sobre fondo oscuro. */
+:global(html[data-theme="noche"]) .howto summary { color: #6aa8ff; }
+/* Sin los estilos de tabla de la app: la vista previa se ve como en el correo. */
+.sigPaper table { width: auto; font-size: inherit; }
+.sigPaper td { border-bottom: 0; white-space: nowrap; }
+@media (max-width: 520px) {
+  .signature { padding: 10px; }
+  .sigPaper { padding: 12px; }
+  .sigPaper img { width: 92px !important; height: auto !important; }
+}
