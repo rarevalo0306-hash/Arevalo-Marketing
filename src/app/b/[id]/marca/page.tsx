@@ -1,6 +1,10 @@
 import { brandFromAi, brandFromBook, deleteTemplate, generateTemplates, getBrandBookUploadUrl, getUploadUrl, updateBrandKit } from "@/app/actions";
+import { saveBrandLogo } from "@/app/actions-brand";
 import { BrandKitForm } from "@/components/BrandKitForm";
+import { saveCustomTemplate } from "@/app/actions-media";
 import { PageHead } from "@/components/PageHead";
+import { SizesInfo } from "@/components/SizesInfo";
+import { TemplateUpload } from "@/components/TemplateUpload";
 import { TemplatesButton } from "@/components/TemplatesButton";
 import { aiEnabled } from "@/lib/ai";
 import { db } from "@/lib/db";
@@ -8,6 +12,7 @@ import { BUILTIN_TEMPLATES, builtinTemplateName, LAYOUTS } from "@/lib/design-sh
 import type { UiLang } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { usesSupabaseStorage } from "@/lib/media";
+import s from "./marca.module.css";
 
 // La IA puede tardar en diseñar las plantillas.
 export const maxDuration = 120;
@@ -47,8 +52,9 @@ export default async function MarcaPage({ params }: { params: Promise<{ id: stri
         subtitle={t("Logos, colores, letras, voz y plantillas. Todo lo que diseña y escribe la IA para este negocio sale con esta identidad.", "Logos, colors, fonts, voice, and templates. Everything the AI designs and writes for this business uses this identity.")}
       />
       <BrandKitForm
-        kit={{ name: b.name, logoUrl: b.logoUrl, logoLightUrl: b.logoLightUrl, color: b.color, color2: b.color2, color3: b.color3, fontHeading: b.fontHeading, fontBody: b.fontBody, brandVoice: b.brandVoice, hashtags: b.hashtags, phone: b.phone, brandImages: b.brandImages }}
+        kit={{ name: b.name, logoUrl: b.logoUrl, logoLightUrl: b.logoLightUrl, color: b.color, color2: b.color2, color3: b.color3, fontHeading: b.fontHeading, fontBody: b.fontBody, brandVoice: b.brandVoice, hashtags: b.hashtags, phone: b.phone, brandImages: b.brandImages, website: b.website }}
         save={updateBrandKit.bind(null, id)}
+        saveLogo={saveBrandLogo.bind(null, id)}
         upload={usesSupabaseStorage() ? getUploadUrl.bind(null, id) : null}
         brandBook={{
           url: b.brandBookUrl,
@@ -58,7 +64,7 @@ export default async function MarcaPage({ params }: { params: Promise<{ id: stri
         }}
       />
 
-      <section className="card">
+      <section className="card" id="plantillas">
         <div className="row between">
           <div className="stack" style={{ gap: 4 }}>
             <h2>{t("Plantillas de diseño", "Design templates")}</h2>
@@ -70,7 +76,9 @@ export default async function MarcaPage({ params }: { params: Promise<{ id: stri
           </div>
           {aiEnabled() && <TemplatesButton action={generateTemplates.bind(null, id)} has={own.length > 0} />}
         </div>
-        <div className="tpl-grid">
+        <TemplateUpload save={saveCustomTemplate.bind(null, id)} upload={usesSupabaseStorage() ? getUploadUrl.bind(null, id) : null} color={b.color} />
+        <SizesInfo />
+        <div className={`tpl-grid ${s.tplGrid}`}>
           {shown.map((x) => (
             <figure key={x.key} className="tpl">
               {/* eslint-disable-next-line @next/next/no-img-element */}

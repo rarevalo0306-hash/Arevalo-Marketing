@@ -1,0 +1,55 @@
+/* Ideas para hoy: un botón por idea, con el tema y por qué conviene. */
+.wrap { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.title { font-weight: 800; font-size: 14.5px; }
+.hint { font-size: 12.5px; font-weight: 500; }
+.link { font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+.hero .link { color: #c9bfff; }
+.box .link { color: var(--brand-2); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 8px; }
+.mobileOnly { display: none; }
+@media (max-width: 640px) {
+  .collapsed > .item:nth-child(n + 5) { display: none; }
+  .mobileOnly { display: inline-block; }
+}
+
+.item {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; text-align: left;
+  padding: 10px 14px; border-radius: 14px; cursor: pointer; font-family: var(--body);
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.item:disabled { opacity: 0.6; cursor: not-allowed; }
+.topic { font-weight: 700; font-size: 14px; line-height: 1.3; overflow-wrap: anywhere; }
+.topic::before { content: "✦ "; }
+.why { font-weight: 500; font-size: 12.5px; line-height: 1.35; overflow-wrap: anywhere; }
+
+.foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.more {
+  min-height: 38px; padding: 0 14px; border-radius: 999px; cursor: pointer; font: 700 13px var(--body);
+  background: transparent; transition: background 0.15s, border-color 0.15s;
+}
+.more:disabled { opacity: 0.65; cursor: progress; }
+.error { font-size: 13px; font-weight: 600; }
+
+/* Sobre el fondo oscuro del Inicio (igual en los tres temas). */
+.hero .title { color: #fff; }
+.hero .hint { color: #b9c5dc; }
+.hero .item { border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.07); color: #e9eefa; }
+.hero .item:hover:not(:disabled) { background: rgba(255, 255, 255, 0.14); border-color: rgba(255, 255, 255, 0.32); transform: translateY(-1px); }
+.hero .topic::before { color: #b3a6ff; }
+.hero .why { color: #b9c5dc; }
+.hero .more { border: 1px solid rgba(179, 166, 255, 0.55); color: #ddd6ff; }
+.hero .more:hover:not(:disabled) { background: rgba(179, 166, 255, 0.16); }
+.hero .error { color: #ffc0c0; }
+
+/* En la caja de la idea de Publicar (sigue el tema). */
+.box .title { color: var(--ink); }
+.box .hint { color: var(--muted); }
+.box .item { border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); }
+.box .item:hover:not(:disabled) { border-color: var(--line-strong); background: var(--surface-hover); }
+.box .item.on { border-color: var(--brand-2); background: var(--surface-hover); box-shadow: 0 0 0 3px var(--brand-ring); }
+.box .topic::before { color: #7b5cff; }
+.box .why { color: var(--muted); }
+.box .more { border: 1.5px solid var(--line-strong); color: var(--brand-2); background: var(--surface); }
+.box .more:hover:not(:disabled) { background: var(--surface-hover); }
+.box .error { color: var(--err-text); }

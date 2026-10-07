@@ -1,0 +1,9 @@
+/* Las vistas previas de plantillas son imágenes grandes (1080 px): sin esto ensanchan la cuadrícula en tableta. */
+.tplGrid > :global(.tpl) {
+  min-width: 0;
+}
+
+.tplGrid :global(.tpl) img {
+  min-width: 0;
+  max-width: 100%;
+}

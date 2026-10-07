@@ -75,7 +75,7 @@ export async function writeArticle(businessId: string, _prev: WriterResult, f: F
   if (!zone)
     return {
       ok: false,
-      message: t("Primero elige tu zona de Google en SEO y visibilidad (Datos reales de Google) y guarda.", "First pick your Google area in SEO and visibility (Real Google data) and save."),
+      message: t("Primero elige tu zona de Google en SEO y visibilidad, pestaña «⚙ Ajustes», y guarda.", "First pick your Google area in SEO and visibility, “⚙ Settings” tab, and save."),
     };
 
   try {

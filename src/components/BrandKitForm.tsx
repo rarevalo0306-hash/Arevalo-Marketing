@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import type { BrandKitResult } from "@/app/actions";
+import { BrandMockups } from "@/components/BrandMockups";
 import { useT } from "@/components/I18n";
+import f from "./BrandKitForm.module.css";
 
 const FONT_CHOICES = [
   ["montserrat", "Montserrat", "'Montserrat', sans-serif"],
@@ -25,6 +27,7 @@ type Kit = {
   hashtags: string;
   phone: string;
   brandImages: boolean;
+  website?: string;
 };
 
 type Upload = (contentType: string) => Promise<{ uploadUrl: string; publicUrl: string }>;
@@ -33,15 +36,42 @@ type Props = {
   kit: Kit;
   save: (f: FormData) => Promise<void>;
   upload: Upload | null;
+  /** Guarda un logo apenas se sube o se quita (para que no se pierda si no presionan "Guardar la marca"). */
+  saveLogo?: (field: "logoUrl" | "logoLightUrl", url: string) => Promise<{ ok: boolean; message: string }>;
   brandBook: { url: string; upload: Upload | null; read: (url: string) => Promise<BrandKitResult>; suggest: (() => Promise<BrandKitResult>) | null };
 };
 
 const BOOK_TYPES = ["application/pdf", "image/png", "image/jpeg", "image/webp"];
 
-function LogoField({ label, help, value, onChange, upload, dark }: { label: string; help: string; value: string; onChange: (v: string) => void; upload: Props["upload"]; dark?: boolean }) {
+function LogoField({
+  label,
+  help,
+  value,
+  onChange,
+  upload,
+  dark,
+  persist,
+}: {
+  label: string;
+  help: string;
+  value: string;
+  onChange: (v: string) => void;
+  upload: Props["upload"];
+  dark?: boolean;
+  persist?: (url: string) => Promise<{ ok: boolean; message: string }>;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [stored, setStored] = useState(false);
   const { t } = useT();
+  async function keep(url: string) {
+    onChange(url);
+    setStored(false);
+    if (!persist) return;
+    const r = await persist(url);
+    if (r.ok) setStored(true);
+    else setError(r.message);
+  }
   async function onFile(f: File | undefined) {
     setError("");
     if (!f || !upload) return;
@@ -51,7 +81,7 @@ function LogoField({ label, help, value, onChange, upload, dark }: { label: stri
       const { uploadUrl, publicUrl } = await upload(f.type);
       const res = await fetch(uploadUrl, { method: "PUT", headers: { "Content-Type": f.type }, body: f });
       if (!res.ok) throw new Error(await res.text());
-      onChange(publicUrl);
+      await keep(publicUrl);
     } catch (e) {
       setError(`${t("No se pudo subir", "Couldn't upload")}: ${(e as Error).message}`);
     } finally {
@@ -69,12 +99,22 @@ function LogoField({ label, help, value, onChange, upload, dark }: { label: stri
         {upload ? (
           <label className="btn" style={{ cursor: "pointer" }}>
             {busy ? t("Subiendo…", "Uploading…") : value ? t("Cambiar", "Change") : t("Subir", "Upload")}
-            <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(e) => onFile(e.target.files?.[0])} />
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="sr-only"
+              onChange={(e) => {
+                // El logo se guarda solo: no cuenta como "cambio sin guardar" del formulario.
+                if (persist) e.stopPropagation();
+                onFile(e.target.files?.[0]);
+              }}
+            />
           </label>
         ) : (
           <span className="small muted">{t("Subir logos necesita Supabase Storage.", "Uploading logos requires Supabase Storage.")}</span>
         )}
-        {value && <button type="button" className="btn link" onClick={() => onChange("")}>{t("Quitar", "Remove")}</button>}
+        {value && <button type="button" className="btn link" onClick={() => keep("")}>{t("Quitar", "Remove")}</button>}
+        {stored && <span className="pill done">{value ? t("Guardado", "Saved") : t("Quitado", "Removed")}</span>}
       </div>
       <span className="small muted">{help}</span>
       {error && <p className="note error">{error}</p>}
@@ -93,7 +133,7 @@ function BrandSource({ brandBook, onKit }: { brandBook: Props["brandBook"]; onKi
   function done(r: BrandKitResult) {
     if (r.ok) {
       onKit(r.kit);
-      setNote({ ok: true, text: `${r.kit.summary} ${t('Revisa los campos de abajo y presiona "Guardar la marca".', 'Check the fields below and press "Save brand".')}` });
+      setNote({ ok: true, text: `${r.kit.summary} ${t('Mira la maqueta de abajo: si te gusta, presiona "Guardar la marca".', 'Look at the mockup below: if you like it, press "Save brand".')}` });
     } else setNote({ ok: false, text: r.message });
   }
 
@@ -129,7 +169,7 @@ function BrandSource({ brandBook, onKit }: { brandBook: Props["brandBook"]; onKi
   }
 
   return (
-    <section className="card">
+    <section className="card" id="manual">
       <h2>{t("Manual de marca", "Brand book")}</h2>
       <p className="small muted">
         {t(
@@ -140,7 +180,7 @@ function BrandSource({ brandBook, onKit }: { brandBook: Props["brandBook"]; onKi
       <div className="grid-2" style={{ gap: 14 }}>
         <div className="source-option">
           <strong>{t("Subir mi manual de marca", "Upload my brand book")}</strong>
-          <span className="small muted">{t("PDF o imagen. Se guarda aquí para tenerlo siempre a mano.", "PDF or image. It's saved here so you always have it handy.")}</span>
+          <span className="small muted">{t("PDF o imagen (PNG, JPG). Se guarda aquí para tenerlo siempre a mano, y la IA lo lee para llenar tus colores y letras.", "PDF or image (PNG, JPG). It's saved here so you always have it handy, and the AI reads it to fill in your colors and fonts.")}</span>
           {brandBook.upload ? (
             <label className="btn" style={{ cursor: busy ? "wait" : "pointer" }} aria-disabled={Boolean(busy)}>
               {busy === "book" ? t("La IA está leyendo tu manual…", "The AI is reading your brand book…") : bookUrl ? t("Subir otro manual", "Upload another brand book") : t("Subir manual", "Upload brand book")}
@@ -150,7 +190,10 @@ function BrandSource({ brandBook, onKit }: { brandBook: Props["brandBook"]; onKi
             <span className="small muted">{t("Subir archivos necesita Supabase Storage.", "Uploading files requires Supabase Storage.")}</span>
           )}
           {bookUrl && (
-            <a className="small" href={bookUrl} target="_blank" rel="noopener noreferrer">{t("Ver el manual guardado", "View the saved brand book")}</a>
+            <span className={`small ${f.saved}`}>
+              ✓ {t("Manual guardado.", "Brand book saved.")}{" "}
+              <a href={bookUrl} target="_blank" rel="noopener noreferrer">{t("Verlo", "View it")}</a>
+            </span>
           )}
         </div>
         <div className="source-option">
@@ -170,7 +213,7 @@ function BrandSource({ brandBook, onKit }: { brandBook: Props["brandBook"]; onKi
   );
 }
 
-export function BrandKitForm({ kit, save, upload, brandBook }: Props) {
+export function BrandKitForm({ kit, save, upload, brandBook, saveLogo }: Props) {
   const [logo, setLogo] = useState(kit.logoUrl);
   const [logoLight, setLogoLight] = useState(kit.logoLightUrl);
   const [c1, setC1] = useState(kit.color);
@@ -180,7 +223,10 @@ export function BrandKitForm({ kit, save, upload, brandBook }: Props) {
   const [fontBody, setFontBody] = useState(kit.fontBody);
   const [voice, setVoice] = useState(kit.brandVoice);
   const [hashtags, setHashtags] = useState(kit.hashtags);
+  const [phone, setPhone] = useState(kit.phone);
   const [saved, setSaved] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
   const { t } = useT();
   const fontCss = FONT_CHOICES.find(([id]) => id === font)?.[2] ?? "inherit";
 
@@ -197,29 +243,68 @@ export function BrandKitForm({ kit, save, upload, brandBook }: Props) {
         setVoice(k.brandVoice);
         setHashtags(k.hashtags);
         setSaved(false);
+        setDirty(true);
       }}
     />
+    <section className="card" aria-labelledby="mockups-title">
+      <div className="stack" style={{ gap: 4 }}>
+        <h2 id="mockups-title">{t("Así se ve tu marca", "This is how your brand looks")}</h2>
+        <p className="small muted">
+          {t(
+            "Una maqueta con tus colores, letras y logo. Cambia algo abajo y la maqueta se actualiza al momento.",
+            "A mockup with your colors, fonts and logo. Change something below and the mockup updates right away.",
+          )}
+        </p>
+      </div>
+      <BrandMockups
+        brand={{ name: kit.name, logo, logoLight, c1, c2, c3, headingCss: fontCss, bodyFont: fontBody, phone, website: kit.website ?? "", hashtags }}
+      />
+    </section>
     <form
-      action={async (f) => {
-        await save(f);
-        setSaved(true);
+      action={async (fd) => {
+        setSaving(true);
+        try {
+          await save(fd);
+          setSaved(true);
+          setDirty(false);
+        } finally {
+          setSaving(false);
+        }
       }}
       className="stack"
       style={{ gap: 22 }}
-      onChange={() => setSaved(false)}
+      onChange={() => {
+        setSaved(false);
+        setDirty(true);
+      }}
     >
       <input type="hidden" name="logoUrl" value={logo} />
       <input type="hidden" name="logoLightUrl" value={logoLight} />
 
-      <section className="card">
+      <section className="card" id="logos">
         <h2>Logos</h2>
         <div className="grid-2" style={{ gap: 18 }}>
-          <LogoField label={t("Logo principal", "Main logo")} help={t("Para fondos claros. Mejor en PNG con fondo transparente.", "For light backgrounds. Best as a PNG with a transparent background.")} value={logo} onChange={setLogo} upload={upload} />
-          <LogoField label={t("Logo blanco (opcional)", "White logo (optional)")} help={t("Para fondos oscuros y fotos. Si no lo tienes, se usa el principal en una tarjeta blanca.", "For dark backgrounds and photos. If you don't have one, the main logo is used on a white card.")} value={logoLight} onChange={setLogoLight} upload={upload} dark />
+          <LogoField
+            label={t("Logo principal", "Main logo")}
+            help={t("Para fondos claros. Mejor en PNG con fondo transparente. Se guarda apenas lo subes.", "For light backgrounds. Best as a PNG with a transparent background. It's saved as soon as you upload it.")}
+            value={logo}
+            onChange={setLogo}
+            upload={upload}
+            persist={saveLogo && ((url) => saveLogo("logoUrl", url))}
+          />
+          <LogoField
+            label={t("Logo blanco (opcional)", "White logo (optional)")}
+            help={t("Para fondos oscuros y fotos. Si no lo tienes, se usa el principal en una tarjeta blanca.", "For dark backgrounds and photos. If you don't have one, the main logo is used on a white card.")}
+            value={logoLight}
+            onChange={setLogoLight}
+            upload={upload}
+            dark
+            persist={saveLogo && ((url) => saveLogo("logoLightUrl", url))}
+          />
         </div>
       </section>
 
-      <section className="card">
+      <section className="card" id="colores">
         <h2>{t("Colores", "Colors")}</h2>
         <div className="swatches">
           {([["color", t("Principal", "Primary"), c1, setC1], ["color2", t("Secundario", "Secondary"), c2, setC2], ["color3", t("Acento", "Accent"), c3, setC3]] as const).map(([name, label, value, set]) => (
@@ -236,7 +321,7 @@ export function BrandKitForm({ kit, save, upload, brandBook }: Props) {
         <div className="brand-bar" style={{ background: `linear-gradient(90deg, ${c1}, ${c2} 60%, ${c3})` }} />
       </section>
 
-      <section className="card">
+      <section className="card" id="letras">
         <h2>{t("Letras", "Fonts")}</h2>
         <div className="grid-2" style={{ gap: 18 }}>
           <div className="stack" style={{ gap: 6 }}>
@@ -267,11 +352,11 @@ export function BrandKitForm({ kit, save, upload, brandBook }: Props) {
         <div className="grid-2" style={{ gap: 18 }}>
           <div className="stack" style={{ gap: 6 }}>
             <label className="lbl" htmlFor="hashtags">{t("Hashtags de la marca", "Brand hashtags")}</label>
-            <input id="hashtags" name="hashtags" className="field" value={hashtags} onChange={(e) => setHashtags(e.target.value)} placeholder="#RicardoPublicAdjusters #Miami" />
+            <input id="hashtags" name="hashtags" className="field" value={hashtags} onChange={(e) => setHashtags(e.target.value)} placeholder={t("Ej.: #TuNegocio #TuCiudad", "E.g.: #YourBusiness #YourCity")} />
           </div>
           <div className="stack" style={{ gap: 6 }}>
             <label className="lbl" htmlFor="phone">{t("Teléfono en los diseños", "Phone number on designs")}</label>
-            <input id="phone" name="phone" className="field" defaultValue={kit.phone} placeholder="305-394-8090" />
+            <input id="phone" name="phone" className="field" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t("Ej.: +505 8888 1234", "E.g.: 305-394-8090")} />
           </div>
         </div>
         <label className="check">
@@ -283,9 +368,10 @@ export function BrandKitForm({ kit, save, upload, brandBook }: Props) {
         </label>
       </section>
 
-      <div className="row">
-        <button className="btn on" type="submit">{t("Guardar la marca", "Save brand")}</button>
+      <div className={`row ${f.saveBar}${dirty ? ` ${f.dirty}` : ""}`}>
+        <button className="btn on" type="submit" disabled={saving}>{saving ? t("Guardando…", "Saving…") : t("Guardar la marca", "Save brand")}</button>
         {saved && <span className="pill done">{t("Guardado", "Saved")}</span>}
+        {dirty && !saving && <span className={f.unsaved}>{t("Tienes cambios sin guardar.", "You have unsaved changes.")}</span>}
       </div>
     </form>
     </>

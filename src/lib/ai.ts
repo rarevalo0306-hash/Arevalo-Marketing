@@ -7,7 +7,8 @@ import type { ChannelId } from "@/lib/channels";
 import { FONTS, TemplateSpec } from "@/lib/design-shapes";
 import { bi, errorText, type UiLang } from "@/lib/i18n";
 import { finishReply, firstName, type GbpReview, replyLanguage, replySignature } from "@/lib/seo/gbp-shared";
-import { GOALS, htmlToText, type Interview, InterviewSchema, type SavedStudy, type StudyInput, StudySchema, type StudySource, studyContext } from "@/lib/study-shape";
+import { customersText, GOALS, type Interview, InterviewSchema, jsonSafe, type SavedStudy, type StudyInput, StudySchema, type StudySource, studyContext, type WebProfile, WebProfileSchema } from "@/lib/study-shape";
+import { readWebsite, type SiteRead, siteDigest } from "@/lib/study-web";
 
 export const TEXT_PROVIDERS = [
   { id: "gemini", name: "Google Gemini", env: "GEMINI_API_KEY" },
@@ -44,7 +45,7 @@ const PostSchema = z.object({
   seoTitle: z.string().describe("Website article title under 60 characters, in Spanish"),
   imageSteps: z.array(z.string()).describe("If the post is a how-to, up to 3 very short steps (max 6 words each) for a list image, in the post's main language; otherwise an empty list"),
   imageHeadline: z.string().describe("Headline printed on the post image: 3 to 7 words, in the post's main language (Spanish if bilingual), no hashtags, no emoji, no phone numbers"),
-  imageIdea: z.string().describe("In English: a one-sentence description of a photo that would fit this post (no text in the image, no logos, no real people's faces)"),
+  imageIdea: z.string().describe("In English, 1-2 sentences: a realistic photo that fits this post, as a photographer would brief it — the main subject, the place (a real-looking local setting in the business's area), time of day and light, and the camera angle; simple composition with calm space for a headline. No text, signs or logos in the image, no real people's faces, nothing staged or fake-looking"),
 });
 export type AiPost = z.infer<typeof PostSchema>;
 
@@ -220,18 +221,68 @@ export async function writePost(
   business: BusinessAi,
   idea: string,
   lang: Lang,
-): Promise<AiPost> {
-  return ask(business.aiText ?? "", PostSchema, rules(business, lang), `Write one post about this idea, with a version for each channel:\n\n${idea}`);
+  opts: { avoid?: string[]; bilingual?: boolean } = {},
+): Promise<AiPostOut> {
+  const user = `Write one post about this idea, with a version for each channel:\n\n${idea}\n${noRepeat(opts.avoid ?? [])}`;
+  // Facebook e Instagram en dos idiomas: la IA escribe también la otra versión y el compositor las une.
+  if (opts.bilingual && lang !== "both") {
+    const other = lang === "en" ? "Spanish (with correct accents)" : "English";
+    const schema = PostSchema.extend({
+      facebookOther: z.string().describe(`The same Facebook post written naturally in ${other} (not a word-by-word translation), without hashtags`),
+      instagramOther: z.string().describe(`The same Instagram caption written naturally in ${other}, without hashtags (they are already in the main version)`),
+    });
+    const extra = `\n- Facebook and Instagram will be published in both languages (main version + ${other} version below it), so keep each language version short: Instagram under 900 characters per language.`;
+    return ask(business.aiText ?? "", schema, rules(business, lang) + extra, user);
+  }
+  return ask(business.aiText ?? "", PostSchema, rules(business, lang), user);
+}
+
+/** Lo que devuelve writePost: con dos idiomas, también la otra versión de Facebook e Instagram. */
+export type AiPostOut = AiPost & { facebookOther?: string; instagramOther?: string };
+
+/** Estilos para empezar una publicación; se elige uno distinto cada vez para no repetir el mismo gancho. */
+const HOOKS = [
+  "a direct, useful tip in the first line",
+  "a short real-life scene the reader recognizes (no question mark in the first line)",
+  "a common myth followed by the truth",
+  "a short numbered checklist",
+  "a surprising but true general fact (never a statistic about the business)",
+  "a local angle that names the area served",
+  "a question a customer often asks, answered right away",
+  "a before / after contrast",
+  "a clear benefit stated in one short sentence",
+] as const;
+
+/** Instrucción para no repetir: los comienzos de las últimas publicaciones y un estilo de gancho distinto. */
+export function noRepeat(recent: string[], pick = Math.random()): string {
+  const openings = recent.map((r) => r.replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, 15);
+  // Si varias de las últimas empezaron con pregunta, esta no.
+  const questions = openings.slice(0, 5).filter((o) => /^¿|\?$/.test(o)).length;
+  const styles = HOOKS.filter((h) => !(questions >= 2 && h.includes("question")));
+  const hook = styles[Math.floor(pick * styles.length) % styles.length];
+  return `
+Never repeat yourself:
+- Start with ${hook}.
+- Every post must feel new: a different opening line, a different hook and a different angle from the recent posts.${
+    openings.length
+      ? `\n- Recent posts of this business started like this. Do NOT reuse these openings, hooks, phrases or the same topic angle:\n${openings.map((o) => `  • ${o}`).join("\n")}`
+      : ""
+  }`;
 }
 
 /** Plan de publicaciones para una semana. */
 export async function planWeek(
   business: BusinessAi,
-  opts: { startDate: string; count: number; themes: string; lang: Lang },
+  opts: { startDate: string; count: number; themes: string; lang: Lang; avoid?: string[] },
 ): Promise<AiPlan> {
   const user = `Plan ${opts.count} posts for the 7 days starting ${opts.startDate}. Spread them across different days and vary the topics (education, tips, seasonal risks, trust-building, a clear invitation to contact the business).
 ${opts.themes.trim() ? `The owner wants these themes included: ${opts.themes.trim()}` : ""}
-Write the full post for each one, with a version for each channel.`;
+Write the full post for each one, with a version for each channel.
+Every post in the plan must start differently (mix tips, short scenes, myths vs. truth, checklists, local angles, answered questions; at most one post may open with a question).${
+    opts.avoid?.length
+      ? `\nRecent posts of this business started like this. Do NOT reuse these openings, hooks or angles:\n${opts.avoid.slice(0, 15).map((o) => `- ${o}`).join("\n")}`
+      : ""
+  }`;
   return ask(business.aiText ?? "", PlanSchema, rules(business, opts.lang), user, 32000);
 }
 
@@ -270,6 +321,9 @@ export function toPostFields(p: AiPost): { text: string; subject: string; seoTit
       sms: p.sms,
       email: p.email,
       seo: p.facebook,
+      // LinkedIn acepta textos largos; X solo 280 caracteres: va el texto corto (el de SMS, máx. 160).
+      linkedin: p.facebook,
+      x: p.sms,
     },
   };
 }
@@ -396,7 +450,8 @@ async function researchMarket(business: BusinessAi, input: StudyInput, provider:
 Business: ${business.name}${business.website ? ` (${business.website})` : ""}
 What it sells: ${input.services || business.aiProfile.slice(0, 1500)}
 Area served: ${input.zone || "(not given)"}
-Customers: ${input.customers || "(not given)"}
+Customers (most important first):
+${customersText(input) || "(not given)"}
 Competitors the owner named: ${input.competitors || "(none)"}
 ${answersText(input) ? `More details from the owner:\n${answersText(input)}\n` : ""}
 Find and report:
@@ -412,16 +467,40 @@ Find and report:
   return { notes: r.notes.slice(0, 20000), sources };
 }
 
-/** Lee el texto de la página web del negocio (si falla, sigue sin él). */
-async function websiteText(url: string): Promise<string> {
-  if (!/^https?:\/\//.test(url)) return "";
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(10000), headers: { "User-Agent": "Mozilla/5.0 (compatible; ArevaloMarketing/1.0)" } });
-    if (!res.ok || !(res.headers.get("content-type") ?? "").includes("html")) return "";
-    return htmlToText(await res.text());
-  } catch {
-    return "";
-  }
+/** Lee el texto de la página web del negocio: inicio y unas páginas internas (si falla, sigue sin él). */
+async function websiteText(url: string, maxPages = 4): Promise<string> {
+  return siteDigest(await readWebsite(url, { maxPages, totalMs: 20_000 }), 12_000);
+}
+
+/**
+ * Paso 1 del estudio: la IA lee la página web (y el perfil guardado) y sugiere lo que vende el negocio,
+ * dónde trabaja, sus clientes ideales con prioridad, el idioma de sus clientes y su meta. El dueño solo revisa.
+ */
+export async function profileFromWebsite(business: BusinessAi, site: SiteRead, lang: UiLang = "es"): Promise<WebProfile> {
+  const system = `You are a local marketing consultant. You read a small business's own website and its current profile and fill in a short intake form so the owner doesn't have to type it. The owner will review it.
+Rules:
+- Facts (services, area served, contact details, languages, credentials) come ONLY from the website text and the current profile. Never invent prices, years, reviews, licenses or results.
+- Area served: copy what the site says (cities, counties, state, "all of Florida"...). Look at the service area, contact and footer text.
+- Customers: think of every kind of customer that hires this type of business in that area (e.g. for a public adjuster: homeowners, condo associations, property management companies, landlords, business owners, contractors who refer clients). Most important first.
+- If the business is a public adjuster or insurance-related: never promise or imply a payout, a percentage or "more money".
+${lang === "en" ? OWNER_ENGLISH : "- Spanish text must use correct accents and punctuation."}
+- No markdown.`;
+  const user = `Business: ${business.name}${business.website ? ` (${business.website})` : ""}
+Website language attribute: ${site.lang || "(unknown)"}
+
+Current profile:
+<profile>
+${business.aiProfile.trim().slice(0, 4000) || "(empty)"}
+</profile>
+
+Website pages:
+<website>
+${siteDigest(site) || "(not available)"}
+</website>
+
+Fill in the intake form.`;
+  const r = await ask(business.aiText ?? "", WebProfileSchema, system, user, 6000);
+  return { ...r, customers: r.customers.slice(0, 8) };
 }
 
 /** Antes del estudio, la IA lee lo básico y prepara preguntas a la medida del negocio, con respuestas para tocar. */
@@ -430,19 +509,32 @@ export async function interviewQuestions(business: BusinessAi, input: StudyInput
   const system = `You are a friendly local marketing consultant interviewing a small business owner before writing their marketing strategy.
 Ask only what you need to understand what to advertise, to whom and where: the specific products or services and which sell best, the cities or neighborhoods, the type of customer, how customers contact them, what they offer that others don't (warranty, speed, financing, free quote, experience), price level, busy seasons.
 Rules:
-- Do not ask what the owner already answered or what the website already says.
+- Do not ask what the owner already answered or what the website or profile already says: never ask again what it sells, where it works, who its customers are or which language they speak. Ask only about what is missing or unclear.
 - Make the options specific to this kind of business and this area (real city names, real product types), so the owner can answer by tapping.
 ${lang === "en" ? `- Short, plain English. No markdown.\n${OWNER_ENGLISH}` : "- Short, plain Spanish with correct accents, using tú. No markdown."}`;
   const user = `Business: ${business.name}${business.website ? ` (${business.website})` : ""}
 What it sells: ${input.services || "(not answered)"}
 Area: ${input.zone || "(not answered)"}
-Ideal customers: ${input.customers || "(not answered)"}
+Ideal customers (most important first):
+${customersText(input) || "(not answered)"}
+Customers speak: ${{ es: "Spanish", en: "English", both: "Spanish and English" }[input.lang]}
 Current profile: ${business.aiProfile.trim().slice(0, 1500) || "(empty)"}
 Website text: ${site.slice(0, 4000) || "(not available)"}
 
 Write 4 to 6 questions.`;
   const r = await ask(business.aiText ?? "", InterviewSchema, system, user, 4000);
   return { questions: r.questions.slice(0, 6).map((q) => ({ ...q, options: q.options.slice(0, 8) })) };
+}
+
+const RESEARCH_MS = 150_000;
+
+/** La promesa, o el error de `fail` si tarda más de `ms`. */
+function withLimit<T>(p: Promise<T>, ms: number, fail: () => Error): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(fail()), ms);
+  });
+  return Promise.race([p, limit]).finally(() => clearTimeout(timer));
 }
 
 /** Estudio del negocio: perfil, público, mercado local, palabras clave SEO, anuncios e ideas de campaña. */
@@ -457,7 +549,8 @@ export async function studyBusiness(
   const [site, research] = await Promise.all([
     websiteText(business.website),
     provider
-      ? researchMarket(business, input, provider).catch((e: unknown) => {
+      ? // Tiempo máximo para la investigación: así queda tiempo para escribir y guardar el estudio antes del límite del servidor.
+        withLimit(researchMarket(business, input, provider), RESEARCH_MS, () => bi("la investigación tardó demasiado", "the research took too long")).catch((e: unknown) => {
           // Si la investigación falla, el estudio se hace igual con lo que sabe la IA, y se le avisa al dueño por qué.
           console.error("Investigación del estudio falló:", e);
           researchError = errorText(e, uiLang);
@@ -480,7 +573,8 @@ Main goal: ${goal}
 
 Owner's answers:
 - What it sells: ${input.services || "(not answered)"}
-- Ideal customers: ${input.customers || "(not answered)"}
+- Ideal customers, in the owner's order of priority (most important first):
+${customersText(input) || "(not answered)"}
 - Area served: ${input.zone || "(not answered)"}
 - Competitors: ${input.competitors || "(not answered)"}
 - What makes it different: ${input.different || "(not answered)"}
@@ -502,7 +596,7 @@ ${research?.notes || "(no web research)"}
 
 Write the full marketing study.`;
   const study = await ask(business.aiText ?? "", StudySchema, system, user, 20000);
-  return { study: { ...study, sources: research?.sources ?? [], researched: Boolean(research?.notes) }, researchError };
+  return { study: jsonSafe({ ...study, sources: research?.sources ?? [], researched: Boolean(research?.notes) }), researchError };
 }
 
 // ---------- Visibilidad en IA ----------

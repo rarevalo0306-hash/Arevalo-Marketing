@@ -24,7 +24,8 @@ export type SeoKind =
   | "cannibal"
   | "decay"
   | "outreach"
-  | "schema";
+  | "schema"
+  | "setup";
 
 export async function saveReport(businessId: string, kind: SeoKind, data: Prisma.InputJsonValue) {
   return db.seoReport.create({ data: { businessId, kind, data } });

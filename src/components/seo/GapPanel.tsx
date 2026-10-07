@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { trackGapKeyword } from "@/app/actions-seo-competitors";
 import { runGap } from "@/app/actions-seo-gap";
+import { AiPromptButton } from "@/components/seo/AiPromptButton";
 import { GapButton } from "@/components/seo/GapButton";
 import { GapTable } from "@/components/seo/GapTable";
 import { HowToRead } from "@/components/seo/HowToRead";
@@ -10,6 +11,8 @@ import { getT } from "@/lib/i18n-server";
 import { normalizeDomain, readCompetitorsReport } from "@/lib/seo/competitors";
 import { dataForSeoEnabled, readTrackedKeywords, readZones } from "@/lib/seo/dataforseo";
 import { businessTopicVocab, gapCostEstimate, gbpCategory, pickGapCompetitors, readGapReport, splitGapRows } from "@/lib/seo/gap";
+import { loadPromptContext } from "@/lib/seo/prompt-context";
+import { gapPrompt } from "@/lib/seo/prompts";
 import { latestReports } from "@/lib/seo/reports";
 import { BUSINESS_TZ } from "@/lib/time";
 
@@ -73,6 +76,7 @@ export async function GapPanel({ businessId }: { businessId: string }) {
   const fmt = new Intl.DateTimeFormat(intlLocale(lang), { dateStyle: "long", timeStyle: "short", timeZone: BUSINESS_TZ });
   const money = new Intl.NumberFormat(intlLocale(lang), { style: "currency", currency: "USD", maximumFractionDigits: 3 });
   // Si cambió la competencia desde la última corrida, se avisa para que actualice.
+  const ctx = split.relevant.length ? await loadPromptContext(businessId) : null;
   const changed = report && (report.competitors.length !== competitors.length || competitors.some((c) => !report.competitors.includes(c)));
 
   return (
@@ -141,6 +145,15 @@ export async function GapPanel({ businessId }: { businessId: string }) {
               <li>{t("Solo mostramos búsquedas que tienen que ver con lo que vendes (según tus palabras clave y tu estudio). Las demás las puedes ver con «Mostrarlas igual».", "We only show searches related to what you sell (based on your keywords and your study). You can see the rest with “Show them anyway”.")}</li>
             </ul>
           </HowToRead>
+          {ctx && (
+            <AiPromptButton
+              text={gapPrompt(ctx, split.relevant, lang)}
+              hint={t(
+                "Las mejores oportunidades: qué páginas o artículos crear (o mejorar) y para qué búsqueda.",
+                "The best opportunities: which pages or articles to create (or improve) and for which search.",
+              )}
+            />
+          )}
         </>
       )}
     </section>

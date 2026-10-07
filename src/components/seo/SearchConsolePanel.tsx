@@ -205,8 +205,16 @@ export async function SearchConsolePanel({ businessId }: { businessId: string })
       <section className="card">
         {head}
         {notice}
+        <p className="small">
+          {t(
+            "Todavía no está conectado. Al conectarlo verás con qué búsquedas te encuentran en Google y qué páginas pierden visitas. Es gratis: entras con tu cuenta de Google.",
+            "It isn't connected yet. Once connected you'll see which searches people find you with on Google and which pages are losing visits. It's free: you sign in with your Google account.",
+          )}
+        </p>
         <div>
-          <a className="btn on" href={`/api/gsc/start?b=${id}`}>{t("Conectar Search Console", "Connect Search Console")}</a>
+          <Link className="btn on" href={`/b/${id}/conexiones#c-gsc`}>
+            {t("Conectar en Conexiones →", "Connect in Connections →")}
+          </Link>
         </div>
         {!business?.website.trim() && (
           <p className="note">
@@ -215,28 +223,6 @@ export async function SearchConsolePanel({ businessId }: { businessId: string })
             {t(" para que la app encuentre tu sitio en Search Console sola.", " so the app can find your site in Search Console automatically.")}
           </p>
         )}
-        <div className="stack" style={{ gap: 6 }}>
-          <strong className="small">{t("Antes de conectar:", "Before you connect:")}</strong>
-          <ul className="small muted gsc-help">
-            <li>
-              {t("Tu página tiene que estar agregada y verificada en ", "Your website must be added and verified in ")}
-              <a href="https://search.google.com/search-console" target="_blank" rel="noopener noreferrer">Search Console</a>
-              {t(" con la misma cuenta de Google con la que vas a entrar.", " with the same Google account you'll sign in with.")}
-            </li>
-            <li>
-              {t(
-                "En Google Cloud, en el mismo proyecto de GOOGLE_CLIENT_ID, activa la \"Google Search Console API\".",
-                "In Google Cloud, in the same project as GOOGLE_CLIENT_ID, turn on the \"Google Search Console API\".",
-              )}
-            </li>
-            <li>
-              {t(
-                "Si la pantalla de permisos (OAuth consent screen) está en modo de prueba, agrega tu correo como usuario de prueba. En ese modo Google vence el permiso cada 7 días.",
-                "If the OAuth consent screen is in testing mode, add your email as a test user. In that mode Google expires access every 7 days.",
-              )}
-            </li>
-          </ul>
-        </div>
       </section>
     );
 

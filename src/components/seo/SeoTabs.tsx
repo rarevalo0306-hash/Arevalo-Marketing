@@ -4,7 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useT } from "@/components/I18n";
 import styles from "./SeoTabs.module.css";
 
-export type SeoTab = { id: string; label: string; hint: string; content: React.ReactNode };
+/** hint: qué hay en la pestaña (se ve al pasar el ratón por encima). */
+export type SeoTab = { id: string; label: string; hint?: string; content: React.ReactNode };
 
 /** La pestaña que contiene el elemento con ese id (ej. "posiciones" → "google"). */
 function tabOf(id: string): string | null {
@@ -62,6 +63,15 @@ export function SeoTabs({ tabs, initial }: { tabs: SeoTab[]; initial: string }) 
     requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }, [active, target]);
 
+  // En el celular la barra se desliza de lado: que la pestaña abierta quede a la vista (sin mover la página).
+  useEffect(() => {
+    const bar = barRef.current;
+    const btn = bar?.querySelector<HTMLElement>(`#tab-${CSS.escape(active)}`);
+    if (!bar || !btn || bar.scrollWidth <= bar.clientWidth) return;
+    const left = bar.scrollLeft + btn.getBoundingClientRect().left - bar.getBoundingClientRect().left - (bar.clientWidth - btn.offsetWidth) / 2;
+    bar.scrollTo({ left: Math.max(0, left), behavior: "smooth" });
+  }, [active]);
+
   const pick = (id: string) => {
     setActive(id);
     const url = new URL(window.location.href);
@@ -72,7 +82,6 @@ export function SeoTabs({ tabs, initial }: { tabs: SeoTab[]; initial: string }) 
     if (bar && bar.getBoundingClientRect().top < 0) bar.scrollIntoView({ block: "start" });
   };
 
-  const first = tabs[0];
   return (
     <div className={styles.root}>
       <div ref={barRef} className={styles.bar} role="tablist" aria-label={t("Secciones de SEO", "SEO sections")}>
@@ -86,6 +95,7 @@ export function SeoTabs({ tabs, initial }: { tabs: SeoTab[]; initial: string }) 
             aria-controls={`panel-${x.id}`}
             className={`${styles.tab}${active === x.id ? ` ${styles.on}` : ""}`}
             onClick={() => pick(x.id)}
+            title={x.hint || undefined}
           >
             {x.label}
           </button>
@@ -102,19 +112,6 @@ export function SeoTabs({ tabs, initial }: { tabs: SeoTab[]; initial: string }) 
           style={{ gap: 22, display: active === x.id ? undefined : "none" }}
         >
           {x.content}
-          {x.id === first.id && (
-            <section className="card stack" style={{ gap: 12 }}>
-              <h2>{t("Qué hay en cada pestaña", "What's in each tab")}</h2>
-              <div className={styles.grid}>
-                {tabs.slice(1).map((y) => (
-                  <button key={y.id} type="button" className={styles.tile} onClick={() => pick(y.id)}>
-                    <strong>{y.label} →</strong>
-                    <span className="small muted">{y.hint}</span>
-                  </button>
-                ))}
-              </div>
-            </section>
-          )}
         </div>
       ))}
     </div>

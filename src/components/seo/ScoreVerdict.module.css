@@ -1,0 +1,19 @@
+/* La nota de 0 a 100 con su veredicto (Excelente, Bien, Regular, Urgente) y la escala. */
+.verdict { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 14px; line-height: 1.4; }
+.head :global(.pill) { font-size: 13px; padding: 4px 12px; }
+.scale { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.scale li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--muted);
+  background: var(--surface);
+}
+.scale li.on { border-color: var(--ink); color: var(--ink); font-weight: 700; }
+.scale b { font-weight: 700; }

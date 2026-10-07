@@ -720,3 +720,4 @@ textarea.field.gbp-reply { min-height: 120px; width: 100%; }
 /* Noche: el azul de los enlaces (#126bbc) casi no se lee sobre fondo oscuro */
 html[data-theme="noche"] a:not([class]), html[data-theme="noche"] .btn.link { color: #6aa8ff; }
 html[data-theme="noche"] .btn.outline { color: #6aa8ff; border-color: #4d8fe8; }
+html[data-theme="noche"] .pill.scheduled, html[data-theme="noche"] .ai-box .lbl { color: #8fb6ff; }

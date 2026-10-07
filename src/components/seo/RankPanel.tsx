@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { runRankCheck } from "@/app/actions-seo-rank";
+import { AiPromptButton } from "@/components/seo/AiPromptButton";
 import { HowToRead } from "@/components/seo/HowToRead";
 import { capClass, Fold } from "@/components/seo/Fold";
 import { RankButton } from "@/components/seo/RankButton";
@@ -11,6 +12,8 @@ import { getT } from "@/lib/i18n-server";
 import { dataForSeoEnabled, type Zone, zoneLabel } from "@/lib/seo/dataforseo";
 import { compareRuns, RANK_COST_PER_KEYWORD, RANK_DEPTH, rankSetup, readRankReport, type Change, type RankReport, type RankRow } from "@/lib/seo/rank";
 import { positionText, rowAdvice, VERDICTS } from "@/lib/seo/plain";
+import { loadPromptContext } from "@/lib/seo/prompt-context";
+import { rankItems, rankPrompt } from "@/lib/seo/prompts";
 import { latestReports } from "@/lib/seo/reports";
 import { groupByZone } from "@/lib/seo/zones";
 import { BUSINESS_TZ } from "@/lib/time";
@@ -98,7 +101,7 @@ export async function RankPanel({ businessId }: { businessId: string }) {
   const { lang, t } = await getT();
   const b = await db.business.findUnique({
     where: { id: businessId },
-    select: { website: true, seoLocations: true, seoLocationCode: true, seoLocationName: true, seoKeywords: true, seoDaily: true },
+    select: { website: true, seoLocations: true, seoLocationCode: true, seoLocationName: true, seoKeywords: true, seoDaily: true, seoRankDays: true },
   });
   if (!b) return null;
   const setup = rankSetup(b);
@@ -108,8 +111,8 @@ export async function RankPanel({ businessId }: { businessId: string }) {
       <h2>{t("Tus posiciones en Google", "Your Google rankings")}</h2>
       <p className="small muted">
         {t(
-          "En qué lugar sales en Google para cada palabra clave que sigues, si apareces en el mapa y quién está arriba de ti.",
-          "Where you show up on Google for each keyword you track, whether you're on the map, and who is above you.",
+          "Para cada búsqueda que sigues: en qué lugar sale tu página en Google (1 = el primero), si sales entre los 3 negocios del mapa y quién está arriba de ti.",
+          "For each search you track: where your website shows up on Google (1 = first), whether you're among the 3 businesses on the map, and who is above you.",
         )}
       </p>
     </div>
@@ -186,6 +189,11 @@ export async function RankPanel({ businessId }: { businessId: string }) {
   };
 
   const pick = (x: { es: string; en: string }) => (lang === "en" ? x.en : x.es);
+  // Cada cuántos días se revisa sola (1, 7, 15 o 30).
+  const days = [1, 7, 15, 30].includes(b.seoRankDays) ? b.seoRankDays : 7;
+  const every = days === 1 ? { es: "cada día", en: "every day" } : { es: `cada ${days} días`, en: `every ${days} days` };
+  // Las búsquedas donde casi nadie te encuentra, como instrucciones para la IA de la página.
+  const ctx = report && rankItems(report, b.website, lang).length ? await loadPromptContext(businessId) : null;
   const writeHref = (kw: string) => `/b/${businessId}/seo/escribir?kw=${encodeURIComponent(kw)}`;
 
   /** Posición en Google y en el mapa, en palabras: "2° en Google ▲1" / "📍 3° en el mapa". */
@@ -286,7 +294,11 @@ export async function RankPanel({ businessId }: { businessId: string }) {
             {" · "}
           </>
         ) : null}
-        <span className={`pill ${b.seoDaily ? "done" : "draft"}`}>{b.seoDaily ? t("Revisión diaria encendida", "Daily check on") : t("Revisión diaria apagada", "Daily check off")}</span>
+        <span className={`pill ${b.seoDaily ? "done" : "draft"}`}>
+          {b.seoDaily
+            ? t(`Revisión automática encendida (${every.es})`, `Automatic check on (${every.en})`)
+            : t("Revisión automática apagada", "Automatic check off")}
+        </span>
       </p>
       <RankButton action={runRankCheck.bind(null, businessId)} keywords={setup.keywords.length} zones={zones.length} perKeyword={RANK_COST_PER_KEYWORD} has={latest.length > 0} />
 
@@ -294,8 +306,8 @@ export async function RankPanel({ businessId }: { businessId: string }) {
         (saved.length === 0 ? (
           <p className="small muted">
             {t(
-              "Todavía no has revisado tus posiciones. Presiona el botón, o enciende la revisión diaria en la pestaña «⚙ Ajustes» para que se haga sola cada día.",
-              "You haven't checked your rankings yet. Press the button, or turn on the daily check in the “⚙ Settings” tab so it runs on its own every day.",
+              "Todavía no has revisado tus posiciones. Presiona el botón, o enciende la revisión automática en la pestaña «⚙ Ajustes» para que se haga sola.",
+              "You haven't checked your rankings yet. Press the button, or turn on the automatic check in the “⚙ Settings” tab so it runs on its own.",
             )}
           </p>
         ) : parsed.some(Boolean) ? (
@@ -495,6 +507,15 @@ export async function RankPanel({ businessId }: { businessId: string }) {
               ) : null,
             )}
           </Fold>
+          {ctx && report && (
+            <AiPromptButton
+              text={rankPrompt(ctx, report, lang)}
+              hint={t(
+                "Para las búsquedas donde no sales o sales lejos: qué página mejorar o crear y cómo.",
+                "For the searches where you don't show up or rank far down: which page to improve or create, and how.",
+              )}
+            />
+          )}
         </>
       )}
     </section>

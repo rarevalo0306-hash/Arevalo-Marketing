@@ -56,3 +56,6 @@ ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "seoMapPlace" JSONB;
 -- 2026-10-06: reporte de SEO en PDF de cada mes (se manda el día 1 al email de los avisos).
 ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "seoMonthly" BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "seoMonthlyAt" TIMESTAMP(3);
+-- 2026-10-07: cada cuántos días revisar las posiciones (1, 7, 15 o 30) y listas de contactos.
+ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "seoRankDays" INTEGER NOT NULL DEFAULT 7;
+ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "lists" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

@@ -7,7 +7,7 @@ import { runMonthlyReports } from "@/lib/seo/report-run";
 import { safeEqual } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
-// La revisión diaria de posiciones en Google (después de responder) puede tardar 1-2 minutos.
+// La revisión automática de posiciones en Google (después de responder) puede tardar 1-2 minutos.
 export const maxDuration = 300;
 
 /** Publica lo programado. Llámalo cada minuto con: Authorization: Bearer <CRON_SECRET>. */
@@ -23,9 +23,9 @@ export async function GET(req: Request) {
   after(async () => {
     try {
       const rank = await runDueRankChecks();
-      if (rank) console.log("[posiciones] revisión diaria:", JSON.stringify(rank));
+      if (rank) console.log("[posiciones] revisión automática:", JSON.stringify(rank));
     } catch (e) {
-      console.error("[posiciones] error en la revisión diaria:", e);
+      console.error("[posiciones] error en la revisión automática:", e);
     }
     // Resumen SEO de cada lunes: como mucho UN negocio por llamada.
     try {

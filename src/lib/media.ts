@@ -1,5 +1,5 @@
 import { randomBytes } from "crypto";
-import { mkdir, writeFile } from "fs/promises";
+import { mkdir, readFile, stat, writeFile } from "fs/promises";
 import path from "path";
 import { bi } from "@/lib/i18n";
 
@@ -96,16 +96,16 @@ export function isOwnFile(url: string, folder: string): boolean {
  * Copia a tu almacenamiento un archivo creado por la IA (las URLs de fal.ai son temporales).
  * Devuelve la dirección pública para guardar en la publicación.
  */
-export async function storeRemote(sourceUrl: string, folder: string): Promise<{ url: string; type: "photo" | "video" }> {
-  const res = await fetch(sourceUrl);
+export async function storeRemote(sourceUrl: string, folder: string, headers?: Record<string, string>): Promise<{ url: string; type: "photo" | "video" }> {
+  const res = await fetch(sourceUrl, headers ? { headers } : undefined);
   if (!res.ok) throw bi(`No se pudo descargar el archivo creado por la IA (${res.status}).`, `Couldn't download the file the AI created (${res.status}).`);
   const contentType = (res.headers.get("content-type") || "").split(";")[0].trim() || (sourceUrl.endsWith(".mp4") ? "video/mp4" : "image/jpeg");
   return storeBuffer(Buffer.from(await res.arrayBuffer()), contentType, folder);
 }
 
 /** Guarda un archivo (por ejemplo una imagen que la IA devolvió directamente) en tu almacenamiento. */
-export async function storeBuffer(data: Buffer, contentType: string, folder: string): Promise<{ url: string; type: "photo" | "video" }> {
-  const name = newName(contentType);
+export async function storeBuffer(data: Buffer, contentType: string, folder: string, fixedName?: string): Promise<{ url: string; type: "photo" | "video" }> {
+  const name = fixedName ?? newName(contentType);
   const type = contentType.startsWith("video/") ? "video" : "photo";
   const sb = supabase();
   if (!sb) {
@@ -117,7 +117,7 @@ export async function storeBuffer(data: Buffer, contentType: string, folder: str
   const objectPath = `${folder}/${name}`;
   const up = await fetch(`${sb.url}/storage/v1/object/${BUCKET}/${objectPath}`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${sb.key}`, apikey: sb.key, "Content-Type": contentType },
+    headers: { Authorization: `Bearer ${sb.key}`, apikey: sb.key, "Content-Type": contentType, ...(fixedName ? { "x-upsert": "true" } : {}) },
     body: new Uint8Array(data),
   });
   if (!up.ok) throw bi(`No se pudo guardar el archivo en Supabase: ${await up.text()}`, `Couldn't save the file in Supabase: ${await up.text()}`);
@@ -138,4 +138,77 @@ export function publicMediaUrl(stored: string): string {
   if (/^https?:\/\//i.test(stored)) return stored;
   const base = (process.env.PUBLIC_BASE_URL || "http://localhost:3000").replace(/\/+$/, "");
   return base + stored;
+}
+
+// ---------- Copias por canal y datos del diseño ----------
+
+/** Nombre fijo (24 letras hex + extensión) para una copia, así no se vuelve a crear si ya existe. */
+export const fixedMediaName = (hex24: string, ext: "jpg" | "png") => `${hex24.slice(0, 24)}.${ext}`;
+
+/** Dirección pública de un archivo con nombre fijo en la carpeta del negocio. */
+export function mediaUrlFor(folder: string, name: string): string {
+  const sb = supabase();
+  return sb ? `${sb.url}/storage/v1/object/public/${BUCKET}/${folder}/${name}` : `/media/${name}`;
+}
+
+/** true si ya existe un archivo con ese nombre fijo. */
+export async function mediaExists(folder: string, name: string): Promise<boolean> {
+  const sb = supabase();
+  if (!sb) return stat(path.join(UPLOAD_DIR, name)).then(() => true, () => false);
+  const res = await fetch(mediaUrlFor(folder, name), { method: "HEAD" }).catch(() => null);
+  return Boolean(res?.ok);
+}
+
+/** Lee un archivo guardado (local /media/… o una dirección https). */
+export async function readMedia(stored: string): Promise<Buffer> {
+  const local = /^\/media\/([^/]+)$/.exec(stored);
+  if (local && SAFE_MEDIA_NAME.test(local[1])) return readFile(path.join(UPLOAD_DIR, local[1]));
+  if (!/^https:\/\//i.test(stored)) throw bi("La foto necesita una dirección pública.", "The photo needs a public web address.");
+  const res = await fetch(stored);
+  if (!res.ok) throw bi(`No se pudo descargar la foto (${res.status}).`, `Couldn't download the photo (${res.status}).`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
+/**
+ * Nota que acompaña a una foto guardada (mismo nombre + ".json"): cómo se hizo, para poder volver
+ * a dibujar el diseño en el tamaño de cada red. Solo para archivos de tu almacenamiento.
+ */
+function sidecarPlace(stored: string): { local: string } | { url: string; objectPath: string } | null {
+  const local = /^\/media\/([a-f0-9]{24})\.(jpg|png|webp)$/.exec(stored);
+  if (local) return { local: path.join(UPLOAD_DIR, `${local[1]}.json`) };
+  const sb = supabase();
+  const prefix = sb ? `${sb.url}/storage/v1/object/public/${BUCKET}/` : "";
+  if (!sb || !stored.startsWith(prefix) || stored.includes("..")) return null;
+  const objectPath = stored.slice(prefix.length).replace(/\.(jpg|png|webp)$/, ".json");
+  if (!objectPath.endsWith(".json")) return null;
+  return { url: `${prefix}${objectPath}`, objectPath };
+}
+
+export async function writeSidecar(stored: string, data: unknown): Promise<void> {
+  const place = sidecarPlace(stored);
+  if (!place) return;
+  const body = Buffer.from(JSON.stringify(data));
+  if ("local" in place) {
+    await mkdir(UPLOAD_DIR, { recursive: true });
+    await writeFile(place.local, body);
+    return;
+  }
+  const sb = supabase()!;
+  await fetch(`${sb.url}/storage/v1/object/${BUCKET}/${place.objectPath}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${sb.key}`, apikey: sb.key, "Content-Type": "application/json", "x-upsert": "true" },
+    body: new Uint8Array(body),
+  });
+}
+
+export async function readSidecar(stored: string): Promise<unknown> {
+  const place = sidecarPlace(stored);
+  if (!place) return null;
+  try {
+    if ("local" in place) return JSON.parse(await readFile(place.local, "utf8"));
+    const res = await fetch(place.url);
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  }
 }

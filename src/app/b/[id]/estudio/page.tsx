@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { deleteStudy, generateStudy, saveStudyProfile, studyInterview } from "@/app/actions";
+import { deleteStudy, generateStudy, prefillStudy, restoreStudy, saveStudyProfile, studyInterview } from "@/app/actions-study";
 import { PageHead } from "@/components/PageHead";
 import { StudyForm } from "@/components/StudyForm";
 import { aiEnabled, researchProvider, TEXT_PROVIDERS } from "@/lib/ai";
@@ -10,35 +10,49 @@ import { readZones, zoneLabel } from "@/lib/seo/dataforseo";
 import { readKeywordsReport, reportLookup, volumeFormat, zoneTotal, zoneVolumes } from "@/lib/seo/keywords";
 import { latestReports } from "@/lib/seo/reports";
 import { latestByZone } from "@/lib/seo/zones";
-import { campaignIdea, EMPTY_INPUT, readInput, readStudy } from "@/lib/study-shape";
+import { audiencesByPriority, campaignIdea, EMPTY_INPUT, keywordScore, readDeleted, readInput, readStudy, type Study } from "@/lib/study-shape";
 import { BUSINESS_TZ } from "@/lib/time";
+import k from "./estudio.module.css";
 
 // La IA investiga en internet y luego escribe el estudio: puede tardar.
 export const maxDuration = 300;
 
-// [estilo, español, inglés]
-const INTENT: Record<string, [string, string, string]> = {
-  local: ["scheduled", "Local", "Local"],
-  comercial: ["done", "Quiere contratar", "Ready to hire"],
+// En palabras simples. [estilo de la etiqueta, español, inglés]. Verde = bueno para ti, amarillo = regular, rojo = difícil, gris = poca gente.
+type Kw = Study["keywords"][number];
+const INTENT: Record<Kw["intent"], [string, string, string]> = {
+  local: ["done", "Busca un negocio cerca", "Looking for one nearby"],
+  comercial: ["done", "Listo para contratar", "Ready to hire"],
   informativa: ["draft", "Quiere aprender", "Wants to learn"],
 };
-const LEVEL: Record<string, [string, string, string]> = {
-  alto: ["done", "alto", "high"],
-  medio: ["scheduled", "medio", "medium"],
-  bajo: ["", "bajo", "low"],
-  alta: ["failed", "alta", "high"],
-  media: ["partial", "media", "medium"],
-  baja: ["done", "baja", "low"],
+const VOLUME: Record<Kw["volume"], [string, string, string]> = {
+  alto: ["done", "Mucha gente", "Lots of people"],
+  medio: ["partial", "Algo de gente", "Some people"],
+  bajo: ["", "Poca gente", "Few people"],
+};
+const DIFFICULTY: Record<Kw["difficulty"], [string, string, string]> = {
+  baja: ["done", "Fácil salir primero", "Easy to rank"],
+  media: ["partial", "Se puede con constancia", "Doable with effort"],
+  alta: ["failed", "Difícil: mucha competencia", "Hard: lots of competition"],
+};
+const PRIORITY: Record<string, [string, string, string]> = {
+  alta: ["done", "Prioridad alta", "High priority"],
+  media: ["partial", "Prioridad media", "Medium priority"],
+  baja: ["", "Prioridad baja", "Low priority"],
 };
 
-export default async function EstudioPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function EstudioPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ leer?: string }> }) {
   const { id } = await params;
+  const q = await searchParams;
   const b = await db.business.findUniqueOrThrow({ where: { id } });
   const { lang, t } = await getT();
   const fmt = new Intl.DateTimeFormat(intlLocale(lang), { dateStyle: "long", timeZone: BUSINESS_TZ });
   const pick = ([, es, en]: [string, string, string]) => t(es, en);
   const study = readStudy(b.study);
-  const input = readInput(b.studyInput) ?? { ...EMPTY_INPUT, services: b.aiProfile.slice(0, 2000) };
+  const saved = readInput(b.studyInput);
+  const input = saved ?? EMPTY_INPUT;
+  const deleted = study ? null : readDeleted(b.study);
+  // La IA lee la web sola cuando el negocio es nuevo o todavía no hay respuestas guardadas.
+  const autoRead = q.leer === "1" || (!saved && !study && !deleted && !!(b.website.trim() || b.aiProfile.trim()));
   const researcher = researchProvider(b.aiText);
   const create = (idea: string) => `/b/${id}/publicar?${new URLSearchParams({ idea: idea.slice(0, 2000), magic: "1" })}`;
   // Volúmenes reales de Google Ads (DataForSEO), si ya se trajeron en SEO y visibilidad.
@@ -50,6 +64,21 @@ export default async function EstudioPage({ params }: { params: Promise<{ id: st
   const realVolume = reportLookup(kwReport);
   const volume = volumeFormat(lang);
   const hasReal = study ? study.keywords.some((k) => realVolume.get(k.keyword.trim().toLowerCase())?.volume != null) : false;
+  const keywords = study ? [...study.keywords].sort((a, b) => keywordScore(b) - keywordScore(a)) : [];
+  const form = (has: boolean) => (
+    <StudyForm
+      generate={generateStudy.bind(null, id)}
+      interview={studyInterview.bind(null, id)}
+      prefill={prefillStudy.bind(null, id)}
+      input={input}
+      researcher={researcher && TEXT_PROVIDERS.find((p) => p.id === researcher)!.name}
+      has={has}
+      website={b.website.trim()}
+      hasProfile={!!b.aiProfile.trim()}
+      autoRead={!has && autoRead}
+      settingsHref={`/b/${id}/negocio`}
+    />
+  );
 
   return (
     <>
@@ -66,6 +95,15 @@ export default async function EstudioPage({ params }: { params: Promise<{ id: st
         <div className="card empty">{t("Falta la clave de la IA (GEMINI_API_KEY, ANTHROPIC_API_KEY u OPENAI_API_KEY) en Vercel.", "The AI key (GEMINI_API_KEY, ANTHROPIC_API_KEY or OPENAI_API_KEY) is missing in Vercel.")}</div>
       ) : (
         <div className="stack" style={{ gap: 22 }}>
+          {deleted && (
+            <form action={restoreStudy.bind(null, id)} className={`card ${k.restore}`}>
+              <span className="stack" style={{ gap: 2 }}>
+                <strong>{t("Borraste tu estudio", "You deleted your study")}{deleted.studyAt ? ` ${t("del", "from")} ${fmt.format(new Date(deleted.studyAt))}` : ""}</strong>
+                <span className="small muted">{t("¿Fue sin querer? Puedes recuperarlo con tus respuestas, tal como estaba.", "Was it a mistake? You can get it back with your answers, just as it was.")}</span>
+              </span>
+              <button type="submit" className="btn on">{t("Recuperar mi estudio", "Restore my study")}</button>
+            </form>
+          )}
           {study ? (
             <details className="card" style={{ gap: 0 }}>
               <summary className="row between" style={{ cursor: "pointer" }}>
@@ -75,17 +113,15 @@ export default async function EstudioPage({ params }: { params: Promise<{ id: st
                     {study.researched
                       ? t(`Con investigación en internet (${study.sources.length} fuentes)`, `With web research (${study.sources.length} sources)`)
                       : t("Sin investigación en internet", "No web research")}
-                    . {t("Ábrelo para cambiar tus respuestas y actualizarlo.", "Open it to change your answers and update it.")}
+                    . {t("Tócalo para revisar tus datos y actualizarlo.", "Tap it to check your details and update it.")}
                   </span>
                 </span>
                 <span className="btn">{t("Actualizar", "Update")}</span>
               </summary>
-              <div style={{ marginTop: 18 }}>
-                <StudyForm action={generateStudy.bind(null, id)} interview={studyInterview.bind(null, id)} input={input} researcher={researcher && TEXT_PROVIDERS.find((p) => p.id === researcher)!.name} has />
-              </div>
+              <div style={{ marginTop: 18 }}>{form(true)}</div>
             </details>
           ) : (
-            <StudyForm action={generateStudy.bind(null, id)} interview={studyInterview.bind(null, id)} input={input} researcher={researcher && TEXT_PROVIDERS.find((p) => p.id === researcher)!.name} has={false} />
+            form(false)
           )}
 
           {study && (
@@ -122,10 +158,17 @@ export default async function EstudioPage({ params }: { params: Promise<{ id: st
               </div>
 
               <section className="card">
-                <h2>{t("Cliente ideal", "Ideal customer")}</h2>
+                <div className="stack" style={{ gap: 4 }}>
+                  <h2>{t("Tus clientes ideales", "Your ideal customers")}</h2>
+                  <p className="small muted">{t("Del más importante al menos importante. La IA les habla a ellos en tus publicaciones y anuncios.", "From most to least important. The AI speaks to them in your posts and ads.")}</p>
+                </div>
                 <div className="cards">
-                  {study.audiences.map((a, i) => (
+                  {audiencesByPriority(study).map((a, i) => (
                     <div key={i} className="study-tile">
+                      <span className="row" style={{ gap: 8 }}>
+                        <span className={k.rank}>{i + 1}</span>
+                        {a.priority && <span className={`pill ${PRIORITY[a.priority][0]}`}>{pick(PRIORITY[a.priority])}</span>}
+                      </span>
                       <strong>{a.name}</strong>
                       <span className="small">{a.description}</span>
                       <ul className="study-list small">{a.pains.map((p, i) => <li key={i}>{p}</li>)}</ul>
@@ -159,74 +202,102 @@ export default async function EstudioPage({ params }: { params: Promise<{ id: st
 
               <section className="card">
                 <div className="stack" style={{ gap: 4 }}>
-                  <h2>{t("Palabras clave para Google (SEO)", "Google keywords (SEO)")}</h2>
+                  <h2>{t("Lo que la gente busca en Google", "What people search for on Google")}</h2>
                   <p className="small muted">
                     {t(
-                      "Lo que escribe la gente en Google para encontrar un negocio como el tuyo. La IA las usa en tus publicaciones y en los artículos de tu sitio web. Presiona Crear para hacer una publicación sobre esa búsqueda.",
-                      "What people type into Google to find a business like yours. The AI uses them in your posts and in your website articles. Press Create to make a post about that search.",
+                      "Estas son las búsquedas que te pueden traer clientes, las mejores primero. Toca «Publicar sobre esto» y la IA escribe una publicación pensada para esa búsqueda.",
+                      "These are the searches that can bring you customers, best ones first. Tap “Post about this” and the AI writes a post made for that search.",
                     )}
                   </p>
                 </div>
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>{t("Búsqueda", "Search")}</th>
-                        <th>{t("Qué quiere", "Intent")}</th>
-                        <th>{t("Búsquedas", "Volume")}</th>
-                        <th>{t("Competencia", "Competition")}</th>
-                        <th>{t("Idea para publicar", "Post idea")}</th>
-                        <th><span className="sr-only">{t("Crear", "Create")}</span></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {study.keywords.map((k, i) => {
-                        const real = realVolume.get(k.keyword.trim().toLowerCase())?.volume;
-                        const perZone = byZone.size > 1 ? zoneVolumes(k.keyword, zones, byZone) : [];
-                        const total = perZone.filter((v) => typeof v === "number").length > 1 ? zoneTotal(perZone) : null;
-                        return (
-                          <tr key={i}>
-                            <td><strong>{k.keyword}</strong> <span className="small muted">{k.lang.toUpperCase()}</span></td>
-                            <td><span className={`pill ${INTENT[k.intent][0]}`}>{pick(INTENT[k.intent])}</span></td>
-                            <td>
-                              <span className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
-                                <span className={`pill ${LEVEL[k.volume][0]}`}>{pick(LEVEL[k.volume])}</span>
-                                {real != null && (
-                                  <span
-                                    className="small kw-real"
-                                    style={{ whiteSpace: "nowrap" }}
-                                    title={
-                                      t("Búsquedas reales al mes según Google Ads", "Real monthly searches from Google Ads") +
-                                      (kwReport?.location ? ` (${zoneLabel(kwReport.location)})` : "") +
-                                      (total !== null
-                                        ? `. ${t("Total en tus zonas", "Total in your areas")}: ${volume.format(total)} (${zones
-                                            .map((z, i) => (typeof perZone[i] === "number" ? `${zoneLabel(z.name)}: ${volume.format(perZone[i] as number)}` : ""))
-                                            .filter(Boolean)
-                                            .join(" · ")})`
-                                        : "")
-                                    }
-                                  >
-                                    {volume.format(real)}
-                                    {t("/mes", "/mo")} <span className="tag">{t("real", "real")}</span>
-                                    {total !== null && <span className="muted"> · Σ {volume.format(total)}</span>}
-                                  </span>
-                                )}
+                <details className={k.legend}>
+                  <summary>{t("¿Qué significan las etiquetas y los colores?", "What do the labels and colors mean?")}</summary>
+                  <dl>
+                    <div>
+                      <dt>{t("Qué quiere la persona", "What the person wants")}</dt>
+                      <dd>
+                        <span className={`pill ${INTENT.local[0]}`}>{pick(INTENT.local)}</span>{" "}
+                        {t("busca un negocio como el tuyo en su zona.", "is looking for a business like yours in their area.")}{" "}
+                        <span className={`pill ${INTENT.comercial[0]}`}>{pick(INTENT.comercial)}</span>{" "}
+                        {t("ya quiere pagar o contratar.", "already wants to pay or hire.")}{" "}
+                        <span className={`pill ${INTENT.informativa[0]}`}>{pick(INTENT.informativa)}</span>{" "}
+                        {t("tiene una duda; es bueno para artículos que dan confianza.", "has a question; good for articles that build trust.")}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{t("Cuánta gente lo busca", "How many people search it")}</dt>
+                      <dd>{t("Mucha, algo o poca gente en tu zona cada mes. Es un cálculo de la IA; si dice «real», el número viene de Google.", "Lots, some or few people in your area each month. It's the AI's estimate; if it says “real”, the number comes from Google.")}</dd>
+                    </div>
+                    <div>
+                      <dt>{t("Qué tan difícil es salir primero", "How hard it is to show up first")}</dt>
+                      <dd>{t("Cuántos negocios compiten por esa búsqueda. Las fáciles son las que más rápido te traen clientes.", "How many businesses compete for that search. The easy ones bring you customers fastest.")}</dd>
+                    </div>
+                    <div>
+                      <dt>{t("Colores", "Colors")}</dt>
+                      <dd className={k.colors}>
+                        <span className="pill done">{t("Verde: bueno para ti", "Green: good for you")}</span>
+                        <span className="pill partial">{t("Amarillo: regular", "Yellow: so-so")}</span>
+                        <span className="pill failed">{t("Rojo: difícil", "Red: hard")}</span>
+                        <span className="pill">{t("Gris: poca gente", "Gray: few people")}</span>
+                      </dd>
+                    </div>
+                  </dl>
+                </details>
+                <ol className={k.kwList}>
+                  {keywords.map((kw, i) => {
+                    const real = realVolume.get(kw.keyword.trim().toLowerCase())?.volume;
+                    const perZone = byZone.size > 1 ? zoneVolumes(kw.keyword, zones, byZone) : [];
+                    const total = perZone.filter((v) => typeof v === "number").length > 1 ? zoneTotal(perZone) : null;
+                    return (
+                      <li key={i} className={k.kw}>
+                        <div className={k.kwMain}>
+                          <span className={k.kwTop}>
+                            <strong className={k.kwText}>{kw.keyword}</strong>
+                            <span className={k.kwLang}>{kw.lang === "en" ? t("inglés", "English") : t("español", "Spanish")}</span>
+                            {i < 3 && <span className={k.best}>★ {t("Recomendada", "Recommended")}</span>}
+                          </span>
+                          <span className={k.facts}>
+                            <span className={`pill ${INTENT[kw.intent][0]}`} title={t("Qué quiere la persona", "What the person wants")}>{pick(INTENT[kw.intent])}</span>
+                            <span className={`pill ${VOLUME[kw.volume][0]}`} title={t("Cuánta gente lo busca", "How many people search it")}>{pick(VOLUME[kw.volume])}</span>
+                            {real != null && (
+                              <span
+                                className="small kw-real"
+                                style={{ whiteSpace: "nowrap" }}
+                                title={
+                                  t("Búsquedas reales al mes según Google Ads", "Real monthly searches from Google Ads") +
+                                  (kwReport?.location ? ` (${zoneLabel(kwReport.location)})` : "") +
+                                  (total !== null
+                                    ? `. ${t("Total en tus zonas", "Total in your areas")}: ${volume.format(total)} (${zones
+                                        .map((z, i) => (typeof perZone[i] === "number" ? `${zoneLabel(z.name)}: ${volume.format(perZone[i] as number)}` : ""))
+                                        .filter(Boolean)
+                                        .join(" · ")})`
+                                    : "")
+                                }
+                              >
+                                {volume.format(real)}
+                                {t("/mes", "/mo")} <span className="tag">{t("real", "real")}</span>
+                                {total !== null && <span className="muted"> · Σ {volume.format(total)}</span>}
                               </span>
-                            </td>
-                            <td><span className={`pill ${LEVEL[k.difficulty][0]}`}>{pick(LEVEL[k.difficulty])}</span></td>
-                            <td className="small">{k.idea}</td>
-                            <td><Link href={create(`${k.idea}\n${t("Palabra clave", "Keyword")}: ${k.keyword}`)} className="btn link">{t("Crear", "Create")}</Link></td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                            )}
+                            <span className={`pill ${DIFFICULTY[kw.difficulty][0]}`} title={t("Qué tan difícil es salir primero", "How hard it is to show up first")}>{pick(DIFFICULTY[kw.difficulty])}</span>
+                          </span>
+                          <span className="small">
+                            <span className="muted">{t("Idea:", "Idea:")}</span> {kw.idea}
+                          </span>
+                        </div>
+                        <Link href={create(`${kw.idea}\n${t("Palabra clave", "Keyword")}: ${kw.keyword}`)} className={`btn ${i < 3 ? "ai" : "outline"} ${k.kwBtn}`}>
+                          {i < 3 ? "✦ " : ""}
+                          {t("Publicar sobre esto", "Post about this")} →
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ol>
                 {hasReal && kwReport && (
                   <p className="small muted">
                     {t(
-                      `Los volúmenes marcados "real" vienen de Google Ads (DataForSEO) para ${zoneLabel(kwReport.location) || "tu zona"}. Los demás son estimados de la IA.`,
-                      `Volumes marked "real" come from Google Ads (DataForSEO) for ${zoneLabel(kwReport.location) || "your area"}. The rest are AI estimates.`,
+                      `Los números marcados "real" vienen de Google Ads (DataForSEO) para ${zoneLabel(kwReport.location) || "tu zona"}. Los demás son cálculos de la IA.`,
+                      `Numbers marked "real" come from Google Ads (DataForSEO) for ${zoneLabel(kwReport.location) || "your area"}. The rest are AI estimates.`,
                     )}
                     {byZone.size > 1 &&
                       t(
@@ -322,15 +393,15 @@ export default async function EstudioPage({ params }: { params: Promise<{ id: st
                 <summary className="row between" style={{ cursor: "pointer" }}>
                   <span className="stack" style={{ gap: 2 }}>
                     <strong>{t("Borrar estudio", "Delete study")}</strong>
-                    <span className="small muted">{t("Para empezar de cero, con las preguntas en blanco.", "To start over, with blank questions.")}</span>
+                    <span className="small muted">{t("Para empezar de cero. Si lo borras sin querer, lo puedes recuperar.", "To start over. If you delete it by mistake, you can get it back.")}</span>
                   </span>
                   <span className="btn danger">{t("Borrar", "Delete")}</span>
                 </summary>
                 <form action={deleteStudy.bind(null, id)} className="stack" style={{ gap: 12, marginTop: 16 }}>
                   <p className="small">
                     {t(
-                      "Se borran el estudio y tus respuestas a la entrevista. La IA deja de usarlo en lo que escribe hasta que hagas uno nuevo.",
-                      "The study and your interview answers are deleted. The AI stops using it in what it writes until you make a new one.",
+                      "Se borran el estudio y tus respuestas. La IA deja de usarlo en lo que escribe hasta que hagas uno nuevo o lo recuperes (queda una copia hasta que hagas otro estudio).",
+                      "The study and your answers are deleted. The AI stops using it in what it writes until you make a new one or restore it (a copy is kept until you make another study).",
                     )}{" "}
                     {t("El perfil del negocio que guardaste en", "The business profile you saved in")} <Link href={`/b/${id}/negocio`}>{t("Ajustes", "Settings")}</Link>{" "}
                     {t("no se borra.", "is not deleted.")}

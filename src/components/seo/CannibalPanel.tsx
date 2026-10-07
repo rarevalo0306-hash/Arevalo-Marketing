@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { runCannibal } from "@/app/actions-seo-cannibal";
+import { AiPromptButton } from "@/components/seo/AiPromptButton";
 import { CannibalButton } from "@/components/seo/CannibalButton";
 import styles from "@/components/seo/CannibalPanel.module.css";
 import { HowToRead } from "@/components/seo/HowToRead";
@@ -17,6 +18,8 @@ import {
   RANK_WINDOW_DAYS,
   severityLabel,
 } from "@/lib/seo/cannibal";
+import { loadPromptContext } from "@/lib/seo/prompt-context";
+import { cannibalPrompt } from "@/lib/seo/prompts";
 import { BUSINESS_TZ } from "@/lib/time";
 
 /** Cuántas búsquedas se muestran antes de "Ver más". */
@@ -185,7 +188,7 @@ export async function CannibalPanel({ businessId }: { businessId: string }) {
         "Para ver esto con datos reales de Google, conecta Search Console: es gratis y muestra qué páginas tuyas salen para cada búsqueda. ",
         "To see this with real Google data, connect Search Console: it's free and shows which of your pages show up for each search. ",
       )}
-      <a href="#search-console">{t("Ir a Search Console", "Go to Search Console")}</a>.
+      <Link href={`/b/${businessId}/conexiones#c-gsc`}>{t("Conectar en Conexiones →", "Connect in Connections →")}</Link>
     </>
   );
 
@@ -211,6 +214,7 @@ export async function CannibalPanel({ businessId }: { businessId: string }) {
   const rest = report.issues.slice(SHOWN);
   const item = (i: CannibalIssue) => <IssueItem key={issueKey(i)} issue={i} businessId={businessId} isNew={Boolean(known && !known.has(issueKey(i)))} f={f} t={t} />;
   const urgent = report.issues.filter((i) => i.severity === "alta").length;
+  const ctx = report.issues.length ? await loadPromptContext(businessId) : null;
 
   return (
     <section className="card stack" id="canibalizacion" style={{ gap: 12 }}>
@@ -258,6 +262,7 @@ export async function CannibalPanel({ businessId }: { businessId: string }) {
 
       <CannibalButton action={runCannibal.bind(null, businessId)} />
       {help}
+      {ctx && <AiPromptButton text={cannibalPrompt(ctx, report, lang)} />}
     </section>
   );
 }

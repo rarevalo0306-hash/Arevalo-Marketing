@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { runCompetitors } from "@/app/actions-seo-competitors";
+import { AiPromptButton } from "@/components/seo/AiPromptButton";
 import { CompetitorsForm } from "@/components/seo/CompetitorsForm";
 import { capClass, Fold } from "@/components/seo/Fold";
 import { HowToRead } from "@/components/seo/HowToRead";
@@ -10,6 +11,9 @@ import { getT } from "@/lib/i18n-server";
 import { distinctCountries, normalizeDomain, readCompetitorsReport, sameSite, withoutDirectories, type CompetitorSource, type DomainStats, type GapKeyword } from "@/lib/seo/competitors";
 import { dataForSeoEnabled, readZones, zoneLabel } from "@/lib/seo/dataforseo";
 import { businessTopicVocab, gbpCategory, isRelevantKeyword } from "@/lib/seo/gap";
+import { loadPromptContext } from "@/lib/seo/prompt-context";
+import { directoriesChecklist, listingDomains } from "@/lib/seo/prompts";
+import { readRankReport, type RankReport } from "@/lib/seo/rank";
 import { latestReports } from "@/lib/seo/reports";
 import { BUSINESS_TZ } from "@/lib/time";
 
@@ -59,7 +63,12 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
     );
   }
 
-  const [[row], [gbpRow]] = await Promise.all([latestReports(businessId, "competitors", 1), latestReports(businessId, "gbp", 1)]);
+  const [[row], [gbpRow], rankRows, ctx] = await Promise.all([
+    latestReports(businessId, "competitors", 1),
+    latestReports(businessId, "gbp", 1),
+    latestReports(businessId, "rank", 3),
+    loadPromptContext(businessId),
+  ]);
   const saved = row ? readCompetitorsReport(row.data) : null;
   // Directorios (Páginas Amarillas, Facebook…) que se colaron en reportes viejos: no son competencia directa.
   const { report, hidden: hiddenDirs } = saved ? withoutDirectories(saved) : { report: null, hidden: [] as string[] };
@@ -81,6 +90,11 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
   const href = (d: string) => `https://${d}`;
 
   const all: DomainStats[] = report ? [report.you, ...report.competitors] : [];
+  // Los directorios que salen arriba en tus búsquedas (y los que se ocultaron de la competencia): ahí conviene estar.
+  const listings = listingDomains(
+    rankRows.map((r) => readRankReport(r.data)).filter((r): r is RankReport => !!r),
+    hiddenDirs,
+  );
   const maxTraffic = Math.max(1, ...all.map((d) => d.traffic ?? 0));
 
   return (
@@ -314,6 +328,17 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
             </ul>
           </HowToRead>
         </>
+      )}
+      {ctx && listings.length > 0 && (
+        <AiPromptButton
+          variant="owner"
+          text={directoriesChecklist(ctx, listings, lang)}
+          label={t(`Copiar tu lista: ${listings.length} directorios donde te conviene estar`, `Copy your list: ${listings.length} directories to be listed on`)}
+          hint={t(
+            "Directorios que Google muestra arriba en tus búsquedas. Esto lo haces tú: registrarte con tus datos y el enlace a tu página.",
+            "Directories Google shows high on your searches. This one is for you: sign up with your details and a link to your website.",
+          )}
+        />
       )}
     </section>
   );

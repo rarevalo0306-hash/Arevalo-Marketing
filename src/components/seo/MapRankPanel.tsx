@@ -27,8 +27,8 @@ export async function MapRankPanel({ businessId, mapId }: { businessId: string; 
       <h2>{t("Mapa de calor en Google Maps", "Google Maps heatmap")}</h2>
       <p className="small muted">
         {t(
-          "Cada punto es alguien buscando desde ese lugar; el número es tu lugar en el mapa de Google. Verde = te ven primero; rojo o gris = no te encuentran.",
-          "Each point is someone searching from that spot; the number is your place on Google's map. Green = they see you first; red or gray = they can't find you.",
+          "Hacemos la misma búsqueda desde muchos puntos alrededor de tu negocio, como si fueran clientes en distintas calles. El número de cada punto es tu lugar en Google Maps desde ahí: verde (1 a 3) = te ven primero; rojo o gris = no te encuentran.",
+          "We run the same search from many points around your business, as if they were customers on different streets. Each point's number is your place on Google Maps from there: green (1 to 3) = they see you first; red or gray = they can't find you.",
         )}
       </p>
     </div>
@@ -59,10 +59,8 @@ export async function MapRankPanel({ businessId, mapId }: { businessId: string; 
       <section className="card" id="mapa">
         {header}
         <p className="note">
-          {t(
-            "Para hacer el mapa, primero elige la zona donde buscan tus clientes en la pestaña «⚙ Ajustes».",
-            "To make the map, first pick the area where your customers search in the “⚙ Settings” tab.",
-          )}
+          {t("Para hacer el mapa, primero elige la zona donde buscan tus clientes. ", "To make the map, first pick the area where your customers search. ")}
+          <a href="#dataforseo" style={{ fontWeight: 700 }}>{t("Ir a «⚙ Ajustes» →", "Go to “⚙ Settings” →")}</a>
         </p>
       </section>
     );

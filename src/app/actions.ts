@@ -1,20 +1,21 @@
 "use server";
 
-import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { aiEnabled, designTemplates, interviewQuestions, studyBusiness, planWeek, readBrandBook, stormPlan, suggestBrandKit, type BrandKitSuggestion, TEXT_PROVIDERS, toPostFields, writePost, type AiPost, type Lang } from "@/lib/ai";
+import { aiEnabled, designTemplates, planWeek, readBrandBook, stormPlan, suggestBrandKit, type BrandKitSuggestion, TEXT_PROVIDERS, toPostFields, writePost, type AiPost, type AiPostOut, type Lang } from "@/lib/ai";
+import { recentOpenings } from "@/lib/content-ideas";
 import { brevoDomains, brevoEnvKey } from "@/lib/brevo";
 import { CHANNEL_IDS, channelDef, type ChannelId } from "@/lib/channels";
 import { decryptJson, encryptJson } from "@/lib/crypto";
 import { normalizePhone, parseContactsCsv } from "@/lib/contacts";
 import { db } from "@/lib/db";
-import { falEnabled, startVideo, videoResult, type Shape, type VideoJob } from "@/lib/fal";
-import { DESIGN_SHAPES, renderDesign, type Brand, type DesignShape } from "@/lib/design";
-import { BUILTIN_TEMPLATES, FONTS, hexOr, pickTemplate, TemplateSpec } from "@/lib/design-shapes";
+import { startVideo, videoEnabled, videoResult, type Shape, type VideoJob } from "@/lib/fal";
+import { DESIGN_SHAPES, type Brand, type DesignShape } from "@/lib/design";
+import { BUILTIN_TEMPLATES, FONTS, hexOr, pickTemplate, StoredTemplate } from "@/lib/design-shapes";
+import { photoContextFor, photoMetaFor, storeDesign } from "@/lib/media-formats";
 import { createImage, IMAGE_PROVIDERS, imagesEnabled } from "@/lib/imagegen";
-import { createSignedUpload, isOwnFile, saveUpload, storeBuffer, storeRemote } from "@/lib/media";
+import { createSignedUpload, isOwnFile, saveUpload, storeRemote } from "@/lib/media";
 import { GOOGLE_COOKIE, saveGoogleLocation, type GoogleLocation } from "@/lib/google-oauth";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
@@ -23,8 +24,7 @@ import { publishPost, retryPost } from "@/lib/publish";
 import { PUBLISHERS } from "@/lib/publishers";
 import { safeEqual, SESSION_COOKIE, sessionToken } from "@/lib/session";
 import { stormEvent, stormSchedule } from "@/lib/storm";
-import { GOALS, type Interview, StudyInput } from "@/lib/study-shape";
-import { localToUtc } from "@/lib/time";
+import { businessDay, localToUtc } from "@/lib/time";
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -332,15 +332,19 @@ export async function deletePost(businessId: string, postId: string) {
 const LANGS: Lang[] = ["es", "en", "both"];
 const postLang = (v: string): Lang => (LANGS.includes(v as Lang) ? (v as Lang) : "es");
 
-export type AiWriteResult = { ok: true; post: AiPost } | { ok: false; error: string };
+export type AiWriteResult = { ok: true; post: AiPostOut } | { ok: false; error: string };
 
-/** El compositor pide un texto a la IA a partir de una idea. */
-export async function aiWrite(businessId: string, idea: string, language: string): Promise<AiWriteResult> {
+/**
+ * El compositor pide un texto a la IA a partir de una idea. La IA ve el comienzo de las últimas publicaciones para
+ * no repetirse; con `bilingual`, también escribe Facebook e Instagram en el otro idioma.
+ */
+export async function aiWrite(businessId: string, idea: string, language: string, opts?: { bilingual?: boolean }): Promise<AiWriteResult> {
   const b = await business(businessId);
   const { lang, t } = await getT();
   if (!idea.trim()) return { ok: false, error: t("Escribe una idea o tema.", "Write an idea or topic.") };
   try {
-    return { ok: true, post: await writePost(b, idea.slice(0, 2000), postLang(language)) };
+    const avoid = await recentOpenings(businessId);
+    return { ok: true, post: await writePost(b, idea.slice(0, 2000), postLang(language), { avoid, bilingual: opts?.bilingual === true }) };
   } catch (e) {
     return { ok: false, error: errorText(e, lang) };
   }
@@ -367,12 +371,12 @@ export async function generatePlan(businessId: string, _prev: PlanResult, f: For
   const b = await business(businessId);
   const { lang, t } = await getT();
   if (!aiEnabled()) return { ok: false, message: t("Falta la clave de la IA (GEMINI_API_KEY) en la configuración del servidor.", "The AI key (GEMINI_API_KEY) is missing from the server settings.") };
-  const startDate = /^\d{4}-\d{2}-\d{2}$/.test(str(f, "startDate")) ? str(f, "startDate") : new Date().toISOString().slice(0, 10);
+  const startDate = /^\d{4}-\d{2}-\d{2}$/.test(str(f, "startDate")) ? str(f, "startDate") : businessDay(new Date());
   const count = Math.min(14, Math.max(1, Number(str(f, "count")) || 7));
   const channels = f.getAll("channels").map(String).filter((c): c is ChannelId => CHANNEL_IDS.includes(c as ChannelId));
   if (!channels.length) return { ok: false, message: t("Elige al menos un canal.", "Choose at least one channel.") };
   try {
-    const plan = await planWeek(b, { startDate, count, themes: str(f, "themes").slice(0, 1000), lang: postLang(str(f, "lang")) });
+    const plan = await planWeek(b, { startDate, count, themes: str(f, "themes").slice(0, 1000), lang: postLang(str(f, "lang")), avoid: await recentOpenings(businessId) });
     const now = new Date();
     await savePlanPosts(b, businessId, channels, plan.posts.map((item) => {
       const at = localToUtc(startDate, item.day, item.time);
@@ -403,7 +407,7 @@ async function savePlanPosts(
     ? await Promise.all(
         items.map(async ({ post }, i) => {
           try {
-            const photo = await createImage(b.aiImage, post.imageIdea, "square", businessId);
+            const photo = await createImage(b.aiImage, post.imageIdea, "square", businessId, photoContextFor(b, { title: post.imageHeadline }));
             // Con la marca activada, la foto sale con logo, titular y teléfono; si el diseño falla, queda la foto sola.
             return b.brandImages && post.imageHeadline.trim()
               ? await brandPhoto(b, { photoUrl: photo, headline: post.imageHeadline, steps: post.imageSteps, seed: i }).catch(() => photo)
@@ -507,7 +511,7 @@ export async function aiImage(businessId: string, description: string, shape: st
   if (!imagesEnabled()) return { ok: false, error: t("Falta una clave para crear imágenes en la configuración del servidor.", "An image key is missing from the server settings.") };
   if (!description.trim()) return { ok: false, error: t("Describe la imagen que quieres.", "Describe the image you want.") };
   try {
-    return { ok: true, url: await createImage(b.aiImage, description, SHAPES.includes(shape as Shape) ? (shape as Shape) : "square", businessId) };
+    return { ok: true, url: await createImage(b.aiImage, description, SHAPES.includes(shape as Shape) ? (shape as Shape) : "square", businessId, photoContextFor(b, { title: description })) };
   } catch (e) {
     return { ok: false, error: errorText(e, lang) };
   }
@@ -519,7 +523,7 @@ export type VideoStart = { ok: true; job: VideoJob } | { ok: false; error: strin
 export async function aiVideoStart(businessId: string, imageUrl: string, motion: string): Promise<VideoStart> {
   await business(businessId);
   const { lang, t } = await getT();
-  if (!falEnabled()) return { ok: false, error: t("Falta la clave de fal.ai (FAL_KEY) en la configuración del servidor.", "The fal.ai key (FAL_KEY) is missing from the server settings.") };
+  if (!videoEnabled()) return { ok: false, error: t("Falta la clave para videos (FAL_KEY o GEMINI_API_KEY) en la configuración del servidor.", "The video key (FAL_KEY or GEMINI_API_KEY) is missing from the server settings.") };
   if (!/^https:\/\//.test(imageUrl)) return { ok: false, error: t("Primero crea o sube una foto para el video.", "First create or upload a photo for the video.") };
   try {
     return { ok: true, job: await startVideo(imageUrl, motion.slice(0, 500)) };
@@ -537,7 +541,7 @@ export async function aiVideoCheck(businessId: string, job: VideoJob): Promise<V
   try {
     const r = await videoResult(job);
     if (!r.done) return { ok: true, done: false };
-    return { ok: true, done: true, url: (await storeRemote(r.url, businessId)).url };
+    return { ok: true, done: true, url: (await storeRemote(r.url, businessId, r.headers)).url };
   } catch (e) {
     return { ok: false, error: errorText(e, lang) };
   }
@@ -545,13 +549,13 @@ export async function aiVideoCheck(businessId: string, job: VideoJob): Promise<V
 
 // ---------- Diseño con la marca ----------
 
-type BrandRow = { id: string; name: string; color: string; color2: string; color3: string; website: string; logoUrl: string; logoLightUrl: string; phone: string; fontHeading: string };
-const brandOf = (b: BrandRow): Brand => ({ name: b.name, color: b.color, color2: b.color2, color3: b.color3, logoUrl: b.logoUrl, logoLightUrl: b.logoLightUrl, phone: b.phone, website: b.website, fontHeading: b.fontHeading });
+type BrandRow = Awaited<ReturnType<typeof business>>;
+const brandOf = (b: BrandRow): Brand => ({ name: b.name, color: b.color, color2: b.color2, color3: b.color3, logoUrl: b.logoUrl, logoLightUrl: b.logoLightUrl, phone: b.phone, website: b.website, fontHeading: b.fontHeading, fontBody: b.fontBody });
 
-/** Plantillas del negocio (las que creó la IA), o las de fábrica si todavía no tiene. */
-async function templatesOf(businessId: string): Promise<TemplateSpec[]> {
+/** Plantillas del negocio (las que creó la IA o subió el dueño), o las de fábrica si todavía no tiene. */
+async function templatesOf(businessId: string): Promise<StoredTemplate[]> {
   const rows = await db.template.findMany({ where: { businessId }, orderBy: { createdAt: "asc" } });
-  const list = rows.map((r) => TemplateSpec.safeParse(r.spec)).filter((r) => r.success).map((r) => r.data!);
+  const list = rows.map((r) => StoredTemplate.safeParse(r.spec)).filter((r) => r.success).map((r) => r.data!);
   return list.length ? list : BUILTIN_TEMPLATES;
 }
 
@@ -562,8 +566,8 @@ async function brandPhoto(
 ): Promise<string> {
   const list = await templatesOf(b.id);
   const template = pickTemplate(list, opts.template ?? -1, { headline: opts.headline, steps: opts.steps, hasPhoto: !!opts.photoUrl, seed: opts.seed });
-  const jpg = await renderDesign({ brand: brandOf(b), template, headline: opts.headline, photoUrl: opts.photoUrl, steps: opts.steps, shape: opts.shape });
-  return (await storeBuffer(jpg, "image/jpeg", b.id)).url;
+  // Se guarda con los datos del negocio (autor, lugar, palabras clave) y con la receta para rehacerlo en el tamaño de cada red.
+  return storeDesign({ brand: brandOf(b), template, headline: opts.headline, photoUrl: opts.photoUrl, steps: opts.steps, shape: opts.shape }, b.id, photoMetaFor(b, { title: opts.headline }));
 }
 
 export async function aiDesign(businessId: string, photoUrl: string, headline: string, shape: string, template = -1, steps: string[] = []): Promise<MediaResult> {
@@ -664,94 +668,4 @@ export async function deleteTemplate(businessId: string, templateId: string) {
   revalidatePath(`/b/${businessId}/marca`);
 }
 
-// ---------- Estudio del negocio ----------
-
-export type StudyResult = { ok: boolean; message: string } | null;
-export type InterviewResult = { ok: true; interview: Interview } | { ok: false; error: string };
-
-function studyInputFrom(f: FormData): StudyInput {
-  const goal = str(f, "goal");
-  let answers: unknown = [];
-  try {
-    answers = JSON.parse(str(f, "answers") || "[]");
-  } catch {}
-  const list = (Array.isArray(answers) ? answers : [])
-    .map((a) => ({ question: String(a?.question ?? "").slice(0, 300), answer: String(a?.answer ?? "").trim().slice(0, 1000) }))
-    .filter((a) => a.question && a.answer)
-    .slice(0, 10);
-  return StudyInput.parse({
-    services: str(f, "services").slice(0, 2000),
-    customers: str(f, "customers").slice(0, 1000),
-    zone: str(f, "zone").slice(0, 300),
-    competitors: str(f, "competitors").slice(0, 600),
-    different: str(f, "different").slice(0, 1000),
-    goal: GOALS.some((g) => g[0] === goal) ? goal : "llamadas",
-    lang: postLang(str(f, "lang")),
-    answers: list,
-  });
-}
-
-/** Primer paso del estudio: la IA lee lo básico y devuelve preguntas a la medida del negocio. */
-export async function studyInterview(businessId: string, f: FormData): Promise<InterviewResult> {
-  const b = await business(businessId);
-  const { lang, t } = await getT();
-  if (!aiEnabled()) return { ok: false, error: t("Falta la clave de la IA en la configuración del servidor.", "The AI key is missing from the server settings.") };
-  const input = studyInputFrom(f);
-  if (!input.services && !b.aiProfile.trim() && !b.website) return { ok: false, error: t("Cuéntale a la IA qué vendes o qué servicios das.", "Tell the AI what you sell or which services you offer.") };
-  try {
-    return { ok: true, interview: await interviewQuestions(b, input, lang) };
-  } catch (e) {
-    return { ok: false, error: errorText(e, lang) };
-  }
-}
-
-/** La IA estudia el negocio (y su mercado en internet) y guarda el estudio. Lo usa todo lo que escribe y diseña después. */
-export async function generateStudy(businessId: string, _prev: StudyResult, f: FormData): Promise<StudyResult> {
-  const b = await business(businessId);
-  const { lang, t } = await getT();
-  if (!aiEnabled()) return { ok: false, message: t("Falta la clave de la IA en la configuración del servidor.", "The AI key is missing from the server settings.") };
-  const input = studyInputFrom(f);
-  if (!input.services && !b.aiProfile.trim() && !b.website)
-    return { ok: false, message: t("Cuéntale a la IA qué vende tu negocio (o pon tu sitio web en Ajustes).", "Tell the AI what your business sells (or add your website in Settings).") };
-  // Se guardan las respuestas aunque la IA falle, para no tener que escribirlas otra vez.
-  await db.business.update({ where: { id: businessId }, data: { studyInput: input } });
-  try {
-    const { study, researchError } = await studyBusiness(b, input, { research: f.get("research") === "on", lang });
-    await db.business.update({ where: { id: businessId }, data: { study, studyAt: new Date() } });
-    revalidatePath(`/b/${businessId}`, "layout");
-    if (researchError) {
-      return {
-        ok: false,
-        message: t(
-          `El estudio quedó listo, pero no se pudo investigar en internet (${researchError}). Se hizo con lo que ya sabe la IA; puedes actualizarlo más tarde.`,
-          `The study is ready, but the online research failed (${researchError}). It was built from what the AI already knows; you can update it later.`,
-        ),
-      };
-    }
-    return {
-      ok: true,
-      message: study.researched
-        ? t(
-            `Listo: la IA investigó tu mercado (${study.sources.length} fuentes) y armó el estudio. Revisa el perfil sugerido abajo.`,
-            `Done: the AI researched your market (${study.sources.length} sources) and put together the study. Review the suggested profile below.`,
-          )
-        : t("Listo: la IA armó el estudio. Revisa el perfil sugerido abajo.", "Done: the AI put together the study. Review the suggested profile below."),
-    };
-  } catch (e) {
-    return { ok: false, message: errorText(e, lang) };
-  }
-}
-
-/** Guarda el perfil (el sugerido por el estudio, revisado por el dueño) como lo que la IA sabe del negocio. */
-export async function saveStudyProfile(businessId: string, f: FormData) {
-  await business(businessId);
-  await db.business.update({ where: { id: businessId }, data: { aiProfile: str(f, "aiProfile").slice(0, 4000) } });
-  revalidatePath(`/b/${businessId}`, "layout");
-}
-
-/** Borra el estudio y las respuestas de la entrevista. El perfil del negocio (Ajustes) no se toca. */
-export async function deleteStudy(businessId: string) {
-  await business(businessId);
-  await db.business.update({ where: { id: businessId }, data: { study: Prisma.DbNull, studyInput: Prisma.DbNull, studyAt: null } });
-  revalidatePath(`/b/${businessId}`, "layout");
-}
+// El estudio del negocio (leer la web, entrevista, generar, borrar y recuperar) está en actions-study.ts.

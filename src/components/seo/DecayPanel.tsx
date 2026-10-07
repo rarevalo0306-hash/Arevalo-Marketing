@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { refreshDecay } from "@/app/actions-seo-decay";
+import { AiPromptButton } from "@/components/seo/AiPromptButton";
 import styles from "@/components/seo/Decay.module.css";
 import { DecayButton } from "@/components/seo/DecayButton";
 import { capClass, Fold } from "@/components/seo/Fold";
@@ -20,6 +21,8 @@ import {
   shortPath,
 } from "@/lib/seo/decay";
 import { GSC_CHANNEL } from "@/lib/seo/gsc";
+import { loadPromptContext } from "@/lib/seo/prompt-context";
+import { decayPrompt } from "@/lib/seo/prompts";
 import { BUSINESS_TZ } from "@/lib/time";
 
 function formats(lang: UiLang) {
@@ -220,12 +223,13 @@ export async function DecayPanel({ businessId }: { businessId: string }) {
           "Para ver qué páginas están perdiendo visitas, primero conecta Search Console (gratis, son tus datos reales de Google). ",
           "To see which pages are losing visits, first connect Search Console (free, it's your real Google data). ",
         )}
-        <a href="#search-console">{t("Ir a Search Console", "Go to Search Console")}</a>.
+        <Link href={`/b/${businessId}/conexiones#c-gsc`}>{t("Conectar en Conexiones →", "Connect in Connections →")}</Link>
       </>,
     );
 
   const report = row ? readDecayReport(row.data) : null;
   const otherSite = report && report.siteUrl && conn.label && report.siteUrl !== conn.label;
+  const ctx = report && !otherSite && report.pages.some((p) => p.reason !== "demand") ? await loadPromptContext(businessId) : null;
 
   return (
     <section className="card" id="decay">
@@ -295,6 +299,7 @@ export async function DecayPanel({ businessId }: { businessId: string }) {
         </>
       )}
       {help}
+      {ctx && report && <AiPromptButton text={decayPrompt(ctx, report, lang)} />}
     </section>
   );
 }

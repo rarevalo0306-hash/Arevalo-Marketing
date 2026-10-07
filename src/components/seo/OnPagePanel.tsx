@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { runOnPage, suggestPageFix } from "@/app/actions-seo-onpage";
+import { AiPromptButton } from "@/components/seo/AiPromptButton";
 import { CopyButton } from "@/components/seo/ArticleTools";
 import { extra, Fold } from "@/components/seo/Fold";
 import { HowToRead } from "@/components/seo/HowToRead";
 import { ShowMore } from "@/components/seo/ShowMore";
 import { ScoreDial } from "@/components/seo/ArticleView";
+import { ScoreVerdict } from "@/components/seo/ScoreVerdict";
 import { KeywordPicker, OnPageRunButton, RecheckButton, SuggestButton } from "@/components/seo/OnPageTools";
 import { aiEnabled, TEXT_PROVIDERS } from "@/lib/ai";
 import { intlLocale, type T } from "@/lib/i18n";
@@ -20,6 +22,7 @@ import {
   type KeywordSource,
   ONPAGE_COST_PER_PAGE,
   ONPAGE_MAX_PAGES,
+  ONPAGE_WEIGHTS,
   type OnPageIdea,
   type OnPagePage,
   pathOf,
@@ -28,6 +31,8 @@ import {
   topIdeas,
   urlKey,
 } from "@/lib/seo/onpage";
+import { loadPromptContext } from "@/lib/seo/prompt-context";
+import { onPagePrompt } from "@/lib/seo/prompts";
 import { latestReports } from "@/lib/seo/reports";
 import { BUSINESS_TZ } from "@/lib/time";
 import { readStudy, topKeywords } from "@/lib/study-shape";
@@ -106,8 +111,8 @@ export async function OnPagePanel({ businessId }: { businessId: string }) {
     return shell(
       <p className="note">
         {t(
-          "Para comparar tus páginas con las que ganan en Google hace falta conectar DataForSEO (DATAFORSEO_LOGIN y DATAFORSEO_PASSWORD en Vercel).",
-          "To compare your pages with the ones winning on Google you need DataForSEO connected (DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD in Vercel).",
+          "Esta revisión usa DataForSEO, el servicio que nos trae los resultados reales de Google. Todavía no está conectado: pídele a quien instaló la app que lo conecte (DATAFORSEO_LOGIN y DATAFORSEO_PASSWORD en Vercel).",
+          "This check uses DataForSEO, the service that brings us Google's real results. It isn't connected yet: ask whoever set up the app to connect it (DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD in Vercel).",
         )}
       </p>,
     );
@@ -127,11 +132,19 @@ export async function OnPagePanel({ businessId }: { businessId: string }) {
   const zones = readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName);
   if (!zones.length)
     return shell(
-      <p className="note">
-        {t("Primero elige tu zona de Google en ", "First pick your Google area in ")}
-        <a href="#dataforseo">{t("Datos reales de Google", "Real Google data")}</a>
-        {t(" y guarda.", " and save.")}
-      </p>,
+      <div className="note stack" style={{ gap: 8 }}>
+        <span>
+          {t(
+            "Para comparar tus páginas con las que salen primero en Google, necesitamos saber dónde buscan tus clientes (tu país o tu ciudad): Google muestra resultados distintos en cada lugar.",
+            "To compare your pages with the ones ranking first on Google, we need to know where your customers search (your country or city): Google shows different results in each place.",
+          )}
+        </span>
+        <span>
+          <a href="#dataforseo" style={{ fontWeight: 700 }}>
+            {t("Elegir mi zona en «⚙ Ajustes» →", "Pick my area in “⚙ Settings” →")}
+          </a>
+        </span>
+      </div>,
     );
 
   const [auditRows, rows] = await Promise.all([latestReports(businessId, "audit", 1), latestReports(businessId, "onpage", 1)]);
@@ -173,6 +186,7 @@ export async function OnPagePanel({ businessId }: { businessId: string }) {
   const avg = scored.length ? Math.round(scored.reduce((s, p) => s + (p.score ?? 0), 0) / scored.length) : null;
   const high = scored.reduce((s, p) => s + p.ideas.filter((i) => i.priority === "alta").length, 0);
   const start = topIdeas(scored);
+  const ctx = scored.some((p) => p.ideas.length > 0 || p.suggestion) ? await loadPromptContext(businessId) : null;
   const shortTitle = (p: Pick<OnPagePage, "url" | "title">) => p.title.trim() || pathOf(p.url);
   // Las páginas que pasan del tope quedan en «Ver todas», salvo las que nombra «Empieza por aquí» (sus enlaces bajan a ellas).
   const startUrls = new Set(start.map((x) => x.url));
@@ -182,7 +196,7 @@ export async function OnPagePanel({ businessId }: { businessId: string }) {
     <>
       <HowToRead title={t("Cómo leer esto", "How to read this")}>
         <ul>
-          <li>{t("Cada página de tu sitio tiene una búsqueda por la que debería salir. La nota de 0 a 100 compara tu página con las que salen primero en Google para esa búsqueda: 80 o más está bien; menos de 50, le falta bastante.", "Each page on your site has a search it should show up for. The 0-100 score compares your page with the ones ranking first on Google for that search: 80 or more is good; under 50, it's missing a lot.")}</li>
+          <li>{t("Cada página de tu sitio tiene una búsqueda por la que debería salir. La nota de 0 a 100 compara tu página con las que salen primero en Google para esa búsqueda: 90 o más es excelente, de 70 a 89 está bien, de 50 a 69 es regular y menos de 50 es urgente.", "Each page on your site has a search it should show up for. The 0-100 score compares your page with the ones ranking first on Google for that search: 90 or more is excellent, 70 to 89 is good, 50 to 69 is fair and under 50 is urgent.")}</li>
           <li>{t("Los cambios van en orden: arriba los que más ayudan. Empieza por el título y el primer párrafo.", "Changes are in order: the most helpful first. Start with the title and the first paragraph.")}</li>
           <li>{t("Si la búsqueda elegida no es la correcta, cámbiala antes de seguir los consejos.", "If the chosen search isn't the right one, change it before following the advice.")}</li>
         </ul>
@@ -206,6 +220,44 @@ export async function OnPagePanel({ businessId }: { businessId: string }) {
             <span className="small muted">{t("de prioridad alta", "high priority")}</span>
           </div>
         </div>
+      )}
+      {avg !== null && <ScoreVerdict score={avg} lang={lang} what={t("El promedio de tus páginas", "Your pages' average")} />}
+      {scored.length > 0 && (
+        <HowToRead title={t("¿Cómo se calcula la nota?", "How is the score calculated?")}>
+          <p>
+            {t(
+              "Cada página empieza en 0 y gana puntos por hacer lo mismo que las páginas que salen primero en Google para su búsqueda. Lo que no se puede medir da los puntos completos. Salir o no en Google no suma: eso es el resultado.",
+              "Each page starts at 0 and earns points for doing what the pages ranking first on Google do for its search. Anything we can't measure gets full points. Ranking or not on Google doesn't add points: that's the result.",
+            )}
+          </p>
+          <ul>
+            {(
+              [
+                ["titleKeyword", t("La búsqueda en el título", "The search in the title")],
+                ["titleLength", t("Título de 30 a 60 letras", "Title of 30-60 characters")],
+                ["h1", t("La búsqueda en el título grande (H1)", "The search in the main heading (H1)")],
+                ["meta", t("Descripción para Google (largo y búsqueda)", "Google description (length and search)")],
+                ["url", t("La búsqueda en la dirección", "The search in the URL")],
+                ["intro", t("La búsqueda en las primeras 100 palabras", "The search in the first 100 words")],
+                ["h2", t("La búsqueda en un subtítulo", "The search in a subheading")],
+                ["length", t("Texto tan largo como el de los que ganan", "Text as long as the winners'")],
+                ["topics", t("Los temas que tocan los que ganan", "The topics the winners cover")],
+                ["questions", t("Las preguntas que hace la gente", "The questions people ask")],
+                ["terms", t("Palabras relacionadas", "Related words")],
+                ["images", t("Fotos con descripción", "Photos with a description")],
+                ["inbound", t("Enlaces desde tus otras páginas", "Links from your other pages")],
+                ["outbound", t("Enlaces hacia tus otras páginas", "Links to your other pages")],
+                ["schema", t("Datos del negocio para Google (inicio o contacto)", "Business details for Google (home or contact)")],
+                ["speed", t("Velocidad en el celular", "Speed on mobile")],
+              ] as [keyof typeof ONPAGE_WEIGHTS, string][]
+            ).map(([id, label]) => (
+              <li key={id}>
+                {label}: <strong>{ONPAGE_WEIGHTS[id]}</strong> {t("puntos", "points")}
+              </li>
+            ))}
+          </ul>
+          <p className="muted">{t("Todo suma 100. El promedio de arriba es el de las páginas que se pudieron revisar.", "It all adds up to 100. The average above covers the pages we could check.")}</p>
+        </HowToRead>
       )}
 
       {start.length > 0 && (
@@ -386,6 +438,7 @@ export async function OnPagePanel({ businessId }: { businessId: string }) {
         })}
       </div>
       </ShowMore>
+      {ctx && <AiPromptButton text={onPagePrompt(ctx, report, lang)} />}
     </>,
   );
 }

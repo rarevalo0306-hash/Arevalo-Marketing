@@ -12,7 +12,7 @@ export async function AlertsPanel({ businessId }: { businessId: string }) {
   const { lang, t } = await getT();
   const b = await db.business.findUniqueOrThrow({
     where: { id: businessId },
-    select: { seoAlertEmail: true, seoAlerts: true, seoWeekly: true, seoWeeklyAt: true, seoDaily: true },
+    select: { seoAlertEmail: true, seoAlerts: true, seoWeekly: true, seoWeeklyAt: true, seoDaily: true, seoRankDays: true },
   });
   let sender: { ok: true; from: string } | { ok: false; error: string };
   try {
@@ -39,6 +39,7 @@ export async function AlertsPanel({ businessId }: { businessId: string }) {
         test={sendSeoTestEmail.bind(null, businessId)}
         initial={{ email: b.seoAlertEmail, alerts: b.seoAlerts, weekly: b.seoWeekly }}
         daily={b.seoDaily && dataForSeoEnabled()}
+        rankDays={[1, 7, 15, 30].includes(b.seoRankDays) ? b.seoRankDays : 7}
         sender={sender}
         lastWeekly={lastWeekly}
       />

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AiPromptButton } from "@/components/seo/AiPromptButton";
 import { capClass, Fold } from "@/components/seo/Fold";
 import { HowToRead } from "@/components/seo/HowToRead";
 import styles from "@/components/seo/QuestionsPanel.module.css";
@@ -6,7 +7,12 @@ import { ShowMore } from "@/components/seo/ShowMore";
 import { intlLocale, type T } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { dataForSeoEnabled } from "@/lib/seo/dataforseo";
+import { readOnPageReport } from "@/lib/seo/onpage";
+import { loadPromptContext } from "@/lib/seo/prompt-context";
+import { pagesByKeyword, questionsPrompt } from "@/lib/seo/prompts";
 import { loadQuestions, type QuestionGroup, type QuestionItem } from "@/lib/seo/questions";
+import { readRankReport, type RankReport } from "@/lib/seo/rank";
+import { latestReports } from "@/lib/seo/reports";
 import { BUSINESS_TZ } from "@/lib/time";
 
 /** Cuántas palabras clave y cuántas preguntas de cada una se ven antes de «Ver todas». */
@@ -105,8 +111,8 @@ export async function QuestionsPanel({ businessId }: { businessId: string }) {
       <h2>{t("Preguntas que hace la gente", "Questions people ask")}</h2>
       <p className="small muted">
         {t(
-          "Son las preguntas del cuadro «La gente también pregunta» que Google muestra cuando buscan tus palabras clave. Cada una que no respondes en tu web es una idea de artículo: si la contestas bien, puedes salir en ese cuadro.",
-          "These are the questions from the “People also ask” box Google shows when people search your keywords. Each one your website doesn't answer is an article idea: answer it well and you can show up in that box.",
+          "Las preguntas que Google muestra en el cuadro «La gente también pregunta» cuando buscan lo que vendes. Si tu web contesta una, puedes salir en ese cuadro. Las «Sin responder» son ideas listas para tu página o un artículo.",
+          "The questions Google shows in the “People also ask” box when people search for what you sell. If your website answers one, you can show up in that box. The “Not answered” ones are ready-made ideas for your website or an article.",
         )}
       </p>
     </div>
@@ -182,6 +188,17 @@ export async function QuestionsPanel({ businessId }: { businessId: string }) {
   const visible = data.groups.slice(0, SHOWN_GROUPS).reduce((n, g) => n + Math.min(SHOWN_QUESTIONS, g.questions.length), 0);
   const hiddenGroups = Math.max(0, data.groups.length - SHOWN_GROUPS);
   const answered = data.answeredSite + data.answeredArticle;
+  // Para la IA de la página: en qué página contestar cada grupo (la que Google muestra para esa palabra clave).
+  let prompt = "";
+  if (data.unanswered > 0) {
+    const [ctx, rankRows, [onpageRow]] = await Promise.all([loadPromptContext(businessId), latestReports(businessId, "rank", 5), latestReports(businessId, "onpage", 1)]);
+    const onpage = onpageRow ? readOnPageReport(onpageRow.data) : null;
+    const pageFor = pagesByKeyword(
+      rankRows.map((r) => readRankReport(r.data)).filter((r): r is RankReport => !!r),
+      onpage?.pages.map((p) => ({ keyword: p.keyword, url: p.url })) ?? [],
+    );
+    if (ctx) prompt = questionsPrompt(ctx, data.groups, pageFor, lang);
+  }
 
   return (
     <section className="card" id="preguntas">
@@ -233,6 +250,13 @@ export async function QuestionsPanel({ businessId }: { businessId: string }) {
             `We hid ${data.hidden} ${data.hidden === 1 ? "question" : "questions"} unrelated to what you sell.`,
           )}`}
       </p>
+      <AiPromptButton
+        text={prompt}
+        hint={t(
+          "Le dice a la IA de tu web en qué página contestar cada pregunta (o qué página nueva crear).",
+          "It tells your website's AI which page should answer each question (or which new page to create).",
+        )}
+      />
     </section>
   );
 }

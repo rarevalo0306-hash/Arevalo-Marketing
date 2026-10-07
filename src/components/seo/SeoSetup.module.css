@@ -1,0 +1,65 @@
+/* Puesta en marcha automática del SEO (pestaña Resumen). Usa las variables del tema. */
+
+.card { border-color: var(--line-strong); }
+.kicker {
+  align-self: flex-start; font-size: 12px; font-weight: 800; letter-spacing: 0.02em; text-transform: uppercase;
+  color: var(--brand); background: var(--brand-soft); padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line-strong);
+}
+.h3 { margin: 0; font-size: 16px; }
+
+.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.item {
+  display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; border-radius: 12px;
+  border: 1px solid var(--line); background: var(--surface-2); transition: opacity 0.15s, border-color 0.15s;
+}
+.itemOk { border-color: var(--teal-text); box-shadow: inset 3px 0 0 var(--teal-text); }
+.itemNo { opacity: 0.55; }
+.itemNo .itemText strong { text-decoration: line-through; }
+.itemText { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.itemText strong { overflow-wrap: anywhere; }
+.src { font-weight: 700; color: var(--ink); opacity: 0.8; }
+
+.btns { display: flex; align-items: center; gap: 6px; flex: none; }
+.yes, .no, .undo {
+  min-height: 38px; padding: 0 12px; border-radius: 10px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+  border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); white-space: nowrap;
+}
+.yes:hover { border-color: var(--teal-text); color: var(--teal-text); }
+.no { color: var(--muted); }
+.no:hover, .undo:hover { color: var(--ink); }
+.undo { color: var(--muted); border-color: var(--line); }
+.okMark { font-size: 13px; font-weight: 700; color: var(--teal-text); white-space: nowrap; }
+.noMark { font-size: 13px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+
+.more summary { cursor: pointer; color: var(--brand); font-weight: 700; font-size: 14px; }
+
+.langs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 8px; }
+.freqs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr)); gap: 8px; }
+.lang, .freq {
+  position: relative; display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; border-radius: 12px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface-2); color: var(--ink);
+}
+.lang input, .freq input { position: absolute; opacity: 0; pointer-events: none; }
+.lang:focus-within, .freq:focus-within { outline: 2px solid var(--brand); outline-offset: 2px; }
+.langOn { border-color: var(--brand); background: var(--brand-soft); box-shadow: inset 0 0 0 1px var(--brand); }
+.langOn strong { color: var(--ink); }
+
+.addRow { display: flex; gap: 8px; }
+.addRow input { flex: 1; min-width: 0; }
+.measure { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.again { align-self: flex-start; border: 0; background: none; padding: 0; font: inherit; font-size: 13px; color: var(--brand); cursor: pointer; font-weight: 600; }
+.again:disabled { opacity: 0.6; cursor: default; }
+
+.actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-top: 4px; border-top: 1px solid var(--line); padding-top: 14px; }
+
+.skeleton { display: flex; flex-direction: column; gap: 8px; }
+.skeleton span { height: 44px; border-radius: 12px; background: linear-gradient(90deg, var(--surface-2), var(--surface-hover), var(--surface-2)); background-size: 200% 100%; animation: shimmer 1.4s infinite linear; }
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .skeleton span { animation: none; } }
+
+@media (max-width: 520px) {
+  .item { flex-wrap: wrap; padding: 10px 12px; }
+  .btns { width: 100%; }
+  .btns > button { flex: 1; }
+  .actions > .btn { flex: 1 1 auto; }
+}

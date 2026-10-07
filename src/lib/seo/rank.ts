@@ -462,16 +462,29 @@ export function rankSetup(b: { website: string; seoLocations?: unknown; seoLocat
   return { ok: true, domain, zones, keywords };
 }
 
-const DAY_MS = 20 * 3600_000;
+const DAY_MS = 24 * 3600_000;
+/** Margen para que la revisión no se corra cada vez un poco más tarde (ej. "cada día" = más de 20 horas). */
+const SLACK_MS = 4 * 3600_000;
 const RETRY_MS = 2 * 3600_000;
+
+/** Cada cuántos días se revisa un negocio (Business.seoRankDays: 1, 7, 15 o 30; cualquier otro valor = 7). */
+export function rankEveryDays(days: number | null | undefined): number {
+  return days === 1 || days === 7 || days === 15 || days === 30 ? days : 7;
+}
+
+/** ¿Ya toca revisar? La última revisión tiene más de N días (con unas horas de margen). Sin revisiones: sí. */
+export function rankIsDue(lastMs: number, days: number | null | undefined, nowMs: number): boolean {
+  return nowMs - lastMs > rankEveryDays(days) * DAY_MS - SLACK_MS;
+}
 /** Marca de "revisión en curso" (fila en SeoReport) para que el cron, que puede llamarse cada minuto, no repita. */
 const RUN_MARK = "rank-run";
 
 /**
- * Revisión diaria automática: busca UN negocio con la revisión diaria encendida cuya última revisión tenga
- * más de 20 horas y lo revisa en todas sus zonas. Si un intento falla, se vuelve a probar en 2 horas.
- * "Última revisión" = el reporte "rank" más nuevo de cualquier zona: todas las zonas de una corrida se guardan
- * juntas, así que una zona que falló esa vez espera a la corrida del día siguiente (o a una revisión a mano).
+ * Revisión automática: busca UN negocio con la revisión automática encendida (seoDaily) cuya última revisión
+ * tenga más de seoRankDays días (1, 7, 15 o 30; 4 horas de margen) y lo revisa en todas sus zonas.
+ * Si un intento falla, se vuelve a probar en 2 horas.
+ * "Última revisión" = el reporte "rank" más nuevo de cualquier zona (también cuenta una revisión a mano): todas las
+ * zonas de una corrida se guardan juntas, así que una zona que falló esa vez espera a la corrida siguiente.
  */
 export async function runDueRankChecks(now = new Date()): Promise<{ businessId: string; ok: boolean; cost?: number; error?: string } | null> {
   if (!dataForSeoEnabled()) return null;
@@ -487,6 +500,7 @@ export async function runDueRankChecks(now = new Date()): Promise<{ businessId: 
       seoLocationName: true,
       seoLanguage: true,
       seoKeywords: true,
+      seoRankDays: true,
       seoReports: { where: { kind: { in: ["rank", RUN_MARK] } }, orderBy: { createdAt: "desc" }, take: 20, select: { kind: true, createdAt: true } },
     },
   });
@@ -496,7 +510,7 @@ export async function runDueRankChecks(now = new Date()): Promise<{ businessId: 
       const tried = b.seoReports.find((r) => r.kind === RUN_MARK)?.createdAt.getTime() ?? 0;
       return { b, last, tried, setup: rankSetup(b) };
     })
-    .filter((x) => x.setup.ok && now.getTime() - x.last > DAY_MS && now.getTime() - x.tried > RETRY_MS)
+    .filter((x) => x.setup.ok && rankIsDue(x.last, x.b.seoRankDays, now.getTime()) && now.getTime() - x.tried > RETRY_MS)
     .sort((a, b) => a.last - b.last)[0];
   if (!due || !due.setup.ok) return null;
   const { b, setup } = due;
@@ -521,7 +535,7 @@ export async function runDueRankChecks(now = new Date()): Promise<{ businessId: 
     });
     const saved: string[] = [];
     for (const report of reports) saved.push((await saveReport(b.id, "rank", report as unknown as Prisma.InputJsonValue)).id);
-    // Aviso por email si bajó algo (solo en esta revisión automática). Un fallo del email nunca rompe la revisión.
+    // Aviso por email si bajó algo (solo en la revisión automática). Un fallo del email nunca rompe la revisión.
     try {
       const { notifyRankAlerts } = await import("@/lib/seo/alerts");
       const alert = await notifyRankAlerts(b.id, saved);

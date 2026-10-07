@@ -86,7 +86,7 @@ export async function trackGapKeyword(businessId: string, keyword: string): Prom
   const current = [...new Set(readTrackedKeywords(b.seoKeywords).map((k) => k.toLowerCase()))];
   if (current.includes(kw)) return { ok: true, message: t("Ya la sigues.", "You already track it.") };
   if (current.length >= 25)
-    return { ok: false, message: t("Ya sigues 25 palabras clave (el máximo). Quita alguna arriba en Datos reales de Google.", "You already track 25 keywords (the max). Remove one above in Real Google data.") };
+    return { ok: false, message: t("Ya sigues 25 palabras clave (el máximo). Quita alguna en la pestaña «⚙ Ajustes».", "You already track 25 keywords (the max). Remove one in the “⚙ Settings” tab.") };
   await db.business.update({ where: { id: businessId }, data: { seoKeywords: [...current, kw] } });
   revalidatePath(`/b/${businessId}/seo`);
   return { ok: true, message: t("Agregada a tus palabras clave.", "Added to your keywords.") };

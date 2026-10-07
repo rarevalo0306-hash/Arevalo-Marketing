@@ -23,3 +23,23 @@ describe("importar contactos", () => {
     expect(normalizePhone("")).toBe("");
   });
 });
+
+describe("listas de contactos", () => {
+  it("limpia, quita repetidas y reconoce las listas de fábrica por su nombre", async () => {
+    const { cleanLists } = await import("@/lib/contacts");
+    expect(cleanLists(["client", " Clientes actuales ", "", "Constructoras", "constructoras", "Past clients"])).toEqual(["client", "Constructoras", "past-client"]);
+  });
+  it("junta las listas de fábrica y las propias", async () => {
+    const { allLists, listLabel } = await import("@/lib/contacts");
+    expect(allLists([{ lists: ["Zeta", "lead"] }, { lists: ["Alfa"] }])).toEqual(["lead", "prospect", "client", "past-client", "Alfa", "Zeta"]);
+    expect(listLabel("past-client", "en")).toBe("Past clients");
+    expect(listLabel("Alfa")).toBe("Alfa");
+  });
+});
+
+describe("importar sin encabezados", () => {
+  it("no confunde la primera persona con un encabezado aunque su email diga correo o gmail", () => {
+    const rows = parseContactsCsv("Ana López,ana@correo.com\nPedro,pedro@gmail.com", consent);
+    expect(rows.map((r) => r.name)).toEqual(["Ana López", "Pedro"]);
+  });
+});

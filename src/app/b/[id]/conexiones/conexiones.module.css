@@ -63,3 +63,91 @@
 .grid {
   align-items: start;
 }
+
+.index {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+  gap: 12px 20px;
+  padding-top: 4px;
+}
+
+.indexGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.indexTitle {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.index ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.index a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.index a:hover {
+  background: var(--surface-hover);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--line-strong);
+  flex-shrink: 0;
+}
+
+.index a.on .dot {
+  background: var(--teal);
+}
+
+.index a.bad {
+  border-color: var(--err-text);
+  color: var(--err-text);
+}
+
+.index a.bad .dot {
+  background: var(--err-text);
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  scroll-margin-top: 16px;
+}
+
+.groupHead {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.groupHead h2 {
+  font-size: 20px;
+}

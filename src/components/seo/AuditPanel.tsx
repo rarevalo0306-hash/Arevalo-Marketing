@@ -1,14 +1,19 @@
 import Link from "next/link";
 import { runSiteAudit } from "@/app/actions-seo-audit";
+import { AiPromptButton } from "@/components/seo/AiPromptButton";
 import { AuditButton } from "@/components/seo/AuditButton";
 import { capClass } from "@/components/seo/Fold";
 import { HowToRead } from "@/components/seo/HowToRead";
+import { ScoreVerdict } from "@/components/seo/ScoreVerdict";
 import { ShowMore } from "@/components/seo/ShowMore";
 import { db } from "@/lib/db";
 import { intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { ISSUE_TEXT, readAuditReport, type Issue, type Severity } from "@/lib/seo/audit";
+import { loadPromptContext } from "@/lib/seo/prompt-context";
+import { auditPrompt } from "@/lib/seo/prompts";
 import { latestReports } from "@/lib/seo/reports";
+import { AUDIT_WEIGHT, auditDeductions } from "@/lib/seo/verdict";
 import { BUSINESS_TZ } from "@/lib/time";
 
 /** Cuántos problemas se ven antes de «Ver todos» (van primero los más graves). */
@@ -41,8 +46,7 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
     warning: t("Advertencia", "Warning"),
     notice: t("Sugerencia", "Notice"),
   };
-  const scoreLabel = (s: number) =>
-    s >= 90 ? t("Excelente", "Excellent") : s >= 70 ? t("Bien", "Good") : s >= 50 ? t("Regular", "Needs work") : t("Necesita atención", "Needs attention");
+  const one = new Intl.NumberFormat(intlLocale(lang), { maximumFractionDigits: 1 });
 
   // Tendencia: los últimos puntajes, del más viejo al más nuevo.
   const trend = rows
@@ -76,6 +80,7 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
   }
 
   const action = runSiteAudit.bind(null, businessId);
+  const ctx = report?.issues.length ? await loadPromptContext(businessId) : null;
   const counts = (s: Severity) => report?.issues.filter((i) => i.severity === s).length ?? 0;
   const ps = report?.pagespeed;
   const home = report?.site.home || website;
@@ -97,7 +102,7 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
       {report && (
         <HowToRead title={t("Cómo leer esto", "How to read this")}>
           <ul>
-            <li>{t("Puntaje de salud de 0 a 100: qué tan bien está armada tu página para Google. 80 o más está bien; de 50 a 79, hay cosas que mejorar; menos de 50, hay problemas importantes.", "Health score from 0 to 100: how well your website is built for Google. 80 or more is good; 50 to 79, things to improve; under 50, important problems.")}</li>
+            <li>{t("La nota de 0 a 100 dice qué tan bien está armada tu página para Google: 90 o más es excelente, de 70 a 89 está bien, de 50 a 69 es regular y menos de 50 es urgente.", "The 0-100 score says how well your website is built for Google: 90 or more is excellent, 70 to 89 is good, 50 to 69 is fair and under 50 is urgent.")}</li>
             <li>{t("Arregla primero los errores (rojo), después las advertencias (amarillo). Las sugerencias son detalles.", "Fix the errors (red) first, then the warnings (yellow). Notices are details.")}</li>
             <li>{t("La velocidad importa sobre todo en el celular: si tu página tarda, la gente se va antes de verla.", "Speed matters most on phones: if your page is slow, people leave before seeing it.")}</li>
           </ul>
@@ -121,19 +126,16 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
                 <small>/100</small>
               </div>
               <span className="meter" style={{ display: "block" }}><span style={{ width: `${report.score}%` }} /></span>
-              <span className="small">
-                <strong>{scoreLabel(report.score)}</strong>
-                {prev !== null && (
-                  <span className="muted">
-                    {" · "}
-                    {report.score === prev
-                      ? t("igual que la vez anterior", "same as last time")
-                      : report.score > prev
-                        ? t(`subió ${report.score - prev} desde la vez anterior`, `up ${report.score - prev} since last time`)
-                        : t(`bajó ${prev - report.score} desde la vez anterior`, `down ${prev - report.score} since last time`)}
-                  </span>
-                )}
-              </span>
+              <ScoreVerdict score={report.score} lang={lang} />
+              {prev !== null && (
+                <span className="small muted">
+                  {report.score === prev
+                    ? t(`Igual que la vez anterior (${prev}).`, `Same as last time (${prev}).`)
+                    : report.score > prev
+                      ? t(`Subió ${report.score - prev} desde la vez anterior (${prev}).`, `Up ${report.score - prev} since last time (${prev}).`)
+                      : t(`Bajó ${prev - report.score} desde la vez anterior (${prev}).`, `Down ${prev - report.score} since last time (${prev}).`)}
+                </span>
+              )}
               {trend.length > 1 && (
                 <div className="row" style={{ gap: 10, alignItems: "flex-end" }}>
                   <div className="seo-trend" role="img" aria-label={t(`Últimos puntajes: ${trend.map((x) => x.score).join(", ")}`, `Recent scores: ${trend.map((x) => x.score).join(", ")}`)}>
@@ -156,13 +158,47 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
                 )}
                 {report.site.stoppedEarly && t(" · se paró por tiempo antes de leerlo todo", " · stopped early because of the time limit")}
               </span>
+              <HowToRead title={t("¿Cómo se calcula la nota?", "How is the score calculated?")}>
+                <p>
+                  {t(
+                    `Empezamos en 100 y cada problema resta puntos. Un error resta hasta ${AUDIT_WEIGHT.error}, una advertencia hasta ${AUDIT_WEIGHT.warning} y una sugerencia hasta ${AUDIT_WEIGHT.notice}. Si el problema está en una sola página resta la mitad; si está en todas las páginas revisadas (o es de todo el sitio, como el sitemap), resta completo. La nota nunca baja de 0.`,
+                    `We start at 100 and each problem takes points off. An error takes up to ${AUDIT_WEIGHT.error}, a warning up to ${AUDIT_WEIGHT.warning} and a notice up to ${AUDIT_WEIGHT.notice}. If the problem is on just one page it takes half; if it's on every page checked (or affects the whole site, like the sitemap), it takes the full amount. The score never goes below 0.`,
+                  )}
+                </p>
+                {report.issues.length > 0 && (
+                  <>
+                    <p>
+                      <strong>{t(`Tu nota: 100 − lo que restó cada problema = ${report.score}`, `Your score: 100 − what each problem took off = ${report.score}`)}</strong>
+                    </p>
+                    <ul>
+                      {auditDeductions(report.issues, report.pages.length).map((d) => (
+                        <li key={d.id}>
+                          −{one.format(d.points)} · {ISSUE_TEXT[d.id][lang].title} <span className="muted">({sevLabel[d.severity].toLowerCase()})</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="muted">{t("Los decimales se suman y al final se redondea.", "Decimals are added up and rounded at the end.")}</p>
+                  </>
+                )}
+                <p className="muted">
+                  {t(
+                    "La velocidad de Google (PageSpeed) se muestra aparte y no cambia esta nota.",
+                    "Google's speed test (PageSpeed) is shown separately and doesn't change this score.",
+                  )}
+                </p>
+              </HowToRead>
             </div>
 
             <div className="stack" style={{ gap: 8 }}>
               <span className="lbl">{t("Google PageSpeed (celular)", "Google PageSpeed (mobile)")}</span>
               {ps && "error" in ps ? (
                 <p className="note">
-                  {t("Esta vez no se pudo medir con Google", "Google's test didn't work this time")} ({ps.error}).{" "}
+                  {t("Esta vez no se pudo medir con Google", "Google's test didn't work this time")}
+                  {/quota|rate|429/i.test(ps.error)
+                    ? t(" (Google llegó a su límite de pruebas gratis por hoy).", " (Google hit its free test limit for today).")
+                    : /timeout|abort/i.test(ps.error)
+                      ? t(" (tu página tardó demasiado en responder).", " (your page took too long to respond).")
+                      : "."}{" "}
                   {t(
                     "Vuelve a intentarlo más tarde. Si pasa seguido, agrega PAGESPEED_API_KEY en Vercel (es gratis en Google Cloud).",
                     "Try again later. If it keeps happening, add PAGESPEED_API_KEY in Vercel (it's free in Google Cloud).",
@@ -300,6 +336,8 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
               </div>
             </details>
           )}
+
+          {ctx && <AiPromptButton text={auditPrompt(ctx, report, lang)} />}
         </>
       )}
     </section>
