@@ -314,3 +314,15 @@ export async function applyBookAsset(businessId: string, assetId: string, use: "
     return { ok: false, message: t(`No se pudo usar como plantilla: ${errorText(e, lang)}`, `Couldn't use it as a template: ${errorText(e, lang)}`) };
   }
 }
+
+/** Guarda el manual que el dueño subió (y su nombre) como el manual en uso. No lo lee: eso pasa al presionar «Crear mi marca». */
+export async function saveBrandBook(businessId: string, url: string, name: string): Promise<BookActionResult> {
+  const { t } = await getT();
+  const b = await db.business.findUnique({ where: { id: businessId }, select: { id: true } });
+  if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!isOwnFile(url, businessId)) return { ok: false, message: t("El archivo no es de este negocio.", "That file doesn't belong to this business.") };
+  await db.business.update({ where: { id: businessId }, data: { brandBookUrl: url } });
+  await updateBrandAssets(businessId, (cur) => ({ ...cur, bookName: name.trim().slice(0, 120) || undefined }));
+  refresh(businessId);
+  return { ok: true, message: t("Manual guardado.", "Brand book saved.") };
+}

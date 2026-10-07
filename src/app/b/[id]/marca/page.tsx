@@ -1,4 +1,5 @@
-import { brandFromAi, brandFromBook, deleteTemplate, generateTemplates, getBrandBookUploadUrl, getUploadUrl, updateBrandKit } from "@/app/actions";
+import { brandFromAi, brandFromBook, deleteTemplate, getBrandBookUploadUrl, getUploadUrl, proposeTemplates, updateBrandKit } from "@/app/actions";
+import { saveBrandBook } from "@/app/actions-brand-book";
 import { saveBrandLogo } from "@/app/actions-brand";
 import { BrandKitForm } from "@/components/BrandKitForm";
 import { BookAssetsSection } from "@/components/brand/BookAssetsSection";
@@ -7,8 +8,9 @@ import { saveCustomTemplate } from "@/app/actions-media";
 import { PageHead } from "@/components/PageHead";
 import { SizesInfo } from "@/components/SizesInfo";
 import { TemplateUpload } from "@/components/TemplateUpload";
-import { TemplatesButton } from "@/components/TemplatesButton";
+import { TemplatesAuto } from "@/components/TemplatesAuto";
 import { aiEnabled } from "@/lib/ai";
+import { readBrandAssets } from "@/lib/brand-assets";
 import { db } from "@/lib/db";
 import { BUILTIN_TEMPLATES, builtinTemplateName, LAYOUTS } from "@/lib/design-shapes";
 import type { UiLang } from "@/lib/i18n";
@@ -44,6 +46,7 @@ export default async function MarcaPage({ params }: { params: Promise<{ id: stri
   const b = await db.business.findUniqueOrThrow({ where: { id }, include: { templates: { orderBy: { createdAt: "asc" } } } });
   const own = b.templates.map((x) => ({ key: x.id, name: x.name, layout: (x.spec as { layout?: (typeof LAYOUTS)[number] }).layout, own: true }));
   const shown = own.length ? own : BUILTIN_TEMPLATES.map((x, i) => ({ key: `builtin-${i}`, name: builtinTemplateName(x.name, lang), layout: x.layout, own: false }));
+  const assets = readBrandAssets(b.brandAssets);
   const v = b.createdAt.getTime().toString(36) + (b.templates.at(-1)?.createdAt.getTime().toString(36) ?? "");
   return (
     <>
@@ -60,26 +63,31 @@ export default async function MarcaPage({ params }: { params: Promise<{ id: stri
         upload={usesSupabaseStorage() ? getUploadUrl.bind(null, id) : null}
         brandBook={{
           url: b.brandBookUrl,
+          name: assets.bookName ?? "",
           upload: usesSupabaseStorage() ? getBrandBookUploadUrl.bind(null, id) : null,
+          save: saveBrandBook.bind(null, id),
           read: brandFromBook.bind(null, id),
           suggest: aiEnabled() ? brandFromAi.bind(null, id) : null,
+          canRead: Boolean(process.env.GEMINI_API_KEY),
         }}
-      />
+        hasKit={assets.items.some((a) => a.kind === "kit")}
+      >
+        <BookAssetsSection businessId={id} />
+      </BrandKitForm>
 
-      <BookAssetsSection businessId={id} />
       <BrandKitSection businessId={id} />
 
       <section className="card" id="plantillas">
         <div className="row between">
           <div className="stack" style={{ gap: 4 }}>
-            <h2>{t("Plantillas de diseño", "Design templates")}</h2>
+            <h2>{t("4. Plantillas de diseño", "4. Design templates")}</h2>
             <p className="small muted">
               {own.length
-                ? t("Tus plantillas, diseñadas por la IA con tu marca. La IA elige la mejor para cada post, o la eliges tú.", "Your templates, designed by the AI with your brand. The AI picks the best one for each post, or you pick it.")
-                : t("Estas son las plantillas de fábrica. Pídele a la IA que diseñe las tuyas con tu marca.", "These are the built-in templates. Ask the AI to design your own with your brand.")}
+                ? t("Tus plantillas, propuestas por la IA con tu marca (se renuevan solas cuando cambias colores, letras o logo). La IA elige la mejor para cada post, o la eliges tú.", "Your templates, suggested by the AI with your brand (they renew themselves when you change colors, fonts or logo). The AI picks the best one for each post, or you pick it.")
+                : t("Estas son las plantillas de fábrica. Cuando guardes tu marca, la IA te propone las tuyas con ella.", "These are the built-in templates. When you save your brand, the AI suggests your own with it.")}
             </p>
           </div>
-          {aiEnabled() && <TemplatesButton action={generateTemplates.bind(null, id)} has={own.length > 0} />}
+          {aiEnabled() && <TemplatesAuto businessId={id} propose={proposeTemplates.bind(null, id)} has={own.length > 0} />}
         </div>
         <TemplateUpload save={saveCustomTemplate.bind(null, id)} upload={usesSupabaseStorage() ? getUploadUrl.bind(null, id) : null} color={b.color} />
         <SizesInfo />

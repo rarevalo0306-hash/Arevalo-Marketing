@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
+import { onBrandSaved } from "@/lib/brand-events";
 import type { KitResult } from "@/app/actions-brand-kit";
 import { KitCard, KitFavicons } from "@/components/brand/KitCard";
 import { KitSignature } from "@/components/brand/KitSignature";
@@ -66,6 +67,18 @@ export function KitPanel({
   const [thinking, setThinking] = useState(false);
   const [aiNote, setAiNote] = useState("");
   const touched = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const has0 = items.length > 0;
+
+  // Al guardar la marca arriba: si cambiaron colores, letras o logos (o todavía no hay kit), el kit se vuelve a crear solo.
+  useEffect(
+    () =>
+      onBrandSaved((d) => {
+        if (d.businessId !== businessId || (!d.visual && has0) || pending) return;
+        formRef.current?.requestSubmit();
+      }),
+    [businessId, has0, pending],
+  );
 
   const propose = async (auto: boolean) => {
     setThinking(true);
@@ -113,7 +126,7 @@ export function KitPanel({
   return (
     <section className="card" id="kit" aria-labelledby="kit-title">
       <div className="stack" style={{ gap: 4 }}>
-        <h2 id="kit-title">{t("Kit de marca listo para usar", "Ready-to-use brand kit")}</h2>
+        <h2 id="kit-title">{t("3. Kit de marca listo para usar", "3. Ready-to-use brand kit")}</h2>
         <p className="small muted">
           {t(
             `Con un botón creamos las ${total} imágenes que tu negocio necesita —logos limpios, foto de perfil, portadas de cada red, íconos del sitio web, encabezado de email y tarjeta de presentación— con tu logo, tus colores y tu letra. Listas para descargar y subir.`,
@@ -130,7 +143,7 @@ export function KitPanel({
         </p>
       )}
 
-      <form action={run} className={s.form}>
+      <form ref={formRef} action={run} className={s.form}>
         <input type="hidden" name="lang" value={coverLang} />
         <fieldset className={s.langs}>
           <legend className="lbl">{t("Idioma de las portadas", "Cover language")}</legend>
@@ -181,7 +194,7 @@ export function KitPanel({
           <button type="submit" className="btn primary" disabled={pending}>
             {pending ? t("Creando tu kit…", "Creating your kit…") : has ? t("Volver a crear", "Create again") : t("Crear mi kit", "Create my kit")}
           </button>
-          {!pending && <span className="small muted">{t("Gratis: no usa IA. Tarda unos 20 segundos.", "Free: no AI involved. Takes about 20 seconds.")}</span>}
+          {!pending && <span className="small muted">{t("Se crea solo cuando guardas tu marca. Gratis: no usa IA. Tarda unos 20 segundos.", "It's created automatically when you save your brand. Free: no AI involved. Takes about 20 seconds.")}</span>}
           {pending && <Progress />}
         </div>
         {result && !pending && <p className={result.ok ? "note ok" : "note error"} role="status">{result.message}</p>}

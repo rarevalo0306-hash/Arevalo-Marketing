@@ -45,6 +45,8 @@ export type BrandAssets = {
   /** Cuándo se leyó el manual para sacar imágenes, y cuántas páginas tenía. */
   bookReadAt?: string;
   bookPages?: number;
+  /** Nombre del archivo del manual que está en uso (como lo subió el dueño). */
+  bookName?: string;
   /** Cuándo se creó el kit por última vez. */
   generatedAt?: string;
 };
@@ -93,6 +95,7 @@ export function readBrandAssets(raw: unknown): BrandAssets {
     items,
     bookReadAt: typeof o.bookReadAt === "string" ? o.bookReadAt : undefined,
     bookPages: typeof o.bookPages === "number" ? o.bookPages : undefined,
+    bookName: typeof o.bookName === "string" ? o.bookName.slice(0, 120) : undefined,
     generatedAt: typeof o.generatedAt === "string" ? o.generatedAt : undefined,
   };
 }

@@ -7,9 +7,8 @@ import { acceptAllBookAssets, applyBookAsset, decideBookAsset } from "@/app/acti
 import { useT } from "@/components/I18n";
 import type { BrandAsset, BrandAssetKind, BrandAssetStatus } from "@/lib/brand-assets";
 import { intlLocale } from "@/lib/i18n";
-import { BOOK_FILE_TYPES } from "@/lib/pdf-pages";
 import s from "./BookAssets.module.css";
-import { bookRunBusy, bookRunText, clearBookRun, resumeBookRun, setBookRunEnabled, startBookRun, useBookRun } from "./BookRun";
+import { bookRunBusy, bookRunText, clearBookRun, resumeBookRun, setBookRunEnabled, useBookRun } from "./BookRun";
 
 type Props = {
   businessId: string;
@@ -38,26 +37,6 @@ const GROUPS: Group[] = [
 ];
 
 const LOGO_KINDS: BrandAssetKind[] = ["logo", "logo-light", "logo-dark", "isotype"];
-
-/** Botón que abre el selector de archivos para elegir el manual (PDF o imagen). */
-function PickBook({ businessId, label, disabled }: { businessId: string; label: string; disabled: boolean }) {
-  return (
-    <label className={`btn ${s.pick}`} aria-disabled={disabled} style={{ cursor: disabled ? "wait" : "pointer" }}>
-      {label}
-      <input
-        type="file"
-        accept={BOOK_FILE_TYPES.join(",")}
-        className="sr-only"
-        disabled={disabled}
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          e.target.value = "";
-          if (f) void startBookRun(businessId, f);
-        }}
-      />
-    </label>
-  );
-}
 
 /** El avance de la lectura (o el error, o el "listo"). */
 function RunStatus({ businessId }: { businessId: string }) {
@@ -193,7 +172,7 @@ function AssetCard({ a, businessId, logoUrl, logoLightUrl, isTemplate, onMessage
   );
 }
 
-export function BookAssetsPanel({ businessId, canRead, bookUrl, readAt, pages, items, logoUrl, logoLightUrl, templateUrls }: Props) {
+export function BookAssetsPanel({ businessId, canRead, readAt, pages, items, logoUrl, logoLightUrl, templateUrls }: Props) {
   const { lang, t } = useT();
   const run = useBookRun();
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -210,41 +189,15 @@ export function BookAssetsPanel({ businessId, canRead, bookUrl, readAt, pages, i
   );
   const cost = t("Cuesta unos centavos por manual.", "It costs a few cents per brand book.");
 
-  // Sin imágenes todavía: una línea corta y el botón, no una tarjeta grande vacía.
-  if (!items.length && run.businessId !== businessId) {
-    return (
-      <section className={`card ${s.slim}`} id="imagenes-manual" aria-label={t("Imágenes de tu manual", "Images from your brand book")}>
-        {canRead ? (
-          <>
-            <p className={s.slimText}>
-              <strong>{t("¿Tienes tu manual de marca?", "Have a brand book?")}</strong>{" "}
-              {t("La IA puede sacar de ahí tus logos, el símbolo, los patrones y ejemplos de piezas.", "The AI can pull your logos, symbol, patterns, and example pieces out of it.")}{" "}
-              <span className="muted">{cost}</span>
-            </p>
-            <div className={`row ${s.slimButtons}`}>
-              {bookUrl && (
-                <button type="button" className="btn on" onClick={() => void startBookRun(businessId, bookUrl)}>
-                  {t("Sacar logos e imágenes del manual", "Pull logos and images from the brand book")}
-                </button>
-              )}
-              <PickBook businessId={businessId} label={bookUrl ? t("Elegir otro archivo", "Pick another file") : t("Elegir el manual", "Pick the brand book")} disabled={false} />
-            </div>
-          </>
-        ) : (
-          <p className={`small muted ${s.slimText}`}>
-            {t("Para sacar logos e imágenes de tu manual de marca hace falta la clave de Gemini (la IA de Google).", "Pulling logos and images from your brand book needs the Gemini key (Google's AI).")}
-          </p>
-        )}
-      </section>
-    );
-  }
+  // Sin imágenes todavía: no se muestra nada (el manual se elige y se lee arriba, en «Crea tu marca»).
+  if (!items.length && run.businessId !== businessId) return null;
 
   const when = readAt ? new Date(readAt).toLocaleDateString(intlLocale(lang), { day: "numeric", month: "short", year: "numeric" }) : "";
 
   return (
     <section className="card" id="imagenes-manual" aria-labelledby="imagenes-manual-title">
       <div className="stack" style={{ gap: 4 }}>
-        <h2 id="imagenes-manual-title">{t("Imágenes de tu manual", "Images from your brand book")}</h2>
+        <h2 id="imagenes-manual-title">{t("Logos e imágenes de tu manual", "Logos and images from your brand book")}</h2>
         <p className="small muted">
           {items.length
             ? t(
@@ -327,16 +280,7 @@ export function BookAssetsPanel({ businessId, canRead, bookUrl, readAt, pages, i
             : ""}{" "}
           {cost} {items.length > 0 && t("Al volver a leerlo, las que no aceptaste se reemplazan.", "Reading it again replaces the ones you didn't accept.")}
         </span>
-        {canRead && !busy && (
-          <div className="row" style={{ gap: 8 }}>
-            {bookUrl && (
-              <button type="button" className="btn" onClick={() => void startBookRun(businessId, bookUrl)}>
-                {items.length ? t("Volver a leer el manual", "Read the brand book again") : t("Sacar logos e imágenes del manual", "Pull logos and images from the brand book")}
-              </button>
-            )}
-            <PickBook businessId={businessId} label={bookUrl ? t("Elegir otro archivo", "Pick another file") : t("Elegir el manual", "Pick the brand book")} disabled={false} />
-          </div>
-        )}
+        <a className="small" href="#manual">{t("Para leer otro manual, cámbialo arriba, en «Crea tu marca».", "To read another brand book, change it above, in “Create your brand”.")}</a>
       </div>
     </section>
   );
