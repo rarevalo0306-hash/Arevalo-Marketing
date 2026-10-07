@@ -1,0 +1,35 @@
+/* Parte de arriba de "Nueva publicación": una sola caja y tres caminos claros. */
+.form { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+
+.start { padding: 22px; gap: 14px; }
+@media (max-width: 640px) { .start { padding: 18px 16px; } }
+
+.head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.title { font-family: var(--display); font-weight: 800; font-size: 19px; color: var(--ink); }
+
+/* Idioma: pequeño, al lado del título. */
+.lang { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.lang select.langSelect { width: auto; min-height: 0; padding: 5px 30px 5px 10px; font-size: 13px; border-radius: 10px; background-position: right 10px center; }
+
+.start textarea.idea { min-height: 96px; font-size: 16px; }
+
+/* Tres caminos: en celular uno debajo del otro; en computadora, uno al lado del otro. */
+.choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 10px; }
+.choice {
+  flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; text-align: left;
+  min-height: 62px; padding: 10px 16px; white-space: normal;
+}
+.choice small { font-weight: 500; font-size: 12.5px; line-height: 1.35; color: var(--muted); }
+.main { font-size: 15px; }
+.main small { color: rgba(255, 255, 255, 0.88); }
+.main:disabled small { color: inherit; }
+.own { border-style: dashed; }
+
+/* Barra pequeña cuando ya empezaste: qué pasó y cómo volver a la idea. */
+.bar {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px;
+  padding: 12px 16px; border-radius: 14px; border: 1px solid var(--line-strong); background: var(--surface);
+}
+.barText { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 220px; font-size: 14px; font-weight: 600; color: var(--ink); }
+.barText .quote { font-weight: 400; font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.barBtns { display: flex; flex-wrap: wrap; gap: 8px; }

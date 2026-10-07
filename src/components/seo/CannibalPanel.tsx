@@ -20,7 +20,7 @@ import {
 import { BUSINESS_TZ } from "@/lib/time";
 
 /** Cuántas búsquedas se muestran antes de "Ver más". */
-const SHOWN = 8;
+const SHOWN = 3;
 
 const shortUrl = (url: string) => url.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") || url;
 
@@ -249,7 +249,7 @@ export async function CannibalPanel({ businessId }: { businessId: string }) {
           <ul className={styles.list}>{shown.map(item)}</ul>
           {rest.length > 0 && (
             <details className={styles.more}>
-              <summary>{t(`Ver ${rest.length} más`, `Show ${rest.length} more`)}</summary>
+              <summary>{t(`Ver ${rest.length} ${rest.length === 1 ? "búsqueda" : "búsquedas"} más`, `Show ${rest.length} more ${rest.length === 1 ? "search" : "searches"}`)}</summary>
               <ul className={styles.list}>{rest.map(item)}</ul>
             </details>
           )}

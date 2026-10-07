@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import type { TestResult } from "@/app/actions";
 import { useT } from "@/components/I18n";
 import { channelText, type ChannelDef } from "@/lib/channels";
+import s from "./ConnectionCard.module.css";
 
 type Props = {
   channel: ChannelDef;
@@ -27,18 +28,70 @@ export function ConnectionCard({ channel: def, connected, values, secretSet, sav
   const [open, setOpen] = useState(false);
   const [result, setResult] = useState<TestResult>(null);
   const [pending, start] = useTransition();
+  // Hay un camino fácil (entrar con tu cuenta, o Email con la cuenta de la app): los pasos técnicos quedan como alternativa.
+  const easySteps = (oauthUrl || brevo) && channel.easy?.length ? channel.easy : null;
 
   return (
-    <article className="card" style={{ padding: 20, gap: 14 }}>
-      <div className="row" style={{ gap: 14, flexWrap: "nowrap" }}>
-        <span className="mono solid" style={{ width: 44, height: 44, borderRadius: 10, fontSize: 13 }}>{channel.mono}</span>
-        <div style={{ flexGrow: 1 }}>
-          <h2 style={{ fontSize: 17, fontFamily: "var(--body)", fontWeight: 600 }}>{channel.name}</h2>
-          <div className="small muted">{channel.what}</div>
-        </div>
+    <article id={`c-${channel.id}`} className={`card ${s.card}`}>
+      <div className={s.head}>
+        <span className={`mono solid ${s.logo}`} aria-hidden="true">{channel.mono}</span>
+        <h2>{channel.name}</h2>
         <span className={connected ? "pill connected" : "pill"}>{connected ? t("Conectado", "Connected") : t("No conectado", "Not connected")}</span>
       </div>
-      <p className="small" style={{ color: "#3f4246" }}><strong style={{ color: "var(--ink)" }}>{t("Necesitas: ", "You need: ")}</strong>{channel.need}</p>
+      <p className={s.gain}>{channel.gain}</p>
+
+      {oauthUrl && !open && (
+        <div className={s.easy}>
+          <a className={connected ? "btn outline" : "btn on"} href={oauthUrl}>
+            {connected ? t(`Volver a conectar con ${oauthName}`, `Reconnect with ${oauthName}`) : t(`Conectar con ${oauthName}`, `Connect with ${oauthName}`)}
+          </a>
+          <span className={s.easyNote}>
+            {connected
+              ? t("Úsalo si cambiaste de página o la conexión dejó de funcionar.", "Use it if you switched Pages or the connection stopped working.")
+              : t(`Solo entra con tu cuenta de ${oauthName}. No tienes que copiar ningún código.`, `Just sign in with your ${oauthName} account. You don't have to copy any codes.`)}
+          </span>
+        </div>
+      )}
+
+      {brevo && !open && (
+        <form action={(f) => start(async () => setResult(await brevo.connect(f)))} className={`stack ${s.sendBox}`}>
+          <div className={s.label} style={{ fontSize: 14 }}>{connected ? t("Cambiar el remitente", "Change the sender") : t("Conectar en un paso", "Connect in one step")}</div>
+          <div className="stack" style={{ gap: 4 }}>
+            <label className={s.label} htmlFor={`${channel.id}-bname`}>{t("Nombre que ven tus clientes", "Name your customers see")}</label>
+            <input id={`${channel.id}-bname`} name="name" className="field" defaultValue={brevo.defaultName} />
+          </div>
+          <div className="stack" style={{ gap: 4 }}>
+            <label className={s.label} htmlFor={`${channel.id}-bemail`}>{t("Email que envía", "Sending email")}</label>
+            <input id={`${channel.id}-bemail`} name="email" type="email" className="field" placeholder={brevo.domains[0] ? `info@${brevo.domains[0]}` : t("info@tunegocio.com", "info@yourbusiness.com")} required />
+            {brevo.domains.length > 0 && <span className={s.hint}>{t("Puede ser cualquier email de: ", "It can be any email at: ")}{brevo.domains.join(", ")}</span>}
+          </div>
+          <div><button className="btn on" type="submit" disabled={pending}>{pending ? t("Conectando…", "Connecting…") : t("Conectar Email", "Connect Email")}</button></div>
+        </form>
+      )}
+
+      {result && <p className={result.ok ? "note ok" : "note error"} role="status">{result.message}</p>}
+
+      {/* Al abrir el formulario a mano, los pasos se muestran abiertos (la key vuelve a montar el <details>). */}
+      <details key={open ? "open" : "closed"} className={s.how} open={open || undefined}>
+        <summary>{t("¿Cómo lo conecto?", "How do I connect it?")}</summary>
+        <div className={s.howBody}>
+          {easySteps ? (
+            <>
+              <p className={s.subhead}>{t("Lo fácil:", "The easy way:")}</p>
+              <ol className={s.steps}>{easySteps.map((step) => <li key={step}>{step}</li>)}</ol>
+              <p className={s.subhead}>{t("¿Prefieres pegar los datos a mano? (más técnico)", "Prefer to paste the details by hand? (more technical)")}</p>
+              <ol className={s.steps}>{channel.steps.map((step) => <li key={step}>{step}</li>)}</ol>
+            </>
+          ) : (
+            <ol className={s.steps}>{channel.steps.map((step) => <li key={step}>{step}</li>)}</ol>
+          )}
+          {!open && (oauthUrl || brevo) && (
+            <button className={`btn link ${s.manual}`} type="button" onClick={() => setOpen(true)}>
+              {oauthUrl ? t("Pegar datos a mano", "Enter details manually") : t("Usar otra cuenta (pegar clave)", "Use another account (paste key)")}
+            </button>
+          )}
+        </div>
+      </details>
 
       {open && (
         <form
@@ -53,7 +106,7 @@ export function ConnectionCard({ channel: def, connected, values, secretSet, sav
         >
           {channel.fields.map((f) => (
             <div key={f.key} className="stack" style={{ gap: 4 }}>
-              <label className="small" style={{ fontWeight: 500 }} htmlFor={`${channel.id}-${f.key}`}>{f.label}</label>
+              <label className={s.label} htmlFor={`${channel.id}-${f.key}`}>{f.label}</label>
               <input
                 id={`${channel.id}-${f.key}`}
                 name={f.key}
@@ -72,61 +125,32 @@ export function ConnectionCard({ channel: def, connected, values, secretSet, sav
         </form>
       )}
 
-      {brevo && !open && (
-        <form
-          action={(f) => start(async () => setResult(await brevo.connect(f)))}
-          className="stack"
-          style={{ gap: 10, padding: 14, borderRadius: 10, background: "var(--ground)" }}
-        >
-          <div className="small" style={{ fontWeight: 600 }}>{connected ? t("Cambiar el remitente", "Change the sender") : t("Conectar en un paso", "Connect in one step")}</div>
-          <div className="stack" style={{ gap: 4 }}>
-            <label className="small" htmlFor={`${channel.id}-bname`}>{t("Nombre que ven tus clientes", "Name your customers see")}</label>
-            <input id={`${channel.id}-bname`} name="name" className="field" defaultValue={brevo.defaultName} />
-          </div>
-          <div className="stack" style={{ gap: 4 }}>
-            <label className="small" htmlFor={`${channel.id}-bemail`}>{t("Email que envía", "Sending email")}</label>
-            <input id={`${channel.id}-bemail`} name="email" type="email" className="field" placeholder={brevo.domains[0] ? `info@${brevo.domains[0]}` : t("info@tunegocio.com", "info@yourbusiness.com")} required />
-            {brevo.domains.length > 0 && <span className="small muted">{t("Puede ser cualquier email de: ", "It can be any email at: ")}{brevo.domains.join(", ")}</span>}
-          </div>
-          <div><button className="btn on" type="submit" disabled={pending}>{pending ? t("Conectando…", "Connecting…") : t("Conectar Email", "Connect Email")}</button></div>
-        </form>
+      {!open && (connected || (!oauthUrl && !brevo)) && (
+        <div className={s.actions}>
+          {connected && (
+            <>
+              <button className="btn" type="button" disabled={pending} onClick={() => start(async () => setResult(await test()))}>
+                {pending ? t("Probando…", "Testing…") : t("Probar conexión", "Test connection")}
+              </button>
+              <button
+                className="btn danger"
+                type="button"
+                disabled={pending}
+                onClick={() => {
+                  if (confirm(t(`¿Desconectar ${channel.name}?`, `Disconnect ${channel.name}?`))) start(async () => { await remove(); setResult(null); });
+                }}
+              >
+                {t("Desconectar", "Disconnect")}
+              </button>
+            </>
+          )}
+          {!oauthUrl && !brevo && (
+            <button className="btn outline" type="button" onClick={() => setOpen(true)}>
+              {connected ? t("Editar datos", "Edit details") : t(`Conectar ${channel.name}`, `Connect ${channel.name}`)}
+            </button>
+          )}
+        </div>
       )}
-
-      {result && <p className={result.ok ? "note ok" : "note error"} role="status">{result.message}</p>}
-
-      <div className="row" style={{ justifyContent: "flex-end" }}>
-        {connected && !open && (
-          <>
-            <button className="btn" type="button" disabled={pending} onClick={() => start(async () => setResult(await test()))}>
-              {pending ? t("Probando…", "Testing…") : t("Probar conexión", "Test connection")}
-            </button>
-            <button
-              className="btn danger"
-              type="button"
-              disabled={pending}
-              onClick={() => {
-                if (confirm(t(`¿Desconectar ${channel.name}?`, `Disconnect ${channel.name}?`))) start(async () => { await remove(); setResult(null); });
-              }}
-            >
-              {t("Desconectar", "Disconnect")}
-            </button>
-          </>
-        )}
-        {!open && oauthUrl && (
-          <>
-            <button className="btn link" type="button" onClick={() => setOpen(true)}>{t("Pegar datos a mano", "Enter details manually")}</button>
-            <a className="btn on" href={oauthUrl}>{connected ? t(`Volver a conectar con ${oauthName}`, `Reconnect with ${oauthName}`) : t(`Conectar con ${oauthName}`, `Connect with ${oauthName}`)}</a>
-          </>
-        )}
-        {!open && !oauthUrl && brevo && (
-          <button className="btn link" type="button" onClick={() => setOpen(true)}>{t("Usar otra cuenta (pegar clave)", "Use another account (paste key)")}</button>
-        )}
-        {!open && !oauthUrl && !brevo && (
-          <button className="btn outline" type="button" onClick={() => setOpen(true)}>
-            {connected ? t("Editar datos", "Edit details") : t(`Conectar ${channel.name}`, `Connect ${channel.name}`)}
-          </button>
-        )}
-      </div>
     </article>
   );
 }

@@ -3,6 +3,7 @@ import { logout } from "@/app/actions";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
 import { LangPicker } from "./I18n";
+import { MobileBizMenu } from "./MobileBizMenu";
 import { NavLinks } from "./NavLinks";
 import { ThemePicker } from "./ThemePicker";
 
@@ -13,7 +14,19 @@ export async function Sidebar({ activeId }: { activeId?: string }) {
     <nav className="sidebar" aria-label={t("Menú principal", "Main menu")}>
       <Link href="/" className="brandmark"><span className="logo">A</span>Arevalo Marketing</Link>
 
-      <div className="stack" style={{ gap: 2 }}>
+      <MobileBizMenu businesses={businesses.map((b) => ({ id: b.id, name: b.name, color: b.color }))} activeId={activeId}>
+        <div className="mbiz-label">{t("Idioma", "Language")}</div>
+        <LangPicker />
+        <div className="mbiz-label">{t("Estilo", "Style")}</div>
+        <ThemePicker />
+        <form action={logout}>
+          <button type="submit" className="biz" style={{ width: "100%", background: "none", border: 0, cursor: "pointer", font: "inherit" }}>
+            {t("Salir", "Log out")}
+          </button>
+        </form>
+      </MobileBizMenu>
+
+      <div className="stack desk-only" style={{ gap: 2 }}>
         <div className="side-label">{t("Mis negocios", "My businesses")}</div>
         {businesses.map((b) => (
           <Link
@@ -39,13 +52,13 @@ export async function Sidebar({ activeId }: { activeId?: string }) {
         </>
       )}
 
-      <div className="stack" style={{ marginTop: "auto", gap: 8 }}>
+      <div className="stack desk-only" style={{ marginTop: "auto", gap: 8 }}>
         <div className="side-label">{t("Idioma", "Language")}</div>
         <LangPicker />
         <div className="side-label">{t("Estilo", "Style")}</div>
         <ThemePicker />
       </div>
-      <form action={logout}>
+      <form action={logout} className="desk-only">
         <button type="submit" className="navlink" style={{ width: "100%", background: "none", border: 0, cursor: "pointer", font: "inherit" }}>
           {t("Salir", "Log out")}
         </button>

@@ -1,4 +1,6 @@
 import { runVisibility, suggestVisibilityQuestions } from "@/app/actions-seo-ai";
+import { capClass, Fold } from "@/components/seo/Fold";
+import { ShowMore } from "@/components/seo/ShowMore";
 import { VisibilityForm } from "@/components/seo/VisibilityForm";
 import { TEXT_PROVIDERS, type TextProvider } from "@/lib/ai";
 import { db } from "@/lib/db";
@@ -24,6 +26,10 @@ import { BUSINESS_TZ } from "@/lib/time";
 
 const SHORT: Record<TextProvider, string> = { gemini: "Gemini", claude: "Claude", openai: "ChatGPT" };
 const ORDER = TEXT_PROVIDERS.map((p) => p.id);
+/** Cuántos se ven antes de «Ver todos»: negocios recomendados, páginas citadas y consejos. */
+const COMP_SHOWN = 5;
+const DOMAINS_SHOWN = 6;
+const RECS_SHOWN = 3;
 
 /** Estilo de la píldora según el tono de la mención. */
 const TONE_PILL: Record<MentionSentiment, string> = { positiva: "done", neutral: "scheduled", negativa: "failed" };
@@ -108,6 +114,7 @@ export async function VisibilityPanel({ businessId }: { businessId: string }) {
           suggest={suggestVisibilityQuestions.bind(null, businessId)}
           initial={initial}
           providers={providers.map((p) => SHORT[p])}
+          collapsed={Boolean(last)}
         />
       )}
 
@@ -235,13 +242,13 @@ export async function VisibilityPanel({ businessId }: { businessId: string }) {
               </span>
             </div>
           )}
-          <p className="small muted">
-            {t(
-              "✓ te menciona (#lugar entre los negocios que nombra) · ✗ no te menciona · ⚠ esa IA no contestó (pasa el dedo o el mouse para ver por qué). Las respuestas de las IAs cambian de un día a otro y según quién pregunta: tómalo como una muestra, no como una garantía.",
-              "✓ mentions you (#position among the businesses it names) · ✗ doesn't mention you · ⚠ that AI didn't answer (hover or tap to see why). AI answers change from day to day and depending on who asks: treat this as a sample, not a guarantee.",
-            )}
-          </p>
           <HowToRead title={t("Cómo leer esto", "How to read this")}>
+            <p>
+              {t(
+                "✓ te menciona (#lugar entre los negocios que nombra) · ✗ no te menciona · ⚠ esa IA no contestó (pasa el dedo o el mouse para ver por qué). Las respuestas de las IAs cambian de un día a otro y según quién pregunta: tómalo como una muestra, no como una garantía.",
+                "✓ mentions you (#position among the businesses it names) · ✗ doesn't mention you · ⚠ that AI didn't answer (hover or tap to see why). AI answers change from day to day and depending on who asks: treat this as a sample, not a guarantee.",
+              )}
+            </p>
             <p>
               {t(
                 "El porcentaje es en cuántas respuestas te nombran las IAs cuando un cliente pregunta por lo que vendes. 60 % o más es muy bueno; menos de 25 % quiere decir que casi nunca te recomiendan.",
@@ -266,9 +273,13 @@ export async function VisibilityPanel({ businessId }: { businessId: string }) {
             <div className="stack" style={{ gap: 8 }}>
               <span className="lbl">{t("A quién recomiendan las IAs", "Who the AIs recommend")}</span>
               {last.topCompetitors.length ? (
+                <ShowMore
+                  hidden={last.topCompetitors.length - COMP_SHOWN}
+                  more={t(`Ver los ${last.topCompetitors.length} negocios`, `See all ${last.topCompetitors.length} businesses`)}
+                >
                 <ol className="study-list">
                   {last.topCompetitors.map((c, i) => (
-                    <li key={i}>
+                    <li key={i} className={capClass(i, COMP_SHOWN)}>
                       <strong>{c.name}</strong>{" "}
                       <span className="small muted">
                         {t(`· en ${c.count} respuesta${c.count === 1 ? "" : "s"}`, `· in ${c.count} answer${c.count === 1 ? "" : "s"}`)}
@@ -276,37 +287,54 @@ export async function VisibilityPanel({ businessId }: { businessId: string }) {
                     </li>
                   ))}
                 </ol>
+                </ShowMore>
               ) : (
                 <p className="small muted">{t("Las respuestas no nombraron otros negocios.", "The answers didn't name other businesses.")}</p>
               )}
               {last.topDomains.length > 0 && (
                 <>
                   <span className="lbl" style={{ marginTop: 8 }}>{t("Páginas que más citan", "Websites they cite most")}</span>
-                  <div className="tags">
-                    {last.topDomains.map((d) => <span key={d.domain} className="tag">{d.domain} · {d.count}</span>)}
-                  </div>
+                  <ShowMore
+                    hidden={last.topDomains.length - DOMAINS_SHOWN}
+                    more={t(`Ver las ${last.topDomains.length} páginas`, `See all ${last.topDomains.length} websites`)}
+                  >
+                    <div className="tags">
+                      {last.topDomains.map((d, i) => (
+                        <span key={d.domain} className={["tag", capClass(i, DOMAINS_SHOWN)].filter(Boolean).join(" ")}>
+                          {d.domain} · {d.count}
+                        </span>
+                      ))}
+                    </div>
+                  </ShowMore>
                 </>
               )}
             </div>
             <div className="stack" style={{ gap: 8 }}>
               <span className="lbl">{t("Qué puedes hacer para aparecer más", "What you can do to show up more")}</span>
               {last.recommendations.length ? (
+                <ShowMore
+                  hidden={last.recommendations.length - RECS_SHOWN}
+                  more={t(`Ver los ${last.recommendations.length} consejos`, `See all ${last.recommendations.length} tips`)}
+                >
                 <ul className="study-list">
                   {last.recommendations.map((r, i) => (
-                    <li key={i}>
+                    <li key={i} className={capClass(i, RECS_SHOWN)}>
                       <strong>{r.title}</strong>
                       {r.detail ? <span className="small" style={{ display: "block" }}>{r.detail}</span> : null}
                     </li>
                   ))}
                 </ul>
+                </ShowMore>
               ) : (
                 <p className="small muted">{t("No hay recomendaciones en esta revisión.", "There are no recommendations in this check.")}</p>
               )}
             </div>
           </div>
 
-          <div className="stack" style={{ gap: 8 }}>
-            <span className="lbl">{t("Lo que contestó cada IA", "What each AI answered")}</span>
+          <Fold
+            summary={t(`Lo que contestó cada IA (${last.results.length} respuestas)`, `What each AI answered (${last.results.length} answers)`)}
+            note={t("El texto de cada respuesta, los negocios que nombra y de dónde sacó la información", "Each answer's text, the businesses it names and where it got the information")}
+          >
             {last.results.map((r, i) => (
               <details key={i} className="vis-answer">
                 <summary className="row between" style={{ cursor: "pointer", flexWrap: "nowrap" }}>
@@ -363,7 +391,7 @@ export async function VisibilityPanel({ businessId }: { businessId: string }) {
                 </div>
               </details>
             ))}
-          </div>
+          </Fold>
         </>
       )}
     </section>

@@ -1,0 +1,165 @@
+.card {
+  padding: 20px;
+  gap: 14px;
+  scroll-margin-top: 16px;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.head h2 {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--body);
+  font-size: 18px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.gain {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.5;
+  font-weight: 500;
+}
+
+.easy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--brand-soft);
+}
+
+.easy .btn {
+  max-width: 100%;
+}
+
+.easyNote {
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.how {
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.how > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 14px;
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+  border-radius: 12px;
+}
+
+.how > summary::before {
+  content: "▸";
+  display: inline-block;
+  width: 12px;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.how[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.how > summary:focus-visible {
+  outline: 2px solid var(--brand-2);
+  outline-offset: 2px;
+}
+
+.howBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 14px 14px;
+}
+
+.subhead {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.steps {
+  margin: 0;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.steps li::marker {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.manual {
+  align-self: flex-start;
+  min-height: 40px;
+  padding: 0;
+}
+
+.sendBox {
+  gap: 10px;
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--brand-soft);
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.hint {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* Noche: el azul de los enlaces es muy oscuro sobre fondo oscuro. */
+:global(html[data-theme="noche"]) .manual,
+:global(html[data-theme="noche"]) .card :global(.btn.outline) {
+  color: #8db8ff;
+  border-color: #5d95f0;
+}
+
+:global(html[data-theme="noche"]) .manual {
+  border-color: transparent;
+}

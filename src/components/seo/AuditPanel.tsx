@@ -1,13 +1,18 @@
 import Link from "next/link";
 import { runSiteAudit } from "@/app/actions-seo-audit";
 import { AuditButton } from "@/components/seo/AuditButton";
+import { capClass } from "@/components/seo/Fold";
 import { HowToRead } from "@/components/seo/HowToRead";
+import { ShowMore } from "@/components/seo/ShowMore";
 import { db } from "@/lib/db";
 import { intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { ISSUE_TEXT, readAuditReport, type Issue, type Severity } from "@/lib/seo/audit";
 import { latestReports } from "@/lib/seo/reports";
 import { BUSINESS_TZ } from "@/lib/time";
+
+/** Cuántos problemas se ven antes de «Ver todos» (van primero los más graves). */
+const ISSUES_SHOWN = 5;
 
 const PILL: Record<Severity, string> = { error: "failed", warning: "partial", notice: "scheduled" };
 
@@ -200,13 +205,14 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
             {report.issues.length === 0 ? (
               <p className="note ok">{t("¡No encontramos problemas! Tu página está en muy buena forma.", "We didn't find any problems! Your website is in great shape.")}</p>
             ) : (
+              <ShowMore hidden={report.issues.length - ISSUES_SHOWN} more={t(`Ver los ${report.issues.length} problemas`, `See all ${report.issues.length} problems`)}>
               <ul className="seo-issues">
-                {report.issues.map((i) => {
+                {report.issues.map((i, n) => {
                   const copy = ISSUE_TEXT[i.id][lang];
                   const broken = i.id === "broken-links" ? report.site.brokenLinks : [];
                   const shown = broken.length > 0 ? Math.min(broken.length, 10) : i.pages.length;
                   return (
-                    <li key={i.id} className="seo-issue">
+                    <li key={i.id} className={["seo-issue", capClass(n, ISSUES_SHOWN)].filter(Boolean).join(" ")}>
                       <div className="row between">
                         <span className="row" style={{ gap: 8 }}>
                           <span className={`pill ${PILL[i.severity]}`}>{sevLabel[i.severity]}</span>
@@ -246,6 +252,7 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
                   );
                 })}
               </ul>
+              </ShowMore>
             )}
           </div>
 

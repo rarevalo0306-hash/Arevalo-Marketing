@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
 import type { SchemaSaveResult } from "@/app/actions-seo-schema";
 import { useT } from "@/components/I18n";
+import { Fold } from "@/components/seo/Fold";
+import fold from "@/components/seo/Fold.module.css";
 import styles from "@/components/seo/SchemaPanel.module.css";
 import { buildLocalBusinessSchema, DAY_NAMES, DAYS, type Day, type FixPlace, type MissingLevel, type SchemaInput, schemaSnippet, type WeekHours } from "@/lib/seo/schema";
 
@@ -70,6 +72,18 @@ export function SchemaTools({ base, initialHours, initialPrice, hoursFrom, links
   const [copied, setCopied] = useState<"" | "ok" | "error">("");
   const [platform, setPlatform] = useState<Platform>("wordpress");
   const [result, run, pending] = useActionState(save, null);
+  // El horario se abre solo si falta y el dueño nunca guardó uno; si no, queda cerrado con un resumen.
+  const [hoursOpen, setHoursOpen] = useState(() => hoursFrom === "none" && !Object.keys(initialHours ?? {}).length);
+
+  // Si llegan con #schema-hours (el enlace «Ir» de lo que falta, o desde otra página), se abre el horario.
+  useEffect(() => {
+    const check = () => {
+      if (window.location.hash === "#schema-hours") setHoursOpen(true);
+    };
+    check();
+    window.addEventListener("hashchange", check);
+    return () => window.removeEventListener("hashchange", check);
+  }, []);
 
   const built = useMemo(() => buildLocalBusinessSchema({ ...base, hours: toHours(days), priceRange: price }), [base, days, price]);
   const code = useMemo(() => schemaSnippet(built.schema), [built]);
@@ -90,6 +104,28 @@ export function SchemaTools({ base, initialHours, initialPrice, hoursFrom, links
     recommended: { cls: styles.recommended, text: t("Recomendado", "Recommended") },
     optional: { cls: styles.optional, text: t("Opcional", "Optional") },
   };
+  const counts = { required: 0, recommended: built.tips.length, optional: 0 };
+  for (const m of built.missing) counts[m.level]++;
+  const missingParts = [
+    counts.required && t(`${counts.required} obligatorio${counts.required === 1 ? "" : "s"}`, `${counts.required} required`),
+    counts.recommended && t(`${counts.recommended} recomendado${counts.recommended === 1 ? "" : "s"}`, `${counts.recommended} recommended`),
+    counts.optional && t(`${counts.optional} opcional${counts.optional === 1 ? "" : "es"}`, `${counts.optional} optional`),
+  ].filter(Boolean) as string[];
+  const and = t(" y ", " and ");
+  const missingSummary = t(
+    `Lo que falta: ${missingParts.slice(0, -1).join(", ")}${missingParts.length > 1 ? and : ""}${missingParts[missingParts.length - 1] ?? ""}`,
+    `What's missing: ${missingParts.slice(0, -1).join(", ")}${missingParts.length > 1 ? and : ""}${missingParts[missingParts.length - 1] ?? ""}`,
+  );
+  const openDays = DAYS.filter((d) => days[d].open);
+  const hoursSummary = openDays.length
+    ? t(`Tu horario: ${openDays.length} día${openDays.length === 1 ? "" : "s"} abierto${openDays.length === 1 ? "" : "s"}`, `Your hours: open ${openDays.length} day${openDays.length === 1 ? "" : "s"}`)
+    : t("Tu horario: todavía sin horario", "Your hours: no hours yet");
+  const hoursNote =
+    hoursFrom === "saved"
+      ? t("Guardado aquí · tócalo para cambiarlo o poner tus precios", "Saved here · tap to change it or add your prices")
+      : hoursFrom === "google"
+        ? t("Traído de tu Perfil de Google · tócalo para revisarlo", "From your Google Business Profile · tap to check it")
+        : t("Ponlo para que Google sepa a qué hora abres", "Add it so Google knows when you're open");
   const tabs: [Platform, string][] = [
     ["wordpress", "WordPress"],
     ["wix", "Wix"],
@@ -122,15 +158,20 @@ export function SchemaTools({ base, initialHours, initialPrice, hoursFrom, links
 
       {/* Lo que falta */}
       {(built.missing.length > 0 || built.tips.length > 0) && (
-        <div className="stack" style={{ gap: 8 }}>
-          <h3 className={styles.h3}>{t("Lo que falta (para que el código esté completo)", "What's missing (to make the code complete)")}</h3>
+        <Fold summary={missingSummary} note={t("Para que el código esté completo · tócalo para ver qué y dónde arreglarlo", "To make the code complete · tap to see what and where to fix it")}>
           <ul className={styles.missing}>
             {built.missing.map((m) => (
               <li key={m.id}>
                 <span className={`${styles.level} ${level[m.level].cls}`}>{level[m.level].text}</span>
                 <span className={styles.missingText}>
                   {lang === "en" ? m.en : m.es}{" "}
-                  {links[m.where].startsWith("#") ? <a href={links[m.where]}>{t("Ir", "Go")}</a> : <Link href={links[m.where]}>{t("Ir", "Go")}</Link>}
+                  {links[m.where].startsWith("#") ? (
+                    <a href={links[m.where]} onClick={links[m.where] === "#schema-hours" ? () => setHoursOpen(true) : undefined}>
+                      {t("Ir", "Go")}
+                    </a>
+                  ) : (
+                    <Link href={links[m.where]}>{t("Ir", "Go")}</Link>
+                  )}
                 </span>
               </li>
             ))}
@@ -141,13 +182,19 @@ export function SchemaTools({ base, initialHours, initialPrice, hoursFrom, links
               </li>
             ))}
           </ul>
-        </div>
+        </Fold>
       )}
 
       {/* Horario y precios */}
-      <form action={run} className={styles.hours} id="schema-hours">
+      <details className={fold.fold} id="schema-hours" open={hoursOpen} onToggle={(e) => setHoursOpen(e.currentTarget.open)}>
+        <summary>
+          <span className={fold.sumText}>
+            <span>{hoursSummary}</span>
+            <span className={fold.sumNote}>{hoursNote}</span>
+          </span>
+        </summary>
+      <form action={run} className={styles.hours}>
         <div className="stack" style={{ gap: 4 }}>
-          <h3 className={styles.h3}>{t("Tu horario", "Your hours")}</h3>
           <p className="small muted">
             {hoursFrom === "google"
               ? t("Lo trajimos de tu Perfil de Google. Si cambió, corrígelo aquí y en Google.", "We got it from your Google Business Profile. If it changed, fix it here and on Google.")
@@ -196,10 +243,10 @@ export function SchemaTools({ base, initialHours, initialPrice, hoursFrom, links
           </p>
         )}
       </form>
+      </details>
 
       {/* Dónde pegarlo */}
-      <div className="stack" style={{ gap: 10 }}>
-        <h3 className={styles.h3}>{t("Dónde pegarlo", "Where to paste it")}</h3>
+      <Fold summary={t("Dónde pegarlo", "Where to paste it")} note={t("Pasos para WordPress, Wix, Shopify u otra página", "Steps for WordPress, Wix, Shopify or another website")}>
         <div className="tabs" role="tablist" aria-label={t("Tu tipo de página", "Your website type")}>
           {tabs.map(([id, label]) => (
             <button key={id} type="button" role="tab" aria-selected={platform === id} className={platform === id ? "tab on" : "tab"} onClick={() => setPlatform(id)}>
@@ -250,7 +297,7 @@ export function SchemaTools({ base, initialHours, initialPrice, hoursFrom, links
             ": enter your website address and it should show “Local businesses” with no errors. You can also paste the code there before adding it to your site.",
           )}
         </p>
-      </div>
+      </Fold>
     </div>
   );
 }

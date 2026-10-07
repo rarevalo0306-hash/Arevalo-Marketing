@@ -1,26 +1,8 @@
 import Link from "next/link";
 import { HowToRead } from "@/components/seo/HowToRead";
 import styles from "@/components/seo/SeoHelp.module.css";
-import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
-import { readAuditReport } from "@/lib/seo/audit";
-import { readBacklinksReport } from "@/lib/seo/backlinks";
-import { buildCannibal } from "@/lib/seo/cannibal";
-import { dataForSeoEnabled, readTrackedKeywords, readZones } from "@/lib/seo/dataforseo";
-import { businessTopicVocab, gbpCategory, readGapReport, relevantGapRows } from "@/lib/seo/gap";
-import { asGscReport } from "@/lib/seo/gsc";
-import { readKeywordsReport } from "@/lib/seo/keywords";
-import { readMapReport } from "@/lib/seo/maprank";
-import { plainSummary } from "@/lib/seo/plain";
-import { readRankReport } from "@/lib/seo/rank";
-import { latestReports, type SeoKind } from "@/lib/seo/reports";
-import { mapGroups, marketSummary } from "@/lib/seo/sov";
-import { readTrafficReport } from "@/lib/seo/traffic";
-import { readVisibilityReport } from "@/lib/seo/visibility";
-import { latestByZone } from "@/lib/seo/zones";
-
-/** Mapas guardados que se leen para "tu parte del mapa" (el último de cada búsqueda). */
-const MAPS_TAKE = 10;
+import { loadPlainSummary } from "@/lib/seo/plain-load";
 
 /**
  * Arriba de la página de SEO: un resumen en palabras simples armado con los últimos reportes guardados (sin IA,
@@ -28,77 +10,10 @@ const MAPS_TAKE = 10;
  */
 export async function SeoGuide({ businessId }: { businessId: string }) {
   const { lang, t } = await getT();
-  const b = await db.business.findUnique({
-    where: { id: businessId },
-    select: { name: true, website: true, seoKeywords: true, seoLocations: true, seoLocationCode: true, seoLocationName: true, study: true },
-  });
-  if (!b) return null;
-  const zones = readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName);
-  const canRank = dataForSeoEnabled();
-  const per = Math.max(1, zones.length);
-  // Todo en una sola tanda (consultas en paralelo, solo los datos guardados): nada llama a una API.
-  const latest = (kind: SeoKind, take = 1) =>
-    db.seoReport.findMany({ where: { businessId, kind }, orderBy: { createdAt: "desc" }, take, select: { data: true } }).catch(() => []);
-  const [rankRows, kwRows, aiRows, gapRows, gbpRows, mapRows, gscRows, auditRows, linkRows, trafficRows] = await Promise.all([
-    latestReports(businessId, "rank", 3 * per),
-    latestReports(businessId, "keywords", 3 * per),
-    latest("ai"),
-    latest("gap"),
-    latest("gbp"),
-    latest("maprank", MAPS_TAKE),
-    latest("gsc"),
-    latest("audit"),
-    latest("backlinks"),
-    latest("traffic"),
-  ]);
-
-  // La zona principal (la primera), como en los paneles de posiciones y búsquedas.
-  const main = zones[0]?.code;
-  const rankByZone = latestByZone(rankRows.map((r) => readRankReport(r.data)), zones);
-  const kwByZone = latestByZone(kwRows.map((r) => readKeywordsReport(r.data)), zones);
-  const rank = main === undefined ? null : (rankByZone.get(main) ?? null);
-  const keywords = main === undefined ? null : (kwByZone.get(main) ?? null);
-  const ai = aiRows[0] ? readVisibilityReport(aiRows[0].data) : null;
-  const gap = gapRows[0] ? readGapReport(gapRows[0].data) : null;
-  const vocab = businessTopicVocab({ ...b, category: gbpRows[0] ? gbpCategory(gbpRows[0].data) : null });
-
-  // Tu parte del mercado: el último reporte de cada zona (los sin código cuentan como de la principal), el último
-  // mapa de cada búsqueda y la última revisión de las IAs.
-  const market = marketSummary({
-    website: b.website,
-    rankByZone: [...rankByZone.entries()].map(([code, r]) => [{ ...r, locationCode: code }]),
-    keywords: [...kwByZone.entries()].sort(([a], [c]) => Number(c === main) - Number(a === main)).map(([code, k]) => ({ ...k, locationCode: code })),
-    maps: mapGroups(mapRows.flatMap((r) => readMapReport(r.data) ?? [])),
-    ai: [ai],
-  });
-
-  // Páginas que compiten entre sí: solo Search Console puede marcar una búsqueda como urgente, así que basta con el
-  // último reporte de Search Console y la revisión de la página (para los títulos), igual que el panel.
-  const gsc = gscRows[0] ? asGscReport(gscRows[0].data) : null;
-  const cannibal = gsc?.pageQueries.length
-    ? buildCannibal({
-        businessName: b.name,
-        website: b.website,
-        zones,
-        gsc: { pageQueries: gsc.pageQueries, range: gsc.range },
-        ranks: [],
-        audit: auditRows[0] ? readAuditReport(auditRows[0].data) : null,
-      })
-    : null;
-
-  const lines = plainSummary({
-    businessId,
-    rank: zones.length ? rank : null,
-    keywords,
-    tracked: readTrackedKeywords(b.seoKeywords),
-    ai,
-    gap: gap ? relevantGapRows(gap.rows, vocab) : null,
-    canRank: canRank && zones.length > 0,
-    market,
-    cannibal,
-    backlinks: linkRows[0] ? readBacklinksReport(linkRows[0].data) : null,
-    traffic: trafficRows[0] ? readTrafficReport(trafficRows[0].data) : null,
-  });
+  // Las mismas lecturas que la tarjeta "Tu SEO esta semana" de Inicio (plain-load.ts), para que digan lo mismo.
+  const data = await loadPlainSummary(businessId);
+  if (!data) return null;
+  const lines = data.lines;
   const pick = (x: { es: string; en: string }) => (lang === "en" ? x.en : x.es);
 
   const glossary: [string, string, string, string][] = [

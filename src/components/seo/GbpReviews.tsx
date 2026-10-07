@@ -4,9 +4,14 @@ import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
 import { draftAllReplies, draftReply, postReply, saveReplyDraft } from "@/app/actions-seo-gbp";
 import { useT } from "@/components/I18n";
+import { capClass } from "@/components/seo/Fold";
+import { ShowMore } from "@/components/seo/ShowMore";
 import { DRAFT_BATCH, type GbpReview } from "@/lib/seo/gbp-shared";
 
 type Filter = "unanswered" | "low" | "all";
+
+/** Cuántas reseñas se ven antes de «Ver todas». */
+const REVIEWS_SHOWN = 5;
 
 type Props = {
   businessId: string;
@@ -48,7 +53,15 @@ async function copyText(text: string, area: HTMLTextAreaElement | null): Promise
   }
 }
 
-function ReviewCard({ businessId, review, initial, canPost, aiReady, mapsLink }: { businessId: string; review: GbpReview; initial: string } & Omit<Props, "businessId" | "reviews">) {
+function ReviewCard({
+  businessId,
+  review,
+  initial,
+  canPost,
+  aiReady,
+  mapsLink,
+  className,
+}: { businessId: string; review: GbpReview; initial: string; className?: string } & Omit<Props, "businessId" | "reviews">) {
   const { t } = useT();
   const [text, setText] = useState(initial);
   const [saved, setSaved] = useState(initial);
@@ -101,7 +114,7 @@ function ReviewCard({ businessId, review, initial, canPost, aiReady, mapsLink }:
   const shown = review.originalText && review.text ? review.text : review.originalText || review.text;
 
   return (
-    <li className={`gbp-review${!answer && review.rating !== null && review.rating <= 3 ? " low" : ""}`}>
+    <li className={`gbp-review${!answer && review.rating !== null && review.rating <= 3 ? " low" : ""}${className ? ` ${className}` : ""}`}>
       <div className="gbp-review-head">
         <Stars value={review.rating} />
         <strong className="gbp-name">{review.name || t("Cliente de Google", "Google customer")}</strong>
@@ -249,9 +262,11 @@ export function GbpReviews({ businessId, reviews, canPost, aiReady, mapsLink }: 
         </p>
       )}
       {list.length ? (
+        <ShowMore hidden={list.length - REVIEWS_SHOWN} more={t(`Ver las ${list.length} reseñas`, `See all ${list.length} reviews`)}>
         <ul className="gbp-reviews">
-          {list.map((r) => (
+          {list.map((r, i) => (
             <ReviewCard
+              className={capClass(i, REVIEWS_SHOWN)}
               // Cuando "Escribir todas" trae un borrador nuevo, la tarjeta vuelve a empezar con él.
               key={`${r.id}${batch[r.id] ? ":ai" : ""}`}
               businessId={businessId}
@@ -263,6 +278,7 @@ export function GbpReviews({ businessId, reviews, canPost, aiReady, mapsLink }: 
             />
           ))}
         </ul>
+        </ShowMore>
       ) : (
         <p className="small muted">
           {filter === "unanswered"

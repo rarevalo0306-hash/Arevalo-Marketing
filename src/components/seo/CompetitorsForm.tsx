@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useState, useTransition } from "react";
 import type { CompetitorsResult } from "@/app/actions-seo-competitors";
 import { useT } from "@/components/I18n";
+import fold from "@/components/seo/Fold.module.css";
 
 type Props = {
   action: (prev: CompetitorsResult, f: FormData) => Promise<CompetitorsResult>;
@@ -46,6 +47,13 @@ export function CompetitorsForm({ action, has, defaultDomains }: Props) {
   const [result, run, pending] = useActionState(action, null);
   return (
     <form action={run} className="stack" style={{ gap: 12 }}>
+      {/* Ya buscó una vez: el campo opcional queda cerrado (cerrado igual se manda con el formulario). */}
+      <details className={fold.inline} open={!has}>
+        <summary>
+          {defaultDomains.length
+            ? t(`Sitios de tu competencia que escribiste (${defaultDomains.length})`, `Competitor websites you typed (${defaultDomains.length})`)
+            : t("Escribir los sitios de tu competencia (opcional, hasta 3)", "Type your competitors' websites (optional, up to 3)")}
+        </summary>
       <label className="stack" style={{ gap: 6 }}>
         <span className="lbl">{t("Sitios de tu competencia (opcional, hasta 3)", "Competitor websites (optional, up to 3)")}</span>
         <input
@@ -64,6 +72,7 @@ export function CompetitorsForm({ action, has, defaultDomains }: Props) {
           )}
         </span>
       </label>
+      </details>
       {!pending && (
         <div className="row">
           <button type="submit" className="btn ai">

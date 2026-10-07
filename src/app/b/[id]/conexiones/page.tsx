@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
 import { googleEnabled } from "@/lib/google-oauth";
 import { metaEnabled } from "@/lib/meta-oauth";
+import s from "./conexiones.module.css";
 
 export default async function ConexionesPage({
   params,
@@ -23,6 +24,9 @@ export default async function ConexionesPage({
   const googleUrl = googleEnabled() ? `/api/google/start?b=${id}` : null;
   const b = await db.business.findUniqueOrThrow({ where: { id }, include: { connections: { where: { channel: { in: CHANNEL_IDS } } } } });
   const connected = b.connections.length;
+  const isOn = (ch: string) => b.connections.some((x) => x.channel === ch);
+  const metaMissing = !isOn("facebook") || !isOn("instagram");
+  const googleMissing = !isOn("google");
   const brevo = brevoEnvKey() ? { domains: await brevoDomains(), defaultName: b.name, connect: connectBrevo.bind(null, id) } : null;
   return (
     <>
@@ -49,16 +53,44 @@ export default async function ConexionesPage({
       {q.google === "ok" && <p className="note ok" role="status">{t(`Listo: Google quedó conectado con el perfil "${q.place}".`, `Done: Google is now connected to the profile "${q.place}".`)}</p>}
       {q.google === "error" && <p className="note error" role="alert">{q.msg || t("No se pudo conectar con Google.", "Couldn't connect to Google.")}</p>}
       {q.meta === "error" && <p className="note error" role="alert">{q.msg || t("No se pudo conectar con Facebook.", "Couldn't connect to Facebook.")}</p>}
-      <div className="card" style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 16, padding: "18px 22px" }}>
-        <div style={{ fontFamily: "var(--display)", fontSize: 28, fontWeight: 700 }}>{t(`${connected} de ${CHANNELS.length}`, `${connected} of ${CHANNELS.length}`)}</div>
-        <div className="stack" style={{ flex: "1 1 240px" }}>
-          <div className="small muted">{t("canales conectados para", "channels connected for")} {b.name}</div>
-          <div style={{ height: 8, borderRadius: 4, background: "var(--line)" }}>
-            <div style={{ width: `${(connected / CHANNELS.length) * 100}%`, height: 8, borderRadius: 4, background: "var(--teal)" }} />
+      <div className={`card ${s.summary}`}>
+        <div className={s.summaryTop}>
+          <div className={s.count}>{t(`${connected} de ${CHANNELS.length}`, `${connected} of ${CHANNELS.length}`)}</div>
+          <div className={s.bar}>
+            <div className={s.label}>{t("canales conectados para", "channels connected for")} {b.name}</div>
+            <div className={s.track}>
+              <div className={s.fill} style={{ width: `${(connected / CHANNELS.length) * 100}%` }} />
+            </div>
           </div>
         </div>
+        {metaMissing || googleMissing ? (
+          <p className={s.tip}>
+            <strong>{t("¿Por dónde empiezo? ", "Where do I start? ")}</strong>
+            {metaMissing && googleMissing
+              ? t("Conecta primero ", "Start with ")
+              : t("Te falta conectar ", "You still need to connect ")}
+            {metaMissing && (
+              <>
+                <a href="#c-facebook">Facebook</a> {t("e", "and")} <a href="#c-instagram">Instagram</a>
+                {metaUrl ? t(" (se conectan juntos con un solo botón)", " (they connect together with one button)") : ""}
+              </>
+            )}
+            {metaMissing && googleMissing ? t(" y luego ", ", then ") : ""}
+            {googleMissing && (
+              <>
+                <a href="#c-google">Google</a>
+                {t(", para salir en Google Maps", ", so you show up on Google Maps")}
+              </>
+            )}
+            {t(". Es donde más te buscan tus clientes; lo demás lo puedes dejar para después.", ". That's where your customers look for you most; the rest can wait.")}
+          </p>
+        ) : (
+          <p className={s.tip}>
+            {t("Ya tienes conectado lo más importante (Facebook, Instagram y Google). Lo demás es opcional.", "You've connected the most important ones (Facebook, Instagram and Google). The rest is optional.")}
+          </p>
+        )}
       </div>
-      <div className="cards">
+      <div className={`cards ${s.grid}`}>
         {CHANNELS.map((c) => {
           const conn = b.connections.find((x) => x.channel === c.id);
           const values = conn ? decryptJson(conn.secret) : {};

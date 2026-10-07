@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { refreshProfile, refreshReviews } from "@/app/actions-seo-gbp";
 import { GbpRefreshButton } from "@/components/seo/GbpRefreshButton";
+import { Fold } from "@/components/seo/Fold";
 import { HowToRead } from "@/components/seo/HowToRead";
 import { GbpReviews, Stars } from "@/components/seo/GbpReviews";
 import { MapPlacePicker } from "@/components/seo/MapPlacePicker";
@@ -406,6 +407,14 @@ export async function GbpPanel({ businessId }: { businessId: string }) {
                 <strong>{int.format(s.thisMonth)}</strong>
               </div>
             </div>
+            <Fold
+              summary={t("Gráficas de tus reseñas", "Your review charts")}
+              note={
+                s.topics.length > 0
+                  ? t(`Estrellas, reseñas por mes y de qué hablan tus clientes (${s.topics.length} temas)`, `Stars, reviews per month and what your customers talk about (${s.topics.length} topics)`)
+                  : t("Estrellas y reseñas por mes", "Stars and reviews per month")
+              }
+            >
             <div className="gbp-charts">
               <div className="stack" style={{ gap: 6 }}>
                 <span className="small muted">{t("Estrellas", "Stars")}</span>
@@ -449,6 +458,7 @@ export async function GbpPanel({ businessId }: { businessId: string }) {
                 </div>
               </div>
             )}
+            </Fold>
             <GbpReviews businessId={businessId} reviews={reviews.reviews} canPost={Boolean(creds)} aiReady={aiEnabled()} mapsLink={link} />
             <p className="small muted">
               {t("Últimas reseñas traídas:", "Reviews last fetched:")} {fmt.format(new Date(reviews.createdAt))} · {t("Costo:", "Cost:")} {money.format(reviews.cost)}
