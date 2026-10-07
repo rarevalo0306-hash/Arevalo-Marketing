@@ -33,6 +33,9 @@ model Business {
   fontBody      String     @default("")
   brandVoice    String     @default("")
   brandBookUrl  String     @default("")
+  /// Imágenes de la marca: las que la IA sacó del manual (propuestas para aceptar o rechazar) y las que crea la app
+  /// (foto de perfil, portadas, favicon, tarjeta…). Forma: BrandAssets en src/lib/brand-assets.ts.
+  brandAssets   Json?
   hashtags      String     @default("")
   template      String     @default("auto")
   /// SEO con DataForSEO: zona de Google (código y nombre de DataForSEO), idioma de búsqueda,

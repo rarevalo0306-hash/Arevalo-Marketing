@@ -663,6 +663,30 @@ export async function generateTemplates(businessId: string): Promise<TemplatesRe
   }
 }
 
+/**
+ * La IA propone plantillas nuevas con la marca guardada (se llama sola al guardar cambios de colores, letras o logo).
+ * Reemplaza las que diseñó la IA antes; las que subió el dueño (plantillas propias) se quedan.
+ */
+export async function proposeTemplates(businessId: string): Promise<TemplatesResult> {
+  const b = await business(businessId);
+  const { lang, t } = await getT();
+  if (!aiEnabled()) return { ok: false, message: t("Falta la clave de la IA en la configuración del servidor.", "The AI key is missing from the server settings.") };
+  try {
+    const specs = await designTemplates(b);
+    const old = await db.template.findMany({ where: { businessId }, select: { id: true, spec: true } });
+    const aiMade = old.filter((x) => !(x.spec as { custom?: unknown } | null)?.custom).map((x) => x.id);
+    await db.$transaction([
+      db.template.deleteMany({ where: { businessId, id: { in: aiMade } } }),
+      db.template.createMany({ data: specs.map((spec) => ({ businessId, name: spec.name.slice(0, 40), spec })) }),
+    ]);
+    revalidatePath(`/b/${businessId}/marca`);
+    revalidatePath(`/b/${businessId}/publicar`);
+    return { ok: true, message: t(`Listo: la IA te propone ${specs.length} plantillas con tu marca.`, `Done: the AI suggests ${specs.length} templates with your brand.`) };
+  } catch (e) {
+    return { ok: false, message: errorText(e, lang) };
+  }
+}
+
 export async function deleteTemplate(businessId: string, templateId: string) {
   await db.template.deleteMany({ where: { id: templateId, businessId } });
   revalidatePath(`/b/${businessId}/marca`);
