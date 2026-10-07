@@ -1,0 +1,37 @@
+/* Selector «Tus fotos» del compositor: hoja abajo en el celular, ventana al centro en la computadora. */
+
+.backdrop { position: fixed; inset: 0; z-index: 60; background: var(--nav-backdrop, rgba(16, 24, 40, 0.4)); }
+.sheet {
+  position: fixed; z-index: 61; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(860px, calc(100vw - 48px)); max-height: min(760px, calc(100vh - 64px));
+  display: flex; flex-direction: column; overflow: hidden;
+  border-radius: var(--r-lg, 18px); border: 1px solid var(--line);
+  background: linear-gradient(var(--surface), var(--surface)), var(--ground, #fff);
+  box-shadow: var(--shadow-lg, 0 20px 60px rgba(0, 0, 0, 0.25)); color: var(--ink);
+}
+@media (max-width: 640px) {
+  .sheet { left: 0; right: 0; top: auto; bottom: 0; transform: none; width: 100%; max-height: calc(100dvh - 40px); border-radius: 18px 18px 0 0; border-bottom: 0; padding-bottom: env(safe-area-inset-bottom); }
+}
+
+.head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 18px 10px; border-bottom: 1px solid var(--line); }
+.head h2 { margin: 0; font-size: 18px; }
+.head p { margin: 2px 0 0; font-size: 13px; color: var(--muted); line-height: 1.4; }
+.close { flex-shrink: 0; width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-size: 20px; line-height: 1; cursor: pointer; display: grid; place-items: center; }
+.close:hover { background: var(--surface-hover); }
+
+.search { padding: 10px 18px; border-bottom: 1px solid var(--line); }
+.list { flex: 1 1 auto; min-height: 0; overflow-y: auto; grid-auto-rows: max-content; padding: 14px 18px 18px; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; align-content: start; }
+@media (max-width: 640px) { .list { grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px; } .search, .head { padding-left: 12px; padding-right: 12px; } }
+
+.pick { position: relative; height: auto; justify-content: flex-start; display: flex; flex-direction: column; text-align: left; padding: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--surface); color: var(--ink); cursor: pointer; font: inherit; min-width: 0; }
+.pick:hover:not(:disabled) { border-color: var(--brand-2); box-shadow: 0 0 0 3px var(--brand-ring); }
+.pick:disabled { cursor: wait; opacity: 0.6; }
+.pickOn { border-color: var(--brand-2); box-shadow: 0 0 0 3px var(--brand-ring); opacity: 1 !important; }
+.img { flex-shrink: 0; position: relative; aspect-ratio: 1 / 1; background: var(--surface-2); display: grid; place-items: center; }
+.img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.badge { position: absolute; left: 6px; bottom: 6px; padding: 2px 7px; border-radius: 999px; background: rgba(0, 0, 0, 0.62); color: #fff; font-size: 11.5px; font-weight: 700; }
+.desc { flex-shrink: 0; margin: 7px 9px 9px; padding: 0; font-size: 12.5px; line-height: 1.35; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.used { flex-shrink: 0; display: block; padding: 0 9px 8px; font-size: 11.5px; color: var(--muted); }
+.state { grid-column: 1 / -1; padding: 30px 10px; text-align: center; color: var(--muted); font-size: 14px; line-height: 1.5; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.foot { padding: 10px 18px; border-top: 1px solid var(--line); font-size: 13px; }
+.err { margin: 0 18px 10px; }

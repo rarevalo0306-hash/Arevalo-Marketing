@@ -15,6 +15,7 @@ import { DESIGN_SHAPES, type Brand, type DesignShape } from "@/lib/design";
 import { BUILTIN_TEMPLATES, FONTS, hexOr, pickTemplate, StoredTemplate } from "@/lib/design-shapes";
 import { photoContextFor, photoMetaFor, storeDesign } from "@/lib/media-formats";
 import { createImage, IMAGE_PROVIDERS, imagesEnabled } from "@/lib/imagegen";
+import { pickLibraryPhotos } from "@/lib/library";
 import { createSignedUpload, isOwnFile, saveUpload, storeRemote } from "@/lib/media";
 import { GOOGLE_COOKIE, saveGoogleLocation, type GoogleLocation } from "@/lib/google-oauth";
 import { errorText } from "@/lib/i18n";
@@ -395,29 +396,33 @@ export async function generatePlan(businessId: string, _prev: PlanResult, f: For
   }
 }
 
-/** Guarda las publicaciones de un plan: una foto con la marca para cada una y su hora. */
+/** Guarda las publicaciones de un plan: una foto con la marca para cada una (real si hay una que vaya) y su hora. */
 async function savePlanPosts(
   b: Awaited<ReturnType<typeof business>>,
   businessId: string,
   channels: ChannelId[],
   items: { post: AiPost; scheduledAt: Date }[],
 ) {
-  // Una foto para cada publicación (si hay clave de imágenes). Si una falla, esa publicación queda sin foto.
-  const images = imagesEnabled()
-    ? await Promise.all(
-        items.map(async ({ post }, i) => {
-          try {
-            const photo = await createImage(b.aiImage, post.imageIdea, "square", businessId, photoContextFor(b, { title: post.imageHeadline }));
-            // Con la marca activada, la foto sale con logo, titular y teléfono; si el diseño falla, queda la foto sola.
-            return b.brandImages && post.imageHeadline.trim()
-              ? await brandPhoto(b, { photoUrl: photo, headline: post.imageHeadline, steps: post.imageSteps, seed: i }).catch(() => photo)
-              : photo;
-          } catch {
-            return null;
-          }
-        }),
-      )
-    : items.map(() => null);
+  // Primero una foto real de «Tus fotos» (la carpeta de Drive) que vaya con el tema, sin repetir en el plan.
+  const real = await pickLibraryPhotos(
+    businessId,
+    items.map(({ post }) => ({ text: [post.imageHeadline, post.imageIdea, post.seoTitle, post.google].join("\n"), keywords: [post.imageHeadline], shape: "square" as const })),
+  );
+  // Si no hay ninguna que vaya, una foto con IA (si hay clave de imágenes). Si una falla, esa publicación queda sin foto.
+  const images = await Promise.all(
+    items.map(async ({ post }, i) => {
+      if (!real[i] && !imagesEnabled()) return null;
+      try {
+        const photo = real[i]?.url ?? (await createImage(b.aiImage, post.imageIdea, "square", businessId, photoContextFor(b, { title: post.imageHeadline })));
+        // Con la marca activada, la foto sale con logo, titular y teléfono; si el diseño falla, queda la foto sola.
+        return b.brandImages && post.imageHeadline.trim()
+          ? await brandPhoto(b, { photoUrl: photo, headline: post.imageHeadline, steps: post.imageSteps, seed: i }).catch(() => photo)
+          : photo;
+      } catch {
+        return null;
+      }
+    }),
+  );
   for (const [i, { post, scheduledAt }] of items.entries()) {
     const image = images[i];
     await db.post.create({

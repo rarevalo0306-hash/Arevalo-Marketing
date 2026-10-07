@@ -43,6 +43,7 @@ describe("menú por herramientas", () => {
     expect(onKeys(here("/b/biz1/seo", "ajustes"))).toEqual(["seo-ajustes"]);
     expect(onKeys(here("/b/biz1/seo/escribir", "google"))).toEqual(["escribir"]);
     expect(onKeys(here("/b/biz1/publicar"))).toEqual(["publicar"]);
+    expect(onKeys(here("/b/biz1/fotos"))).toEqual(["fotos"]);
     expect(onKeys(here("/b/biz1/negocio/"))).toEqual(["negocio"]);
     expect(onKeys(here("/b/otro/inicio"))).toEqual([]);
   });

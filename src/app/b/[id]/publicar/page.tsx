@@ -1,5 +1,6 @@
 import { aiDesign, aiImage, aiVideoCheck, aiVideoStart, aiWrite, createPost, getUploadUrl } from "@/app/actions";
 import { moreIdeas } from "@/app/actions-ideas";
+import { libraryForPicker, libraryMedia, libraryPhotoFor } from "@/app/actions-library";
 import { Composer } from "@/components/Composer";
 import { PageHead } from "@/components/PageHead";
 import { aiEnabled } from "@/lib/ai";
@@ -11,6 +12,7 @@ import { BUILTIN_TEMPLATES, builtinTemplateName, needsPhoto, TemplateSpec } from
 import { videoEnabled } from "@/lib/fal";
 import { getT } from "@/lib/i18n-server";
 import { imagesEnabled } from "@/lib/imagegen";
+import { readDescription } from "@/lib/library-shape";
 import { usesSupabaseStorage } from "@/lib/media";
 
 // Publicar en varios canales (y esperar a que Instagram procese un video) puede tardar.
@@ -21,7 +23,7 @@ export default async function PublicarPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ idea?: string; magic?: string }>;
+  searchParams: Promise<{ idea?: string; magic?: string; foto?: string }>;
 }) {
   const { id } = await params;
   const q = await searchParams;
@@ -33,6 +35,15 @@ export default async function PublicarPage({
     ? specs.map((x) => ({ name: x.name, list: x.layout === "lista", photo: needsPhoto(x) }))
     : BUILTIN_TEMPLATES.map((x) => ({ name: builtinTemplateName(x.name, lang), list: x.layout === "lista", photo: needsPhoto(x) }));
   const ai = aiEnabled();
+  // «Crear publicación con esta foto» desde «Tus fotos»: la foto ya puesta y, como idea, lo que muestra.
+  let initialMedia: { url: string; type: "photo" | "video" } | { error: string } | null = null;
+  let photoIdea = "";
+  const foto = q.foto ? await db.libraryItem.findFirst({ where: { id: q.foto, businessId: id }, select: { id: true, description: true } }) : null;
+  if (foto) {
+    const r = await libraryMedia(id, foto.id);
+    initialMedia = r.ok ? { url: r.url, type: r.type } : { error: r.error };
+    photoIdea = readDescription(foto.description)?.[lang] ?? "";
+  }
   const [email, sms, ideas] = await Promise.all([
     db.contact.count({ where: { businessId: id, emailOptIn: true, NOT: { email: "" } } }),
     db.contact.count({ where: { businessId: id, smsOptIn: true, NOT: { phone: "" } } }),
@@ -61,8 +72,10 @@ export default async function PublicarPage({
         ideasBasis={ideas?.basis ?? "season"}
         moreIdeas={ai ? moreIdeas.bind(null, id) : null}
         bilingual={isBilingual(b.aiProfile, b.brandVoice)}
-        initialIdea={(q.idea ?? "").slice(0, 2000)}
+        initialIdea={(q.idea ?? photoIdea).slice(0, 2000)}
         autoMagic={q.magic === "1"}
+        initialMedia={initialMedia}
+        library={{ list: libraryForPicker.bind(null, id), media: libraryMedia.bind(null, id), photoFor: libraryPhotoFor.bind(null, id), manageHref: `/b/${id}/fotos` }}
         aiMedia={imagesEnabled() ? { image: aiImage.bind(null, id), video: videoEnabled(), videoStart: aiVideoStart.bind(null, id), videoCheck: aiVideoCheck.bind(null, id), design: aiDesign.bind(null, id), autoBrand: b.brandImages, templates } : null}
       />
     </>

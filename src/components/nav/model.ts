@@ -154,6 +154,8 @@ export const NAV_GROUPS: NavGroup[] = [
     label: ["Redes sociales", "Social media"],
     items: [
       { key: "publicar", label: ["Publicar", "Publish"], path: "publicar" },
+      // Las fotos y videos reales del negocio (su carpeta de Google Drive) que la IA usa en las publicaciones.
+      { key: "fotos", label: ["Tus fotos", "Your photos"], path: "fotos" },
       { key: "historial", label: ["Historial", "History"], path: "historial" },
       { key: "contactos", label: ["Contactos", "Contacts"], path: "contactos" },
     ],
