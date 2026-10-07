@@ -45,7 +45,7 @@
 /* Barra pequeña cuando ya empezaste: qué pasó y cómo volver a la idea. */
 .bar {
   display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;
-  padding: 12px 16px; border-radius: 16px; border: 1px solid var(--line-strong); background: var(--surface);
+  padding: 12px 16px; border-radius: var(--r-lg); border: 1px solid var(--line-strong); background: var(--surface);
 }
 .barText { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 220px; font-size: 14px; font-weight: 600; color: var(--ink); }
 .barText .quote { font-weight: 400; font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -85,14 +85,14 @@
 /* El botón de subir es un <label>: que se vea el foco del teclado. */
 .mediaBtns label:focus-within { box-shadow: 0 0 0 3px var(--brand-ring); }
 
-.current { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-2); }
+.current { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--surface-2); }
 .thumb { width: 72px; height: 72px; border-radius: 10px; object-fit: cover; background: var(--surface); flex-shrink: 0; }
 .currentText { display: flex; flex-direction: column; gap: 2px; flex: 1 1 140px; min-width: 0; color: var(--ink); font-size: 14px; }
 
 .aiMedia { gap: 10px; }
 textarea.short { min-height: 72px; }
 
-.design { display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 14px; border: 1.5px solid var(--line); }
+.design { display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: var(--r-md); border: 1.5px solid var(--line); }
 .designRow { display: flex; flex-wrap: wrap; gap: 10px; }
 .designRow select { width: auto; flex: 1 1 210px; min-width: 0; }
 
@@ -105,7 +105,7 @@ textarea.short { min-height: 72px; }
 
 /* ---------- 4. Dónde ---------- */
 .fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
-.extra { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line); }
+.extra { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-radius: var(--r-md); background: var(--surface-2); border: 1px solid var(--line); }
 .extra p { margin: 0; }
 .extraLbl { font-weight: 700; font-size: 14px; color: var(--ink); }
 

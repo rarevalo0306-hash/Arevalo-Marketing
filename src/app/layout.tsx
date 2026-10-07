@@ -9,19 +9,22 @@ export async function generateMetadata(): Promise<Metadata> {
     title: "Arevalo Marketing",
     description: lang === "en" ? "Publish once and it goes out on all your channels." : "Publica una vez y sale en todos tus canales.",
     // Al instalarla en el iPhone abre a pantalla completa, como una app.
-    appleWebApp: { capable: true, title: "Marketing", statusBarStyle: "black-translucent" },
+    appleWebApp: { capable: true, title: "Marketing", statusBarStyle: "default" },
   };
 }
 
-export const viewport: Viewport = { themeColor: "#0b1220", width: "device-width", initialScale: 1, viewportFit: "cover" };
+/** Estilo guardado (o «Claro») + color de la barra del navegador. Lo usa también ThemePicker (window.__amTheme). */
+const THEME_BOOT = `(function(){var C={claro:"#ffffff",noche:"#0b1220",vidrio:"#eef2fb"};function a(t){if(!C[t])t="claro";document.documentElement.dataset.theme=t;var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",C[t]);return t}window.__amTheme=a;var t="claro";try{t=localStorage.getItem("am-theme")||"claro"}catch(e){}a(t);document.addEventListener("DOMContentLoaded",function(){a(document.documentElement.dataset.theme)})})()`;
+
+export const viewport: Viewport = { themeColor: "#ffffff", width: "device-width", initialScale: 1, viewportFit: "cover" };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const lang = await uiLang();
   return (
-    <html lang={lang} data-theme="noche" suppressHydrationWarning>
+    <html lang={lang} data-theme="claro" suppressHydrationWarning>
       <head>
-        {/* Aplica el estilo guardado antes de pintar, para que no parpadee. */}
-        <script dangerouslySetInnerHTML={{ __html: `try{var t=localStorage.getItem("am-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}` }} />
+        {/* Aplica el estilo guardado antes de pintar, para que no parpadee. Sin elección guardada: «Claro». */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         {/* eslint-disable-next-line @next/next/no-page-custom-font */}

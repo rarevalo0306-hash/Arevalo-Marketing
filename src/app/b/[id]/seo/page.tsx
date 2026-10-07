@@ -22,6 +22,7 @@ import { SeoGuide } from "@/components/seo/SeoGuide";
 import { SeoSetup } from "@/components/seo/SeoSetup";
 import { SeoTabs, type SeoTab } from "@/components/seo/SeoTabs";
 import { VisibilityPanel } from "@/components/seo/VisibilityPanel";
+import { seoTabFrom } from "@/components/nav/model";
 import { WriterCard } from "@/components/seo/WriterCard";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
@@ -33,11 +34,11 @@ import { setupState } from "@/lib/seo/setup";
 // La auditoría recorre el sitio y la visibilidad en IA hace varias búsquedas: puede tardar.
 export const maxDuration = 300;
 
-const TAB_IDS = ["resumen", "google", "web", "competencia", "ia", "reportes", "ajustes"] as const;
-
-export default async function SeoPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ mapa?: string; tab?: string }> }) {
+export default async function SeoPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ mapa?: string; tab?: string; competidor?: string }> }) {
   const { id } = await params;
-  const { mapa, tab } = await searchParams;
+  const { mapa, tab, competidor: rawCompetidor } = await searchParams;
+  // Desde el buscador del Tablero: el sitio del competidor llega escrito en el formulario de competencia.
+  const competidor = (rawCompetidor ?? "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0].slice(0, 100) || undefined;
   const b = await db.business.findUniqueOrThrow({
     where: { id },
     select: { name: true, color: true, website: true, seoKeywords: true, seoLocations: true, seoLocationCode: true, seoLocationName: true },
@@ -48,7 +49,8 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
   const needsSetup =
     setupShown && (readTrackedKeywords(b.seoKeywords).length === 0 || readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName).length === 0);
   const saved = needsSetup ? (await setupState(id)).proposal : null;
-  const initial = TAB_IDS.find((x) => x === tab) ?? (mapa ? "google" : "resumen");
+  // Las mismas pestañas y el mismo orden que el menú (SEO_TAB_IDS); ?mapa= abre «Local».
+  const initial = seoTabFrom(tab, mapa);
   const tabs: SeoTab[] = [
     {
       id: "resumen",
@@ -72,29 +74,38 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
     },
     {
       id: "google",
-      label: t("Tu lugar en Google", "Your Google ranking"),
-      hint: t("En qué lugar sales, el mapa de calor, tu Perfil de Google y lo que pregunta la gente.", "Where you rank, the map heatmap, your Google profile and what people ask."),
+      label: t("Posiciones", "Rankings"),
+      hint: t("En qué lugar sales en Google, las palabras que busca la gente y lo que pregunta.", "Where you rank on Google, the words people search and what they ask."),
       content: (
         <>
           <RankPanel businessId={id} />
-          <MapRankPanel businessId={id} mapId={mapa} />
-          <GbpPanel businessId={id} />
           <KeywordsPanel businessId={id} />
           <QuestionsPanel businessId={id} />
         </>
       ),
     },
     {
+      id: "local",
+      label: t("Local", "Local"),
+      hint: t("El mapa de calor de tu zona, tu Perfil de Google (reseñas) y el código para Google.", "The heatmap of your area, your Google profile (reviews) and the code for Google."),
+      content: (
+        <>
+          <MapRankPanel businessId={id} mapId={mapa} />
+          <GbpPanel businessId={id} />
+          <SchemaPanel businessId={id} />
+        </>
+      ),
+    },
+    {
       id: "web",
       label: t("Tu página web", "Your website"),
-      hint: t("Qué arreglar en tu página, qué páginas perdieron visitas, el código para Google y artículos nuevos.", "What to fix on your site, pages losing visits, the code for Google and new articles."),
+      hint: t("Qué arreglar en tu página, qué páginas perdieron visitas y artículos nuevos.", "What to fix on your site, pages losing visits and new articles."),
       content: (
         <>
           <AuditPanel businessId={id} />
           <OnPagePanel businessId={id} />
           <DecayPanel businessId={id} />
           <CannibalPanel businessId={id} />
-          <SchemaPanel businessId={id} />
           <WriterCard businessId={id} />
           <div id="search-console">
             <SearchConsolePanel businessId={id} />
@@ -109,7 +120,7 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
       content: (
         <>
           <SharePanel businessId={id} />
-          <CompetitorsPanel businessId={id} />
+          <CompetitorsPanel businessId={id} competidor={competidor} />
           <GapPanel businessId={id} />
           <TrafficPanel businessId={id} />
           <BacklinksPanel businessId={id} />
@@ -124,7 +135,7 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
     },
     {
       id: "reportes",
-      label: t("Reportes y avisos", "Reports & alerts"),
+      label: t("Reportes", "Reports"),
       hint: t("El reporte en PDF del mes y los emails de cada lunes.", "The monthly PDF report and the Monday emails."),
       content: (
         <>

@@ -1,12 +1,13 @@
 .root { display: flex; flex-direction: column; gap: 18px; }
 
+/* Barra compacta: el menú de la izquierda también lleva a cada pestaña; en el celular es la forma rápida de cambiar. */
 .bar {
-  display: flex; flex-wrap: wrap; gap: 8px; padding: 6px; border-radius: 16px;
+  display: flex; flex-wrap: wrap; gap: 2px; padding: 4px; border-radius: var(--r-md);
   background: var(--surface); border: 1px solid var(--line); scroll-margin-top: 80px;
 }
 .tab {
-  min-height: 40px; padding: 0 14px; border-radius: 11px; border: 0; background: none; cursor: pointer;
-  font: inherit; font-size: 14px; font-weight: 700; color: var(--muted); white-space: nowrap;
+  min-height: 34px; padding: 0 12px; border-radius: 10px; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: 13.5px; font-weight: 700; color: var(--muted); white-space: nowrap;
 }
 .tab:hover { background: var(--surface-2); color: var(--ink); }
 .on, .on:hover { background: var(--brand-soft); color: var(--brand); box-shadow: inset 0 0 0 1px var(--line-strong); }
@@ -15,7 +16,7 @@
 @media (max-width: 640px) {
   .bar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
   .bar::-webkit-scrollbar { display: none; }
-  .tab { flex: none; padding: 0 12px; }
+  .tab { flex: none; padding: 0 11px; min-height: 36px; }
 }
 
 /* Que la barra de arriba del celular no tape la sección al bajar a ella */

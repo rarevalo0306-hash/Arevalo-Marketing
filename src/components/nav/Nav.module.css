@@ -1,0 +1,99 @@
+/* Menú por herramientas. Los colores salen de las variables --nav-* de globals.css (una por estilo: Claro, Noche, Vidrio). */
+.side, .bar, .sheet { --nv-strong: var(--nav-strong, var(--nav-active-ink)); }
+
+/* ---------- Computadora: barra lateral ---------- */
+.side { display: flex; flex-direction: column; gap: 1px; }
+
+.row {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 38px; padding: 0 10px 0 12px; border-radius: 11px;
+  border: 0; background: none; font: inherit; font-weight: 600; font-size: 14px; line-height: 1.25; text-align: left;
+  color: var(--nav-ink); text-decoration: none; cursor: pointer; transition: background 0.15s, color 0.15s;
+}
+.row svg { flex-shrink: 0; color: var(--nav-muted); transition: color 0.15s, transform 0.15s; }
+.row:hover { background: var(--nav-hover-bg); color: var(--nv-strong); }
+.row:hover svg { color: var(--nav-ink); }
+.text { flex: 1 1 auto; min-width: 0; }
+
+/* Encabezado de grupo (abre y cierra) */
+.head .chev { margin-left: auto; transform: rotate(-90deg); }
+.head[aria-expanded="true"] .chev { transform: none; }
+.headOn, .headOn:hover { color: var(--nv-strong); }
+.headOn > svg:first-child { color: var(--nav-accent); }
+
+/* Enlaces dentro de un grupo: sangría con una línea a la izquierda */
+.sub { display: flex; flex-direction: column; gap: 1px; margin: 1px 0 6px 21px; padding-left: 11px; border-left: 1px solid var(--nav-border); }
+.sub[hidden] { display: none; }
+.subrow {
+  display: flex; align-items: center; min-height: 32px; padding: 4px 10px; border-radius: 9px;
+  color: var(--nav-ink); text-decoration: none; font-weight: 600; font-size: 13.5px; line-height: 1.25; transition: background 0.15s, color 0.15s;
+}
+.subrow:hover { background: var(--nav-hover-bg); color: var(--nv-strong); }
+
+.on, .on:hover { background: var(--nav-active-bg); color: var(--nav-active-ink); box-shadow: inset 3px 0 0 var(--nav-accent); }
+.row.on svg { color: var(--nav-accent); }
+
+/* Todavía no existe (Anuncios) */
+.off, .off:hover { cursor: default; background: none; color: var(--nav-muted); }
+.off svg, .off:hover svg { color: var(--nav-muted); }
+.soon {
+  flex-shrink: 0; margin-left: auto; padding: 2px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 800; letter-spacing: 0.02em;
+  color: var(--nav-accent); background: var(--nav-active-bg); box-shadow: inset 0 0 0 1px var(--nav-border);
+}
+
+/* ---------- Celular: barra de abajo y hoja «Más» ---------- */
+.bar, .backdrop, .sheet { display: none; }
+
+@media (max-width: 900px) {
+  .bar {
+    display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; gap: 2px;
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+    background: var(--nav-bg); border-top: 1px solid var(--nav-border); box-shadow: 0 -6px 20px rgba(5, 10, 20, 0.12);
+  }
+  .tab {
+    flex: 1 1 0; min-width: 0; min-height: 52px; padding: 4px 2px; border: 0; border-radius: 12px; background: none; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    font: inherit; font-size: 11px; font-weight: 700; line-height: 1.1; color: var(--nav-ink); text-decoration: none;
+  }
+  .tab:hover { color: var(--nv-strong); }
+  .tab.on, .tab.on:hover { color: var(--nav-active-ink); }
+  .tab span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tab svg { color: var(--nav-muted); }
+  .tab.on { box-shadow: none; }
+  .tab.on svg { color: var(--nav-accent); }
+
+  .backdrop { display: block; position: fixed; inset: 0; z-index: 31; background: var(--nav-backdrop); }
+  .sheet {
+    display: flex; flex-direction: column; position: fixed; z-index: 32; left: 0; right: 0; bottom: 0;
+    max-height: min(82vh, 760px); max-height: min(82dvh, 760px); border-radius: 22px 22px 0 0;
+    background: var(--nav-sheet-bg); border: 1px solid var(--nav-border); border-bottom: 0; box-shadow: 0 -12px 40px rgba(5, 10, 20, 0.25);
+    color: var(--nav-ink); animation: up 0.18s ease-out;
+  }
+  .sheetHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px 10px 20px; border-bottom: 1px solid var(--nav-border); }
+  .sheetHead strong { color: var(--nv-strong); font-size: 16px; }
+  .close {
+    width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; border: 0; cursor: pointer;
+    background: var(--nav-hover-bg); color: var(--nv-strong);
+  }
+  .sheetBody {
+    overflow-y: auto; overscroll-behavior: contain; padding: 10px 12px calc(16px + env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .sgroup { display: flex; flex-direction: column; gap: 2px; padding: 6px 0 4px; }
+  .shead {
+    display: flex; align-items: center; gap: 10px; padding: 6px 10px 4px; color: var(--nav-muted);
+    font-size: 12px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .shead.headOn { color: var(--nav-accent); }
+  .srow {
+    display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 0 12px; border-radius: 12px;
+    color: var(--nav-ink); text-decoration: none; font-weight: 600; font-size: 15.5px;
+  }
+  .srow:hover { color: var(--nv-strong); background: var(--nav-hover-bg); }
+  .srow.on, .srow.on:hover { background: var(--nav-active-bg); color: var(--nav-active-ink); }
+  .srow svg { color: var(--nav-muted); flex-shrink: 0; }
+  .srow.on svg { color: var(--nav-accent); }
+  .ssub { padding-left: 40px; }
+}
+
+@keyframes up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .sheet { animation: none; } }

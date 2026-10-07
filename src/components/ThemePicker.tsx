@@ -10,19 +10,21 @@ const THEMES = [
 ] as const;
 type Theme = (typeof THEMES)[number][0];
 
-/** Cambia el estilo de la app. Se recuerda en este navegador. */
+/** Cambia el estilo de la app («Claro» si nunca eligió). Se recuerda en este navegador. */
 export function ThemePicker() {
   const { t } = useT();
-  const [theme, setTheme] = useState<Theme>("noche");
+  const [theme, setTheme] = useState<Theme>("claro");
   useEffect(() => {
     try {
       const saved = localStorage.getItem("am-theme") as Theme | null;
-      if (saved) setTheme(saved);
+      if (saved && THEMES.some(([id]) => id === saved)) setTheme(saved);
     } catch {}
   }, []);
   const pick = (t: Theme) => {
     setTheme(t);
-    document.documentElement.dataset.theme = t;
+    const w = window as unknown as { __amTheme?: (t: string) => void };
+    if (w.__amTheme) w.__amTheme(t);
+    else document.documentElement.dataset.theme = t;
     try {
       localStorage.setItem("am-theme", t);
     } catch {}

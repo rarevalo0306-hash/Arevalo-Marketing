@@ -9,8 +9,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Publica una vez y sale en todos tus canales, con IA. / Post once and it goes out on all your channels, with AI.",
     start_url: "/",
     display: "standalone",
-    background_color: "#0b1220",
-    theme_color: "#0b1220",
+    background_color: "#f4f6f9",
+    theme_color: "#ffffff",
     lang: "es",
     icons: [
       { src: "/icons/192", sizes: "192x192", type: "image/png", purpose: "any" },

@@ -7,12 +7,12 @@
 .stepItem { min-width: 0; }
 .stepBtn {
   width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 12px; min-height: 52px;
-  border-radius: 14px; border: 1.5px solid var(--line); background: var(--surface); color: var(--muted);
+  border-radius: var(--r-md); border: 1.5px solid var(--line); background: var(--surface); color: var(--muted);
   font: 600 14px var(--body); text-align: left; cursor: pointer;
 }
 .stepBtn:disabled { cursor: default; }
 .stepNum {
-  flex-shrink: 0; width: 28px; height: 28px; border-radius: 14px; display: grid; place-items: center;
+  flex-shrink: 0; width: 28px; height: 28px; border-radius: var(--r-md); display: grid; place-items: center;
   font-weight: 800; font-size: 14px; background: var(--surface-2); color: var(--muted);
 }
 .stepLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -29,7 +29,7 @@
 /* ---------- Leer la web ---------- */
 .webBox {
   display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
-  padding: 16px; border-radius: 16px; border: 1.5px dashed var(--line-strong); background: var(--surface);
+  padding: 16px; border-radius: var(--r-lg); border: 1.5px dashed var(--line-strong); background: var(--surface);
 }
 .webBox > :first-child { flex: 1 1 260px; }
 @media (max-width: 560px) { .webBox :global(.btn) { width: 100%; } }
@@ -39,10 +39,10 @@
 .pages a { color: inherit; }
 
 /* ---------- Clientes ideales ---------- */
-.customers { display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); }
+.customers { display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: var(--r-lg); border: 1px solid var(--line); background: var(--surface); }
 .chosen { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .chosenItem {
-  display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 12px; border-radius: 14px;
+  display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 12px; border-radius: var(--r-md);
   border: 1px solid var(--line); background: var(--surface-hover);
 }
 .rank {
@@ -76,6 +76,6 @@
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
 @media (max-width: 560px) { .actions :global(.btn.ai) { width: 100%; } }
 .summary { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 10px; }
-.summary > div { padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); min-width: 0; }
+.summary > div { padding: 12px 14px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--surface); min-width: 0; }
 .summary dt { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
 .summary dd { margin: 4px 0 0; font-size: 14px; overflow-wrap: anywhere; }

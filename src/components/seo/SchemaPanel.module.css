@@ -43,7 +43,7 @@
 .optional { background: var(--surface-2); color: var(--muted); }
 
 /* Horario */
-.hours { display: flex; flex-direction: column; gap: 14px; padding: 16px; border-radius: 14px; background: var(--surface-2); min-width: 0; }
+.hours { display: flex; flex-direction: column; gap: 14px; padding: 16px; border-radius: var(--r-md); background: var(--surface-2); min-width: 0; }
 .days { display: flex; flex-direction: column; gap: 8px; }
 .day { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-height: 44px; }
 .dayName { flex: 0 0 112px; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; cursor: pointer; }
