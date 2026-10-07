@@ -84,7 +84,7 @@ export function MapRankForm({ action, keywords, lastKeyword, lastSize, lastSpaci
               value={custom}
               onChange={(e) => setCustom(e.target.value)}
               maxLength={80}
-              placeholder={t("Ej.: cortinas metálicas", "E.g.: roll-up doors")}
+              placeholder={t("Ej.: tu servicio principal", "E.g.: your main service")}
               disabled={pending}
             />
           </label>

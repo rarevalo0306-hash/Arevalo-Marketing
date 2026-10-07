@@ -146,7 +146,7 @@ export function KeywordPicker({ businessId, url, current, options, open: startOp
           className="field"
           value={typed}
           onChange={(e) => setTyped(e.target.value)}
-          placeholder={t("Ej.: cortinas metálicas Managua", "E.g. roof repair Miami")}
+          placeholder={t("Ej.: tu servicio + tu ciudad", "E.g. your service + your city")}
           maxLength={80}
           aria-label={t("Palabra clave", "Keyword")}
           autoComplete="off"

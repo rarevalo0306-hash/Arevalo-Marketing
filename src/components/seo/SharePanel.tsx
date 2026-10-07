@@ -169,9 +169,9 @@ export async function SharePanel({ businessId }: { businessId: string }) {
                 </>
               ) : (
                 <>
-                  {t("Para esto hace falta conectar ", "This needs ")}
-                  {go("#dataforseo", t("Datos reales de Google (DataForSEO)", "Real Google data (DataForSEO)"))}
-                  {t(" y luego revisar tus posiciones.", " connected, then a rankings check.")}
+                  {t("Para esto primero elige tus zonas y palabras clave en ", "For this, first pick your zones and keywords in ")}
+                  {go("#dataforseo", t("la pestaña «⚙ Ajustes»", "the “⚙ Settings” tab"))}
+                  {t(" y luego revisa tus posiciones.", ", then check your rankings.")}
                 </>
               )}
             </Empty>
@@ -222,8 +222,8 @@ export async function SharePanel({ businessId }: { businessId: string }) {
                 </>
               ) : (
                 <>
-                  {t("Para esto hace falta conectar ", "This needs ")}
-                  {go("#dataforseo", t("Datos reales de Google (DataForSEO)", "Real Google data (DataForSEO)"))}
+                  {t("Para esto primero elige tus zonas y palabras clave en ", "For this, first pick your zones and keywords in ")}
+                  {go("#dataforseo", t("la pestaña «⚙ Ajustes»", "the “⚙ Settings” tab"))}
                   {t(" y luego hacer tu mapa.", " connected, then a map.")}
                 </>
               )}

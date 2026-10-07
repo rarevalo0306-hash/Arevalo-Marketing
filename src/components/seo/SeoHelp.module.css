@@ -59,9 +59,14 @@
 
 /* ---------- Glosario y pasos ---------- */
 .glossary { display: grid; grid-template-columns: 1fr; gap: 10px; margin: 0; }
-.glossary > div { display: flex; flex-direction: column; gap: 2px; }
+.glossary > div { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); min-width: 0; }
 .glossary dt { font-weight: 700; }
-.glossary dd { margin: 0; color: var(--muted); }
+.glossary dd { margin: 0; color: var(--muted); display: flex; flex-direction: column; gap: 3px; line-height: 1.45; }
+.glossary dd strong { color: var(--ink); font-weight: 700; }
+.example { color: var(--ink); }
+.good, .bad { padding-left: 2px; }
+.good > span:first-child { color: var(--teal-text); font-weight: 800; }
+.bad > span:first-child { color: var(--err-text); font-weight: 800; }
 @media (min-width: 720px) { .glossary { grid-template-columns: 1fr 1fr; column-gap: 24px; } }
 .steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; line-height: 1.45; }
 

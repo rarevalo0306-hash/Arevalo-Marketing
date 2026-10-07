@@ -1,11 +1,14 @@
 import { aiDesign, aiImage, aiVideoCheck, aiVideoStart, aiWrite, createPost, getUploadUrl } from "@/app/actions";
+import { moreIdeas } from "@/app/actions-ideas";
 import { Composer } from "@/components/Composer";
 import { PageHead } from "@/components/PageHead";
 import { aiEnabled } from "@/lib/ai";
+import { isBilingual } from "@/lib/bilingual";
 import { CHANNEL_IDS, type ChannelId } from "@/lib/channels";
+import { loadContentIdeas } from "@/lib/content-ideas";
 import { db } from "@/lib/db";
 import { BUILTIN_TEMPLATES, builtinTemplateName, needsPhoto, TemplateSpec } from "@/lib/design-shapes";
-import { falEnabled } from "@/lib/fal";
+import { videoEnabled } from "@/lib/fal";
 import { getT } from "@/lib/i18n-server";
 import { imagesEnabled } from "@/lib/imagegen";
 import { usesSupabaseStorage } from "@/lib/media";
@@ -29,9 +32,12 @@ export default async function PublicarPage({
   const templates = specs.length
     ? specs.map((x) => ({ name: x.name, list: x.layout === "lista", photo: needsPhoto(x) }))
     : BUILTIN_TEMPLATES.map((x) => ({ name: builtinTemplateName(x.name, lang), list: x.layout === "lista", photo: needsPhoto(x) }));
-  const [email, sms] = await Promise.all([
+  const ai = aiEnabled();
+  const [email, sms, ideas] = await Promise.all([
     db.contact.count({ where: { businessId: id, emailOptIn: true, NOT: { email: "" } } }),
     db.contact.count({ where: { businessId: id, smsOptIn: true, NOT: { phone: "" } } }),
+    // Ideas de hoy según el SEO guardado (solo la base de datos).
+    ai ? loadContentIdeas(id, lang) : Promise.resolve(null),
   ]);
   return (
     <>
@@ -39,7 +45,7 @@ export default async function PublicarPage({
         business={b}
         prefix={t("Publicando como", "Publishing as")}
         title={t("Nueva publicación", "New post")}
-        subtitle={t("Escríbelo una vez. Lo adaptamos y lo enviamos a cada canal que elijas.", "Write it once. We adapt it and send it to each channel you choose.")}
+        subtitle={t("Elige una idea, revisa y publica. La IA lo adapta a cada canal que elijas.", "Pick an idea, review it and publish. AI adapts it to each channel you choose.")}
       />
       <Composer
         key={id}
@@ -50,10 +56,14 @@ export default async function PublicarPage({
         contactCounts={{ email, sms }}
         action={createPost.bind(null, id)}
         upload={usesSupabaseStorage() ? getUploadUrl.bind(null, id) : null}
-        aiWrite={aiEnabled() ? aiWrite.bind(null, id) : null}
+        aiWrite={ai ? aiWrite.bind(null, id) : null}
+        ideas={ideas?.ideas ?? []}
+        ideasBasis={ideas?.basis ?? "season"}
+        moreIdeas={ai ? moreIdeas.bind(null, id) : null}
+        bilingual={isBilingual(b.aiProfile, b.brandVoice)}
         initialIdea={(q.idea ?? "").slice(0, 2000)}
         autoMagic={q.magic === "1"}
-        aiMedia={imagesEnabled() ? { image: aiImage.bind(null, id), video: falEnabled(), videoStart: aiVideoStart.bind(null, id), videoCheck: aiVideoCheck.bind(null, id), design: aiDesign.bind(null, id), autoBrand: b.brandImages, templates } : null}
+        aiMedia={imagesEnabled() ? { image: aiImage.bind(null, id), video: videoEnabled(), videoStart: aiVideoStart.bind(null, id), videoCheck: aiVideoCheck.bind(null, id), design: aiDesign.bind(null, id), autoBrand: b.brandImages, templates } : null}
       />
     </>
   );

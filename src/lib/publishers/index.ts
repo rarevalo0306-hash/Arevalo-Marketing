@@ -1,4 +1,6 @@
 import type { ChannelId } from "@/lib/channels";
+import { linkedin } from "@/lib/publish-linkedin";
+import { x } from "@/lib/publish-x";
 import { google } from "./google";
 import { facebook, instagram } from "./meta";
 import { email, sms } from "./messaging";
@@ -12,6 +14,8 @@ export const PUBLISHERS: Record<ChannelId, Publisher> = {
   tiktok,
   google,
   seo: website,
+  linkedin,
+  x,
   email,
   sms,
 };

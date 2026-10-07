@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { runBacklinks } from "@/app/actions-seo-backlinks";
 import styles from "@/components/seo/Backlinks.module.css";
+import { AiPromptButton } from "@/components/seo/AiPromptButton";
 import { BacklinksButton } from "@/components/seo/BacklinksButton";
 import { HowToRead } from "@/components/seo/HowToRead";
 import { OutreachProvider, OutreachRow, OutreachTop } from "@/components/seo/OutreachDrafts";
@@ -26,6 +27,8 @@ import {
 import { normalizeDomain, readCompetitorsReport } from "@/lib/seo/competitors";
 import { dataForSeoEnabled } from "@/lib/seo/dataforseo";
 import { OUTREACH_KIND, readOutreachStore } from "@/lib/seo/outreach";
+import { loadPromptContext } from "@/lib/seo/prompt-context";
+import { backlinksChecklist } from "@/lib/seo/prompts";
 import { BUSINESS_TZ } from "@/lib/time";
 
 /** Enlaces hacia tu página (estilo Backlink Analytics + Backlink Gap). */
@@ -78,6 +81,7 @@ export async function BacklinksPanel({ businessId }: { businessId: string }) {
   const outreach = readOutreachStore(outreachRow?.data).drafts;
   const competitors = pickBacklinkCompetitors(compRow ? readCompetitorsReport(compRow.data) : null, self);
   const estimate = backlinksCostEstimate(competitors.length);
+  const ctx = report?.gap.length ? await loadPromptContext(businessId) : null;
 
   const fmt = new Intl.DateTimeFormat(intlLocale(lang), { dateStyle: "long", timeStyle: "short", timeZone: BUSINESS_TZ });
   const monthYear = new Intl.DateTimeFormat(intlLocale(lang), { month: "short", year: "numeric", timeZone: BUSINESS_TZ });
@@ -433,6 +437,16 @@ export async function BacklinksPanel({ businessId }: { businessId: string }) {
               </li>
             </ul>
           </HowToRead>
+          {ctx && report.gap.length > 0 && (
+            <AiPromptButton
+              variant="owner"
+              text={backlinksChecklist(ctx, report.gap, lang)}
+              hint={t(
+                "Los sitios de «Dónde conseguir enlaces» como lista para ir marcando. Esto lo haces tú, no la IA de tu web.",
+                "The sites from “Where to get links” as a list to tick off. This one is for you, not your website's AI.",
+              )}
+            />
+          )}
         </>
       )}
     </section>

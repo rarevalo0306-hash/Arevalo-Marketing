@@ -113,7 +113,7 @@ export async function runOnPage(businessId: string, _prev: OnPageResult, f: Form
     if (!domain) throw bi("Primero agrega la dirección de tu página web en Ajustes del negocio.", "First add your website address in Business settings.");
     const zones = readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName);
     if (!zones.length)
-      throw bi("Primero elige tu zona de Google en Datos reales de Google (DataForSEO) y guarda.", "First pick your Google area in Real Google data (DataForSEO) and save.");
+      throw bi("Primero elige tu zona de Google en la pestaña «⚙ Ajustes» y guarda.", "First pick your Google area in the “⚙ Settings” tab and save.");
     const auditRow = (await latestReports(businessId, "audit", 1))[0];
     const audit = auditRow ? readAuditReport(auditRow.data) : null;
     if (!audit) throw bi("Primero revisa tu página con «Revisar mi página» (Auditoría del sitio).", "First check your website with \"Check my website\" (Site audit).");

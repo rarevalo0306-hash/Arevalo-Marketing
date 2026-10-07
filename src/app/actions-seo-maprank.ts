@@ -36,7 +36,7 @@ export async function findMapPlace(businessId: string, query: string): Promise<M
   });
   if (!b) return { ok: false, error: t("Negocio no encontrado", "Business not found") };
   const zone = readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName)[0];
-  if (!zone) return { ok: false, error: t("Primero elige la zona donde buscan tus clientes en «Datos reales de Google».", "First pick the area where your customers search in “Real Google data”.") };
+  if (!zone) return { ok: false, error: t("Primero elige la zona donde buscan tus clientes en la pestaña «⚙ Ajustes».", "First pick the area where your customers search in the “⚙ Settings” tab.") };
   const q = cleanKeyword(query) || cleanKeyword(b.name);
   if (q.length < 2) return { ok: false, error: t("Escribe el nombre de tu negocio como sale en Google Maps.", "Type your business name as it shows on Google Maps.") };
   try {

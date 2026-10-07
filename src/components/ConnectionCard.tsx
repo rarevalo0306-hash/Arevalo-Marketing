@@ -20,9 +20,13 @@ type Props = {
   oauthName?: string;
   /** Email con la clave de Brevo de la app: solo nombre y email del remitente. */
   brevo?: { domains: string[]; defaultName: string; connect: (f: FormData) => Promise<TestResult> } | null;
+  /** La última publicación falló por permisos o token vencido: hay que volver a conectar. */
+  needsReconnect?: boolean;
+  /** Nombre de la cuenta conectada (página, perfil o remitente), si se conoce. */
+  account?: string;
 };
 
-export function ConnectionCard({ channel: def, connected, values, secretSet, save, remove, test, oauthUrl, oauthName = "Facebook", brevo }: Props) {
+export function ConnectionCard({ channel: def, connected, values, secretSet, save, remove, test, oauthUrl, oauthName = "Facebook", brevo, needsReconnect, account }: Props) {
   const { lang, t } = useT();
   const channel = channelText(def, lang);
   const [open, setOpen] = useState(false);
@@ -31,18 +35,34 @@ export function ConnectionCard({ channel: def, connected, values, secretSet, sav
   // Hay un camino fácil (entrar con tu cuenta, o Email con la cuenta de la app): los pasos técnicos quedan como alternativa.
   const easySteps = (oauthUrl || brevo) && channel.easy?.length ? channel.easy : null;
 
+  const broken = connected && needsReconnect;
+
   return (
-    <article id={`c-${channel.id}`} className={`card ${s.card}`}>
+    <article id={`c-${channel.id}`} className={`card ${s.card}${broken ? ` ${s.broken}` : ""}`}>
       <div className={s.head}>
         <span className={`mono solid ${s.logo}`} aria-hidden="true">{channel.mono}</span>
-        <h2>{channel.name}</h2>
-        <span className={connected ? "pill connected" : "pill"}>{connected ? t("Conectado", "Connected") : t("No conectado", "Not connected")}</span>
+        <div className={s.title}>
+          <h2>{channel.name}</h2>
+          {connected && account ? <span className={s.account}>{account}</span> : <span className={s.account}>{channel.kind}</span>}
+        </div>
+        <span className={broken ? "pill failed" : connected ? "pill connected" : "pill"}>
+          {broken ? t("Volver a conectar", "Reconnect") : connected ? t("Conectado", "Connected") : t("No conectado", "Not connected")}
+        </span>
       </div>
+      {broken && (
+        <p className={`note error ${s.alert}`} role="status">
+          <strong>{t("Necesita volver a conectarse.", "Needs to be reconnected.")}</strong>{" "}
+          {t(
+            `La última publicación en ${channel.name} falló porque la cuenta ya no da permiso (la conexión venció o se quitó el permiso). Vuelve a conectarla y luego reintenta la publicación desde el Historial.`,
+            `The last post to ${channel.name} failed because the account no longer gives permission (the connection expired or the permission was removed). Reconnect it, then retry the post from History.`,
+          )}
+        </p>
+      )}
       <p className={s.gain}>{channel.gain}</p>
 
       {oauthUrl && !open && (
         <div className={s.easy}>
-          <a className={connected ? "btn outline" : "btn on"} href={oauthUrl}>
+          <a className={connected && !broken ? "btn outline" : "btn on"} href={oauthUrl}>
             {connected ? t(`Volver a conectar con ${oauthName}`, `Reconnect with ${oauthName}`) : t(`Conectar con ${oauthName}`, `Connect with ${oauthName}`)}
           </a>
           <span className={s.easyNote}>
@@ -75,6 +95,12 @@ export function ConnectionCard({ channel: def, connected, values, secretSet, sav
       <details key={open ? "open" : "closed"} className={s.how} open={open || undefined}>
         <summary>{t("¿Cómo lo conecto?", "How do I connect it?")}</summary>
         <div className={s.howBody}>
+          {channel.cost && (
+            <p className={s.cost}>
+              <strong>{t("Antes de empezar: ", "Before you start: ")}</strong>
+              {channel.cost}
+            </p>
+          )}
           {easySteps ? (
             <>
               <p className={s.subhead}>{t("Lo fácil:", "The easy way:")}</p>
@@ -146,7 +172,7 @@ export function ConnectionCard({ channel: def, connected, values, secretSet, sav
           )}
           {!oauthUrl && !brevo && (
             <button className="btn outline" type="button" onClick={() => setOpen(true)}>
-              {connected ? t("Editar datos", "Edit details") : t(`Conectar ${channel.name}`, `Connect ${channel.name}`)}
+              {broken ? t("Pegar datos nuevos", "Paste new details") : connected ? t("Editar datos", "Edit details") : t(`Conectar ${channel.name}`, `Connect ${channel.name}`)}
             </button>
           )}
         </div>

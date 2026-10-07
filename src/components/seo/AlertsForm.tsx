@@ -8,13 +8,15 @@ type Props = {
   save: (prev: AlertsResult, f: FormData) => Promise<AlertsResult>;
   test: (prev: AlertsResult) => Promise<AlertsResult>;
   initial: { email: string; alerts: boolean; weekly: boolean };
-  /** La revisión diaria de posiciones está encendida (y DataForSEO conectado). */
+  /** La revisión automática de posiciones está encendida (y DataForSEO conectado). */
   daily: boolean;
+  /** Cada cuántos días se revisan solas las posiciones (1, 7, 15 o 30). */
+  rankDays: number;
   sender: { ok: true; from: string } | { ok: false; error: string };
   lastWeekly: string | null;
 };
 
-export function AlertsForm({ save, test, initial, daily, sender, lastWeekly }: Props) {
+export function AlertsForm({ save, test, initial, daily, rankDays, sender, lastWeekly }: Props) {
   const { t } = useT();
   const [saved, runSave, saving] = useActionState(save, null);
   const [tested, runTest, testing] = useActionState(test, null);
@@ -43,8 +45,8 @@ export function AlertsForm({ save, test, initial, daily, sender, lastWeekly }: P
             <strong>{t("Avisarme por email si bajo en Google", "Email me if I drop on Google")}</strong>
             <span className="small muted" style={{ display: "block" }}>
               {t(
-                "Después de la revisión automática de cada día: si bajas 3 lugares o más, sales de la primera página o del mapa, o un competidor nuevo entra al top 3. También te contamos las buenas noticias.",
-                "After the automatic daily check: if you drop 3 or more places, fall off the first page or the map, or a new competitor enters the top 3. We'll share the good news too.",
+                `Después de cada revisión automática de tus posiciones (${rankDays === 1 ? "cada día" : `cada ${rankDays} días`}): si bajas 3 lugares o más, sales de la primera página o del mapa, o un competidor nuevo entra al top 3. También te contamos las buenas noticias.`,
+                `After each automatic rankings check (${rankDays === 1 ? "every day" : `every ${rankDays} days`}): if you drop 3 or more places, fall off the first page or the map, or a new competitor enters the top 3. We'll share the good news too.`,
               )}
             </span>
           </span>
@@ -52,8 +54,8 @@ export function AlertsForm({ save, test, initial, daily, sender, lastWeekly }: P
         {alerts && !daily && (
           <p className="note" role="status">
             {t(
-              "Para recibir estos avisos tiene que estar encendido \"Revisar mis posiciones cada día\".",
-              "To get these alerts, \"Check my rankings every day\" has to be on.",
+              "Para recibir estos avisos tiene que estar encendida la revisión automática de tus posiciones.",
+              "To get these alerts, the automatic rankings check has to be on.",
             )}{" "}
             <a href="#dataforseo">{t("Ir a los ajustes de Google", "Go to the Google settings")}</a>
           </p>

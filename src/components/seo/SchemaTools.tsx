@@ -4,9 +4,11 @@ import Link from "next/link";
 import { useActionState, useEffect, useMemo, useState } from "react";
 import type { SchemaSaveResult } from "@/app/actions-seo-schema";
 import { useT } from "@/components/I18n";
+import { AiPromptButton } from "@/components/seo/AiPromptButton";
 import { Fold } from "@/components/seo/Fold";
 import fold from "@/components/seo/Fold.module.css";
 import styles from "@/components/seo/SchemaPanel.module.css";
+import { type PromptContext, schemaPrompt } from "@/lib/seo/prompt-core";
 import { buildLocalBusinessSchema, DAY_NAMES, DAYS, type Day, type FixPlace, type MissingLevel, type SchemaInput, schemaSnippet, type WeekHours } from "@/lib/seo/schema";
 
 export type FixLinks = Record<FixPlace, string>;
@@ -20,6 +22,10 @@ type Props = {
   hoursFrom: "saved" | "google" | "none";
   links: FixLinks;
   save: (prev: SchemaSaveResult, f: FormData) => Promise<SchemaSaveResult>;
+  /** El negocio, para las instrucciones a la IA de la página (null = no se muestran). */
+  ctx: PromptContext | null;
+  /** Si la página ya tiene el código (de la última auditoría). */
+  status: "present" | "incomplete" | "missing" | "unknown";
 };
 
 type DayState = { open: boolean; opens: string; closes: string };
@@ -65,7 +71,7 @@ async function copyText(text: string): Promise<boolean> {
 type Platform = "wordpress" | "wix" | "shopify" | "other";
 
 /** El código listo para copiar, lo que falta, el horario editable y dónde pegarlo. */
-export function SchemaTools({ base, initialHours, initialPrice, hoursFrom, links, save }: Props) {
+export function SchemaTools({ base, initialHours, initialPrice, hoursFrom, links, save, ctx, status }: Props) {
   const { t, lang } = useT();
   const [days, setDays] = useState(() => toState(initialHours));
   const [price, setPrice] = useState(initialPrice);
@@ -118,8 +124,11 @@ export function SchemaTools({ base, initialHours, initialPrice, hoursFrom, links
   );
   const openDays = DAYS.filter((d) => days[d].open);
   const hoursSummary = openDays.length
-    ? t(`Tu horario: ${openDays.length} día${openDays.length === 1 ? "" : "s"} abierto${openDays.length === 1 ? "" : "s"}`, `Your hours: open ${openDays.length} day${openDays.length === 1 ? "" : "s"}`)
-    : t("Tu horario: todavía sin horario", "Your hours: no hours yet");
+    ? t(
+        `Tu horario de atención y precios: abres ${openDays.length} día${openDays.length === 1 ? "" : "s"} a la semana`,
+        `Your opening hours and prices: open ${openDays.length} day${openDays.length === 1 ? "" : "s"} a week`,
+      )
+    : t("Tu horario de atención y precios: todavía sin horario", "Your opening hours and prices: no hours yet");
   const hoursNote =
     hoursFrom === "saved"
       ? t("Guardado aquí · tócalo para cambiarlo o poner tus precios", "Saved here · tap to change it or add your prices")
@@ -135,26 +144,78 @@ export function SchemaTools({ base, initialHours, initialPrice, hoursFrom, links
 
   return (
     <div className={styles.wrap}>
-      {/* El código */}
-      <div className="stack" style={{ gap: 10 }}>
-        <div className="row between">
-          <span className="small muted">
-            {t("Tipo de negocio para Google:", "Business type for Google:")} <strong>{built.type}</strong>
+      {/* Horario y precios */}
+      <details className={fold.fold} id="schema-hours" open={hoursOpen} onToggle={(e) => setHoursOpen(e.currentTarget.open)}>
+        <summary>
+          <span className={fold.sumText}>
+            <span>{hoursSummary}</span>
+            <span className={fold.sumNote}>{hoursNote}</span>
           </span>
-          <button type="button" className="btn on" onClick={onCopy}>
-            {copied === "ok" ? t("¡Copiado!", "Copied!") : t("Copiar código", "Copy code")}
+        </summary>
+      <form action={run} className={styles.hours}>
+        <div className="stack" style={{ gap: 4 }}>
+          <strong>{t("Tu horario de atención", "Your opening hours")}</strong>
+          <p className="small muted">
+            {hoursFrom === "google"
+              ? t("Lo trajimos de tu Perfil de Google. Si cambió, corrígelo aquí y también en Google.", "We got it from your Google Business Profile. If it changed, fix it here and on Google too.")
+              : t("Usa el mismo horario que tienes en tu Perfil de Google.", "Use the same hours as on your Google Business Profile.")}{" "}
+            {t(
+              "Marca la casilla de cada día que abres y pon a qué hora abres y cierras. Si un día no abres, deja la casilla sin marcar: ese día sale «Cerrado».",
+              "Tick the box for each day you're open and set the opening and closing time. If you don't open on a day, leave its box unticked: that day shows as “Closed”.",
+            )}
+          </p>
+        </div>
+        <div className={styles.days}>
+          {DAYS.map((d) => (
+            <div key={d} className={styles.day}>
+              <label className={styles.dayName}>
+                <input type="checkbox" name={`open-${d}`} checked={days[d].open} onChange={(e) => setDay(d, { open: e.target.checked })} />
+                {lang === "en" ? DAY_NAMES[d].en : DAY_NAMES[d].es}
+              </label>
+              {days[d].open ? (
+                <div className={styles.times}>
+                  <input type="time" className="field" name={`opens-${d}`} value={days[d].opens} onChange={(e) => setDay(d, { opens: e.target.value })} aria-label={t(`Abre el ${DAY_NAMES[d].es}`, `Opens on ${DAY_NAMES[d].en}`)} required />
+                  <span aria-hidden>–</span>
+                  <input type="time" className="field" name={`closes-${d}`} value={days[d].closes} onChange={(e) => setDay(d, { closes: e.target.value })} aria-label={t(`Cierra el ${DAY_NAMES[d].es}`, `Closes on ${DAY_NAMES[d].en}`)} required />
+                </div>
+              ) : (
+                <span className="small muted">{t("Cerrado (no abres este día)", "Closed (you don't open this day)")}</span>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="row">
+          <button type="button" className="btn outline" onClick={copyMonday} disabled={!days.Monday.open}>
+            {t("Usar el horario del lunes en los demás días abiertos", "Use Monday's hours on the other open days")}
           </button>
         </div>
-        <pre className={styles.code} tabIndex={0} aria-label={t("Código para pegar en tu página", "Code to paste on your website")}>
-          <code>{code}</code>
-        </pre>
-        {copied === "error" && (
-          <p className="note error" role="status">
-            {t("No se pudo copiar solo. Selecciona el código con el dedo o el ratón y cópialo a mano.", "Couldn't copy automatically. Select the code with your finger or mouse and copy it by hand.")}
+        <div className="stack" style={{ gap: 6 }}>
+          <label className="small" htmlFor="schema-price">
+            <strong>{t("Rango de precios (opcional)", "Price range (optional)")}</strong>
+          </label>
+          <span className="small muted">
+            {t(
+              "Más o menos cuánto cuestan tus servicios, del más barato al más caro. Ej.: «C$500 a C$5,000» o «$$» (precio medio). Si no quieres mostrar precios, déjalo vacío.",
+              "Roughly what your services cost, from cheapest to most expensive. E.g.: “$50 to $500” or “$$” (mid-priced). If you don't want to show prices, leave it empty.",
+            )}
+          </span>
+          <input id="schema-price" name="priceRange" className="field" maxLength={99} value={price} onChange={(e) => setPrice(e.target.value)} placeholder={t("Ej.: C$500 a C$5,000", "E.g.: $50 to $500")} />
+        </div>
+        <div className="row">
+          <button type="submit" className="btn on" disabled={pending}>
+            {pending ? t("Guardando…", "Saving…") : t("Guardar mi horario y precios", "Save my hours and prices")}
+          </button>
+          <span className="small muted">
+            {t("Guardar es para no escribirlos otra vez la próxima vez. El código ya los usa aunque no guardes.", "Saving just keeps them for next time. The code already uses them even if you don't save.")}
+          </span>
+        </div>
+        {result && !pending && (
+          <p className={result.ok ? "note ok" : "note error"} role="status">
+            {result.message}
           </p>
         )}
-        {dirty && <p className="small muted">{t("El código ya incluye tus cambios de horario y precios. Guárdalos abajo para que queden la próxima vez.", "The code already includes your hours and price changes. Save them below so they're kept next time.")}</p>}
-      </div>
+      </form>
+      </details>
 
       {/* Lo que falta */}
       {(built.missing.length > 0 || built.tips.length > 0) && (
@@ -185,65 +246,36 @@ export function SchemaTools({ base, initialHours, initialPrice, hoursFrom, links
         </Fold>
       )}
 
-      {/* Horario y precios */}
-      <details className={fold.fold} id="schema-hours" open={hoursOpen} onToggle={(e) => setHoursOpen(e.currentTarget.open)}>
-        <summary>
-          <span className={fold.sumText}>
-            <span>{hoursSummary}</span>
-            <span className={fold.sumNote}>{hoursNote}</span>
-          </span>
-        </summary>
-      <form action={run} className={styles.hours}>
-        <div className="stack" style={{ gap: 4 }}>
-          <p className="small muted">
-            {hoursFrom === "google"
-              ? t("Lo trajimos de tu Perfil de Google. Si cambió, corrígelo aquí y en Google.", "We got it from your Google Business Profile. If it changed, fix it here and on Google.")
-              : t("Marca los días que abres y la hora. Que sea el mismo horario que tienes en tu Perfil de Google.", "Check the days you're open and the times. Use the same hours as on your Google Business Profile.")}
-          </p>
+      {/* Lo principal: las instrucciones para la IA de la página, con el código adentro */}
+      {ctx && (
+        <AiPromptButton
+          text={schemaPrompt(ctx, code, lang, status)}
+          hint={t(
+            "Lleva el código adentro y le dice a la IA de tu web dónde pegarlo. Ya incluye tu horario y precios de arriba.",
+            "It carries the code inside and tells your website's AI where to paste it. It already includes your hours and prices above.",
+          )}
+        />
+      )}
+
+      {/* El código, para quien lo pega a mano */}
+      <Fold summary={t("Ver el código (si lo pegas tú mismo)", "See the code (if you paste it yourself)")} note={t(`Tipo de negocio para Google: ${built.type}`, `Business type for Google: ${built.type}`)}>
+        <div className="stack" style={{ gap: 10 }}>
+          <div className="row">
+            <button type="button" className="btn outline" onClick={onCopy}>
+              {copied === "ok" ? t("¡Copiado!", "Copied!") : t("Copiar solo el código", "Copy just the code")}
+            </button>
+          </div>
+          <pre className={styles.code} tabIndex={0} aria-label={t("Código para pegar en tu página", "Code to paste on your website")}>
+            <code>{code}</code>
+          </pre>
+          {copied === "error" && (
+            <p className="note error" role="status">
+              {t("No se pudo copiar solo. Selecciona el código con el dedo o el ratón y cópialo a mano.", "Couldn't copy automatically. Select the code with your finger or mouse and copy it by hand.")}
+            </p>
+          )}
+          {dirty && <p className="small muted">{t("El código ya incluye tus cambios de horario y precios. Guárdalos arriba para que queden la próxima vez.", "The code already includes your hours and price changes. Save them above so they're kept next time.")}</p>}
         </div>
-        <div className={styles.days}>
-          {DAYS.map((d) => (
-            <div key={d} className={styles.day}>
-              <label className={styles.dayName}>
-                <input type="checkbox" name={`open-${d}`} checked={days[d].open} onChange={(e) => setDay(d, { open: e.target.checked })} />
-                {lang === "en" ? DAY_NAMES[d].en : DAY_NAMES[d].es}
-              </label>
-              {days[d].open ? (
-                <div className={styles.times}>
-                  <input type="time" className="field" name={`opens-${d}`} value={days[d].opens} onChange={(e) => setDay(d, { opens: e.target.value })} aria-label={t(`Abre el ${DAY_NAMES[d].es}`, `Opens on ${DAY_NAMES[d].en}`)} required />
-                  <span aria-hidden>–</span>
-                  <input type="time" className="field" name={`closes-${d}`} value={days[d].closes} onChange={(e) => setDay(d, { closes: e.target.value })} aria-label={t(`Cierra el ${DAY_NAMES[d].es}`, `Closes on ${DAY_NAMES[d].en}`)} required />
-                </div>
-              ) : (
-                <span className="small muted">{t("Cerrado", "Closed")}</span>
-              )}
-            </div>
-          ))}
-        </div>
-        <div className="row">
-          <button type="button" className="btn outline" onClick={copyMonday} disabled={!days.Monday.open}>
-            {t("Copiar el horario del lunes a los demás días", "Copy Monday's hours to the other days")}
-          </button>
-        </div>
-        <div className="stack" style={{ gap: 6 }}>
-          <label className="small" htmlFor="schema-price">
-            <strong>{t("Rango de precios (opcional)", "Price range (optional)")}</strong> · {t("ej. «$$» o «C$500 a C$5,000». Déjalo vacío si no quieres mostrarlo.", "e.g. “$$” or “$50 to $500”. Leave it empty if you don't want to show it.")}
-          </label>
-          <input id="schema-price" name="priceRange" className="field" maxLength={99} value={price} onChange={(e) => setPrice(e.target.value)} />
-        </div>
-        <div className="row">
-          <button type="submit" className="btn on" disabled={pending}>
-            {pending ? t("Guardando…", "Saving…") : t("Guardar horario y precios", "Save hours and prices")}
-          </button>
-          <span className="small muted">{t("Gratis: no usa saldo de DataForSEO.", "Free: doesn't use DataForSEO balance.")}</span>
-        </div>
-        {result && !pending && (
-          <p className={result.ok ? "note ok" : "note error"} role="status">
-            {result.message}
-          </p>
-        )}
-      </form>
-      </details>
+      </Fold>
 
       {/* Dónde pegarlo */}
       <Fold summary={t("Dónde pegarlo", "Where to paste it")} note={t("Pasos para WordPress, Wix, Shopify u otra página", "Steps for WordPress, Wix, Shopify or another website")}>

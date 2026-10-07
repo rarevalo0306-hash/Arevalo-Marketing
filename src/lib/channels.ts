@@ -3,7 +3,9 @@
 
 import { intlLocale, translator, type UiLang } from "@/lib/i18n";
 
-export type ChannelId = "facebook" | "instagram" | "tiktok" | "google" | "seo" | "email" | "sms";
+export type ChannelId = "facebook" | "instagram" | "tiktok" | "google" | "seo" | "linkedin" | "x" | "email" | "sms";
+/** Grupo en la pantalla de Conexiones: redes sociales, Google y tu web, mensajes. */
+export type ChannelGroup = "social" | "google" | "messages";
 export type MediaType = "none" | "photo" | "video";
 
 export type CredentialField = {
@@ -19,6 +21,7 @@ export type ChannelDef = {
   name: string;
   mono: string;
   kind: string;
+  group: ChannelGroup;
   /** Límite de caracteres del texto; 0 = sin límite. */
   limit: number;
   what: string;
@@ -28,6 +31,8 @@ export type ChannelDef = {
   easy?: string[];
   /** Pasos para conectarlo a mano, con los nombres técnicos necesarios (tokens, permisos…). */
   steps: string[];
+  /** Aviso claro si la red cobra o pide aprobar tu app (se muestra en «¿Cómo lo conecto?»). */
+  cost?: string;
   fields: CredentialField[];
 };
 
@@ -39,6 +44,7 @@ export const CHANNELS: ChannelDef[] = [
     name: "Facebook",
     mono: "FB",
     kind: "Publicación",
+    group: "social",
     limit: 63206,
     what: "Publicaciones en la página del negocio",
     gain: "Publica en la página de Facebook de tu negocio desde aquí, sin tener que entrar a Facebook.",
@@ -63,6 +69,7 @@ export const CHANNELS: ChannelDef[] = [
     name: "Instagram",
     mono: "IG",
     kind: "Post o Reel",
+    group: "social",
     limit: 2200,
     what: "Posts y Reels",
     gain: "Publica fotos y Reels en el Instagram de tu negocio.",
@@ -83,30 +90,11 @@ export const CHANNELS: ChannelDef[] = [
     ],
   },
   {
-    id: "tiktok",
-    name: "TikTok",
-    mono: "TT",
-    kind: "Video",
-    limit: 2200,
-    what: "Videos",
-    gain: "Sube videos a la cuenta de TikTok de tu negocio (TikTok solo acepta videos).",
-    steps: [
-      "Entra a developers.tiktok.com y crea una app.",
-      "Activa la Content Posting API con el permiso video.publish.",
-      "Copia el Client key, el Client secret y un Refresh token de tu cuenta.",
-      "Pega los tres aquí y presiona «Guardar y probar».",
-    ],
-    fields: [
-      { key: "clientKey", label: "Client key" },
-      { key: "clientSecret", label: "Client secret", secret: true },
-      { key: "refreshToken", label: "Refresh token", secret: true },
-    ],
-  },
-  {
     id: "google",
     name: "Google",
     mono: "G",
     kind: "Perfil de Negocio",
+    group: "google",
     limit: 1500,
     what: "Novedades en el Perfil de Negocio (Maps)",
     gain: "Sal en Google Maps y en las búsquedas de Google con novedades y ofertas de tu negocio.",
@@ -131,9 +119,10 @@ export const CHANNELS: ChannelDef[] = [
   },
   {
     id: "seo",
-    name: "Sitio web / SEO",
+    name: "Sitio web",
     mono: "WEB",
     kind: "Artículo en tu sitio",
+    group: "google",
     limit: 0,
     what: "Un artículo nuevo en tu sitio, en español e inglés",
     gain: "Publica artículos en tu página web para que más gente te encuentre en Google.",
@@ -151,10 +140,79 @@ export const CHANNELS: ChannelDef[] = [
     ],
   },
   {
+    id: "tiktok",
+    name: "TikTok",
+    mono: "TT",
+    kind: "Video",
+    group: "social",
+    limit: 2200,
+    what: "Videos",
+    gain: "Sube videos a la cuenta de TikTok de tu negocio (TikTok solo acepta videos).",
+    steps: [
+      "Entra a developers.tiktok.com y crea una app.",
+      "Activa la Content Posting API con el permiso video.publish.",
+      "Copia el Client key, el Client secret y un Refresh token de tu cuenta.",
+      "Pega los tres aquí y presiona «Guardar y probar».",
+    ],
+    cost: "Gratis. Pero hasta que TikTok revise y apruebe tu app (auditoría), los videos se publican en privado: solo tú los ves.",
+    fields: [
+      { key: "clientKey", label: "Client key" },
+      { key: "clientSecret", label: "Client secret", secret: true },
+      { key: "refreshToken", label: "Refresh token", secret: true },
+    ],
+  },
+  {
+    id: "linkedin",
+    name: "LinkedIn",
+    mono: "in",
+    kind: "Publicación",
+    group: "social",
+    limit: 3000,
+    what: "Publicaciones en tu perfil o en la página de tu empresa",
+    gain: "Publica en LinkedIn para que otros negocios y profesionales conozcan tu empresa.",
+    steps: [
+      "Entra a linkedin.com/developers y crea una app (te pide la página de LinkedIn de tu empresa).",
+      "En la pestaña «Products» agrega «Share on LinkedIn» y «Sign In with LinkedIn using OpenID Connect». Son gratis y se activan al momento.",
+      "Abre el generador de tokens (linkedin.com/developers/tools/oauth/token-generator), elige tu app, marca los permisos openid, profile y w_member_social, y genera el token.",
+      "Pega el token aquí. Deja «Publicar como» vacío para publicar en tu perfil personal. Presiona «Guardar y probar».",
+      "El token dura 60 días. Cuando venza, genera otro y pégalo aquí.",
+    ],
+    cost: "Gratis para publicar en tu perfil personal. Para publicar como la página de tu empresa, LinkedIn tiene que aprobar tu app (producto «Community Management API», permiso w_organization_social): lo pides en la pestaña «Products» y la revisión puede tardar semanas.",
+    fields: [
+      { key: "accessToken", label: "Token de acceso", secret: true },
+      { key: "author", label: "Publicar como (opcional)", placeholder: "Vacío = tu perfil · urn:li:organization:12345 = tu empresa" },
+    ],
+  },
+  {
+    id: "x",
+    name: "X (Twitter)",
+    mono: "X",
+    kind: "Post",
+    group: "social",
+    limit: 280,
+    what: "Posts cortos (hasta 280 caracteres)",
+    gain: "Publica mensajes cortos, con foto o video, en la cuenta de X de tu negocio.",
+    steps: [
+      "Entra a console.x.com con la cuenta de X de tu negocio y crea una app.",
+      "En la app, abre «User authentication settings» y elige los permisos «Read and write».",
+      "En «Keys and tokens» copia la API Key y la API Key Secret. Después genera el Access Token y el Access Token Secret (genéralos después de poner «Read and write»).",
+      "Carga créditos en tu cuenta de desarrollador (X cobra por uso).",
+      "Pega las 4 claves aquí y presiona «Guardar y probar».",
+    ],
+    cost: "X cobra por usar su API: unos US$0.015 por cada publicación y US$0.20 si lleva un enlace. Tienes que cargar créditos con tarjeta en console.x.com antes de publicar.",
+    fields: [
+      { key: "apiKey", label: "API Key", secret: true },
+      { key: "apiSecret", label: "API Key Secret", secret: true },
+      { key: "accessToken", label: "Access Token", secret: true },
+      { key: "accessSecret", label: "Access Token Secret", secret: true },
+    ],
+  },
+  {
     id: "email",
     name: "Email",
     mono: "@",
     kind: "Boletín",
+    group: "messages",
     limit: 0,
     what: "Email a los contactos que aceptaron recibirlos",
     gain: "Manda correos a tus clientes que aceptaron recibirlos.",
@@ -179,6 +237,7 @@ export const CHANNELS: ChannelDef[] = [
     name: "Texto (SMS)",
     mono: "SMS",
     kind: "Mensaje de texto",
+    group: "messages",
     limit: 160,
     what: "Mensajes de texto a contactos que aceptaron recibirlos",
     gain: "Manda mensajes de texto al celular de clientes que aceptaron recibirlos.",
@@ -203,6 +262,7 @@ type ChannelTextEn = {
   gain: string;
   easy?: string[];
   steps: string[];
+  cost?: string;
   /** Solo los campos con texto en español; los nombres técnicos (Client key, API key…) se quedan igual. */
   fields?: Record<string, { label?: string; help?: string; placeholder?: string }>;
 };
@@ -253,6 +313,37 @@ const CHANNELS_EN: Record<ChannelId, ChannelTextEn> = {
       "Copy the Client key, the Client secret and a Refresh token for your account.",
       "Paste all three here and click \"Save and test\".",
     ],
+    cost: "Free. But until TikTok reviews and approves your app (audit), videos are posted as private: only you can see them.",
+  },
+  linkedin: {
+    kind: "Post",
+    what: "Posts on your profile or your company Page",
+    gain: "Post on LinkedIn so other businesses and professionals get to know your company.",
+    steps: [
+      "Go to linkedin.com/developers and create an app (it asks for your company's LinkedIn Page).",
+      "In the \"Products\" tab, add \"Share on LinkedIn\" and \"Sign In with LinkedIn using OpenID Connect\". They're free and turn on right away.",
+      "Open the token generator (linkedin.com/developers/tools/oauth/token-generator), pick your app, check the openid, profile and w_member_social permissions, and generate the token.",
+      "Paste the token here. Leave \"Post as\" empty to post on your personal profile. Click \"Save and test\".",
+      "The token lasts 60 days. When it expires, generate a new one and paste it here.",
+    ],
+    cost: "Free to post on your personal profile. To post as your company Page, LinkedIn has to approve your app (\"Community Management API\" product, w_organization_social permission): you request it in the \"Products\" tab and the review can take weeks.",
+    fields: {
+      accessToken: { label: "Access token" },
+      author: { label: "Post as (optional)", placeholder: "Empty = your profile · urn:li:organization:12345 = your company" },
+    },
+  },
+  x: {
+    kind: "Post",
+    what: "Short posts (up to 280 characters)",
+    gain: "Post short messages, with a photo or video, to your business's X account.",
+    steps: [
+      "Go to console.x.com with your business's X account and create an app.",
+      "In the app, open \"User authentication settings\" and choose \"Read and write\" permissions.",
+      "In \"Keys and tokens\", copy the API Key and API Key Secret. Then generate the Access Token and Access Token Secret (generate them after setting \"Read and write\").",
+      "Add credits to your developer account (X charges per use).",
+      "Paste the 4 keys here and click \"Save and test\".",
+    ],
+    cost: "X charges for its API: about US$0.015 per post and US$0.20 if it has a link. You have to add credits with a card at console.x.com before posting.",
   },
   google: {
     kind: "Business Profile",
@@ -275,7 +366,7 @@ const CHANNELS_EN: Record<ChannelId, ChannelTextEn> = {
     },
   },
   seo: {
-    name: "Website / SEO",
+    name: "Website",
     kind: "Article on your website",
     what: "A new article on your website, in Spanish and English",
     gain: "Publish articles on your website so more people find you on Google.",
@@ -339,6 +430,7 @@ export function channelText(def: ChannelDef, lang: UiLang): ChannelDef {
     gain: en.gain,
     easy: en.easy,
     steps: en.steps,
+    cost: en.cost,
     fields: def.fields.map((f) => ({ ...f, ...en.fields?.[f.key] })),
   };
 }

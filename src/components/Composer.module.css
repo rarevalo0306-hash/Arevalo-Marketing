@@ -1,35 +1,124 @@
-/* Parte de arriba de "Nueva publicación": una sola caja y tres caminos claros. */
-.form { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+/* Nueva publicación: pasos numerados 1. Idea → 2. Texto → 3. Foto/Video → 4. Dónde → 5. Cuándo. */
+.form { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
 
-.start { padding: 22px; gap: 14px; }
+/* ---------- Título de cada paso ---------- */
+.stepHead { display: flex; align-items: flex-start; gap: 12px; }
+.stepHeadText { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.num {
+  display: grid; place-items: center; flex-shrink: 0; width: 30px; height: 30px; border-radius: 15px;
+  font: 800 14px var(--display); color: #fff; background: linear-gradient(135deg, var(--brand-2), var(--brand));
+  box-shadow: 0 4px 12px rgba(18, 107, 188, 0.25);
+}
+.numDone { background: var(--teal); box-shadow: none; }
+.stepTitle { margin: 0; font-family: var(--display); font-weight: 800; font-size: 18px; line-height: 1.3; color: var(--ink); }
+.stepSub { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--muted); }
+
+/* ---------- 1. La idea ---------- */
+.start { padding: 22px; gap: 16px; }
 @media (max-width: 640px) { .start { padding: 18px 16px; } }
+.ideaLbl { font-weight: 700; font-size: 14px; color: var(--ink); }
+.start textarea.idea { min-height: 84px; font-size: 16px; }
 
-.head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
-.title { font-family: var(--display); font-weight: 800; font-size: 19px; color: var(--ink); }
+.opts { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+.lang { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: var(--muted); }
+.lang select.langSelect { width: auto; min-height: 0; padding: 6px 32px 6px 12px; font-size: 14px; border-radius: 10px; background-position: right 10px center; }
+.toggle { display: inline-flex; align-items: flex-start; gap: 10px; cursor: pointer; min-width: 0; flex: 1 1 260px; }
+.toggle input { width: 20px; height: 20px; margin: 1px 0 0; flex-shrink: 0; }
+.toggle span { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.toggle strong { font-size: 14px; color: var(--ink); }
+.toggle small { font-size: 12.5px; color: var(--muted); line-height: 1.35; }
 
-/* Idioma: pequeño, al lado del título. */
-.lang { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
-.lang select.langSelect { width: auto; min-height: 0; padding: 5px 30px 5px 10px; font-size: 13px; border-radius: 10px; background-position: right 10px center; }
-
-.start textarea.idea { min-height: 96px; font-size: 16px; }
-
-/* Tres caminos: en celular uno debajo del otro; en computadora, uno al lado del otro. */
+/* Tres caminos: en celular uno debajo del otro; en pantallas anchas, uno al lado del otro. */
 .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 10px; }
 .choice {
   flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; text-align: left;
-  min-height: 62px; padding: 10px 16px; white-space: normal;
+  min-height: 64px; padding: 10px 16px; white-space: normal;
 }
 .choice small { font-weight: 500; font-size: 12.5px; line-height: 1.35; color: var(--muted); }
 .main { font-size: 15px; }
-.main small { color: rgba(255, 255, 255, 0.88); }
+.main small { color: rgba(255, 255, 255, 0.9); }
 .main:disabled small { color: inherit; }
 .own { border-style: dashed; }
+.picked { margin: 0; padding: 10px 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); font-size: 14px; color: var(--ink); }
+.picked span { color: var(--muted); }
 
 /* Barra pequeña cuando ya empezaste: qué pasó y cómo volver a la idea. */
 .bar {
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px;
-  padding: 12px 16px; border-radius: 14px; border: 1px solid var(--line-strong); background: var(--surface);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;
+  padding: 12px 16px; border-radius: 16px; border: 1px solid var(--line-strong); background: var(--surface);
 }
 .barText { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 220px; font-size: 14px; font-weight: 600; color: var(--ink); }
 .barText .quote { font-weight: 400; font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .barBtns { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* ---------- Los pasos: una columna en celular y iPad; en computadora la vista previa va a la derecha. ---------- */
+.steps {
+  display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "text" "media" "where" "preview" "when";
+}
+.step { gap: 16px; min-width: 0; }
+.aText { grid-area: text; }
+.aMedia { grid-area: media; }
+.aWhere { grid-area: where; }
+.aPreview { grid-area: preview; }
+.aWhen { grid-area: when; }
+@media (min-width: 1100px) {
+  .steps {
+    grid-template-columns: minmax(0, 1.15fr) minmax(340px, 1fr);
+    grid-template-areas: "text preview" "media preview" "where preview" "when preview" ". preview";
+    grid-template-rows: auto auto auto auto 1fr; align-items: start;
+  }
+  .aPreview { position: sticky; top: 16px; }
+}
+
+/* ---------- 3. Foto o video ---------- */
+.stepBody { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.mediaBtns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 10px; }
+.mediaBtn {
+  flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; text-align: left;
+  min-height: 64px; padding: 10px 16px; white-space: normal; cursor: pointer; font-size: 15px;
+}
+.mediaBtn small { font-weight: 500; font-size: 12.5px; color: var(--muted); }
+.mbTitle { display: inline-flex; align-items: center; gap: 8px; }
+.mbTitle span[aria-hidden] { font-size: 16px; color: var(--brand-2); }
+.mediaBtnOn { border-color: var(--brand-2); box-shadow: 0 0 0 3px var(--brand-ring); }
+/* El botón de subir es un <label>: que se vea el foco del teclado. */
+.mediaBtns label:focus-within { box-shadow: 0 0 0 3px var(--brand-ring); }
+
+.current { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-2); }
+.thumb { width: 72px; height: 72px; border-radius: 10px; object-fit: cover; background: var(--surface); flex-shrink: 0; }
+.currentText { display: flex; flex-direction: column; gap: 2px; flex: 1 1 140px; min-width: 0; color: var(--ink); font-size: 14px; }
+
+.aiMedia { gap: 10px; }
+textarea.short { min-height: 72px; }
+
+.design { display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 14px; border: 1.5px solid var(--line); }
+.designRow { display: flex; flex-wrap: wrap; gap: 10px; }
+.designRow select { width: auto; flex: 1 1 210px; min-width: 0; }
+
+.more { border-top: 1px solid var(--line); padding-top: 12px; }
+.more > summary { cursor: pointer; font-size: 14px; font-weight: 700; color: var(--brand-2); display: inline-flex; align-items: center; gap: 6px; min-height: 32px; }
+.more > summary::after { content: "▾"; font-size: 12px; transition: transform 0.15s; }
+.more[open] > summary::after { transform: rotate(180deg); }
+.moreBody { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.moreBody p { margin: 0; }
+
+/* ---------- 4. Dónde ---------- */
+.fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.extra { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line); }
+.extra p { margin: 0; }
+.extraLbl { font-weight: 700; font-size: 14px; color: var(--ink); }
+
+/* ---------- 5. Cuándo ---------- */
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-width: 420px; }
+.date { max-width: 320px; }
+.status { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.status li { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.send { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; border-top: 1px solid var(--line); padding-top: 16px; }
+@media (max-width: 640px) { .submit { width: 100%; } }
+/* En celular, los canales van de dos en dos (sin el ícono) para no hacer la página tan larga. */
+@media (max-width: 640px) {
+  .fieldset :global(.chips) { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .fieldset :global(.chip) { gap: 10px; padding: 10px 12px; min-height: 54px; }
+  .fieldset :global(.chip .mono) { display: none; }
+}

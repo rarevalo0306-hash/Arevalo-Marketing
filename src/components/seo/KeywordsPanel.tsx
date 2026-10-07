@@ -72,8 +72,8 @@ export async function KeywordsPanel({ businessId }: { businessId: string }) {
       <h2>{t("Palabras clave con datos reales", "Keywords with real data")}</h2>
       <p className="small muted">
         {t(
-          "Cuánta gente busca cada palabra en Google al mes en tu zona, si sube o baja, y cuánto pagan los anunciantes por cada clic. Los datos vienen de Google Ads.",
-          "How many people search each keyword on Google per month in your area, whether it's going up or down, and how much advertisers pay per click. The data comes from Google Ads.",
+          "Cuántas personas escriben cada frase en Google al mes en tu zona (dato real de Google Ads), si va subiendo o bajando, y frases parecidas que conviene seguir. Más búsquedas = más clientes posibles.",
+          "How many people type each phrase into Google per month in your area (real Google Ads data), whether it's going up or down, and similar phrases worth tracking. More searches = more potential customers.",
         )}
       </p>
     </div>
@@ -85,9 +85,10 @@ export async function KeywordsPanel({ businessId }: { businessId: string }) {
         {header}
         <p className="note">
           {t(
-            "Para ver las búsquedas reales, elige tu zona de Google y escribe tus palabras clave en la pestaña «⚙ Ajustes» y guarda.",
-            "To see real searches, pick your Google area and enter your keywords in the “⚙ Settings” tab and save.",
+            "Para ver cuánta gente busca lo que vendes, primero dinos dónde están tus clientes y qué frases escriben en Google (ej.: lo que vendes + tu ciudad). ",
+            "To see how many people search for what you sell, first tell us where your customers are and what phrases they type into Google (e.g. what you sell + your city). ",
           )}
+          <a href="#dataforseo" style={{ fontWeight: 700 }}>{t("Ir a «⚙ Ajustes» →", "Go to “⚙ Settings” →")}</a>
         </p>
       </section>
     );

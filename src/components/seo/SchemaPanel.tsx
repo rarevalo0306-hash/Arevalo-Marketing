@@ -9,6 +9,7 @@ import { readAuditReport } from "@/lib/seo/audit";
 import { readZones } from "@/lib/seo/dataforseo";
 import { mapsUrl, readGbpReport } from "@/lib/seo/gbp";
 import { readMapPlace } from "@/lib/seo/maprank";
+import { loadPromptContext } from "@/lib/seo/prompt-context";
 import { latestReports } from "@/lib/seo/reports";
 import { readDfsTimetable, readSchemaExtras, readWeekHours, SCHEMA_KIND, type SchemaInput, schemaStatus, type WeekHours } from "@/lib/seo/schema";
 import { readStudy } from "@/lib/study-shape";
@@ -49,11 +50,12 @@ export async function SchemaPanel({ businessId }: { businessId: string }) {
   });
   if (!b) return null;
 
-  const [[gbpRow], [auditRow], [extrasRow], social] = await Promise.all([
+  const [[gbpRow], [auditRow], [extrasRow], social, ctx] = await Promise.all([
     latestReports(businessId, "gbp", 1),
     latestReports(businessId, "audit", 1),
     db.seoReport.findMany({ where: { businessId, kind: SCHEMA_KIND }, orderBy: { createdAt: "desc" }, take: 1 }),
     socialLinks(businessId),
+    loadPromptContext(businessId),
   ]);
   const gbp = gbpRow ? readGbpReport(gbpRow.data) : null;
   const profile = gbp?.profile ?? null;
@@ -143,10 +145,18 @@ export async function SchemaPanel({ businessId }: { businessId: string }) {
           <h2>{t("Código para que Google entienda tu negocio", "Code so Google understands your business")}</h2>
           <span className={pill.cls}>{pill.text}</span>
         </div>
-        <p className="small muted">
+        <p className="small">
+          <strong>{t("Qué es: ", "What it is: ")}</strong>
           {t(
-            "Una etiqueta invisible que le dice a Google quién eres, dónde estás y a qué hora abres. Tus clientes no la ven; Google sí, y la usa para entender tu negocio y mostrar bien tus datos. Es gratis: solo la copias y la pegas una vez en tu página.",
-            "An invisible tag that tells Google who you are, where you are and when you're open. Your customers don't see it; Google does, and uses it to understand your business and show your details correctly. It's free: you just copy it and paste it on your website once.",
+            "un texto invisible que va dentro de tu página web y le dice a Google tu nombre, dirección, teléfono y horario. Tus clientes no lo ven.",
+            "an invisible text that goes inside your website and tells Google your name, address, phone and hours. Your customers don't see it.",
+          )}
+        </p>
+        <p className="small">
+          <strong>{t("Para qué sirve: ", "Why it matters: ")}</strong>
+          {t(
+            "Google no se confunde con tus datos y te puede mostrar mejor en el mapa y en las respuestas de las IAs. Se pone una sola vez.",
+            "Google doesn't mix up your details and can show you better on the map and in AI answers. You add it only once.",
           )}
         </p>
       </div>
@@ -160,6 +170,8 @@ export async function SchemaPanel({ businessId }: { businessId: string }) {
         hoursFrom={extras?.hours ? "saved" : gbpHours ? "google" : "none"}
         links={links}
         save={saveSchemaExtras.bind(null, businessId)}
+        ctx={ctx}
+        status={status.status}
       />
 
       <HowToRead title={t("Cómo leer esto", "How to read this")}>

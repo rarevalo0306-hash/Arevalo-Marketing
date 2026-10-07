@@ -27,8 +27,8 @@ export async function runRankCheck(businessId: string, _prev: RankResult, _f: Fo
   if (!setup.ok) {
     const msg = {
       website: t("Primero agrega la dirección de tu página web en Ajustes del negocio.", "First add your website address in Business settings."),
-      location: t("Primero elige la zona donde buscan tus clientes en «Datos reales de Google», aquí arriba.", "First pick the area where your customers search in “Real Google data” above."),
-      keywords: t("Primero agrega las palabras clave que quieres seguir en «Datos reales de Google», aquí arriba.", "First add the keywords you want to track in “Real Google data” above."),
+      location: t("Primero elige la zona donde buscan tus clientes en la pestaña «⚙ Ajustes».", "First pick the area where your customers search in the “⚙ Settings” tab."),
+      keywords: t("Primero agrega las palabras clave que quieres seguir en la pestaña «⚙ Ajustes».", "First add the keywords you want to track in the “⚙ Settings” tab."),
     }[setup.missing];
     return { ok: false, message: msg };
   }

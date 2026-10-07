@@ -2,12 +2,17 @@
 
 import Link from "next/link";
 import type { AiWriteResult, MediaResult, VideoCheck, VideoStart } from "@/app/actions";
-import type { AiPost } from "@/lib/ai";
+import type { MoreIdeasResult } from "@/app/actions-ideas";
+import type { AiPostOut } from "@/lib/ai";
 import type { VideoJob } from "@/lib/fal";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
+import { MediaStep } from "@/components/ComposerMedia";
 import { useT } from "@/components/I18n";
+import { IdeaList } from "@/components/IdeaList";
 import s from "./Composer.module.css";
+import { joinBilingual } from "@/lib/bilingual";
+import type { ContentIdea, IdeasBasis } from "@/lib/content-ideas";
 import { errorText, intlLocale } from "@/lib/i18n";
 import {
   CHANNELS,
@@ -30,7 +35,7 @@ type Props = {
   /** Con Supabase Storage: pide una dirección para subir el archivo directo desde el navegador. */
   upload: ((contentType: string) => Promise<{ uploadUrl: string; publicUrl: string }>) | null;
   /** Agente de IA: escribe la publicación y sus versiones por canal a partir de una idea. */
-  aiWrite: ((idea: string, lang: string) => Promise<AiWriteResult>) | null;
+  aiWrite: ((idea: string, lang: string, opts?: { bilingual?: boolean }) => Promise<AiWriteResult>) | null;
   /** Fotos y videos con IA (fal.ai). */
   aiMedia: {
     image: (description: string, shape: string) => Promise<MediaResult>;
@@ -49,6 +54,13 @@ type Props = {
   initialIdea?: string;
   /** Si es true, al abrir la página la IA hace todo: texto, foto y diseño. */
   autoMagic?: boolean;
+  /** Ideas de hoy según el SEO del negocio (la primera es la mejor). */
+  ideas?: ContentIdea[];
+  ideasBasis?: IdeasBasis;
+  /** "✦ Más ideas con IA". */
+  moreIdeas?: (() => Promise<MoreIdeasResult>) | null;
+  /** El negocio atiende en español e inglés: Facebook e Instagram salen en los dos idiomas (se puede apagar). */
+  bilingual?: boolean;
 };
 
 /** Pasos del modo mágico: [español, inglés]. */
@@ -63,13 +75,42 @@ function SubmitButton({ disabled, label }: { disabled: boolean; label: string })
   const { pending } = useFormStatus();
   const { t } = useT();
   return (
-    <button type="submit" className="primary" disabled={disabled || pending}>
+    <button type="submit" className={`primary ${s.submit}`} disabled={disabled || pending}>
       {pending ? t("Publicando… no cierres esta página", "Publishing… don't close this page") : label}
     </button>
   );
 }
 
-export function Composer({ businessId, businessName, color, connected, contactCounts, action, upload, aiWrite, aiMedia, initialIdea = "", autoMagic = false }: Props) {
+/** Título de cada paso con su número. */
+function StepHead({ n, id, title, sub }: { n: number; id: string; title: string; sub?: string }) {
+  return (
+    <div className={s.stepHead}>
+      <span className={s.num} aria-hidden="true">{n}</span>
+      <div className={s.stepHeadText}>
+        <h2 id={id} className={s.stepTitle}>{title}</h2>
+        {sub && <p className={s.stepSub}>{sub}</p>}
+      </div>
+    </div>
+  );
+}
+
+export function Composer({
+  businessId,
+  businessName,
+  color,
+  connected,
+  contactCounts,
+  action,
+  upload,
+  aiWrite,
+  aiMedia,
+  initialIdea = "",
+  autoMagic = false,
+  ideas = [],
+  ideasBasis = "season",
+  moreIdeas = null,
+  bilingual = false,
+}: Props) {
   const { lang: uiLang, t } = useT();
   const [text, setText] = useState("");
   const [subject, setSubject] = useState("");
@@ -77,7 +118,8 @@ export function Composer({ businessId, businessName, color, connected, contactCo
   const [mediaType, setMediaType] = useState<MediaType>("none");
   const [fileUrl, setFileUrl] = useState("");
   const [mediaLink, setMediaLink] = useState("");
-  const [on, setOn] = useState<Set<ChannelId>>(() => new Set(connected));
+  // Email solo si el negocio tiene contactos que aceptaron recibirlo, y nunca marcado de entrada.
+  const [on, setOn] = useState<Set<ChannelId>>(() => new Set(connected.filter((c) => c !== "email")));
   const [preview, setPreview] = useState<ChannelId | null>(null);
   const [when, setWhen] = useState<"now" | "later">("now");
   const [localDate, setLocalDate] = useState("");
@@ -85,24 +127,33 @@ export function Composer({ businessId, businessName, color, connected, contactCo
   const [uploadError, setUploadError] = useState("");
   const [variants, setVariants] = useState<Partial<Record<ChannelId, string>>>({});
   const [idea, setIdea] = useState(initialIdea);
+  // La idea elegida de la lista (o la que eligió la IA sola con la caja vacía).
+  const [pickedId, setPickedId] = useState("");
+  const [autoPicked, setAutoPicked] = useState<ContentIdea | null>(null);
   // Paso del modo mágico (-1 = apagado).
   const [magicStep, setMagicStep] = useState(-1);
   const magicStarted = useRef(false);
-  // Idioma en que escribe la IA (aparte del idioma de la app).
-  const [lang, setLang] = useState("es");
+  // Idioma en que escribe la IA (aparte del idioma de la app) y si Facebook e Instagram llevan los dos idiomas.
+  const [lang, setLang] = useState<"es" | "en">("es");
+  const [bi, setBi] = useState(bilingual);
+  // Lo que escribió la IA para Facebook e Instagram: en el idioma principal y en el otro (para unirlos o no).
+  const [aiSocial, setAiSocial] = useState<{ lang: "es" | "en"; facebook: string; instagram: string; facebookOther: string; instagramOther: string } | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState("");
   const [imageIdea, setImageIdea] = useState("");
   const [mediaBusy, setMediaBusy] = useState("");
+  // Mientras la IA hace un video: cuándo empezó y cuánto tarda normalmente ese modelo (barra de avance honesta).
+  const [videoJob, setVideoJob] = useState<{ startedAt: number; etaSec: number } | null>(null);
+  const [mediaError, setMediaError] = useState("");
   // Foto original (sin diseño), para poder volver a diseñarla con otro titular o tamaño.
   const [basePhoto, setBasePhoto] = useState("");
   const [headline, setHeadline] = useState("");
   const [shape, setShape] = useState("square");
   const [template, setTemplate] = useState(-1);
   const [steps, setSteps] = useState<string[]>([]);
-  // Con IA, primero se ve solo la caja "¿Qué quieres publicar?". El resto aparece al elegir un camino.
+  // Con IA, primero se ve solo el paso de la idea. El resto aparece al elegir un camino.
   const [started, setStarted] = useState(false);
-  // Volver a abrir la caja de arriba después de empezar (para cambiar la idea o usar la IA otra vez).
+  // Volver a abrir el paso de la idea después de empezar (para cambiarla o usar la IA otra vez).
   const [boxOpen, setBoxOpen] = useState(false);
 
   async function runDesign(photo = basePhoto) {
@@ -118,7 +169,6 @@ export function Composer({ businessId, businessName, color, connected, contactCo
       setMediaBusy("");
     }
   }
-  const [mediaError, setMediaError] = useState("");
 
   /** Foto con IA. Para video: primero una foto vertical y luego la IA le da movimiento (1-3 minutos). */
   async function runMedia(kind: "photo" | "video", description = imageIdea, head = headline, onBrand?: () => void, theSteps = steps) {
@@ -142,9 +192,10 @@ export function Composer({ businessId, businessName, color, connected, contactCo
         }
         return;
       }
-      setMediaBusy(t("Creando el video… tarda de 1 a 3 minutos, no cierres esta página", "Creating the video… it takes 1 to 3 minutes, don't close this page"));
+      setMediaBusy(t("Creando el video… no cierres esta página", "Creating the video… don't close this page"));
       const start = await aiMedia.videoStart(img.url, "");
       if (!start.ok) return setMediaError(start.error);
+      setVideoJob({ startedAt: start.job.startedAt ?? Date.now(), etaSec: start.job.etaSec ?? 120 });
       for (let i = 0; i < 60; i++) {
         await new Promise((r) => setTimeout(r, 6000));
         const r = await aiMedia.videoCheck(start.job);
@@ -160,15 +211,24 @@ export function Composer({ businessId, businessName, color, connected, contactCo
       setMediaError(errorText(e, uiLang));
     } finally {
       setMediaBusy("");
+      setVideoJob(null);
     }
   }
 
-  async function runAi(theIdea = idea): Promise<AiPost | null> {
+  /** Facebook e Instagram: el texto principal y, si está encendido "en español e inglés", la otra versión debajo. */
+  function socialVariants(p: { facebook: string; instagram: string; facebookOther?: string; instagramOther?: string }, both: boolean, main: "es" | "en") {
+    return {
+      facebook: both ? joinBilingual(p.facebook, p.facebookOther ?? "", main) : p.facebook,
+      instagram: both ? joinBilingual(p.instagram, p.instagramOther ?? "", main) : p.instagram,
+    };
+  }
+
+  async function runAi(theIdea = idea): Promise<AiPostOut | null> {
     if (!aiWrite) return null;
     setAiBusy(true);
     setAiError("");
     try {
-      const r = await aiWrite(theIdea, lang);
+      const r = await aiWrite(theIdea, lang, { bilingual: bi });
       if (!r.ok) {
         setAiError(r.error);
         return null;
@@ -180,7 +240,8 @@ export function Composer({ businessId, businessName, color, connected, contactCo
       setImageIdea(p.imageIdea);
       setHeadline(p.imageHeadline);
       setSteps(p.imageSteps ?? []);
-      setVariants({ facebook: p.facebook, instagram: p.instagram, tiktok: p.tiktok, google: p.google, sms: p.sms, email: p.email });
+      setAiSocial({ lang, facebook: p.facebook, instagram: p.instagram, facebookOther: p.facebookOther ?? "", instagramOther: p.instagramOther ?? "" });
+      setVariants({ ...socialVariants(p, bi, lang), tiktok: p.tiktok, google: p.google, sms: p.sms, email: p.email });
       setStarted(true);
       setBoxOpen(false);
       return p;
@@ -190,6 +251,12 @@ export function Composer({ businessId, businessName, color, connected, contactCo
     } finally {
       setAiBusy(false);
     }
+  }
+
+  /** Encender o apagar "en español e inglés" después de que la IA escribió: se unen o se separan los textos. */
+  function toggleBi(next: boolean) {
+    setBi(next);
+    if (aiSocial && (aiSocial.facebookOther || aiSocial.instagramOther)) setVariants((v) => ({ ...v, ...socialVariants(aiSocial, next, aiSocial.lang) }));
   }
 
   /** Modo mágico: la IA escribe para cada red, crea la foto y le pone la marca. Tú solo revisas y publicas. */
@@ -205,20 +272,35 @@ export function Composer({ businessId, businessName, color, connected, contactCo
     setMagicStep(3);
   }
 
-  /** Los botones de IA se ven activos siempre; si la caja está vacía, se pide la idea primero. */
-  function needIdea() {
-    if (idea.trim()) return false;
-    setAiError(t("Primero escribe arriba qué quieres publicar.", "First write above what you want to post."));
-    document.getElementById("idea")?.focus();
-    return true;
+  /** La idea para la IA: lo escrito o, con la caja vacía, la mejor idea de hoy (y se muestra cuál eligió). */
+  function ideaForAi(): string {
+    if (idea.trim()) return idea;
+    const top = ideas[0];
+    if (!top) {
+      setAiError(t("Escribe qué quieres publicar.", "Write what you want to post."));
+      document.getElementById("idea")?.focus();
+      return "";
+    }
+    setIdea(top.idea);
+    setPickedId(top.id);
+    setAutoPicked(top);
+    return top.idea;
+  }
+
+  function pick(x: ContentIdea) {
+    setIdea(x.idea);
+    setPickedId(x.id);
+    setAutoPicked(null);
+    if (aiError) setAiError("");
   }
 
   /** "Lo escribo yo": lo que escribiste pasa tal cual a "Tu mensaje", sin IA. */
   function keepOwnText() {
-    if (idea.trim()) {
+    if (idea.trim() && !pickedId) {
       setText(idea);
       // Sin versiones de la IA: se publica tu texto en todos los canales.
       setVariants({});
+      setAiSocial(null);
     }
     setAiError("");
     setStarted(true);
@@ -226,9 +308,16 @@ export function Composer({ businessId, businessName, color, connected, contactCo
   }
 
   useEffect(() => {
-    if (autoMagic && initialIdea.trim() && !magicStarted.current) {
+    if (autoMagic && !magicStarted.current) {
+      const first = initialIdea.trim() || ideas[0]?.idea || "";
+      if (!first) return;
       magicStarted.current = true;
-      void runMagic(initialIdea);
+      if (!initialIdea.trim() && ideas[0]) {
+        setIdea(ideas[0].idea);
+        setPickedId(ideas[0].id);
+        setAutoPicked(ideas[0]);
+      }
+      void runMagic(first);
     }
     // Solo una vez, al abrir la página desde el Inicio.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -237,7 +326,12 @@ export function Composer({ businessId, businessName, color, connected, contactCo
   async function onFile(f: File | undefined) {
     setFileUrl(f ? URL.createObjectURL(f) : "");
     setUploadError("");
-    if (!f || !upload) return;
+    setMediaError("");
+    if (!f) return;
+    setMediaType(f.type.startsWith("video/") ? "video" : "photo");
+    setBasePhoto("");
+    setMediaLink("");
+    if (!upload) return;
     setUploading(true);
     try {
       const { uploadUrl, publicUrl } = await upload(f.type);
@@ -253,12 +347,21 @@ export function Composer({ businessId, businessName, color, connected, contactCo
     }
   }
 
+  function clearMedia() {
+    setFileUrl("");
+    setMediaLink("");
+    setBasePhoto("");
+    setMediaType("none");
+    setUploadError("");
+  }
+
   useEffect(() => () => { if (fileUrl) URL.revokeObjectURL(fileUrl); }, [fileUrl]);
 
   const draft: Draft = { text, subject, seoTitle, mediaType };
   const textFor = (id: ChannelId) => variants[id]?.trim() || text;
   const draftFor = (id: ChannelId): Draft => ({ ...draft, text: textFor(id) });
-  const channels = CHANNELS.map((c) => channelText(c, uiLang));
+  // Email: se ve solo si hay contactos que aceptaron recibirlo.
+  const channels = CHANNELS.filter((c) => c.id !== "email" || contactCounts.email > 0 || on.has("email")).map((c) => channelText(c, uiLang));
   const selected = channels.filter((c) => on.has(c.id));
   const pv = selected.find((c) => c.id === preview) ?? selected[0];
   const ready = selected.filter((c) => !isBlocked(c.id, draftFor(c.id))).length;
@@ -269,6 +372,7 @@ export function Composer({ businessId, businessName, color, connected, contactCo
     ? t(`Programar en ${n} ${n === 1 ? "canal" : "canales"}`, `Schedule on ${n} ${n === 1 ? "channel" : "channels"}`)
     : t(`Publicar en ${n} ${n === 1 ? "canal" : "canales"}`, `Publish on ${n} ${n === 1 ? "channel" : "channels"}`);
   const mediaSrc = fileUrl || mediaLink;
+  const shownMedia: MediaType = mediaSrc ? mediaType : "none";
 
   const toggle = (id: ChannelId) =>
     setOn((prev) => {
@@ -287,55 +391,95 @@ export function Composer({ businessId, businessName, color, connected, contactCo
   if (pv?.id === "sms") body = smsBody(pvText || placeholderBody);
   if (pv?.id === "seo") {
     head = seoTitle || t("[Título del artículo]", "[Article title]");
-    headLabel = t("Artículo en tu sitio (se redacta en español e inglés)", "Article on your website (written in Spanish and English)");
+    headLabel = t("Artículo en tu página web (en español e inglés)", "Article on your website (in Spanish and English)");
   }
   if (pv?.id === "email") { head = subject || t("[Asunto del email]", "[Email subject]"); headLabel = t("Asunto", "Subject"); }
 
   const magicRunning = magicStep >= 0 && magicStep < 3;
   const busy = aiBusy || magicRunning;
-  // Con IA: la caja de arriba se ve al principio, mientras la IA trabaja, o si la vuelves a abrir.
+  // Con IA: el paso de la idea se ve al principio, mientras la IA trabaja, o si lo vuelves a abrir.
   const showBox = !!aiWrite && (!started || boxOpen || busy);
   const showRest = !aiWrite || started;
   const fromAi = Object.keys(variants).length > 0;
   const photoIdea = imageIdea && !aiMedia && <p className="small"><strong>{t("Idea de foto:", "Photo idea:")}</strong> {imageIdea}</p>;
+  // Números de los pasos: sin IA no hay paso de la idea.
+  const first = aiWrite ? 1 : 0;
+  const N = { idea: 1, text: first + 1, media: first + 2, where: first + 3, when: first + 4 };
+  const otherLang = lang === "en" ? t("español", "Spanish") : t("inglés", "English");
+  const biMissing = bi && fromAi && !!aiSocial && !aiSocial.facebookOther && !aiSocial.instagramOther;
+  const showDesign = !!aiMedia && mediaType === "photo" && (!!basePhoto || /^https:\/\//.test(mediaLink));
 
   return (
     <form action={action} className={s.form}>
       <input type="hidden" name="variants" value={JSON.stringify(variants)} />
       <input type="hidden" name="source" value={fromAi ? "ai" : "manual"} />
+      <input type="hidden" name="mediaType" value={shownMedia} />
+      <input type="hidden" name="mediaLink" value={/^https?:\/\//i.test(mediaLink) ? mediaLink : ""} />
+
       {showBox && (
         <section className={busy ? `ai-box glow busy ${s.start}` : `ai-box glow ${s.start}`} aria-labelledby="h-idea">
-          <div className={s.head}>
-            <label id="h-idea" htmlFor="idea" className={s.title}>{t("¿Qué quieres publicar?", "What do you want to post?")}</label>
+          <StepHead n={N.idea} id="h-idea" title={t("¿Sobre qué publicamos?", "What should we post about?")} sub={t("Elige una idea o escribe la tuya. Si no eliges nada, la IA usa la mejor idea de hoy.", "Pick an idea or write your own. If you don't pick anything, AI uses today's best idea.")} />
+
+          {ideas.length > 0 && (
+            <IdeaList ideas={ideas} basis={ideasBasis} variant="box" selected={pickedId} onPick={pick} more={moreIdeas} disabled={busy} seoHref={`/b/${businessId}/seo`} />
+          )}
+
+          <div className="stack">
+            <label htmlFor="idea" className={s.ideaLbl}>{ideas.length ? t("o escribe tu idea (opcional)", "or write your idea (optional)") : t("Tu idea", "Your idea")}</label>
+            <textarea
+              id="idea"
+              className={`field ${s.idea}`}
+              rows={3}
+              placeholder={t("Ej.: esta semana 10% de descuento para clientes nuevos", "E.g., 10% off for new customers this week")}
+              value={idea}
+              onChange={(e) => {
+                setIdea(e.target.value);
+                setPickedId("");
+                setAutoPicked(null);
+                if (aiError) setAiError("");
+              }}
+            />
+          </div>
+
+          <div className={s.opts}>
             <span className={s.lang}>
-              <label htmlFor="lang">{t("Idioma", "Language")}</label>
-              <select id="lang" className={`field ${s.langSelect}`} value={lang} onChange={(e) => setLang(e.target.value)}>
+              <label htmlFor="lang">{t("La IA escribe en", "AI writes in")}</label>
+              <select id="lang" className={`field ${s.langSelect}`} value={lang} onChange={(e) => setLang(e.target.value === "en" ? "en" : "es")}>
                 <option value="es">{t("Español", "Spanish")}</option>
                 <option value="en">English</option>
-                <option value="both">{t("Español + English", "Spanish + English")}</option>
               </select>
             </span>
+            <label className={s.toggle}>
+              <input type="checkbox" checked={bi} onChange={(e) => toggleBi(e.target.checked)} />
+              <span>
+                <strong>{t("Publicar en español e inglés", "Post in Spanish and English")}</strong>
+                <small>{t(`Facebook e Instagram llevan también la versión en ${otherLang}`, `Facebook and Instagram also get the ${otherLang} version`)}</small>
+              </span>
+            </label>
           </div>
-          <textarea id="idea" className={`field ${s.idea}`} rows={3} placeholder={t(
-              "Escribe tu idea o tu mensaje completo. Ej.: esta semana 10% de descuento para clientes nuevos",
-              "Write your idea or your full message. E.g., 10% off for new customers this week",
-            )} value={idea} onChange={(e) => { setIdea(e.target.value); if (aiError) setAiError(""); }} />
+
           <div className={s.choices} role="group" aria-label={t("¿Cómo lo hacemos?", "How should we do it?")}>
             {aiMedia && (
-              <button type="button" className={`btn ai ${s.choice} ${s.main}`} disabled={busy || !!mediaBusy} onClick={() => { if (!needIdea()) void runMagic(); }}>
+              <button type="button" className={`btn ai ${s.choice} ${s.main}`} disabled={busy || !!mediaBusy} onClick={() => { const x = ideaForAi(); if (x) void runMagic(x); }}>
                 <span>✦ {t("Que la IA lo haga todo", "Let AI do it all")}</span>
                 <small>{t("Texto para cada red, foto y tu marca", "Text for each network, photo, and your brand")}</small>
               </button>
             )}
-            <button type="button" className={aiMedia ? `btn ${s.choice}` : `btn ai ${s.choice} ${s.main}`} disabled={busy || !!mediaBusy} onClick={() => { if (needIdea()) return; setMagicStep(-1); void runAi(); }}>
-              <span>✦ {aiBusy && magicStep < 0 ? t("Escribiendo…", "Writing…") : aiMedia ? t("Solo mejorar o escribir el texto", "Just improve or write the text") : t("Que la IA escriba el texto", "Let AI write the text")}</span>
-              <small>{aiMedia ? t("Una versión para cada red, sin foto", "A version for each network, no photo") : t("Una versión para cada red", "A version for each network")}</small>
+            <button type="button" className={aiMedia ? `btn ${s.choice}` : `btn ai ${s.choice} ${s.main}`} disabled={busy || !!mediaBusy} onClick={() => { const x = ideaForAi(); if (!x) return; setMagicStep(-1); void runAi(x); }}>
+              <span>✦ {aiBusy && magicStep < 0 ? t("Escribiendo…", "Writing…") : aiMedia ? t("Solo el texto", "Just the text") : t("Que la IA escriba el texto", "Let AI write the text")}</span>
+              <small>{t("Una versión para cada red, sin foto", "A version for each network, no photo")}</small>
             </button>
             <button type="button" className={`btn ${s.choice} ${s.own}`} disabled={busy} onClick={() => { setMagicStep(-1); keepOwnText(); }}>
-              <span>{idea.trim() ? t("Usar mi texto tal cual", "Use my text as is") : t("Lo escribo yo", "I'll write it myself")}</span>
-              <small>{t("Sin IA: pasas directo a elegir canales", "No AI: go straight to picking channels")}</small>
+              <span>{idea.trim() && !pickedId ? t("Usar mi texto tal cual", "Use my text as is") : t("Lo escribo yo", "I'll write it myself")}</span>
+              <small>{t("Sin IA: pasas directo a escribir", "No AI: go straight to writing")}</small>
             </button>
           </div>
+
+          {autoPicked && (
+            <p className={s.picked} role="status">
+              ✦ {t("La IA eligió la idea de hoy:", "AI picked today's idea:")} <strong>{autoPicked.topic}</strong> <span>· {autoPicked.why}</span>
+            </p>
+          )}
           {magicStep >= 0 && (
             <ol className="magic-steps" aria-live="polite">
               {MAGIC_STEPS.map(([es, en], i) => {
@@ -355,108 +499,96 @@ export function Composer({ businessId, businessName, color, connected, contactCo
           )}
         </section>
       )}
+
       {aiWrite && !showBox && (
         <div className={s.bar}>
+          <span className={`${s.num} ${s.numDone}`} aria-hidden="true">✓</span>
           <div className={s.barText}>
             <span>
               {magicStep === 3
                 ? aiMedia
-                  ? t("✦ Listo: la IA escribió para cada red y preparó la foto. Revisa abajo y publica.", "✦ Done: AI wrote for each network and made the photo. Check below and publish.")
-                  : t("✦ Listo: la IA escribió para cada red. Revisa abajo y publica.", "✦ Done: AI wrote for each network. Check below and publish.")
+                  ? t("Listo: la IA escribió para cada red y preparó la foto. Revisa y publica.", "Done: AI wrote for each network and made the photo. Check it and publish.")
+                  : t("Listo: la IA escribió para cada red. Revisa y publica.", "Done: AI wrote for each network. Check it and publish.")
                 : fromAi
-                  ? t("✦ La IA escribió una versión para cada red. Revisa abajo y publica.", "✦ AI wrote a version for each network. Check below and publish.")
-                  : t("Usas tu propio texto. Revísalo abajo y publica.", "You're using your own text. Check it below and publish.")}
+                  ? t("La IA escribió una versión para cada red. Revisa y publica.", "AI wrote a version for each network. Check it and publish.")
+                  : t("Usas tu propio texto. Revísalo y publica.", "You're using your own text. Check it and publish.")}
             </span>
-            {idea.trim() && <span className={s.quote}>«{idea.trim()}»</span>}
+            {idea.trim() && <span className={s.quote}>«{autoPicked?.topic ?? idea.trim()}»</span>}
           </div>
           <div className={s.barBtns}>
-            <button type="button" className="btn" onClick={() => { setMagicStep(-1); setBoxOpen(true); }}>✦ {t("Cambiar la idea o usar la IA", "Change the idea or use AI")}</button>
+            <button type="button" className="btn" onClick={() => { setMagicStep(-1); setBoxOpen(true); }}>✦ {t("Cambiar la idea", "Change the idea")}</button>
           </div>
         </div>
       )}
       {aiWrite && !showBox && photoIdea}
+
       {showRest && (
-        <div className="grid-2">
-          <section className="card" aria-labelledby="h-msg">
-            <div className="stack">
-              <label id="h-msg" htmlFor="text" className="lbl">{t("Tu mensaje", "Your message")}</label>
-              <textarea id="text" name="text" className="field" rows={6} required placeholder={t("¿Qué quieres decirle a tus clientes hoy?", "What do you want to tell your customers today?")} value={text} onChange={(e) => setText(e.target.value)} />
-              <div className="row between small muted"><span>{t("Un solo texto para todos los canales", "One text for all channels")}</span><span>{text.length.toLocaleString(intlLocale(uiLang))} {t("caracteres", "characters")}</span></div>
+        <div className={s.steps}>
+          <section className={`card ${s.step} ${s.aText}`} aria-labelledby="h-msg">
+            <StepHead n={N.text} id="h-msg" title={t("Tu mensaje", "Your message")} sub={fromAi ? t("La IA escribió una versión para cada red. Puedes cambiar cualquier palabra.", "AI wrote a version for each network. You can change any word.") : t("Un solo texto para todos los canales.", "One text for all channels.")} />
+            <label htmlFor="text" className="sr-only">{t("Tu mensaje", "Your message")}</label>
+            <textarea id="text" name="text" className="field" rows={6} required placeholder={t("¿Qué quieres decirle a tus clientes hoy?", "What do you want to tell your customers today?")} value={text} onChange={(e) => setText(e.target.value)} />
+            <div className="row between small muted">
+              <span>{fromAi ? t("Cada red tiene su versión en la vista previa", "Each network has its version in the preview") : t("Se publica igual en todos", "Posted the same everywhere")}</span>
+              <span>{text.length.toLocaleString(intlLocale(uiLang))} {t("caracteres", "characters")}</span>
             </div>
+            {fromAi && bi && !biMissing && (on.has("facebook") || on.has("instagram")) && (
+              <p className="note ok">{t(`Facebook e Instagram llevan tu mensaje y, debajo, la versión en ${otherLang}. Míralo en la vista previa.`, `Facebook and Instagram carry your message and, below it, the ${otherLang} version. See it in the preview.`)}</p>
+            )}
+            {biMissing && <p className="note">{t(`Para agregar la versión en ${otherLang}, pídele el texto otra vez a la IA («Cambiar la idea»).`, `To add the ${otherLang} version, ask AI for the text again ("Change the idea").`)}</p>}
+          </section>
 
-            <div className="stack">
-              <div className="lbl">{t("Foto o video", "Photo or video")}</div>
-              {aiMedia && (
-                <div className="ai-box">
-                  <label htmlFor="imageIdea" className="lbl ai-title">✦ {t("Crear foto o video con IA", "Create a photo or video with AI")}</label>
-                  <textarea id="imageIdea" className="field" rows={2} style={{ minHeight: 64 }} placeholder={t("Describe la imagen. Ej.: casa en Miami con el techo reparado, día soleado", "Describe the image. E.g., a house in Miami with a repaired roof, sunny day")} value={imageIdea} onChange={(e) => setImageIdea(e.target.value)} />
-                  <div className="row">
-                    <button type="button" className="btn on" disabled={!!mediaBusy || !imageIdea.trim()} onClick={() => runMedia("photo")}>{t("Crear foto", "Create photo")}</button>
-                    {aiMedia.video && <button type="button" className="btn outline" disabled={!!mediaBusy || !imageIdea.trim()} onClick={() => runMedia("video")}>{t("Crear video (5 seg)", "Create video (5 sec)")}</button>}
-                  </div>
-                  {mediaBusy && <p className="small muted" role="status">{mediaBusy}</p>}
-                  {mediaError && <p className="note error" role="alert">{mediaError}</p>}
-                </div>
-              )}
-              {aiMedia && mediaType === "photo" && (basePhoto || /^https:\/\//.test(mediaLink)) && (
-                <div className="stack" style={{ gap: 10, padding: 16, borderRadius: 12, border: "1.5px solid var(--line)" }}>
-                  <div className="lbl">✦ {t("Diseño con tu marca", "Design with your brand")}</div>
-                  <p className="small muted">{t("Pone tu logo, tu color, un titular y tu teléfono sobre la foto, con letras perfectas.", "Puts your logo, your color, a headline, and your phone number on the photo, with perfect lettering.")}</p>
-                  <label htmlFor="headline" className="small" style={{ fontWeight: 600 }}>{t("Titular en la foto", "Headline on the photo")}</label>
-                  <input id="headline" className="field" maxLength={80} placeholder={t("Ej.: ¿Daños en tu techo después de la tormenta?", "E.g., Roof damage after the storm?")} value={headline} onChange={(e) => setHeadline(e.target.value)} />
-                  <div className="row">
-                    <label htmlFor="template" className="sr-only">{t("Plantilla", "Template")}</label>
-                    <select id="template" className="field" style={{ width: "auto" }} value={template} onChange={(e) => setTemplate(Number(e.target.value))}>
-                      <option value={-1}>✦ {t("La IA elige la plantilla", "AI picks the template")}</option>
-                      {aiMedia.templates.map((t, i) => <option key={i} value={i}>{t.name}</option>)}
-                    </select>
-                    <label htmlFor="shape" className="sr-only">{t("Tamaño", "Size")}</label>
-                    <select id="shape" className="field" style={{ width: "auto" }} value={shape} onChange={(e) => setShape(e.target.value)}>
-                      <option value="square">{t("Cuadrado · Facebook e Instagram", "Square · Facebook and Instagram")}</option>
-                      <option value="portrait">{t("Vertical 4:5 · Instagram", "Portrait 4:5 · Instagram")}</option>
-                      <option value="story">{t("Historia / Reel 9:16", "Story / Reel 9:16")}</option>
-                    </select>
-                    <button type="button" className="btn on" disabled={!!mediaBusy || !headline.trim()} onClick={() => runDesign(basePhoto || mediaLink)}>{t("Diseñar", "Design")}</button>
-                  </div>
-                  {(template === -1 ? steps.length > 0 : aiMedia.templates[template]?.list) && (
-                    <div className="stack" style={{ gap: 6 }}>
-                      <label htmlFor="steps" className="small" style={{ fontWeight: 600 }}>{t("Pasos para la plantilla de lista (uno por línea, máximo 3)", "Steps for the list template (one per line, 3 max)")}</label>
-                      <textarea id="steps" className="field" style={{ minHeight: 84 }} value={steps.join("\n")} onChange={(e) => setSteps(e.target.value.split("\n").slice(0, 3))} />
-                    </div>
-                  )}
-                  <div className="row">
-                    {basePhoto && mediaLink !== basePhoto && (
-                      <button type="button" className="btn link" onClick={() => setMediaLink(basePhoto)}>{t("Usar la foto sin diseño", "Use the photo without the design")}</button>
-                    )}
-                  </div>
-                </div>
-              )}
-              <input type="hidden" name="mediaType" value={mediaType} />
-              <div className="row" role="group" aria-label={t("Tipo de archivo", "File type")}>
-                {([["none", t("Sin archivo", "No file")], ["photo", t("Foto", "Photo")], ["video", t("Video", "Video")]] as const).map(([v, l]) => (
-                  <button key={v} type="button" className={mediaType === v ? "btn on" : "btn"} aria-pressed={mediaType === v} onClick={() => { setMediaType(v); setFileUrl(""); }}>{l}</button>
-                ))}
-              </div>
-              {mediaType !== "none" && (
-                <div className="stack" style={{ padding: 14, border: "1.5px dashed #94a3b8", borderRadius: 10 }}>
-                  <label htmlFor="file" className="small" style={{ fontWeight: 500 }}>{t("Sube el archivo desde tu computadora o celular", "Upload the file from your computer or phone")}</label>
-                  <input
-                    id="file"
-                    name={upload ? undefined : "file"}
-                    type="file"
-                    accept={mediaType === "video" ? "video/mp4,video/quicktime,video/webm" : "image/jpeg,image/png,image/webp,image/gif"}
-                    onChange={(e) => onFile(e.target.files?.[0])}
-                  />
-                  {uploading && <p className="small muted" role="status">{t("Subiendo archivo…", "Uploading file…")}</p>}
-                  {uploadError && <p className="note error" role="alert">{uploadError}</p>}
-                  <label htmlFor="mediaLink" className="small muted">{t("o pega un enlace público al archivo", "or paste a public link to the file")}</label>
-                  <input id="mediaLink" name="mediaLink" type="url" className="field" placeholder="https://…" value={mediaLink} onChange={(e) => setMediaLink(e.target.value)} />
-                </div>
-              )}
-            </div>
+          <section className={`card ${s.step} ${s.aMedia}`} aria-labelledby="h-media">
+            <StepHead n={N.media} id="h-media" title={t("Foto o video (opcional)", "Photo or video (optional)")} sub={t("Las publicaciones con foto llegan a más gente.", "Posts with a photo reach more people.")} />
+            <MediaStep
+              mediaType={shownMedia}
+              mediaSrc={mediaSrc}
+              mediaLink={mediaLink}
+              setMediaLink={(v) => { setFileUrl(""); setBasePhoto(""); setMediaLink(v); }}
+              setMediaType={setMediaType}
+              fileInForm={!upload}
+              onFile={onFile}
+              uploading={uploading}
+              uploadError={uploadError}
+              clear={clearMedia}
+              ai={
+                aiMedia
+                  ? {
+                      video: aiMedia.video,
+                      imageIdea,
+                      setImageIdea,
+                      busy: mediaBusy,
+                      videoJob,
+                      error: mediaError,
+                      create: (kind) => void runMedia(kind),
+                      design: showDesign
+                        ? {
+                            basePhoto,
+                            showingDesign: !!basePhoto && mediaLink !== basePhoto,
+                            headline,
+                            setHeadline,
+                            template,
+                            setTemplate,
+                            templates: aiMedia.templates,
+                            shape,
+                            setShape,
+                            steps,
+                            setSteps,
+                            busy: !!mediaBusy,
+                            run: () => void runDesign(basePhoto || mediaLink),
+                            useOriginal: () => setMediaLink(basePhoto),
+                          }
+                        : null,
+                    }
+                  : null
+              }
+            />
+          </section>
 
-            <fieldset style={{ border: 0, margin: 0, padding: 0 }} className="stack">
-              <legend className="lbl" style={{ padding: 0, marginBottom: 10 }}>{t("¿Dónde se publica?", "Where does it go?")}</legend>
+          <section className={`card ${s.step} ${s.aWhere}`} aria-labelledby="h-where">
+            <StepHead n={N.where} id="h-where" title={t("¿Dónde se publica?", "Where does it go?")} />
+            <fieldset className={s.fieldset}>
+              <legend className="sr-only">{t("Canales", "Channels")}</legend>
               <div className="chips">
                 {channels.map((c) => {
                   const isConnected = connected.includes(c.id);
@@ -478,57 +610,32 @@ export function Composer({ businessId, businessName, color, connected, contactCo
                   );
                 })}
               </div>
-              {connected.length < CHANNELS.length && (
-                <p className="small muted">
-                  {t("Los canales en gris no están conectados.", "Grayed-out channels aren't connected.")}{" "}
-                  <Link href={`/b/${businessId}/conexiones`}>{t("Conectar canales", "Connect channels")}</Link>
-                </p>
-              )}
             </fieldset>
-
-            {(on.has("email") || on.has("seo")) && (
-              <div className="stack" style={{ gap: 14, padding: 16, borderRadius: 10, background: "var(--ground)" }}>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>{t("Datos extra para algunos canales", "Extra details for some channels")}</div>
-                {on.has("email") && (
-                  <div className="stack">
-                    <label htmlFor="subject" className="small" style={{ fontWeight: 500 }}>{t("Asunto del email", "Email subject")}</label>
-                    <input id="subject" name="subject" className="field" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder={t("Ej.: Lo que debes saber antes de reclamar a tu seguro", "E.g., What to know before filing an insurance claim")} />
-                  </div>
-                )}
-                {on.has("seo") && (
-                  <div className="stack">
-                    <label htmlFor="seoTitle" className="small" style={{ fontWeight: 500 }}>{t("Título del artículo para tu sitio (en español)", "Article title for your website (in Spanish)")}</label>
-                    <input id="seoTitle" name="seoTitle" className="field" value={seoTitle} onChange={(e) => setSeoTitle(e.target.value)} placeholder={t("Ej.: Ajustador público en [tu ciudad]", "E.g., Ajustador público en [your city]")} />
-                  </div>
-                )}
+            {connected.length < CHANNELS.length && (
+              <p className="small muted">
+                {t("Los canales en gris no están conectados.", "Grayed-out channels aren't connected.")}{" "}
+                <Link href={`/b/${businessId}/conexiones`}>{t("Conectar canales", "Connect channels")}</Link>
+              </p>
+            )}
+            {on.has("seo") && (
+              <div className={s.extra}>
+                <label htmlFor="seoTitle" className={s.extraLbl}>{t("Título del artículo para tu página web", "Article title for your website")}</label>
+                <p className="small muted">{t("Tu página web publica un artículo con este título. La IA lo llena sola; puedes cambiarlo.", "Your website publishes an article with this title. AI fills it in; you can change it.")}</p>
+                <input id="seoTitle" name="seoTitle" className="field" value={seoTitle} onChange={(e) => setSeoTitle(e.target.value)} placeholder={t("Ej.: Cómo saber si tu techo tiene una filtración", "E.g., How to tell if your roof has a leak")} />
               </div>
             )}
-
-            <div className="stack">
-              <div className="lbl">{t("¿Cuándo?", "When?")}</div>
-              <input type="hidden" name="when" value={when} />
-              <input type="hidden" name="scheduledAt" value={scheduledIso} />
-              <div className="row" role="group" aria-label={t("Cuándo publicar", "When to publish")}>
-                <button type="button" className={when === "now" ? "btn on" : "btn"} aria-pressed={when === "now"} onClick={() => setWhen("now")}>{t("Ahora mismo", "Right now")}</button>
-                <button type="button" className={when === "later" ? "btn on" : "btn"} aria-pressed={when === "later"} onClick={() => setWhen("later")}>{t("Programar", "Schedule")}</button>
-                {when === "later" && (
-                  <>
-                    <label htmlFor="when" className="sr-only">{t("Fecha y hora", "Date and time")}</label>
-                    <input id="when" type="datetime-local" className="field" style={{ width: "auto" }} value={localDate} onChange={(e) => setLocalDate(e.target.value)} />
-                  </>
-                )}
+            {on.has("email") && (
+              <div className={s.extra}>
+                <label htmlFor="subject" className={s.extraLbl}>{t("Asunto del email", "Email subject")}</label>
+                <p className="small muted">{t("Lo primero que leen tus contactos en su bandeja de entrada.", "The first thing your contacts read in their inbox.")}</p>
+                <input id="subject" name="subject" className="field" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder={t("Ej.: Lo que debes saber antes de reclamar a tu seguro", "E.g., What to know before filing an insurance claim")} />
               </div>
-            </div>
-
-            <div className="row" style={{ borderTop: "1px solid var(--line)", paddingTop: 16, gap: 16 }}>
-              <SubmitButton disabled={cant} label={uploading ? t("Esperando a que suba el archivo…", "Waiting for the file to upload…") : label} />
-              <span className="small muted">{!text.trim() ? t("Escribe tu mensaje para empezar", "Write your message to get started") : t(`${ready} de ${n} listos`, `${ready} of ${n} ready`)}</span>
-            </div>
+            )}
           </section>
 
-          <section className="card" aria-labelledby="h-prev">
+          <section className={`card ${s.step} ${s.aPreview}`} aria-labelledby="h-prev">
             <div className="row between">
-              <h2 id="h-prev">{t("Vista previa por canal", "Preview by channel")}</h2>
+              <h2 id="h-prev" className={s.stepTitle}>{t("Vista previa", "Preview")}</h2>
               <span className="small muted">{t("Así se verá en cada lugar", "How it will look in each place")}</span>
             </div>
             {!pv ? (
@@ -553,20 +660,16 @@ export function Composer({ businessId, businessName, color, connected, contactCo
                       <div className="small muted" style={{ fontWeight: 500 }}>{headLabel}</div>
                       <div style={{ fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>{head}</div>
                       {pv.id === "seo" && <div className="small muted" style={{ marginTop: 4 }}>{t(
-                        "Claude ordena tu texto en secciones, lo traduce al inglés y elige una foto de tu sitio. No agrega datos que no escribiste.",
-                        "Claude organizes your text into sections, translates it into English, and picks a photo from your website. It doesn't add facts you didn't write.",
+                        "La IA ordena tu texto en secciones, lo traduce al inglés y elige una foto de tu sitio. No agrega datos que no escribiste.",
+                        "AI organizes your text into sections, translates it into English, and picks a photo from your website. It doesn't add facts you didn't write.",
                       )}</div>}
                     </div>
                   )}
-                  {mediaType !== "none" && pv.id !== "sms" && (
+                  {shownMedia !== "none" && pv.id !== "sms" && (
                     <div className="preview-media">
-                      {mediaSrc ? (
-                        mediaType === "video" ? <video src={mediaSrc} controls muted /> : (
-                          // eslint-disable-next-line @next/next/no-img-element -- vista previa local (blob:) o enlace externo
-                          <img src={mediaSrc} alt={t("Vista previa del archivo", "File preview")} />
-                        )
-                      ) : (
-                        <span>{mediaType === "video" ? t("Tu video", "Your video") : t("Tu foto", "Your photo")}</span>
+                      {shownMedia === "video" ? <video src={mediaSrc} controls muted /> : (
+                        // eslint-disable-next-line @next/next/no-img-element -- vista previa local (blob:) o enlace externo
+                        <img src={mediaSrc} alt={t("Vista previa del archivo", "File preview")} />
                       )}
                     </div>
                   )}
@@ -584,25 +687,46 @@ export function Composer({ businessId, businessName, color, connected, contactCo
                     />
                   </div>
                 )}
-                <div className="stack">
-                  {notesFor(pv.id, draftFor(pv.id), uiLang).filter((x) => x.id !== "empty").map((x) => (
-                    <p key={x.id} className="note">{x.text}</p>
-                  ))}
-                </div>
-                <div className="stack" style={{ gap: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>{t("Estado de cada canal", "Status of each channel")}</div>
-                  {selected.map((c) => {
-                    const bad = isBlocked(c.id, draftFor(c.id));
-                    return (
-                      <div key={c.id} className="target">
-                        <span>{c.name}</span>
-                        <span className={!text.trim() ? "pill" : bad ? "pill partial" : "pill sent"}>{!text.trim() ? t("Esperando mensaje", "Waiting for message") : bad ? t("Revisar", "Check") : t("Listo", "Ready")}</span>
-                      </div>
-                    );
-                  })}
-                </div>
+                {notesFor(pv.id, draftFor(pv.id), uiLang).filter((x) => x.id !== "empty").map((x) => (
+                  <p key={x.id} className="note">{x.text}</p>
+                ))}
               </>
             )}
+          </section>
+
+          <section className={`card ${s.step} ${s.aWhen}`} aria-labelledby="h-when">
+            <StepHead n={N.when} id="h-when" title={t("¿Cuándo?", "When?")} />
+            <input type="hidden" name="when" value={when} />
+            <input type="hidden" name="scheduledAt" value={scheduledIso} />
+            <div className={s.seg} role="group" aria-label={t("Cuándo publicar", "When to publish")}>
+              <button type="button" className={when === "now" ? "btn on" : "btn"} aria-pressed={when === "now"} onClick={() => setWhen("now")}>{t("Ahora mismo", "Right now")}</button>
+              <button type="button" className={when === "later" ? "btn on" : "btn"} aria-pressed={when === "later"} onClick={() => setWhen("later")}>{t("Programar", "Schedule")}</button>
+            </div>
+            {when === "later" && (
+              <div className="stack">
+                <label htmlFor="when" className="small" style={{ fontWeight: 600 }}>{t("Fecha y hora", "Date and time")}</label>
+                <input id="when" type="datetime-local" className={`field ${s.date}`} value={localDate} onChange={(e) => setLocalDate(e.target.value)} />
+              </div>
+            )}
+            {selected.length > 0 && (
+              <ul className={s.status}>
+                {selected.map((c) => {
+                  const bad = isBlocked(c.id, draftFor(c.id));
+                  return (
+                    <li key={c.id}>
+                      <span>{c.name}</span>
+                      <span className={!text.trim() ? "pill" : bad ? "pill partial" : "pill sent"}>{!text.trim() ? t("Esperando mensaje", "Waiting for message") : bad ? t("Revisar", "Check") : t("Listo", "Ready")}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <div className={s.send}>
+              <SubmitButton disabled={cant} label={uploading ? t("Esperando a que suba el archivo…", "Waiting for the file to upload…") : label} />
+              <span className="small muted">
+                {!selected.length ? t("Elige al menos un canal", "Pick at least one channel") : !text.trim() ? t("Escribe tu mensaje para empezar", "Write your message to get started") : t(`${ready} de ${n} listos`, `${ready} of ${n} ready`)}
+              </span>
+            </div>
           </section>
         </div>
       )}

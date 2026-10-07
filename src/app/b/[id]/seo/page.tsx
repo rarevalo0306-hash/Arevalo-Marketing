@@ -19,12 +19,16 @@ import { SearchConsolePanel } from "@/components/seo/SearchConsolePanel";
 import { SharePanel } from "@/components/seo/SharePanel";
 import { TrafficPanel } from "@/components/seo/TrafficPanel";
 import { SeoGuide } from "@/components/seo/SeoGuide";
+import { SeoSetup } from "@/components/seo/SeoSetup";
 import { SeoTabs, type SeoTab } from "@/components/seo/SeoTabs";
 import { VisibilityPanel } from "@/components/seo/VisibilityPanel";
 import { WriterCard } from "@/components/seo/WriterCard";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
-import { dataForSeoEnabled, readTrackedKeywords } from "@/lib/seo/dataforseo";
+import { dataForSeoEnabled, readTrackedKeywords, readZones } from "@/lib/seo/dataforseo";
+import { KEYWORDS_CALL_COST } from "@/lib/seo/keywords";
+import { RANK_COST_PER_KEYWORD } from "@/lib/seo/rank";
+import { setupState } from "@/lib/seo/setup";
 
 // La auditoría recorre el sitio y la visibilidad en IA hace varias búsquedas: puede tardar.
 export const maxDuration = 300;
@@ -34,10 +38,16 @@ const TAB_IDS = ["resumen", "google", "web", "competencia", "ia", "reportes", "a
 export default async function SeoPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ mapa?: string; tab?: string }> }) {
   const { id } = await params;
   const { mapa, tab } = await searchParams;
-  const b = await db.business.findUniqueOrThrow({ where: { id }, select: { name: true, color: true, seoKeywords: true } });
+  const b = await db.business.findUniqueOrThrow({
+    where: { id },
+    select: { name: true, color: true, website: true, seoKeywords: true, seoLocations: true, seoLocationCode: true, seoLocationName: true },
+  });
   const { t } = await getT();
-  // Sin palabras clave elegidas casi nada funciona: el resumen lo dice primero y lleva a Ajustes.
-  const needsSetup = dataForSeoEnabled() && readTrackedKeywords(b.seoKeywords).length === 0;
+  // Sin zonas o sin palabras clave casi nada funciona: el resumen propone todo solo y el dueño acepta o quita.
+  const setupShown = dataForSeoEnabled();
+  const needsSetup =
+    setupShown && (readTrackedKeywords(b.seoKeywords).length === 0 || readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName).length === 0);
+  const saved = needsSetup ? (await setupState(id)).proposal : null;
   const initial = TAB_IDS.find((x) => x === tab) ?? (mapa ? "google" : "resumen");
   const tabs: SeoTab[] = [
     {
@@ -46,19 +56,15 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
       hint: "",
       content: (
         <>
-          {needsSetup && (
-            <section className="card stack" style={{ gap: 10 }}>
-              <h2>{t("Primero: dinos qué buscan tus clientes", "First: tell us what your customers search for")}</h2>
-              <p className="small muted">
-                {t(
-                  "Elige la zona donde están tus clientes y las palabras clave que quieres seguir. Toma 2 minutos y con eso se llenan las demás pestañas.",
-                  "Pick where your customers are and the keywords you want to track. It takes 2 minutes and fills in the other tabs.",
-                )}
-              </p>
-              <div>
-                <a className="btn primary" href="#dataforseo">{t("Ir a Ajustes de SEO →", "Go to SEO settings →")}</a>
-              </div>
-            </section>
+          {setupShown && (
+            <SeoSetup
+              businessId={id}
+              needed={needsSetup}
+              saved={saved}
+              price={RANK_COST_PER_KEYWORD}
+              measurePrice={KEYWORDS_CALL_COST}
+              hasWebsite={Boolean(b.website.trim())}
+            />
           )}
           <SeoGuide businessId={id} />
         </>
@@ -66,7 +72,7 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
     },
     {
       id: "google",
-      label: t("Google y Maps", "Google & Maps"),
+      label: t("Tu lugar en Google", "Your Google ranking"),
       hint: t("En qué lugar sales, el mapa de calor, tu Perfil de Google y lo que pregunta la gente.", "Where you rank, the map heatmap, your Google profile and what people ask."),
       content: (
         <>
@@ -130,7 +136,7 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
     {
       id: "ajustes",
       label: t("⚙ Ajustes", "⚙ Settings"),
-      hint: t("Zonas, idioma y palabras clave que se siguen, y tu saldo de DataForSEO.", "Zones, language and tracked keywords, and your DataForSEO balance."),
+      hint: t("Zonas, idioma, palabras clave que se siguen, cada cuánto se revisan y tu saldo de DataForSEO.", "Areas, language, tracked keywords, how often they are checked and your DataForSEO balance."),
       content: <DfsSettingsPanel businessId={id} />,
     },
   ];

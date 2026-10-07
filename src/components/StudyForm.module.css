@@ -1,0 +1,81 @@
+/* Estudio del negocio: pasos, "Tomar la información de mi web" y clientes ideales con prioridad. */
+
+.anchor { scroll-margin-top: 90px; height: 0; }
+
+/* ---------- Pasos ---------- */
+.stepper { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.stepItem { min-width: 0; }
+.stepBtn {
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 12px; min-height: 52px;
+  border-radius: 14px; border: 1.5px solid var(--line); background: var(--surface); color: var(--muted);
+  font: 600 14px var(--body); text-align: left; cursor: pointer;
+}
+.stepBtn:disabled { cursor: default; }
+.stepNum {
+  flex-shrink: 0; width: 28px; height: 28px; border-radius: 14px; display: grid; place-items: center;
+  font-weight: 800; font-size: 14px; background: var(--surface-2); color: var(--muted);
+}
+.stepLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.now .stepBtn { border-color: var(--brand); color: var(--ink); }
+.now .stepNum { background: var(--brand); color: #fff; }
+.done .stepBtn { color: var(--ink); }
+.done .stepNum { background: var(--teal-soft); color: var(--teal-text); }
+.done .stepBtn:hover { border-color: var(--line-strong); }
+@media (max-width: 560px) {
+  .stepBtn { flex-direction: column; justify-content: center; gap: 4px; padding: 8px 4px; text-align: center; }
+  .stepLabel { white-space: normal; font-size: 12.5px; line-height: 1.2; }
+}
+
+/* ---------- Leer la web ---------- */
+.webBox {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  padding: 16px; border-radius: 16px; border: 1.5px dashed var(--line-strong); background: var(--surface);
+}
+.webBox > :first-child { flex: 1 1 260px; }
+@media (max-width: 560px) { .webBox :global(.btn) { width: 100%; } }
+.pages { margin-top: 8px; }
+.pages summary { cursor: pointer; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.pages ul { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; overflow-wrap: anywhere; }
+.pages a { color: inherit; }
+
+/* ---------- Clientes ideales ---------- */
+.customers { display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); }
+.chosen { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.chosenItem {
+  display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 12px; border-radius: 14px;
+  border: 1px solid var(--line); background: var(--surface-hover);
+}
+.rank {
+  flex-shrink: 0; width: 30px; height: 30px; border-radius: 15px; display: grid; place-items: center;
+  background: var(--brand); color: #fff; font-weight: 800; font-size: 14px;
+}
+.chosenText { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; overflow-wrap: anywhere; }
+.prio { font-size: 11.5px; font-weight: 700; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.alta { background: var(--teal-soft); color: var(--teal-text); }
+.media { background: var(--warn-bg); color: var(--warn-text); }
+.baja { background: var(--surface-2); color: var(--muted); }
+.moves { display: flex; gap: 4px; flex-shrink: 0; }
+.iconBtn {
+  width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--surface);
+  color: var(--ink); font-size: 13px; cursor: pointer; display: grid; place-items: center; padding: 0;
+}
+.iconBtn:hover:not(:disabled) { border-color: var(--brand); color: var(--brand); }
+.iconBtn:disabled { opacity: 0.35; cursor: default; }
+@media (max-width: 480px) {
+  .chosenItem { flex-wrap: wrap; }
+  .chosenText { flex-basis: calc(100% - 44px); }
+  .moves { width: 100%; justify-content: flex-end; }
+}
+.emptyPick { margin: 0; padding: 12px; border-radius: 12px; border: 1.5px dashed var(--line-strong); color: var(--muted); font-size: 14px; }
+.addRow { display: flex; gap: 8px; }
+.addRow :global(.field) { flex: 1; min-width: 0; }
+
+/* ---------- Otros ---------- */
+.plain { border: 0; margin: 0; padding: 0; min-width: 0; }
+.plain legend { padding: 0; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+@media (max-width: 560px) { .actions :global(.btn.ai) { width: 100%; } }
+.summary { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 10px; }
+.summary > div { padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); min-width: 0; }
+.summary dt { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.summary dd { margin: 4px 0 0; font-size: 14px; overflow-wrap: anywhere; }

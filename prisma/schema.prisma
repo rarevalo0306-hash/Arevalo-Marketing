@@ -42,6 +42,8 @@ model Business {
   seoLanguage     String   @default("es")
   seoKeywords     Json?
   seoDaily        Boolean  @default(false)
+  /// Cada cuántos días se revisan solas las posiciones cuando seoDaily está encendido: 1, 7, 15 o 30.
+  seoRankDays     Int      @default(7)
   /// Zonas de Google elegidas (hasta 5): [{ code, name, type }]. La primera también queda en seoLocationCode/Name.
   seoLocations    Json?
   /// Avisos de SEO por email: a quién (hasta 3, separados por comas), avisos al bajar en la revisión diaria,
@@ -115,6 +117,8 @@ model Contact {
   phone       String   @default("")
   emailOptIn  Boolean  @default(true)
   smsOptIn    Boolean  @default(false)
+  /// Listas del contacto: "lead", "prospect", "client", "past-client"… (para mandar a cada grupo lo suyo).
+  lists       String[] @default([])
   createdAt   DateTime @default(now())
   business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
 

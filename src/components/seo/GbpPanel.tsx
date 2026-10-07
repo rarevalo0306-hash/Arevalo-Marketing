@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { refreshProfile, refreshReviews } from "@/app/actions-seo-gbp";
+import { AiPromptButton } from "@/components/seo/AiPromptButton";
 import { GbpRefreshButton } from "@/components/seo/GbpRefreshButton";
 import { Fold } from "@/components/seo/Fold";
 import { HowToRead } from "@/components/seo/HowToRead";
 import { GbpReviews, Stars } from "@/components/seo/GbpReviews";
 import { MapPlacePicker } from "@/components/seo/MapPlacePicker";
+import { ScoreVerdict } from "@/components/seo/ScoreVerdict";
 import { aiEnabled } from "@/lib/ai";
 import { db } from "@/lib/db";
 import { intlLocale } from "@/lib/i18n";
@@ -24,6 +26,8 @@ import {
   reviewsCostEstimate,
 } from "@/lib/seo/gbp";
 import { MAP_COST_PER_POINT, readMapPlace, readMapReport } from "@/lib/seo/maprank";
+import { loadPromptContext } from "@/lib/seo/prompt-context";
+import { gbpChecklist } from "@/lib/seo/prompts";
 import { latestReports } from "@/lib/seo/reports";
 import { BUSINESS_TZ } from "@/lib/time";
 
@@ -55,8 +59,8 @@ export async function GbpPanel({ businessId }: { businessId: string }) {
       <h2>{t("Tu Perfil de Google", "Your Google Business Profile")}</h2>
       <p className="small muted">
         {t(
-          "Lo que ven tus clientes cuando te buscan en Google Maps: qué le falta a tu perfil, cómo te comparas con tu competencia y tus reseñas, con respuestas escritas por la IA.",
-          "What customers see when they find you on Google Maps: what your profile is missing, how you compare with your competition, and your reviews, with replies written by AI.",
+          "Tu ficha en Google Maps: lo que ve la gente cuando busca tu negocio. Aquí ves qué le falta, cómo estás frente a tu competencia y tus reseñas (la IA te escribe las respuestas).",
+          "Your listing on Google Maps: what people see when they look up your business. Here you see what it's missing, how you compare with your competition, and your reviews (the AI drafts the replies).",
         )}
       </p>
     </div>
@@ -168,15 +172,16 @@ export async function GbpPanel({ businessId }: { businessId: string }) {
   const p = gbp?.profile;
   const s = reviews?.stats;
   const distMax = s ? Math.max(1, ...s.distribution) : 1;
+  const ctx = missing.length || s?.unanswered ? await loadPromptContext(businessId) : null;
 
   return (
     <section className="card" id="perfil">
       {header}
       <HowToRead title={t("Cómo leer esto", "How to read this")}>
         <ul>
-          <li>{t("Tu Perfil de Google es la ficha que sale en el mapa. Es lo que más pesa para salir entre los 3 negocios del mapa.", "Your Google profile is the listing shown on the map. It's what matters most to show up among the 3 businesses on the map.")}</li>
-          <li>{t("La nota de 0 a 100 mide qué tan completo está (fotos, horario, teléfono, descripción, categorías, reseñas): 80 o más está bien.", "The 0-100 score measures how complete it is (photos, hours, phone, description, categories, reviews): 80 or more is good.")}</li>
-          <li>{t("Reseñas: más reseñas recientes y responderlas todas ayuda a subir en el mapa.", "Reviews: more recent reviews and replying to all of them helps you move up on the map.")}</li>
+          <li>{t("Tu Perfil de Google es la ficha que sale en el mapa. Es lo que más pesa para salir entre los 3 negocios que Google muestra con mapa arriba de todo; tu página web pesa menos ahí.", "Your Google profile is the listing shown on the map. It's what matters most to show up among the 3 businesses Google shows with a map at the top; your website matters less there.")}</li>
+          <li>{t("La nota de 0 a 100 mide qué tan completo está (reclamado, categoría, horario, teléfono, página, fotos, estrellas y si contestas las reseñas): 90 o más es excelente, de 70 a 89 está bien, de 50 a 69 es regular y menos de 50 es urgente.", "The 0-100 score measures how complete it is (claimed, category, hours, phone, website, photos, stars and whether you reply to reviews): 90 or more is excellent, 70 to 89 is good, 50 to 69 is fair and under 50 is urgent.")}</li>
+          <li>{t("Reseñas: pide reseñas a tus clientes cada mes y contéstalas todas, también las malas. Es lo que más te ayuda a subir en el mapa.", "Reviews: ask your customers for reviews every month and reply to all of them, bad ones too. It's what helps you most to move up on the map.")}</li>
         </ul>
       </HowToRead>
 
@@ -249,13 +254,16 @@ export async function GbpPanel({ businessId }: { businessId: string }) {
               {gbp.score}
               <small>/100</small>
             </div>
-            <p className="small muted" style={{ flex: "1 1 220px" }}>
-              {t(
-                "Qué tan completo está tu perfil. Cuenta más lo que más pesa en Google Maps: estar reclamado, la categoría, horario, teléfono, página, fotos, calificación y contestar reseñas.",
-                "How complete your profile is. What matters most on Google Maps counts more: being claimed, category, hours, phone, website, photos, rating and replying to reviews.",
-              )}
-              {!reviews && t(" Trae tus reseñas (abajo) para revisar también si las contestas.", " Bring in your reviews (below) to also check whether you reply to them.")}
-            </p>
+            <div className="stack" style={{ gap: 6, flex: "1 1 240px", minWidth: 0 }}>
+              <ScoreVerdict score={gbp.score} lang={lang} />
+              <p className="small muted" style={{ margin: 0 }}>
+                {t(
+                  "Mide qué tan completo está tu perfil. Pesa más lo que más cuenta en Google Maps: estar reclamado, la categoría, horario, teléfono, página, fotos, estrellas y contestar reseñas.",
+                  "It measures how complete your profile is. What counts most on Google Maps weighs more: being claimed, category, hours, phone, website, photos, stars and replying to reviews.",
+                )}
+                {!reviews && t(" Trae tus reseñas (abajo) para revisar también si las contestas.", " Bring in your reviews (below) to also check whether you reply to them.")}
+              </p>
+            </div>
           </div>
 
           <div className="stack" style={{ gap: 10 }}>
@@ -485,6 +493,16 @@ export async function GbpPanel({ businessId }: { businessId: string }) {
           </p>
         )}
       </div>
+      {ctx && (
+        <AiPromptButton
+          variant="owner"
+          text={gbpChecklist(ctx, missing, s?.unanswered ?? 0, lang)}
+          hint={t(
+            "Lo que le falta a tu perfil, en orden, para ir marcando. Esto lo haces tú en business.google.com, no la IA de tu web.",
+            "What your profile is missing, in order, to tick off. You do this at business.google.com, not your website's AI.",
+          )}
+        />
+      )}
     </section>
   );
 }

@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { Suspense } from "react";
+import { moreIdeas } from "@/app/actions-ideas";
 import { MagicPrompt } from "@/components/MagicPrompt";
 import { SeoHomeCard, SeoHomeCardSkeleton } from "@/components/seo/SeoHomeCard";
 import { aiEnabled } from "@/lib/ai";
 import { CHANNEL_IDS, channelName, CHANNELS } from "@/lib/channels";
+import { loadContentIdeas } from "@/lib/content-ideas";
 import { db } from "@/lib/db";
-import { ideasFor } from "@/lib/ideas";
 import { intlLocale, type T, type UiLang } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
-import { studyIdeas } from "@/lib/study-shape";
 import { BUSINESS_TZ } from "@/lib/time";
 
 const STATUS: Record<UiLang, Record<string, string>> = {
@@ -41,11 +41,13 @@ export default async function InicioPage({ params }: { params: Promise<{ id: str
   const fmt = new Intl.DateTimeFormat(intlLocale(lang), { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: BUSINESS_TZ });
   const b = await db.business.findUniqueOrThrow({ where: { id }, include: { connections: { where: { channel: { in: CHANNEL_IDS } }, select: { channel: true } } } });
   const weekAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000);
-  const [recent, lastWeek, drafts, next] = await Promise.all([
+  const [recent, lastWeek, drafts, next, ideas] = await Promise.all([
     db.post.findMany({ where: { businessId: id }, include: { targets: { select: { channel: true } } }, orderBy: { createdAt: "desc" }, take: 4 }),
     db.post.count({ where: { businessId: id, createdAt: { gte: weekAgo }, status: { in: ["done", "partial"] } } }),
     db.post.count({ where: { businessId: id, status: "draft" } }),
     db.post.findFirst({ where: { businessId: id, status: "scheduled" }, orderBy: { scheduledAt: "asc" } }),
+    // Ideas de hoy según el SEO guardado (solo la base de datos).
+    loadContentIdeas(id, lang),
   ]);
   const connected = b.connections.length;
   const ai = aiEnabled();
@@ -59,8 +61,8 @@ export default async function InicioPage({ params }: { params: Promise<{ id: str
           <span className="hero-badge ai-badge">{t("✦ IA lista", "✦ AI ready")}</span>
         </div>
         <h1>{greeting(t)}. {t("¿Qué quieres publicar hoy?", "What do you want to post today?")}</h1>
-        <p className="hero-sub">{t("Escribe una idea. La IA escribe para cada red, crea la foto con tu marca y tú solo apruebas.", "Type an idea. The AI writes for each network, makes the photo with your brand, and you just approve.")}</p>
-        <MagicPrompt businessId={id} ideas={[...studyIdeas(b.study, 3), ...ideasFor(b.aiProfile, b.name, undefined, lang)].slice(0, 5)} enabled={ai} />
+        <p className="hero-sub">{t("Elige una idea de hoy o escribe la tuya. La IA escribe para cada red, crea la foto con tu marca y tú solo apruebas.", "Pick one of today's ideas or type your own. The AI writes for each network, makes the photo with your brand, and you just approve.")}</p>
+        <MagicPrompt businessId={id} ideas={ideas.ideas} basis={ideas.basis} enabled={ai} more={ai ? moreIdeas.bind(null, id) : null} />
       </section>
 
       <div className="stats">
