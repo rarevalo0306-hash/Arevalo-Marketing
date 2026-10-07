@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { runCompetitors } from "@/app/actions-seo-competitors";
 import { CompetitorsForm } from "@/components/seo/CompetitorsForm";
+import { capClass, Fold } from "@/components/seo/Fold";
 import { HowToRead } from "@/components/seo/HowToRead";
+import { ShowMore } from "@/components/seo/ShowMore";
 import { db } from "@/lib/db";
 import { intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
@@ -10,6 +12,9 @@ import { dataForSeoEnabled, readZones, zoneLabel } from "@/lib/seo/dataforseo";
 import { businessTopicVocab, gbpCategory, isRelevantKeyword } from "@/lib/seo/gap";
 import { latestReports } from "@/lib/seo/reports";
 import { BUSINESS_TZ } from "@/lib/time";
+
+/** Cuántas tarjetas de competidores se ven antes de «Ver todos». */
+const CARDS_SHOWN = 3;
 
 /** Tu competencia en Google: quiénes son, cuánto los visitan y qué búsquedas ganan que tú no. */
 export async function CompetitorsPanel({ businessId }: { businessId: string }) {
@@ -135,14 +140,6 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
               {report.notes.map((x, i) => <li key={i}>{lang === "en" ? x.en : x.es}</li>)}
             </ul>
           )}
-          {hiddenDirs.length > 0 && (
-            <p className="small muted">
-              {t(
-                `Ocultamos directorios como Páginas Amarillas (${hiddenDirs.join(", ")}): no son tu competencia directa. Vuelve a buscar para que entren otros competidores en su lugar.`,
-                `We hid directories like Yellow Pages (${hiddenDirs.join(", ")}): they're not your direct competition. Search again so other competitors take their place.`,
-              )}
-            </p>
-          )}
 
           {report.competitors.length === 0 ? (
             <p className="note">
@@ -153,9 +150,13 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
             </p>
           ) : (
             <>
+              <ShowMore
+                hidden={report.competitors.length - CARDS_SHOWN}
+                more={t(`Ver los ${report.competitors.length} competidores`, `See all ${report.competitors.length} competitors`)}
+              >
               <div className="cards">
-                {report.competitors.map((c) => (
-                  <article key={c.domain} className="comp-card">
+                {report.competitors.map((c, i) => (
+                  <article key={c.domain} className={["comp-card", capClass(i, CARDS_SHOWN)].filter(Boolean).join(" ")}>
                     <div className="row between" style={{ gap: 8 }}>
                       <a className="comp-domain" href={href(c.domain)} target="_blank" rel="noopener noreferrer">{c.domain}</a>
                       <span className={`pill ${sourcePill[c.source]}`}>{sourceLabel[c.source]}</span>
@@ -199,9 +200,15 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
                   </article>
                 ))}
               </div>
+              </ShowMore>
 
-              <div className="stack" style={{ gap: 8 }}>
-                <span className="lbl">{t("Tú contra ellos", "You vs. them")}</span>
+              <Fold
+                summary={t(`Tú contra ellos: tabla con los ${all.length} sitios`, `You vs. them: table with all ${all.length} websites`)}
+                note={t(
+                  `Tú: ${n(report.you.keywords)} ${report.you.keywords === 1 ? "búsqueda" : "búsquedas"} en Google · ${n(report.you.traffic)} ${report.you.traffic === 1 ? "visita" : "visitas"} al mes (est.)`,
+                  `You: ${n(report.you.keywords)} Google ${report.you.keywords === 1 ? "search" : "searches"} · ${n(report.you.traffic)} ${report.you.traffic === 1 ? "visit" : "visits"} a month (est.)`,
+                )}
+              >
                 <div className="table-wrap">
                   <table>
                     <thead>
@@ -231,7 +238,7 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
                     </tbody>
                   </table>
                 </div>
-              </div>
+              </Fold>
             </>
           )}
 
@@ -289,16 +296,23 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
               <li>{t("«Búsquedas en Google»: cuántas búsquedas distintas le traen visitas a ese sitio. Más = más fuerte en Google.", "“Google searches”: how many different searches bring visits to that site. More = stronger on Google.")}</li>
               <li>{t("«Visitas al mes (est.)»: un cálculo de cuántas visitas les llegan desde Google. Sirve para comparar, no es exacto.", "“Visits a month (est.)”: an estimate of how many visits they get from Google. Good for comparing, not exact.")}</li>
               <li>{t("«En común contigo»: búsquedas donde salen los dos. Muchas = compiten por los mismos clientes.", "“In common with you”: searches where you both show up. Many = you compete for the same customers.")}</li>
+              {hiddenDirs.length > 0 && (
+                <li>
+                  {t(
+                    `Ocultamos directorios como Páginas Amarillas (${hiddenDirs.join(", ")}): no son tu competencia directa. Vuelve a buscar para que entren otros competidores en su lugar.`,
+                    `We hid directories like Yellow Pages (${hiddenDirs.join(", ")}): they're not your direct competition. Search again so other competitors take their place.`,
+                  )}
+                </li>
+              )}
+              <li>
+                {t(
+                  `Las búsquedas, visitas y volúmenes son estimados de DataForSEO para ${report.location.countryName || "tu país"} en Google; son aproximados, no datos de Google Analytics ni de Search Console.`,
+                  `Searches, visits and volumes are DataForSEO estimates for ${report.location.countryName || "your country"} on Google; they're approximations, not Google Analytics or Search Console data.`,
+                )}
+              </li>
               <li>{t("No contamos directorios, redes sociales ni páginas del gobierno (Páginas Amarillas, Facebook, Waze…): salen arriba en todo, pero no te quitan clientes de la misma forma.", "We don't count directories, social networks or government sites (Yellow Pages, Facebook, Waze…): they rank high for everything, but they don't take customers from you the same way.")}</li>
             </ul>
           </HowToRead>
-
-          <p className="small muted">
-            {t(
-              `Las búsquedas, visitas y volúmenes son estimados de DataForSEO para ${report.location.countryName || "tu país"} en Google; son aproximados, no datos de Google Analytics ni de Search Console.`,
-              `Searches, visits and volumes are DataForSEO estimates for ${report.location.countryName || "your country"} on Google; they're approximations, not Google Analytics or Search Console data.`,
-            )}
-          </p>
         </>
       )}
     </section>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useT } from "@/components/I18n";
 import { TrackGapButton } from "@/components/seo/CompetitorsForm";
+import fold from "@/components/seo/Fold.module.css";
 import type { GapIntent, GapRow, GapType } from "@/lib/seo/gap";
 import { intlLocale } from "@/lib/i18n";
 
@@ -19,7 +20,7 @@ type Props = {
   track: (keyword: string) => Promise<{ ok: boolean; message: string }>;
 };
 
-const PAGE = 30;
+const PAGE = 10;
 
 /** Fácil (< 30), media (30 a 59) o difícil (60 o más): [estilo, español, inglés]. */
 function difficultyBadge(d: number | null): [string, string, string] | null {
@@ -114,6 +115,19 @@ export function GapTable({ businessId, rows: related, offTopic = [], tracked, tr
         </div>
       )}
 
+      <details className={fold.fold} open={best.length === 0}>
+        <summary>
+          <span className={fold.sumText}>
+            <span>
+              {t(
+                `Lista completa: te faltan ${counts.missing} · estás más abajo en ${counts.weak}`,
+                `Full list: missing ${counts.missing} · ranking lower on ${counts.weak}`,
+              )}
+            </span>
+            <span className={fold.sumNote}>{t("Con filtros (para vender, fáciles) y botones para seguir cada búsqueda", "With filters (to sell, easy) and buttons to track each search")}</span>
+          </span>
+        </summary>
+        <div className="stack" style={{ gap: 16 }}>
       {offTopic.length > 0 && (
         <p className="small muted" style={{ margin: 0 }}>
           {t(
@@ -236,6 +250,8 @@ export function GapTable({ businessId, rows: related, offTopic = [], tracked, tr
           )}
         </>
       )}
+        </div>
+      </details>
     </div>
   );
 }

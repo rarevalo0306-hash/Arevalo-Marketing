@@ -1,13 +1,19 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { disconnectSearchConsole, refreshSearchConsole } from "@/app/actions-seo-gsc";
+import { capClass, Fold } from "@/components/seo/Fold";
 import { SearchConsoleButton, SearchConsoleNotice } from "@/components/seo/SearchConsoleButton";
+import { ShowMore } from "@/components/seo/ShowMore";
 import { db } from "@/lib/db";
 import { googleEnabled } from "@/lib/google-oauth";
 import { intlLocale, type T, type UiLang } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { asGscReport, GSC_CHANNEL, siteLabel, type GscRow, type GscTotals } from "@/lib/seo/gsc";
 import { latestReports } from "@/lib/seo/reports";
+
+/** Cuántas filas se ven antes de «Ver todas»: búsquedas y páginas. */
+const QUERIES_SHOWN = 10;
+const PAGES_SHOWN = 5;
 
 // Search Console da los países con código de 3 letras; Intl los nombra con el de 2.
 const ISO3: Record<string, string> = {
@@ -311,6 +317,7 @@ export async function SearchConsolePanel({ businessId }: { businessId: string })
             {report.queries.length === 0 ? (
               <p className="small muted">{t("Google todavía no tiene búsquedas para tu página en estas fechas.", "Google doesn't have searches for your website in these dates yet.")}</p>
             ) : (
+              <ShowMore hidden={report.queries.length - QUERIES_SHOWN} more={t(`Ver las ${report.queries.length} búsquedas`, `See all ${report.queries.length} searches`)}>
               <div className="table-wrap gsc-scroll">
                 <table>
                   <thead>
@@ -324,8 +331,8 @@ export async function SearchConsolePanel({ businessId }: { businessId: string })
                     </tr>
                   </thead>
                   <tbody>
-                    {report.queries.map((r) => (
-                      <tr key={r.key}>
+                    {report.queries.map((r, i) => (
+                      <tr key={r.key} className={capClass(i, QUERIES_SHOWN)}>
                         <td style={{ overflowWrap: "anywhere" }}>{r.key}</td>
                         <td className="gsc-num">{f.int(r.clicks)}</td>
                         <td className="gsc-num">{f.int(r.impressions)}</td>
@@ -337,12 +344,14 @@ export async function SearchConsolePanel({ businessId }: { businessId: string })
                   </tbody>
                 </table>
               </div>
+              </ShowMore>
             )}
           </div>
 
           {report.pages.length > 0 && (
             <div className="stack" style={{ gap: 8 }}>
               <h3>{t("Tus páginas más visitadas desde Google", "Your top pages from Google")}</h3>
+              <ShowMore hidden={report.pages.length - PAGES_SHOWN} more={t(`Ver las ${report.pages.length} páginas`, `See all ${report.pages.length} pages`)}>
               <div className="table-wrap">
                 <table>
                   <thead>
@@ -355,8 +364,8 @@ export async function SearchConsolePanel({ businessId }: { businessId: string })
                     </tr>
                   </thead>
                   <tbody>
-                    {report.pages.map((r) => (
-                      <tr key={r.key}>
+                    {report.pages.map((r, i) => (
+                      <tr key={r.key} className={capClass(i, PAGES_SHOWN)}>
                         <td style={{ overflowWrap: "anywhere" }}>
                           {/^https?:\/\//.test(r.key) ? (
                             <a href={r.key} target="_blank" rel="noopener noreferrer">{pagePath(r.key)}</a>
@@ -373,10 +382,15 @@ export async function SearchConsolePanel({ businessId }: { businessId: string })
                   </tbody>
                 </table>
               </div>
+              </ShowMore>
             </div>
           )}
 
           {(report.devices.length > 0 || report.countries.length > 0) && (
+            <Fold
+              summary={t("Desde qué aparato y qué país te buscan", "Which devices and countries people search from")}
+              note={t(`${report.devices.length} aparatos · ${report.countries.length} países`, `${report.devices.length} devices · ${report.countries.length} countries`)}
+            >
             <div className="grid-2">
               {report.devices.length > 0 && (
                 <div className="stack" style={{ gap: 8 }}>
@@ -410,6 +424,7 @@ export async function SearchConsolePanel({ businessId }: { businessId: string })
                 </div>
               )}
             </div>
+            </Fold>
           )}
         </>
       )}

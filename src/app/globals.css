@@ -695,3 +695,28 @@ tr.comp-you td { background: var(--brand-soft); }
 textarea.field.gbp-reply { min-height: 120px; width: 100%; }
 .gbp-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .gbp-actions .btn { min-height: 38px; }
+
+/* Celular: la barra de arriba solo tiene el logo y el negocio activo; lo demás va en su menú (MobileBizMenu) */
+.mbiz { display: none; }
+@media (max-width: 900px) {
+  .sidebar .desk-only { display: none !important; }
+  .sidebar { overflow: visible; }
+  .mbiz { display: block; flex: 1; min-width: 0; }
+  .mbiz-trigger { max-width: 100%; border: 0; cursor: pointer; font-family: inherit; font-weight: 700; }
+  .mbiz-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mbiz-backdrop { position: fixed; inset: 0; z-index: 40; background: rgba(5, 10, 20, 0.45); }
+  .mbiz-menu {
+    position: fixed; z-index: 41; top: calc(62px + env(safe-area-inset-top)); left: 10px; right: 10px;
+    max-height: calc(100vh - 160px); overflow-y: auto; display: flex; flex-direction: column; gap: 4px; padding: 10px;
+    border-radius: 18px; background: #111a2c; border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 12px 40px rgba(5, 10, 20, 0.35);
+  }
+  .mbiz-menu .biz { min-height: 46px; font-size: 15px; }
+  .mbiz-menu .theme-pick { flex: none; }
+  .mbiz-menu .theme-pick button { padding: 9px 8px; font-size: 13px; }
+  .mbiz-label { font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #6f7f99; padding: 6px 6px 2px; }
+  .mbiz-sep { height: 1px; background: rgba(255, 255, 255, 0.08); margin: 6px 0; }
+}
+
+/* Noche: el azul de los enlaces (#126bbc) casi no se lee sobre fondo oscuro */
+html[data-theme="noche"] a:not([class]), html[data-theme="noche"] .btn.link { color: #6aa8ff; }
+html[data-theme="noche"] .btn.outline { color: #6aa8ff; border-color: #4d8fe8; }

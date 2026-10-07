@@ -1,0 +1,56 @@
+/* Inicio: la tarjeta "Tu SEO esta semana" (las frases más importantes del resumen de SEO). */
+.card { gap: 14px; }
+.head { display: flex; flex-direction: column; gap: 2px; }
+
+.lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.line {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 8px;
+  align-items: start;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  line-height: 1.45;
+  font-size: 14.5px;
+}
+.line.good { border-left: 4px solid var(--teal); }
+.line.warn { border-left: 4px solid #e8a33a; }
+.line.bad { border-left: 4px solid var(--err-text); }
+.line.info { border-left: 4px solid var(--brand-2); }
+.icon { font-size: 17px; line-height: 1.35; text-align: center; }
+.text { min-width: 0; overflow-wrap: anywhere; }
+.text a { white-space: nowrap; font-weight: 600; }
+
+/* Los números (solo los que ya calcula el resumen). */
+.nums { display: flex; flex-wrap: wrap; gap: 8px; }
+.num {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 140px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.numValue { font: 800 20px/1.15 var(--display); letter-spacing: -0.4px; color: var(--ink); }
+.numValue small { font-size: 13px; font-weight: 700; color: var(--muted); }
+.numLabel { font-size: 12.5px; color: var(--muted); line-height: 1.3; }
+
+.foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.more { font-size: 13px; color: var(--muted); }
+@media (max-width: 520px) {
+  .foot :global(.btn) { width: 100%; }
+}
+
+/* Vacío: una línea y el botón. */
+.empty { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
+.empty p { margin: 0; }
+
+/* Mientras carga (para que la página no salte). */
+.skeleton { display: flex; flex-direction: column; gap: 8px; }
+.skeleton span { display: block; height: 44px; border-radius: 12px; background: var(--surface-2); animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { .skeleton span { animation: none; } }

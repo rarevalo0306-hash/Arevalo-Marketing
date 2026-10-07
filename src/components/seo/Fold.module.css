@@ -1,0 +1,69 @@
+/* Partes secundarias de los paneles de SEO: desplegables (Fold) y listas cortadas con «Ver todas» (ShowMore). */
+
+/* ---------- Desplegable: un renglón que dice qué hay adentro y cuántos ---------- */
+.fold { min-width: 0; }
+.fold > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.35;
+}
+.fold > summary:hover { background: var(--surface-hover); }
+.fold > summary::after {
+  content: "▸";
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+.fold[open] > summary::after { transform: rotate(90deg); }
+.fold[open] > summary { margin-bottom: 10px; }
+.sumText { min-width: 0; overflow-wrap: anywhere; display: flex; flex-direction: column; gap: 2px; }
+.sumNote { font-size: 12.5px; font-weight: 500; color: var(--muted); }
+.body { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+
+/* Versión liviana (enlace), para dentro de tablas y tarjetas. */
+.inline > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  min-height: 28px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--brand-2);
+}
+.inline > summary::after { content: "▸"; font-size: 11px; transition: transform 0.15s ease; }
+.inline[open] > summary::after { transform: rotate(90deg); }
+.inline[open] > summary { margin-bottom: 4px; }
+
+/* ---------- Ver todas: lo que pasa del tope se esconde hasta pedirlo ---------- */
+.closed .extra { display: none !important; }
+.moreBtn {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  margin-top: 8px;
+  padding: 6px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.moreBtn:hover { background: var(--surface-hover); }
+.showMore { display: flex; flex-direction: column; min-width: 0; }

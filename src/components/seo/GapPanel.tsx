@@ -127,17 +127,17 @@ export async function GapPanel({ businessId }: { businessId: string }) {
           ) : (
             <GapTable businessId={businessId} rows={split.relevant} offTopic={offTopic} tracked={tracked} track={trackGapKeyword.bind(null, businessId)} />
           )}
-          <p className="small muted">
-            {t(
-              `Las búsquedas, posiciones y la dificultad son estimados de DataForSEO para ${report.location.countryName || "tu país"} en Google (no por ciudad). La dificultad va de 0 a 100: menos de 30 es fácil.`,
-              `Searches, rankings and difficulty are DataForSEO estimates for ${report.location.countryName || "your country"} on Google (not by city). Difficulty goes from 0 to 100: under 30 is easy.`,
-            )}
-          </p>
           <HowToRead title={t("Cómo leer esto", "How to read this")}>
             <ul>
               <li>{t("«Te faltan»: búsquedas donde tu competencia sale en Google y tú no. Escribir un artículo sobre ellas es la forma más directa de empezar a salir.", "“You're missing”: searches where your competitors show up on Google and you don't. Writing an article about them is the most direct way to start showing up.")}</li>
               <li>{t("«Estás más abajo»: sí sales, pero ellos están más arriba. Mejora la página que ya tienes.", "“You rank lower”: you do show up, but they're higher. Improve the page you already have.")}</li>
               <li>{t("Dificultad de 0 a 100: qué tan difícil es llegar a la primera página. Fácil (menos de 30) primero.", "Difficulty from 0 to 100: how hard it is to reach page one. Start with easy ones (under 30).")}</li>
+              <li>
+                {t(
+                  `Las búsquedas, posiciones y la dificultad son estimados de DataForSEO para ${report.location.countryName || "tu país"} en Google (no por ciudad).`,
+                  `Searches, rankings and difficulty are DataForSEO estimates for ${report.location.countryName || "your country"} on Google (not by city).`,
+                )}
+              </li>
               <li>{t("Solo mostramos búsquedas que tienen que ver con lo que vendes (según tus palabras clave y tu estudio). Las demás las puedes ver con «Mostrarlas igual».", "We only show searches related to what you sell (based on your keywords and your study). You can see the rest with “Show them anyway”.")}</li>
             </ul>
           </HowToRead>

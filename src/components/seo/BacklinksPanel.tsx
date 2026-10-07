@@ -29,6 +29,10 @@ import { OUTREACH_KIND, readOutreachStore } from "@/lib/seo/outreach";
 import { BUSINESS_TZ } from "@/lib/time";
 
 /** Enlaces hacia tu página (estilo Backlink Analytics + Backlink Gap). */
+/** Cuántos se ven antes de «Ver los otros»: sitios que te enlazan y dónde conseguir enlaces. */
+const REF_SHOWN = 5;
+const GAP_SHOWN = 5;
+
 export async function BacklinksPanel({ businessId }: { businessId: string }) {
   const { lang, t } = await getT();
   const header = (
@@ -303,13 +307,13 @@ export async function BacklinksPanel({ businessId }: { businessId: string }) {
               </p>
             ) : (
               <>
-                {refTable(report.referring.slice(0, 10))}
-                {report.referring.length > 10 && (
+                {refTable(report.referring.slice(0, REF_SHOWN))}
+                {report.referring.length > REF_SHOWN && (
                   <details>
                     <summary className="btn link" style={{ display: "inline-flex", minHeight: 0, padding: 0 }}>
-                      {t(`Ver los otros ${report.referring.length - 10}`, `See the other ${report.referring.length - 10}`)}
+                      {t(`Ver los otros ${report.referring.length - REF_SHOWN}`, `See the other ${report.referring.length - REF_SHOWN}`)}
                     </summary>
-                    {refTable(report.referring.slice(10))}
+                    {refTable(report.referring.slice(REF_SHOWN))}
                   </details>
                 )}
                 {report.referringTotal !== null && report.referringTotal > report.referring.length && (
@@ -373,13 +377,13 @@ export async function BacklinksPanel({ businessId }: { businessId: string }) {
               ) : (
                 <OutreachProvider businessId={businessId} aiReady={aiEnabled()} initial={outreach}>
                   <OutreachTop pendingCount={report.gap.filter((g) => !outreach[g.domain]).length} />
-                  {whereList(report.gap.slice(0, 15))}
-                  {report.gap.length > 15 && (
+                  {whereList(report.gap.slice(0, GAP_SHOWN))}
+                  {report.gap.length > GAP_SHOWN && (
                     <details>
                       <summary className="btn link" style={{ display: "inline-flex", minHeight: 0, padding: 0 }}>
-                        {t(`Ver los ${report.gap.length - 15} restantes`, `See the other ${report.gap.length - 15}`)}
+                        {t(`Ver los ${report.gap.length - GAP_SHOWN} restantes`, `See the other ${report.gap.length - GAP_SHOWN}`)}
                       </summary>
-                      {whereList(report.gap.slice(15))}
+                      {whereList(report.gap.slice(GAP_SHOWN))}
                     </details>
                   )}
                 </OutreachProvider>

@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { runOnPage, suggestPageFix } from "@/app/actions-seo-onpage";
 import { CopyButton } from "@/components/seo/ArticleTools";
+import { extra, Fold } from "@/components/seo/Fold";
 import { HowToRead } from "@/components/seo/HowToRead";
+import { ShowMore } from "@/components/seo/ShowMore";
 import { ScoreDial } from "@/components/seo/ArticleView";
 import { KeywordPicker, OnPageRunButton, RecheckButton, SuggestButton } from "@/components/seo/OnPageTools";
 import { aiEnabled, TEXT_PROVIDERS } from "@/lib/ai";
@@ -31,6 +33,8 @@ import { BUSINESS_TZ } from "@/lib/time";
 import { readStudy, topKeywords } from "@/lib/study-shape";
 
 const PRIORITIES: IdeaPriority[] = ["alta", "media", "baja"];
+/** Cuántas páginas se ven antes de «Ver todas» (las de «Empieza por aquí» siempre se ven). */
+const PAGES_SHOWN = 3;
 
 /** id de la tarjeta de una página (para los enlaces de "Empieza por aquí"). */
 const anchor = (url: string) => `op-${urlKey(url).replace(/[^a-z0-9]+/gi, "-").slice(0, 120)}`;
@@ -170,6 +174,9 @@ export async function OnPagePanel({ businessId }: { businessId: string }) {
   const high = scored.reduce((s, p) => s + p.ideas.filter((i) => i.priority === "alta").length, 0);
   const start = topIdeas(scored);
   const shortTitle = (p: Pick<OnPagePage, "url" | "title">) => p.title.trim() || pathOf(p.url);
+  // Las páginas que pasan del tope quedan en «Ver todas», salvo las que nombra «Empieza por aquí» (sus enlaces bajan a ellas).
+  const startUrls = new Set(start.map((x) => x.url));
+  const folded = new Set(pages.filter((p, i) => i >= PAGES_SHOWN && !startUrls.has(p.url)).map((p) => p.url));
 
   return shell(
     <>
@@ -215,12 +222,13 @@ export async function OnPagePanel({ businessId }: { businessId: string }) {
         </div>
       )}
 
+      <ShowMore hidden={folded.size} more={t(`Ver las ${pages.length} páginas`, `See all ${pages.length} pages`)}>
       <div className="stack" style={{ gap: 14 }}>
         {pages.map((p) => {
           const provider = p.suggestion ? TEXT_PROVIDERS.find((x) => x.id === p.suggestion?.provider)?.name : undefined;
           const s = p.stats;
           return (
-            <article key={p.url} className="op-page" id={anchor(p.url)}>
+            <article key={p.url} className={folded.has(p.url) ? `op-page ${extra}` : "op-page"} id={anchor(p.url)}>
               <div className="op-head">
                 {p.score !== null && !p.needsRecheck ? <ScoreDial score={p.score} size={56} /> : <span className="wr-dial-empty op-dial-empty">—</span>}
                 <div className="stack" style={{ gap: 2, minWidth: 0, flex: 1 }}>
@@ -270,6 +278,15 @@ export async function OnPagePanel({ businessId }: { businessId: string }) {
                 PRIORITIES.map((prio) => {
                   const list = p.ideas.filter((i) => i.priority === prio);
                   if (!list.length) return null;
+                  // Las de prioridad baja quedan cerradas: primero lo urgente.
+                  if (prio === "baja")
+                    return (
+                      <Fold key={prio} inline summary={t(`${list.length} ${list.length === 1 ? "idea" : "ideas"} de prioridad baja`, `${list.length} low-priority ${list.length === 1 ? "idea" : "ideas"}`)}>
+                        <ul className="op-ideas">
+                          {list.map((idea, i) => <IdeaItem key={`${idea.id}-${i}`} idea={idea} t={t} />)}
+                        </ul>
+                      </Fold>
+                    );
                   return (
                     <div key={prio} className="stack" style={{ gap: 6 }}>
                       <span className={`pill ${PRIORITY_PILL[prio]}`} style={{ alignSelf: "flex-start" }}>{priorityLabel(prio, t)}</span>
@@ -368,6 +385,7 @@ export async function OnPagePanel({ businessId }: { businessId: string }) {
           );
         })}
       </div>
+      </ShowMore>
     </>,
   );
 }

@@ -13,6 +13,8 @@ type Props = {
   initial: string[];
   /** Nombres de las IAs que se van a consultar. */
   providers: string[];
+  /** Ya hay una revisión: las preguntas empiezan cerradas (se ven al tocar «Ver o cambiar»). */
+  collapsed?: boolean;
 };
 
 /** Mientras las IAs contestan: pasos aproximados y el tiempo que lleva. */
@@ -49,12 +51,13 @@ function Working({ pending, providers, count }: { pending: boolean; providers: s
   );
 }
 
-export function VisibilityForm({ action, suggest, initial, providers }: Props) {
+export function VisibilityForm({ action, suggest, initial, providers, collapsed = false }: Props) {
   const { t } = useT();
   const [result, run, checking] = useActionState(action, null);
   const [questions, setQuestions] = useState<string[]>(initial.length ? initial.slice(0, MAX) : [""]);
   const [error, setError] = useState("");
   const [suggesting, startSuggest] = useTransition();
+  const [editing, setEditing] = useState(!collapsed || !initial.length);
   const filled = questions.filter((q) => q.trim()).length;
 
   const setAt = (i: number, v: string) => setQuestions((qs) => qs.map((q, j) => (j === i ? v : q)));
@@ -76,6 +79,18 @@ export function VisibilityForm({ action, suggest, initial, providers }: Props) {
     <form action={run} className={`ai-box glow stack${checking ? " busy" : ""}`} style={{ gap: 14 }}>
       {/* Mientras las IAs contestan, el formulario se esconde sin desmontarse: así no se pierden las preguntas. */}
       <div className="stack" style={{ gap: 14, display: checking ? "none" : undefined }} aria-hidden={checking}>
+        {!editing && (
+          <div className="row between" style={{ gap: 8 }}>
+            <strong className="ai-title">
+              {t(`Preguntas de tus clientes (${filled})`, `Your customers' questions (${filled})`)}
+            </strong>
+            <button type="button" className="btn link" style={{ minHeight: 0, padding: 0 }} aria-expanded={false} onClick={() => setEditing(true)}>
+              {t("Ver o cambiar las preguntas ▸", "See or change the questions ▸")}
+            </button>
+          </div>
+        )}
+        {/* Cerradas siguen en el formulario (escondidas): así se mandan igual al revisar. */}
+        <div className="stack" style={{ gap: 14, display: editing ? undefined : "none" }}>
         <div className="stack" style={{ gap: 4 }}>
           <strong className="ai-title">{t("Preguntas de tus clientes", "Your customers' questions")}</strong>
           <p className="small muted">
@@ -112,6 +127,7 @@ export function VisibilityForm({ action, suggest, initial, providers }: Props) {
           <button type="button" className="btn" onClick={ideas} disabled={suggesting}>
             {suggesting ? t("La IA está pensando preguntas…", "The AI is coming up with questions…") : `✦ ${t("Sugerir preguntas", "Suggest questions")}`}
           </button>
+        </div>
         </div>
         {error && <p className="note error" role="alert">{error}</p>}
         {result && <p className={result.ok ? "note ok" : "note error"} role="status">{result.message}</p>}

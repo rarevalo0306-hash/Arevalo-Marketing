@@ -7,6 +7,7 @@ import type { VideoJob } from "@/lib/fal";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useT } from "@/components/I18n";
+import s from "./Composer.module.css";
 import { errorText, intlLocale } from "@/lib/i18n";
 import {
   CHANNELS,
@@ -99,6 +100,10 @@ export function Composer({ businessId, businessName, color, connected, contactCo
   const [shape, setShape] = useState("square");
   const [template, setTemplate] = useState(-1);
   const [steps, setSteps] = useState<string[]>([]);
+  // Con IA, primero se ve solo la caja "¿Qué quieres publicar?". El resto aparece al elegir un camino.
+  const [started, setStarted] = useState(false);
+  // Volver a abrir la caja de arriba después de empezar (para cambiar la idea o usar la IA otra vez).
+  const [boxOpen, setBoxOpen] = useState(false);
 
   async function runDesign(photo = basePhoto) {
     if (!aiMedia || !photo) return;
@@ -176,6 +181,8 @@ export function Composer({ businessId, businessName, color, connected, contactCo
       setHeadline(p.imageHeadline);
       setSteps(p.imageSteps ?? []);
       setVariants({ facebook: p.facebook, instagram: p.instagram, tiktok: p.tiktok, google: p.google, sms: p.sms, email: p.email });
+      setStarted(true);
+      setBoxOpen(false);
       return p;
     } catch (e) {
       setAiError(errorText(e, uiLang));
@@ -196,6 +203,26 @@ export function Composer({ businessId, businessName, color, connected, contactCo
       await runMedia("photo", p.imageIdea, p.imageHeadline, () => setMagicStep(2), p.imageSteps ?? []);
     }
     setMagicStep(3);
+  }
+
+  /** Los botones de IA se ven activos siempre; si la caja está vacía, se pide la idea primero. */
+  function needIdea() {
+    if (idea.trim()) return false;
+    setAiError(t("Primero escribe arriba qué quieres publicar.", "First write above what you want to post."));
+    document.getElementById("idea")?.focus();
+    return true;
+  }
+
+  /** "Lo escribo yo": lo que escribiste pasa tal cual a "Tu mensaje", sin IA. */
+  function keepOwnText() {
+    if (idea.trim()) {
+      setText(idea);
+      // Sin versiones de la IA: se publica tu texto en todos los canales.
+      setVariants({});
+    }
+    setAiError("");
+    setStarted(true);
+    setBoxOpen(false);
   }
 
   useEffect(() => {
@@ -264,280 +291,321 @@ export function Composer({ businessId, businessName, color, connected, contactCo
   }
   if (pv?.id === "email") { head = subject || t("[Asunto del email]", "[Email subject]"); headLabel = t("Asunto", "Subject"); }
 
+  const magicRunning = magicStep >= 0 && magicStep < 3;
+  const busy = aiBusy || magicRunning;
+  // Con IA: la caja de arriba se ve al principio, mientras la IA trabaja, o si la vuelves a abrir.
+  const showBox = !!aiWrite && (!started || boxOpen || busy);
+  const showRest = !aiWrite || started;
+  const fromAi = Object.keys(variants).length > 0;
+  const photoIdea = imageIdea && !aiMedia && <p className="small"><strong>{t("Idea de foto:", "Photo idea:")}</strong> {imageIdea}</p>;
+
   return (
-    <form action={action} className="grid-2">
-      <section className="card" aria-labelledby="h-msg">
-        <input type="hidden" name="variants" value={JSON.stringify(variants)} />
-        <input type="hidden" name="source" value={Object.keys(variants).length ? "ai" : "manual"} />
-        {aiWrite && (
-          <div className={aiBusy || magicStep >= 0 && magicStep < 3 ? "ai-box glow busy" : "ai-box glow"}>
-            <label htmlFor="idea" className="lbl ai-title">✦ {t("Crea con IA", "Create with AI")}</label>
-            <textarea id="idea" className="field" rows={2} style={{ minHeight: 64 }} placeholder={t(
-                "¿Sobre qué quieres publicar? Ej.: qué hacer si se filtra el techo después de una tormenta en Miami",
-                "What do you want to post about? E.g., what to do if your roof leaks after a storm in Miami",
-              )} value={idea} onChange={(e) => setIdea(e.target.value)} />
-            <div className="row">
-              <label htmlFor="lang" className="sr-only">{t("Idioma", "Language")}</label>
-              <select id="lang" className="field" style={{ width: "auto" }} value={lang} onChange={(e) => setLang(e.target.value)}>
+    <form action={action} className={s.form}>
+      <input type="hidden" name="variants" value={JSON.stringify(variants)} />
+      <input type="hidden" name="source" value={fromAi ? "ai" : "manual"} />
+      {showBox && (
+        <section className={busy ? `ai-box glow busy ${s.start}` : `ai-box glow ${s.start}`} aria-labelledby="h-idea">
+          <div className={s.head}>
+            <label id="h-idea" htmlFor="idea" className={s.title}>{t("¿Qué quieres publicar?", "What do you want to post?")}</label>
+            <span className={s.lang}>
+              <label htmlFor="lang">{t("Idioma", "Language")}</label>
+              <select id="lang" className={`field ${s.langSelect}`} value={lang} onChange={(e) => setLang(e.target.value)}>
                 <option value="es">{t("Español", "Spanish")}</option>
                 <option value="en">English</option>
                 <option value="both">{t("Español + English", "Spanish + English")}</option>
               </select>
-              {aiMedia && (
-                <button type="button" className="btn ai" disabled={aiBusy || !!mediaBusy || !idea.trim()} onClick={() => runMagic()}>
-                  ✦ {t("Hacer todo con IA", "Do it all with AI")}
-                </button>
-              )}
-              <button type="button" className={aiMedia ? "btn" : "btn ai"} disabled={aiBusy || !!mediaBusy || !idea.trim()} onClick={() => runAi()}>
-                {aiBusy && magicStep < 0 ? t("Escribiendo…", "Writing…") : aiMedia ? t("Solo el texto", "Just the text") : t("Escribir publicación", "Write post")}
-              </button>
-            </div>
-            {magicStep >= 0 && (
-              <ol className="magic-steps" aria-live="polite">
-                {MAGIC_STEPS.map(([es, en], i) => {
-                  if (i > 0 && i < 3 && !aiMedia) return null;
-                  const state = i < magicStep || magicStep === 3 ? "done" : i === magicStep ? "now" : "next";
-                  return <li key={es} className={state}>{t(es, en)}</li>;
-                })}
-              </ol>
-            )}
-            {magicStep < 0 && (
-              <p className="small muted">
-                {aiMedia
-                  ? t("La IA escribe una versión para cada red, crea la foto y le pone tu marca. Tú revisas y publicas.", "AI writes a version for each network, creates the photo, and adds your brand. You review and publish.")
-                  : t("La IA escribe una versión para cada red. Tú revisas y publicas.", "AI writes a version for each network. You review and publish.")}
-              </p>
-            )}
-            {aiError && <p className="note error" role="alert">{aiError}</p>}
-            {imageIdea && !aiMedia && <p className="small"><strong>{t("Idea de foto:", "Photo idea:")}</strong> {imageIdea}</p>}
+            </span>
           </div>
-        )}
-        <div className="stack">
-          <label id="h-msg" htmlFor="text" className="lbl">{t("Tu mensaje", "Your message")}</label>
-          <textarea id="text" name="text" className="field" rows={6} required placeholder={t("¿Qué quieres decirle a tus clientes hoy?", "What do you want to tell your customers today?")} value={text} onChange={(e) => setText(e.target.value)} />
-          <div className="row between small muted"><span>{t("Un solo texto para todos los canales", "One text for all channels")}</span><span>{text.length.toLocaleString(intlLocale(uiLang))} {t("caracteres", "characters")}</span></div>
-        </div>
-
-        <div className="stack">
-          <div className="lbl">{t("Foto o video", "Photo or video")}</div>
-          {aiMedia && (
-            <div className="ai-box">
-              <label htmlFor="imageIdea" className="lbl ai-title">✦ {t("Crear foto o video con IA", "Create a photo or video with AI")}</label>
-              <textarea id="imageIdea" className="field" rows={2} style={{ minHeight: 64 }} placeholder={t("Describe la imagen. Ej.: casa en Miami con el techo reparado, día soleado", "Describe the image. E.g., a house in Miami with a repaired roof, sunny day")} value={imageIdea} onChange={(e) => setImageIdea(e.target.value)} />
-              <div className="row">
-                <button type="button" className="btn on" disabled={!!mediaBusy || !imageIdea.trim()} onClick={() => runMedia("photo")}>{t("Crear foto", "Create photo")}</button>
-                {aiMedia.video && <button type="button" className="btn outline" disabled={!!mediaBusy || !imageIdea.trim()} onClick={() => runMedia("video")}>{t("Crear video (5 seg)", "Create video (5 sec)")}</button>}
-              </div>
-              {mediaBusy && <p className="small muted" role="status">{mediaBusy}</p>}
-              {mediaError && <p className="note error" role="alert">{mediaError}</p>}
+          <textarea id="idea" className={`field ${s.idea}`} rows={3} placeholder={t(
+              "Escribe tu idea o tu mensaje completo. Ej.: esta semana 10% de descuento para clientes nuevos",
+              "Write your idea or your full message. E.g., 10% off for new customers this week",
+            )} value={idea} onChange={(e) => { setIdea(e.target.value); if (aiError) setAiError(""); }} />
+          <div className={s.choices} role="group" aria-label={t("¿Cómo lo hacemos?", "How should we do it?")}>
+            {aiMedia && (
+              <button type="button" className={`btn ai ${s.choice} ${s.main}`} disabled={busy || !!mediaBusy} onClick={() => { if (!needIdea()) void runMagic(); }}>
+                <span>✦ {t("Que la IA lo haga todo", "Let AI do it all")}</span>
+                <small>{t("Texto para cada red, foto y tu marca", "Text for each network, photo, and your brand")}</small>
+              </button>
+            )}
+            <button type="button" className={aiMedia ? `btn ${s.choice}` : `btn ai ${s.choice} ${s.main}`} disabled={busy || !!mediaBusy} onClick={() => { if (needIdea()) return; setMagicStep(-1); void runAi(); }}>
+              <span>✦ {aiBusy && magicStep < 0 ? t("Escribiendo…", "Writing…") : aiMedia ? t("Solo mejorar o escribir el texto", "Just improve or write the text") : t("Que la IA escriba el texto", "Let AI write the text")}</span>
+              <small>{aiMedia ? t("Una versión para cada red, sin foto", "A version for each network, no photo") : t("Una versión para cada red", "A version for each network")}</small>
+            </button>
+            <button type="button" className={`btn ${s.choice} ${s.own}`} disabled={busy} onClick={() => { setMagicStep(-1); keepOwnText(); }}>
+              <span>{idea.trim() ? t("Usar mi texto tal cual", "Use my text as is") : t("Lo escribo yo", "I'll write it myself")}</span>
+              <small>{t("Sin IA: pasas directo a elegir canales", "No AI: go straight to picking channels")}</small>
+            </button>
+          </div>
+          {magicStep >= 0 && (
+            <ol className="magic-steps" aria-live="polite">
+              {MAGIC_STEPS.map(([es, en], i) => {
+                if (i > 0 && i < 3 && !aiMedia) return null;
+                const state = i < magicStep || magicStep === 3 ? "done" : i === magicStep ? "now" : "next";
+                return <li key={es} className={state}>{t(es, en)}</li>;
+              })}
+            </ol>
+          )}
+          {aiBusy && magicStep < 0 && <p className="small muted" role="status">{t("La IA está escribiendo una versión para cada red…", "AI is writing a version for each network…")}</p>}
+          {aiError && <p className="note error" role="alert">{aiError}</p>}
+          {photoIdea}
+          {started && !busy && (
+            <div className="row">
+              <button type="button" className="btn link" onClick={() => setBoxOpen(false)}>{t("Cancelar, seguir con lo que tenía", "Cancel, keep what I had")}</button>
             </div>
           )}
-          {aiMedia && mediaType === "photo" && (basePhoto || /^https:\/\//.test(mediaLink)) && (
-            <div className="stack" style={{ gap: 10, padding: 16, borderRadius: 12, border: "1.5px solid var(--line)" }}>
-              <div className="lbl">✦ {t("Diseño con tu marca", "Design with your brand")}</div>
-              <p className="small muted">{t("Pone tu logo, tu color, un titular y tu teléfono sobre la foto, con letras perfectas.", "Puts your logo, your color, a headline, and your phone number on the photo, with perfect lettering.")}</p>
-              <label htmlFor="headline" className="small" style={{ fontWeight: 600 }}>{t("Titular en la foto", "Headline on the photo")}</label>
-              <input id="headline" className="field" maxLength={80} placeholder={t("Ej.: ¿Daños en tu techo después de la tormenta?", "E.g., Roof damage after the storm?")} value={headline} onChange={(e) => setHeadline(e.target.value)} />
-              <div className="row">
-                <label htmlFor="template" className="sr-only">{t("Plantilla", "Template")}</label>
-                <select id="template" className="field" style={{ width: "auto" }} value={template} onChange={(e) => setTemplate(Number(e.target.value))}>
-                  <option value={-1}>✦ {t("La IA elige la plantilla", "AI picks the template")}</option>
-                  {aiMedia.templates.map((t, i) => <option key={i} value={i}>{t.name}</option>)}
-                </select>
-                <label htmlFor="shape" className="sr-only">{t("Tamaño", "Size")}</label>
-                <select id="shape" className="field" style={{ width: "auto" }} value={shape} onChange={(e) => setShape(e.target.value)}>
-                  <option value="square">{t("Cuadrado · Facebook e Instagram", "Square · Facebook and Instagram")}</option>
-                  <option value="portrait">{t("Vertical 4:5 · Instagram", "Portrait 4:5 · Instagram")}</option>
-                  <option value="story">{t("Historia / Reel 9:16", "Story / Reel 9:16")}</option>
-                </select>
-                <button type="button" className="btn on" disabled={!!mediaBusy || !headline.trim()} onClick={() => runDesign(basePhoto || mediaLink)}>{t("Diseñar", "Design")}</button>
-              </div>
-              {(template === -1 ? steps.length > 0 : aiMedia.templates[template]?.list) && (
-                <div className="stack" style={{ gap: 6 }}>
-                  <label htmlFor="steps" className="small" style={{ fontWeight: 600 }}>{t("Pasos para la plantilla de lista (uno por línea, máximo 3)", "Steps for the list template (one per line, 3 max)")}</label>
-                  <textarea id="steps" className="field" style={{ minHeight: 84 }} value={steps.join("\n")} onChange={(e) => setSteps(e.target.value.split("\n").slice(0, 3))} />
+        </section>
+      )}
+      {aiWrite && !showBox && (
+        <div className={s.bar}>
+          <div className={s.barText}>
+            <span>
+              {magicStep === 3
+                ? aiMedia
+                  ? t("✦ Listo: la IA escribió para cada red y preparó la foto. Revisa abajo y publica.", "✦ Done: AI wrote for each network and made the photo. Check below and publish.")
+                  : t("✦ Listo: la IA escribió para cada red. Revisa abajo y publica.", "✦ Done: AI wrote for each network. Check below and publish.")
+                : fromAi
+                  ? t("✦ La IA escribió una versión para cada red. Revisa abajo y publica.", "✦ AI wrote a version for each network. Check below and publish.")
+                  : t("Usas tu propio texto. Revísalo abajo y publica.", "You're using your own text. Check it below and publish.")}
+            </span>
+            {idea.trim() && <span className={s.quote}>«{idea.trim()}»</span>}
+          </div>
+          <div className={s.barBtns}>
+            <button type="button" className="btn" onClick={() => { setMagicStep(-1); setBoxOpen(true); }}>✦ {t("Cambiar la idea o usar la IA", "Change the idea or use AI")}</button>
+          </div>
+        </div>
+      )}
+      {aiWrite && !showBox && photoIdea}
+      {showRest && (
+        <div className="grid-2">
+          <section className="card" aria-labelledby="h-msg">
+            <div className="stack">
+              <label id="h-msg" htmlFor="text" className="lbl">{t("Tu mensaje", "Your message")}</label>
+              <textarea id="text" name="text" className="field" rows={6} required placeholder={t("¿Qué quieres decirle a tus clientes hoy?", "What do you want to tell your customers today?")} value={text} onChange={(e) => setText(e.target.value)} />
+              <div className="row between small muted"><span>{t("Un solo texto para todos los canales", "One text for all channels")}</span><span>{text.length.toLocaleString(intlLocale(uiLang))} {t("caracteres", "characters")}</span></div>
+            </div>
+
+            <div className="stack">
+              <div className="lbl">{t("Foto o video", "Photo or video")}</div>
+              {aiMedia && (
+                <div className="ai-box">
+                  <label htmlFor="imageIdea" className="lbl ai-title">✦ {t("Crear foto o video con IA", "Create a photo or video with AI")}</label>
+                  <textarea id="imageIdea" className="field" rows={2} style={{ minHeight: 64 }} placeholder={t("Describe la imagen. Ej.: casa en Miami con el techo reparado, día soleado", "Describe the image. E.g., a house in Miami with a repaired roof, sunny day")} value={imageIdea} onChange={(e) => setImageIdea(e.target.value)} />
+                  <div className="row">
+                    <button type="button" className="btn on" disabled={!!mediaBusy || !imageIdea.trim()} onClick={() => runMedia("photo")}>{t("Crear foto", "Create photo")}</button>
+                    {aiMedia.video && <button type="button" className="btn outline" disabled={!!mediaBusy || !imageIdea.trim()} onClick={() => runMedia("video")}>{t("Crear video (5 seg)", "Create video (5 sec)")}</button>}
+                  </div>
+                  {mediaBusy && <p className="small muted" role="status">{mediaBusy}</p>}
+                  {mediaError && <p className="note error" role="alert">{mediaError}</p>}
                 </div>
               )}
-              <div className="row">
-                {basePhoto && mediaLink !== basePhoto && (
-                  <button type="button" className="btn link" onClick={() => setMediaLink(basePhoto)}>{t("Usar la foto sin diseño", "Use the photo without the design")}</button>
+              {aiMedia && mediaType === "photo" && (basePhoto || /^https:\/\//.test(mediaLink)) && (
+                <div className="stack" style={{ gap: 10, padding: 16, borderRadius: 12, border: "1.5px solid var(--line)" }}>
+                  <div className="lbl">✦ {t("Diseño con tu marca", "Design with your brand")}</div>
+                  <p className="small muted">{t("Pone tu logo, tu color, un titular y tu teléfono sobre la foto, con letras perfectas.", "Puts your logo, your color, a headline, and your phone number on the photo, with perfect lettering.")}</p>
+                  <label htmlFor="headline" className="small" style={{ fontWeight: 600 }}>{t("Titular en la foto", "Headline on the photo")}</label>
+                  <input id="headline" className="field" maxLength={80} placeholder={t("Ej.: ¿Daños en tu techo después de la tormenta?", "E.g., Roof damage after the storm?")} value={headline} onChange={(e) => setHeadline(e.target.value)} />
+                  <div className="row">
+                    <label htmlFor="template" className="sr-only">{t("Plantilla", "Template")}</label>
+                    <select id="template" className="field" style={{ width: "auto" }} value={template} onChange={(e) => setTemplate(Number(e.target.value))}>
+                      <option value={-1}>✦ {t("La IA elige la plantilla", "AI picks the template")}</option>
+                      {aiMedia.templates.map((t, i) => <option key={i} value={i}>{t.name}</option>)}
+                    </select>
+                    <label htmlFor="shape" className="sr-only">{t("Tamaño", "Size")}</label>
+                    <select id="shape" className="field" style={{ width: "auto" }} value={shape} onChange={(e) => setShape(e.target.value)}>
+                      <option value="square">{t("Cuadrado · Facebook e Instagram", "Square · Facebook and Instagram")}</option>
+                      <option value="portrait">{t("Vertical 4:5 · Instagram", "Portrait 4:5 · Instagram")}</option>
+                      <option value="story">{t("Historia / Reel 9:16", "Story / Reel 9:16")}</option>
+                    </select>
+                    <button type="button" className="btn on" disabled={!!mediaBusy || !headline.trim()} onClick={() => runDesign(basePhoto || mediaLink)}>{t("Diseñar", "Design")}</button>
+                  </div>
+                  {(template === -1 ? steps.length > 0 : aiMedia.templates[template]?.list) && (
+                    <div className="stack" style={{ gap: 6 }}>
+                      <label htmlFor="steps" className="small" style={{ fontWeight: 600 }}>{t("Pasos para la plantilla de lista (uno por línea, máximo 3)", "Steps for the list template (one per line, 3 max)")}</label>
+                      <textarea id="steps" className="field" style={{ minHeight: 84 }} value={steps.join("\n")} onChange={(e) => setSteps(e.target.value.split("\n").slice(0, 3))} />
+                    </div>
+                  )}
+                  <div className="row">
+                    {basePhoto && mediaLink !== basePhoto && (
+                      <button type="button" className="btn link" onClick={() => setMediaLink(basePhoto)}>{t("Usar la foto sin diseño", "Use the photo without the design")}</button>
+                    )}
+                  </div>
+                </div>
+              )}
+              <input type="hidden" name="mediaType" value={mediaType} />
+              <div className="row" role="group" aria-label={t("Tipo de archivo", "File type")}>
+                {([["none", t("Sin archivo", "No file")], ["photo", t("Foto", "Photo")], ["video", t("Video", "Video")]] as const).map(([v, l]) => (
+                  <button key={v} type="button" className={mediaType === v ? "btn on" : "btn"} aria-pressed={mediaType === v} onClick={() => { setMediaType(v); setFileUrl(""); }}>{l}</button>
+                ))}
+              </div>
+              {mediaType !== "none" && (
+                <div className="stack" style={{ padding: 14, border: "1.5px dashed #94a3b8", borderRadius: 10 }}>
+                  <label htmlFor="file" className="small" style={{ fontWeight: 500 }}>{t("Sube el archivo desde tu computadora o celular", "Upload the file from your computer or phone")}</label>
+                  <input
+                    id="file"
+                    name={upload ? undefined : "file"}
+                    type="file"
+                    accept={mediaType === "video" ? "video/mp4,video/quicktime,video/webm" : "image/jpeg,image/png,image/webp,image/gif"}
+                    onChange={(e) => onFile(e.target.files?.[0])}
+                  />
+                  {uploading && <p className="small muted" role="status">{t("Subiendo archivo…", "Uploading file…")}</p>}
+                  {uploadError && <p className="note error" role="alert">{uploadError}</p>}
+                  <label htmlFor="mediaLink" className="small muted">{t("o pega un enlace público al archivo", "or paste a public link to the file")}</label>
+                  <input id="mediaLink" name="mediaLink" type="url" className="field" placeholder="https://…" value={mediaLink} onChange={(e) => setMediaLink(e.target.value)} />
+                </div>
+              )}
+            </div>
+
+            <fieldset style={{ border: 0, margin: 0, padding: 0 }} className="stack">
+              <legend className="lbl" style={{ padding: 0, marginBottom: 10 }}>{t("¿Dónde se publica?", "Where does it go?")}</legend>
+              <div className="chips">
+                {channels.map((c) => {
+                  const isConnected = connected.includes(c.id);
+                  const checked = on.has(c.id);
+                  return (
+                    <label key={c.id} className={!isConnected ? "chip off" : checked ? "chip on" : "chip"}>
+                      <input type="checkbox" name="channels" value={c.id} checked={checked} disabled={!isConnected} onChange={() => toggle(c.id)} />
+                      <span className="mono">{c.mono}</span>
+                      <span className="stack" style={{ gap: 0 }}>
+                        <span style={{ fontWeight: 600, fontSize: 14 }}>{c.name}</span>
+                        <span className="sub">
+                          {!isConnected ? t("Sin conectar", "Not connected")
+                            : c.id === "email" ? t(`${contactCounts.email} contactos`, `${contactCounts.email} contacts`)
+                            : c.id === "sms" ? t(`${contactCounts.sms} contactos`, `${contactCounts.sms} contacts`)
+                            : c.kind}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+              {connected.length < CHANNELS.length && (
+                <p className="small muted">
+                  {t("Los canales en gris no están conectados.", "Grayed-out channels aren't connected.")}{" "}
+                  <Link href={`/b/${businessId}/conexiones`}>{t("Conectar canales", "Connect channels")}</Link>
+                </p>
+              )}
+            </fieldset>
+
+            {(on.has("email") || on.has("seo")) && (
+              <div className="stack" style={{ gap: 14, padding: 16, borderRadius: 10, background: "var(--ground)" }}>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{t("Datos extra para algunos canales", "Extra details for some channels")}</div>
+                {on.has("email") && (
+                  <div className="stack">
+                    <label htmlFor="subject" className="small" style={{ fontWeight: 500 }}>{t("Asunto del email", "Email subject")}</label>
+                    <input id="subject" name="subject" className="field" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder={t("Ej.: Lo que debes saber antes de reclamar a tu seguro", "E.g., What to know before filing an insurance claim")} />
+                  </div>
+                )}
+                {on.has("seo") && (
+                  <div className="stack">
+                    <label htmlFor="seoTitle" className="small" style={{ fontWeight: 500 }}>{t("Título del artículo para tu sitio (en español)", "Article title for your website (in Spanish)")}</label>
+                    <input id="seoTitle" name="seoTitle" className="field" value={seoTitle} onChange={(e) => setSeoTitle(e.target.value)} placeholder={t("Ej.: Ajustador público en [tu ciudad]", "E.g., Ajustador público en [your city]")} />
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="stack">
+              <div className="lbl">{t("¿Cuándo?", "When?")}</div>
+              <input type="hidden" name="when" value={when} />
+              <input type="hidden" name="scheduledAt" value={scheduledIso} />
+              <div className="row" role="group" aria-label={t("Cuándo publicar", "When to publish")}>
+                <button type="button" className={when === "now" ? "btn on" : "btn"} aria-pressed={when === "now"} onClick={() => setWhen("now")}>{t("Ahora mismo", "Right now")}</button>
+                <button type="button" className={when === "later" ? "btn on" : "btn"} aria-pressed={when === "later"} onClick={() => setWhen("later")}>{t("Programar", "Schedule")}</button>
+                {when === "later" && (
+                  <>
+                    <label htmlFor="when" className="sr-only">{t("Fecha y hora", "Date and time")}</label>
+                    <input id="when" type="datetime-local" className="field" style={{ width: "auto" }} value={localDate} onChange={(e) => setLocalDate(e.target.value)} />
+                  </>
                 )}
               </div>
             </div>
-          )}
-          <input type="hidden" name="mediaType" value={mediaType} />
-          <div className="row" role="group" aria-label={t("Tipo de archivo", "File type")}>
-            {([["none", t("Sin archivo", "No file")], ["photo", t("Foto", "Photo")], ["video", t("Video", "Video")]] as const).map(([v, l]) => (
-              <button key={v} type="button" className={mediaType === v ? "btn on" : "btn"} aria-pressed={mediaType === v} onClick={() => { setMediaType(v); setFileUrl(""); }}>{l}</button>
-            ))}
-          </div>
-          {mediaType !== "none" && (
-            <div className="stack" style={{ padding: 14, border: "1.5px dashed #94a3b8", borderRadius: 10 }}>
-              <label htmlFor="file" className="small" style={{ fontWeight: 500 }}>{t("Sube el archivo desde tu computadora o celular", "Upload the file from your computer or phone")}</label>
-              <input
-                id="file"
-                name={upload ? undefined : "file"}
-                type="file"
-                accept={mediaType === "video" ? "video/mp4,video/quicktime,video/webm" : "image/jpeg,image/png,image/webp,image/gif"}
-                onChange={(e) => onFile(e.target.files?.[0])}
-              />
-              {uploading && <p className="small muted" role="status">{t("Subiendo archivo…", "Uploading file…")}</p>}
-              {uploadError && <p className="note error" role="alert">{uploadError}</p>}
-              <label htmlFor="mediaLink" className="small muted">{t("o pega un enlace público al archivo", "or paste a public link to the file")}</label>
-              <input id="mediaLink" name="mediaLink" type="url" className="field" placeholder="https://…" value={mediaLink} onChange={(e) => setMediaLink(e.target.value)} />
+
+            <div className="row" style={{ borderTop: "1px solid var(--line)", paddingTop: 16, gap: 16 }}>
+              <SubmitButton disabled={cant} label={uploading ? t("Esperando a que suba el archivo…", "Waiting for the file to upload…") : label} />
+              <span className="small muted">{!text.trim() ? t("Escribe tu mensaje para empezar", "Write your message to get started") : t(`${ready} de ${n} listos`, `${ready} of ${n} ready`)}</span>
             </div>
-          )}
-        </div>
+          </section>
 
-        <fieldset style={{ border: 0, margin: 0, padding: 0 }} className="stack">
-          <legend className="lbl" style={{ padding: 0, marginBottom: 10 }}>{t("¿Dónde se publica?", "Where does it go?")}</legend>
-          <div className="chips">
-            {channels.map((c) => {
-              const isConnected = connected.includes(c.id);
-              const checked = on.has(c.id);
-              return (
-                <label key={c.id} className={!isConnected ? "chip off" : checked ? "chip on" : "chip"}>
-                  <input type="checkbox" name="channels" value={c.id} checked={checked} disabled={!isConnected} onChange={() => toggle(c.id)} />
-                  <span className="mono">{c.mono}</span>
-                  <span className="stack" style={{ gap: 0 }}>
-                    <span style={{ fontWeight: 600, fontSize: 14 }}>{c.name}</span>
-                    <span className="sub">
-                      {!isConnected ? t("Sin conectar", "Not connected")
-                        : c.id === "email" ? t(`${contactCounts.email} contactos`, `${contactCounts.email} contacts`)
-                        : c.id === "sms" ? t(`${contactCounts.sms} contactos`, `${contactCounts.sms} contacts`)
-                        : c.kind}
-                    </span>
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-          {connected.length < CHANNELS.length && (
-            <p className="small muted">
-              {t("Los canales en gris no están conectados.", "Grayed-out channels aren't connected.")}{" "}
-              <Link href={`/b/${businessId}/conexiones`}>{t("Conectar canales", "Connect channels")}</Link>
-            </p>
-          )}
-        </fieldset>
-
-        {(on.has("email") || on.has("seo")) && (
-          <div className="stack" style={{ gap: 14, padding: 16, borderRadius: 10, background: "var(--ground)" }}>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>{t("Datos extra para algunos canales", "Extra details for some channels")}</div>
-            {on.has("email") && (
-              <div className="stack">
-                <label htmlFor="subject" className="small" style={{ fontWeight: 500 }}>{t("Asunto del email", "Email subject")}</label>
-                <input id="subject" name="subject" className="field" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder={t("Ej.: Lo que debes saber antes de reclamar a tu seguro", "E.g., What to know before filing an insurance claim")} />
-              </div>
-            )}
-            {on.has("seo") && (
-              <div className="stack">
-                <label htmlFor="seoTitle" className="small" style={{ fontWeight: 500 }}>{t("Título del artículo para tu sitio (en español)", "Article title for your website (in Spanish)")}</label>
-                <input id="seoTitle" name="seoTitle" className="field" value={seoTitle} onChange={(e) => setSeoTitle(e.target.value)} placeholder={t("Ej.: Ajustador público en [tu ciudad]", "E.g., Ajustador público en [your city]")} />
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="stack">
-          <div className="lbl">{t("¿Cuándo?", "When?")}</div>
-          <input type="hidden" name="when" value={when} />
-          <input type="hidden" name="scheduledAt" value={scheduledIso} />
-          <div className="row" role="group" aria-label={t("Cuándo publicar", "When to publish")}>
-            <button type="button" className={when === "now" ? "btn on" : "btn"} aria-pressed={when === "now"} onClick={() => setWhen("now")}>{t("Ahora mismo", "Right now")}</button>
-            <button type="button" className={when === "later" ? "btn on" : "btn"} aria-pressed={when === "later"} onClick={() => setWhen("later")}>{t("Programar", "Schedule")}</button>
-            {when === "later" && (
+          <section className="card" aria-labelledby="h-prev">
+            <div className="row between">
+              <h2 id="h-prev">{t("Vista previa por canal", "Preview by channel")}</h2>
+              <span className="small muted">{t("Así se verá en cada lugar", "How it will look in each place")}</span>
+            </div>
+            {!pv ? (
+              <p className="empty">{t("Elige al menos un canal para ver la vista previa.", "Pick at least one channel to see the preview.")}</p>
+            ) : (
               <>
-                <label htmlFor="when" className="sr-only">{t("Fecha y hora", "Date and time")}</label>
-                <input id="when" type="datetime-local" className="field" style={{ width: "auto" }} value={localDate} onChange={(e) => setLocalDate(e.target.value)} />
+                <div className="tabs" role="tablist" aria-label={t("Canales", "Channels")}>
+                  {selected.map((c) => (
+                    <button key={c.id} type="button" role="tab" aria-selected={c.id === pv.id} className={c.id === pv.id ? "tab on" : "tab"} onClick={() => setPreview(c.id)}>{c.name}</button>
+                  ))}
+                </div>
+                <div className="preview">
+                  <div className="preview-head">
+                    <span className="avatar" style={{ background: color }}>{businessName.trim().charAt(0).toUpperCase()}</span>
+                    <div>
+                      <div style={{ fontWeight: 600 }}>{businessName}</div>
+                      <div className="small muted">{pv.kind} · {pv.name}</div>
+                    </div>
+                  </div>
+                  {head && (
+                    <div style={{ padding: "14px 16px 0" }}>
+                      <div className="small muted" style={{ fontWeight: 500 }}>{headLabel}</div>
+                      <div style={{ fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>{head}</div>
+                      {pv.id === "seo" && <div className="small muted" style={{ marginTop: 4 }}>{t(
+                        "Claude ordena tu texto en secciones, lo traduce al inglés y elige una foto de tu sitio. No agrega datos que no escribiste.",
+                        "Claude organizes your text into sections, translates it into English, and picks a photo from your website. It doesn't add facts you didn't write.",
+                      )}</div>}
+                    </div>
+                  )}
+                  {mediaType !== "none" && pv.id !== "sms" && (
+                    <div className="preview-media">
+                      {mediaSrc ? (
+                        mediaType === "video" ? <video src={mediaSrc} controls muted /> : (
+                          // eslint-disable-next-line @next/next/no-img-element -- vista previa local (blob:) o enlace externo
+                          <img src={mediaSrc} alt={t("Vista previa del archivo", "File preview")} />
+                        )
+                      ) : (
+                        <span>{mediaType === "video" ? t("Tu video", "Your video") : t("Tu foto", "Your photo")}</span>
+                      )}
+                    </div>
+                  )}
+                  <div className="preview-body">{body}</div>
+                </div>
+                {variants[pv.id] !== undefined && (
+                  <div className="stack">
+                    <label htmlFor="variant" className="small" style={{ fontWeight: 600 }}>{t(`Texto solo para ${pv.name}`, `Text just for ${pv.name}`)}</label>
+                    <textarea
+                      id="variant"
+                      className="field"
+                      rows={5}
+                      value={variants[pv.id]}
+                      onChange={(e) => setVariants((v) => ({ ...v, [pv.id]: e.target.value }))}
+                    />
+                  </div>
+                )}
+                <div className="stack">
+                  {notesFor(pv.id, draftFor(pv.id), uiLang).filter((x) => x.id !== "empty").map((x) => (
+                    <p key={x.id} className="note">{x.text}</p>
+                  ))}
+                </div>
+                <div className="stack" style={{ gap: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>{t("Estado de cada canal", "Status of each channel")}</div>
+                  {selected.map((c) => {
+                    const bad = isBlocked(c.id, draftFor(c.id));
+                    return (
+                      <div key={c.id} className="target">
+                        <span>{c.name}</span>
+                        <span className={!text.trim() ? "pill" : bad ? "pill partial" : "pill sent"}>{!text.trim() ? t("Esperando mensaje", "Waiting for message") : bad ? t("Revisar", "Check") : t("Listo", "Ready")}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </>
             )}
-          </div>
+          </section>
         </div>
-
-        <div className="row" style={{ borderTop: "1px solid var(--line)", paddingTop: 16, gap: 16 }}>
-          <SubmitButton disabled={cant} label={uploading ? t("Esperando a que suba el archivo…", "Waiting for the file to upload…") : label} />
-          <span className="small muted">{!text.trim() ? t("Escribe tu mensaje para empezar", "Write your message to get started") : t(`${ready} de ${n} listos`, `${ready} of ${n} ready`)}</span>
-        </div>
-      </section>
-
-      <section className="card" aria-labelledby="h-prev">
-        <div className="row between">
-          <h2 id="h-prev">{t("Vista previa por canal", "Preview by channel")}</h2>
-          <span className="small muted">{t("Así se verá en cada lugar", "How it will look in each place")}</span>
-        </div>
-        {!pv ? (
-          <p className="empty">{t("Elige al menos un canal para ver la vista previa.", "Pick at least one channel to see the preview.")}</p>
-        ) : (
-          <>
-            <div className="tabs" role="tablist" aria-label={t("Canales", "Channels")}>
-              {selected.map((c) => (
-                <button key={c.id} type="button" role="tab" aria-selected={c.id === pv.id} className={c.id === pv.id ? "tab on" : "tab"} onClick={() => setPreview(c.id)}>{c.name}</button>
-              ))}
-            </div>
-            <div className="preview">
-              <div className="preview-head">
-                <span className="avatar" style={{ background: color }}>{businessName.trim().charAt(0).toUpperCase()}</span>
-                <div>
-                  <div style={{ fontWeight: 600 }}>{businessName}</div>
-                  <div className="small muted">{pv.kind} · {pv.name}</div>
-                </div>
-              </div>
-              {head && (
-                <div style={{ padding: "14px 16px 0" }}>
-                  <div className="small muted" style={{ fontWeight: 500 }}>{headLabel}</div>
-                  <div style={{ fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>{head}</div>
-                  {pv.id === "seo" && <div className="small muted" style={{ marginTop: 4 }}>{t(
-                    "Claude ordena tu texto en secciones, lo traduce al inglés y elige una foto de tu sitio. No agrega datos que no escribiste.",
-                    "Claude organizes your text into sections, translates it into English, and picks a photo from your website. It doesn't add facts you didn't write.",
-                  )}</div>}
-                </div>
-              )}
-              {mediaType !== "none" && pv.id !== "sms" && (
-                <div className="preview-media">
-                  {mediaSrc ? (
-                    mediaType === "video" ? <video src={mediaSrc} controls muted /> : (
-                      // eslint-disable-next-line @next/next/no-img-element -- vista previa local (blob:) o enlace externo
-                      <img src={mediaSrc} alt={t("Vista previa del archivo", "File preview")} />
-                    )
-                  ) : (
-                    <span>{mediaType === "video" ? t("Tu video", "Your video") : t("Tu foto", "Your photo")}</span>
-                  )}
-                </div>
-              )}
-              <div className="preview-body">{body}</div>
-            </div>
-            {variants[pv.id] !== undefined && (
-              <div className="stack">
-                <label htmlFor="variant" className="small" style={{ fontWeight: 600 }}>{t(`Texto solo para ${pv.name}`, `Text just for ${pv.name}`)}</label>
-                <textarea
-                  id="variant"
-                  className="field"
-                  rows={5}
-                  value={variants[pv.id]}
-                  onChange={(e) => setVariants((v) => ({ ...v, [pv.id]: e.target.value }))}
-                />
-              </div>
-            )}
-            <div className="stack">
-              {notesFor(pv.id, draftFor(pv.id), uiLang).filter((x) => x.id !== "empty").map((x) => (
-                <p key={x.id} className="note">{x.text}</p>
-              ))}
-            </div>
-            <div className="stack" style={{ gap: 0 }}>
-              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>{t("Estado de cada canal", "Status of each channel")}</div>
-              {selected.map((c) => {
-                const bad = isBlocked(c.id, draftFor(c.id));
-                return (
-                  <div key={c.id} className="target">
-                    <span>{c.name}</span>
-                    <span className={!text.trim() ? "pill" : bad ? "pill partial" : "pill sent"}>{!text.trim() ? t("Esperando mensaje", "Waiting for message") : bad ? t("Revisar", "Check") : t("Listo", "Ready")}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        )}
-      </section>
+      )}
     </form>
   );
 }

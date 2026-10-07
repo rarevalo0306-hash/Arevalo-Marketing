@@ -1,0 +1,65 @@
+.summary {
+  gap: 12px;
+  padding: 18px 22px;
+}
+
+.summaryTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+}
+
+.count {
+  font-family: var(--display);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.label {
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--line-strong);
+}
+
+.fill {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--teal);
+}
+
+.tip {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--brand-soft);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.tip a {
+  font-weight: 700;
+}
+
+:global(html[data-theme="noche"]) .tip a {
+  color: #8db8ff;
+}
+
+.grid {
+  align-items: start;
+}

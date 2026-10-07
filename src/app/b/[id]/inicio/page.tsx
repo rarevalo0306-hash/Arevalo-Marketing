@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { MagicPrompt } from "@/components/MagicPrompt";
+import { SeoHomeCard, SeoHomeCardSkeleton } from "@/components/seo/SeoHomeCard";
 import { aiEnabled } from "@/lib/ai";
 import { CHANNEL_IDS, channelName, CHANNELS } from "@/lib/channels";
 import { db } from "@/lib/db";
@@ -83,6 +85,11 @@ export default async function InicioPage({ params }: { params: Promise<{ id: str
           <span className="stat-note">{next ? t("programada", "scheduled") : t("Nada programado", "Nothing scheduled")}</span>
         </Link>
       </div>
+
+      {/* Lo más importante del SEO, sin tener que abrir SEO. Se lee aparte para no frenar el resto de Inicio. */}
+      <Suspense fallback={<SeoHomeCardSkeleton />}>
+        <SeoHomeCard businessId={id} />
+      </Suspense>
 
       <div className="grid-2">
         <section className="card">

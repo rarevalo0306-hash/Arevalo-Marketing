@@ -1,6 +1,5 @@
 /* "Código para que Google entienda tu negocio": el código, lo que falta, el horario y dónde pegarlo. */
 .wrap { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
-.h3 { font-size: 16px; }
 
 /* El código: se desplaza dentro de su caja, nunca la página. */
 .code {
@@ -19,6 +18,8 @@
   -webkit-overflow-scrolling: touch;
 }
 .code code { font: inherit; }
+/* En el celular la caja es más baja: el código se lee desplazándolo dentro, y «Copiar código» lo copia entero. */
+@media (max-width: 640px) { .code { max-height: 200px; } }
 
 /* Lo que falta */
 .missing { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }

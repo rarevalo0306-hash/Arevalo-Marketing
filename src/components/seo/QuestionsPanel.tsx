@@ -1,30 +1,39 @@
 import Link from "next/link";
+import { capClass, Fold } from "@/components/seo/Fold";
 import { HowToRead } from "@/components/seo/HowToRead";
 import styles from "@/components/seo/QuestionsPanel.module.css";
+import { ShowMore } from "@/components/seo/ShowMore";
 import { intlLocale, type T } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { dataForSeoEnabled } from "@/lib/seo/dataforseo";
 import { loadQuestions, type QuestionGroup, type QuestionItem } from "@/lib/seo/questions";
 import { BUSINESS_TZ } from "@/lib/time";
 
-/** Cuántas palabras clave se muestran abiertas; las demás quedan en "Ver más". */
-const SHOWN_GROUPS = 4;
+/** Cuántas palabras clave y cuántas preguntas de cada una se ven antes de «Ver todas». */
+const SHOWN_GROUPS = 2;
+const SHOWN_QUESTIONS = 3;
 
 const shortUrl = (url: string) => url.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") || url;
 
-function Question({ q, businessId, t }: { q: QuestionItem; businessId: string; t: T }) {
+function Question({ q, businessId, t, className }: { q: QuestionItem; businessId: string; t: T; className?: string }) {
   const writer = `/b/${businessId}/seo/escribir`;
   const where = q.answered?.where;
   return (
-    <li className={`${styles.item} ${where === "site" ? styles.site : where === "article" ? styles.article : ""}`}>
-      <div className={styles.top}>
-        <span className={styles.question}>{q.question}</span>
+    <li className={`${styles.item} ${where === "site" ? styles.site : where === "article" ? styles.article : ""}${className ? ` ${className}` : ""}`}>
+      <span className={styles.question}>{q.question}</span>
+      {/* El estado y el botón de escribir en un mismo renglón: la tarjeta queda más corta. */}
+      <div className={styles.status}>
         {where === "site" ? (
           <span className="pill done">{t("Ya la respondes", "Already answered")}</span>
         ) : where === "article" ? (
           <span className="pill scheduled">{t("En un artículo tuyo", "In one of your articles")}</span>
         ) : (
           <span className="pill partial">{t("Sin responder", "Not answered")}</span>
+        )}
+        {!q.answered && (
+          <Link className={styles.write} href={`${writer}?${new URLSearchParams({ kw: q.topic })}`}>
+            {t("Escribir artículo →", "Write article →")}
+          </Link>
         )}
       </div>
       {q.answered?.where === "site" && (
@@ -52,36 +61,32 @@ function Question({ q, businessId, t }: { q: QuestionItem; businessId: string; t
           {q.keywords.slice(1).map((k) => `«${k}»`).join(", ")}
         </span>
       )}
-      {!q.answered && (
-        <Link className={styles.write} href={`${writer}?${new URLSearchParams({ kw: q.topic })}`}>
-          {t("Escribir artículo →", "Write article →")}
-        </Link>
-      )}
     </li>
   );
 }
 
-function Group({ g, businessId, t }: { g: QuestionGroup; businessId: string; t: T }) {
+function Group({ g, businessId, t, className }: { g: QuestionGroup; businessId: string; t: T; className?: string }) {
   const writer = `/b/${businessId}/seo/escribir`;
   return (
-    <li className={styles.group}>
+    <li className={`${styles.group}${className ? ` ${className}` : ""}`}>
       <span className={styles.keyword}>
         <span className="small muted" style={{ fontWeight: 500 }}>{t("Cuando buscan ", "When people search ")}</span>«{g.keyword}»
       </span>
       <ul className={styles.list}>
-        {g.questions.map((q) => (
-          <Question key={q.question} q={q} businessId={businessId} t={t} />
+        {g.questions.map((q, i) => (
+          <Question key={q.question} q={q} businessId={businessId} t={t} className={capClass(i, SHOWN_QUESTIONS)} />
         ))}
       </ul>
       {g.related.length > 0 && (
+        <Fold inline summary={t(`También buscan (${g.related.length} búsquedas parecidas)`, `People also search (${g.related.length} similar searches)`)}>
         <div className={styles.related}>
-          <span className="muted">{t("También buscan:", "People also search:")}</span>
           {g.related.map((r) => (
             <Link key={r} href={`${writer}?${new URLSearchParams({ kw: r })}`} className="tag" style={{ textDecoration: "none" }} title={t("Escribir un artículo para esta búsqueda", "Write an article for this search")}>
               {r}
             </Link>
           ))}
         </div>
+        </Fold>
       )}
     </li>
   );
@@ -173,8 +178,9 @@ export async function QuestionsPanel({ businessId }: { businessId: string }) {
   }
 
   const fmt = new Intl.DateTimeFormat(intlLocale(lang), { dateStyle: "long", timeZone: BUSINESS_TZ });
-  const shown = data.groups.slice(0, SHOWN_GROUPS);
-  const rest = data.groups.slice(SHOWN_GROUPS);
+  const listed = data.groups.reduce((n, g) => n + g.questions.length, 0);
+  const visible = data.groups.slice(0, SHOWN_GROUPS).reduce((n, g) => n + Math.min(SHOWN_QUESTIONS, g.questions.length), 0);
+  const hiddenGroups = Math.max(0, data.groups.length - SHOWN_GROUPS);
   const answered = data.answeredSite + data.answeredArticle;
 
   return (
@@ -200,21 +206,23 @@ export async function QuestionsPanel({ businessId }: { businessId: string }) {
           )}
         </p>
       )}
-      <ul className={styles.groups}>
-        {shown.map((g) => (
-          <Group key={g.keyword} g={g} businessId={businessId} t={t} />
-        ))}
-      </ul>
-      {rest.length > 0 && (
-        <details className={styles.more}>
-          <summary>{t(`Ver ${rest.length} palabras clave más`, `See ${rest.length} more keywords`)}</summary>
-          <ul className={styles.groups}>
-            {rest.map((g) => (
-              <Group key={g.keyword} g={g} businessId={businessId} t={t} />
-            ))}
-          </ul>
-        </details>
-      )}
+      <ShowMore
+        hidden={listed - visible}
+        more={
+          hiddenGroups > 0
+            ? t(
+                `Ver todas (${listed} preguntas de ${data.groups.length} palabras clave)`,
+                `See all (${listed} questions from ${data.groups.length} keywords)`,
+              )
+            : t(`Ver todas (${listed} preguntas)`, `See all (${listed} questions)`)
+        }
+      >
+        <ul className={styles.groups}>
+          {data.groups.map((g, i) => (
+            <Group key={g.keyword} g={g} businessId={businessId} t={t} className={capClass(i, SHOWN_GROUPS)} />
+          ))}
+        </ul>
+      </ShowMore>
       <p className="small muted" style={{ margin: 0 }}>
         {data.checkedAt && Date.parse(data.checkedAt) > 0
           ? t(`Preguntas de la revisión de posiciones del ${fmt.format(new Date(data.checkedAt))}.`, `Questions from the rankings check on ${fmt.format(new Date(data.checkedAt))}.`)

@@ -2,7 +2,9 @@ import Link from "next/link";
 import { refreshDecay } from "@/app/actions-seo-decay";
 import styles from "@/components/seo/Decay.module.css";
 import { DecayButton } from "@/components/seo/DecayButton";
+import { capClass, Fold } from "@/components/seo/Fold";
 import { HowToRead } from "@/components/seo/HowToRead";
+import { ShowMore } from "@/components/seo/ShowMore";
 import { db } from "@/lib/db";
 import { googleEnabled } from "@/lib/google-oauth";
 import { intlLocale, type T, type UiLang } from "@/lib/i18n";
@@ -42,13 +44,16 @@ function formats(lang: UiLang) {
 }
 type Fmt = ReturnType<typeof formats>;
 
+/** Cuántas páginas se ven antes de «Ver todas» (de la que más perdió a la que menos). */
+const PAGES_SHOWN = 3;
+
 const pillClass = { position: "pill failed", ctr: "pill partial", queries: "pill scheduled", demand: "pill" } as const;
 
-function PageItem({ p, businessId, f, t }: { p: DecayPage; businessId: string; f: Fmt; t: T }) {
+function PageItem({ p, businessId, f, t, className }: { p: DecayPage; businessId: string; f: Fmt; t: T; className?: string }) {
   const drop = p.before.clicks ? p.clicksLost / p.before.clicks : 0;
   const kw = p.lostQueries[0]?.query;
   return (
-    <li className={`${styles.item} ${styles[p.reason]}`}>
+    <li className={`${styles.item} ${styles[p.reason]}${className ? ` ${className}` : ""}`}>
       <div className={styles.head}>
         {/^https?:\/\//.test(p.url) ? (
           <a className={styles.url} href={p.url} target="_blank" rel="noopener noreferrer">
@@ -97,8 +102,7 @@ function PageItem({ p, businessId, f, t }: { p: DecayPage; businessId: string; f
       </div>
 
       {p.lostQueries.length > 0 && (
-        <div className="stack" style={{ gap: 6 }}>
-          <strong className="small">{t("Búsquedas que perdieron visitas", "Searches that lost visits")}</strong>
+        <Fold inline summary={t(`Búsquedas que perdieron visitas (${p.lostQueries.length})`, `Searches that lost visits (${p.lostQueries.length})`)}>
           <div className="table-wrap">
             <table>
               <thead>
@@ -123,7 +127,7 @@ function PageItem({ p, businessId, f, t }: { p: DecayPage; businessId: string; f
               </tbody>
             </table>
           </div>
-        </div>
+        </Fold>
       )}
 
       {p.reason !== "demand" && kw && (
@@ -279,9 +283,13 @@ export async function DecayPanel({ businessId }: { businessId: string }) {
                       `${f.int(report.decaying)} of ${f.int(report.pagesChecked)} ${report.pagesChecked === 1 ? "page" : "pages"} lost visits, from the most to the least.`,
                     )}
               </p>
-              <ul className={styles.list}>
-                {report.pages.map((p) => <PageItem key={p.url} p={p} businessId={businessId} f={f} t={t} />)}
-              </ul>
+              <ShowMore hidden={report.pages.length - PAGES_SHOWN} more={t(`Ver las ${report.pages.length} páginas`, `See all ${report.pages.length} pages`)}>
+                <ul className={styles.list}>
+                  {report.pages.map((p, i) => (
+                    <PageItem key={p.url} p={p} businessId={businessId} f={f} t={t} className={capClass(i, PAGES_SHOWN)} />
+                  ))}
+                </ul>
+              </ShowMore>
             </>
           )}
         </>

@@ -1,5 +1,7 @@
 import { runTraffic } from "@/app/actions-seo-traffic";
+import { capClass } from "@/components/seo/Fold";
 import { HowToRead } from "@/components/seo/HowToRead";
+import { ShowMore } from "@/components/seo/ShowMore";
 import help from "@/components/seo/SeoHelp.module.css";
 import { TrafficButton } from "@/components/seo/TrafficButton";
 import { type ChartSeries, TrafficChart } from "@/components/seo/TrafficChart";
@@ -24,6 +26,9 @@ import {
 } from "@/lib/seo/traffic";
 import { BUSINESS_TZ } from "@/lib/time";
 import { latestReports } from "@/lib/seo/reports";
+
+/** Cuántas páginas de cada competidor se ven antes de «Ver todas». */
+const PAGES_SHOWN = 5;
 
 /** Visitas de tu competencia e historial (estilo Traffic Analytics de Semrush): hoy, sus mejores páginas y 12 meses. */
 export async function TrafficPanel({ businessId }: { businessId: string }) {
@@ -297,11 +302,12 @@ export async function TrafficPanel({ businessId }: { businessId: string }) {
                       </span>
                     </summary>
                     {d.pages.length ? (
+                      <ShowMore hidden={d.pages.length - PAGES_SHOWN} more={t(`Ver sus ${d.pages.length} páginas`, `See all ${d.pages.length} pages`)}>
                       <ol className={styles.pages}>
-                        {d.pages.map((p) => {
+                        {d.pages.map((p, j) => {
                           const kw = p.topKeyword ?? p.topic;
                           return (
-                            <li key={p.url} className={styles.page}>
+                            <li key={p.url} className={[styles.page, capClass(j, PAGES_SHOWN)].filter(Boolean).join(" ")}>
                               <a className={styles.pageUrl} href={p.url} target="_blank" rel="noopener noreferrer">
                                 {p.url.replace(/^https?:\/\/(www\.)?/, "")}
                               </a>
@@ -323,6 +329,7 @@ export async function TrafficPanel({ businessId }: { businessId: string }) {
                           );
                         })}
                       </ol>
+                      </ShowMore>
                     ) : (
                       <p className="small muted">
                         {t(
@@ -336,14 +343,14 @@ export async function TrafficPanel({ businessId }: { businessId: string }) {
             </div>
           )}
 
-          <p className="small muted">
-            {t(
-              `Son estimados de DataForSEO para todo ${country} en Google (no por ciudad), no visitas exactas: sirven para comparar quién recibe más y cómo va cambiando. Tus visitas reales están en Search Console.`,
-              `These are DataForSEO estimates for all of ${country} on Google (not by city), not exact visits: use them to compare who gets more and how it's changing. Your real visits are in Search Console.`,
-            )}
-          </p>
           <HowToRead title={t("Cómo leer esto", "How to read this")}>
             <ul>
+              <li>
+                {t(
+                  `Son estimados de DataForSEO para todo ${country} en Google (no por ciudad), no visitas exactas: sirven para comparar quién recibe más y cómo va cambiando. Tus visitas reales están en Search Console.`,
+                  `These are DataForSEO estimates for all of ${country} on Google (not by city), not exact visits: use them to compare who gets more and how it's changing. Your real visits are in Search Console.`,
+                )}
+              </li>
               <li>{t("«Visitas al mes»: cuántas personas llegan a esa página desde Google en un mes, calculado con cuánta gente busca cada palabra y en qué lugar sale. Es un estimado para comparar, no un conteo exacto.", "“Visits a month”: how many people reach that website from Google in a month, calculated from how many people search each keyword and where it ranks. It's an estimate for comparing, not an exact count.")}</li>
               <li>{t("«Sale en N búsquedas»: en cuántas búsquedas de Google aparece (en cualquier lugar). «En los 3 primeros» y «en la primera página» son las que de verdad traen visitas.", "“Shows up for N searches”: how many Google searches it appears for (anywhere). “Top 3” and “page one” are the ones that actually bring visits.")}</li>
               <li>{t("«Valen US$ al mes en anuncios»: lo que costaría conseguir esas mismas visitas pagando anuncios en Google.", "“Worth US$ a month in ads”: what it would cost to get those same visits by paying for Google ads.")}</li>

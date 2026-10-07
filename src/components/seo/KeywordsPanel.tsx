@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { refreshKeywords } from "@/app/actions-seo-keywords";
+import { capClass, Fold } from "@/components/seo/Fold";
 import { HowToRead } from "@/components/seo/HowToRead";
 import { FollowButton, KeywordsButton } from "@/components/seo/KeywordsButton";
+import { ShowMore } from "@/components/seo/ShowMore";
 import { db } from "@/lib/db";
 import { intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
@@ -23,6 +25,9 @@ import { latestByZone, zonesWithout } from "@/lib/seo/zones";
 import { BUSINESS_TZ } from "@/lib/time";
 
 const IDEAS_SHOWN = 30;
+/** Cuántas filas se ven antes de «Ver todas»: tus palabras y las ideas. */
+const MINE_ROWS = 10;
+const IDEA_ROWS = 10;
 
 // [estilo, español, inglés]
 const COMPETITION: Record<Competition, [string, string, string]> = {
@@ -140,7 +145,7 @@ export async function KeywordsPanel({ businessId }: { businessId: string }) {
       </span>
     );
 
-  const table = (list: ZoneKwRow[], follow: boolean, cols: Zone[]) => (
+  const table = (list: ZoneKwRow[], follow: boolean, cols: Zone[], cap = Infinity) => (
     <div className="table-wrap">
       <table>
         <thead>
@@ -165,12 +170,12 @@ export async function KeywordsPanel({ businessId }: { businessId: string }) {
           </tr>
         </thead>
         <tbody>
-          {list.map(({ row: r, volumes }) => {
+          {list.map(({ row: r, volumes }, i) => {
             const dir = trendDirection(r.trend);
             const spark = t(`Búsquedas de los últimos meses: ${r.trend.map((v) => number.format(v)).join(", ")}`, `Searches in recent months: ${r.trend.map((v) => number.format(v)).join(", ")}`);
             const isTracked = trackedSet.has(r.keyword.toLowerCase());
             return (
-              <tr key={r.keyword}>
+              <tr key={r.keyword} className={capClass(i, cap)}>
                 <td><strong>{r.keyword}</strong></td>
                 {cols.map((z, i) => <td key={z.code} className="kw-num">{volumeCell(volumes[i], z)}</td>)}
                 <td>
@@ -236,18 +241,14 @@ export async function KeywordsPanel({ businessId }: { businessId: string }) {
         <>
           <div className="stack" style={{ gap: 8 }}>
             <span className="lbl">{t(`Tus palabras clave (${mine.length})`, `Your keywords (${mine.length})`)}</span>
-            {table(mine, false, zones)}
-            <span className="small muted">
-              {multi &&
-                t(
-                  `★ = tu zona principal: de ahí salen la tendencia, la competencia y el CPC. `,
-                  `★ = your main area: the trend, competition and CPC come from there. `,
-                )}
-              {t(
-                "CPC es lo que paga un anunciante en Google por cada clic. Si es alto, esa búsqueda trae clientes que valen dinero: vale la pena aparecer gratis con publicaciones y artículos.",
-                "CPC is what an advertiser pays Google for each click. If it's high, that search brings customers worth money: it's worth showing up for free with posts and articles.",
-              )}
-            </span>
+            <ShowMore hidden={mine.length - MINE_ROWS} more={t(`Ver tus ${mine.length} palabras`, `See all ${mine.length} of your keywords`)}>
+              {table(mine, false, zones, MINE_ROWS)}
+            </ShowMore>
+            {multi && (
+              <span className="small muted">
+                {t(`★ = tu zona principal: de ahí salen la tendencia, la competencia y el CPC.`, `★ = your main area: the trend, competition and CPC come from there.`)}
+              </span>
+            )}
             {unsearched.length > 0 && (
               <p className="note">
                 {t(
@@ -262,7 +263,7 @@ export async function KeywordsPanel({ businessId }: { businessId: string }) {
                 <li>{t("«—»: Google dice que se busca muy poco (menos de unas 10 al mes) o no tiene datos.", "“—”: Google says it's barely searched (fewer than about 10 a month) or has no data.")}</li>
                 <li>{t("Últimos 12 meses: si la búsqueda sube ▲ o baja ▼ en la temporada.", "Last 12 months: whether the search goes up ▲ or down ▼ with the season.")}</li>
                 <li>{t("Competencia en anuncios: cuántos negocios pagan anuncios en Google por esa búsqueda (baja, media, alta). No dice qué tan difícil es salir gratis.", "Ad competition: how many businesses pay for Google ads on that search (low, medium, high). It doesn't say how hard it is to show up for free.")}</li>
-                <li>{t("CPC: lo que paga un anunciante por cada clic. Alto = esa búsqueda trae clientes que valen dinero.", "CPC: what an advertiser pays for each click. High = that search brings customers worth money.")}</li>
+                <li>{t("CPC: lo que paga un anunciante en Google por cada clic. Alto = esa búsqueda trae clientes que valen dinero: vale la pena aparecer gratis con publicaciones y artículos.", "CPC: what an advertiser pays Google for each click. High = that search brings customers worth money: it's worth showing up for free with posts and articles.")}</li>
               </ul>
             </HowToRead>
             {totals.length > 0 && (
@@ -291,17 +292,15 @@ export async function KeywordsPanel({ businessId }: { businessId: string }) {
             </details>
           )}
 
-          <div className="stack" style={{ gap: 8 }}>
-            <span className="lbl">{t("Ideas", "Ideas")}</span>
-            {!main ? (
-              <p className="small muted">
-                {t(
-                  `Las ideas se buscan en tu zona principal (${label(zones[0])}). Presiona Actualizar búsquedas.`,
-                  `Ideas are looked up in your main area (${label(zones[0])}). Press Update searches.`,
-                )}
-              </p>
-            ) : ideas.length > 0 ? (
-              <>
+          {main && ideas.length > 0 ? (
+            <Fold
+              summary={t(`Ideas: ${ideas.length} búsquedas parecidas que puedes seguir`, `Ideas: ${ideas.length} similar searches you can track`)}
+              note={
+                typeof ideas[0].row.volume === "number"
+                  ? t(`La más buscada: «${ideas[0].row.keyword}» (${number.format(ideas[0].row.volume)} al mes)`, `Most searched: “${ideas[0].row.keyword}” (${number.format(ideas[0].row.volume)} a month)`)
+                  : t(`Por ejemplo: «${ideas[0].row.keyword}»`, `For example: “${ideas[0].row.keyword}”`)
+              }
+            >
                 <span className="small muted">
                   {multi
                     ? t(
@@ -314,8 +313,20 @@ export async function KeywordsPanel({ businessId }: { businessId: string }) {
                       )}
                   {full && t(` Ya sigues ${MAX_TRACKED}: quita alguna arriba para agregar otra.`, ` You already track ${MAX_TRACKED}: remove one above to add another.`)}
                 </span>
-                {table(ideas, true, [zones[0]])}
-              </>
+                <ShowMore hidden={ideas.length - IDEA_ROWS} more={t(`Ver las ${ideas.length} ideas`, `See all ${ideas.length} ideas`)}>
+                  {table(ideas, true, [zones[0]], IDEA_ROWS)}
+                </ShowMore>
+            </Fold>
+          ) : (
+          <div className="stack" style={{ gap: 8 }}>
+            <span className="lbl">{t("Ideas", "Ideas")}</span>
+            {!main ? (
+              <p className="small muted">
+                {t(
+                  `Las ideas se buscan en tu zona principal (${label(zones[0])}). Presiona Actualizar búsquedas.`,
+                  `Ideas are looked up in your main area (${label(zones[0])}). Press Update searches.`,
+                )}
+              </p>
             ) : (
               <p className="small muted">
                 {main.ideasFailed
@@ -324,6 +335,7 @@ export async function KeywordsPanel({ businessId }: { businessId: string }) {
               </p>
             )}
           </div>
+          )}
         </>
       )}
     </section>

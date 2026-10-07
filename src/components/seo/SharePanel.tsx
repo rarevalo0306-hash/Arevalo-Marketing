@@ -1,3 +1,4 @@
+import { Fold } from "@/components/seo/Fold";
 import { HowToRead } from "@/components/seo/HowToRead";
 import styles from "@/components/seo/SharePanel.module.css";
 import type { TextProvider } from "@/lib/ai";
@@ -19,9 +20,20 @@ const COMP_COLORS = ["#4f5f78", "#6f8099", "#8e9db3", "#aab6c8", "#c3ccd9"];
 
 type Segment = { key: string; label: string; share: number; color?: string; className?: string; you?: boolean };
 
-/** Barra apilada (suma 100 %) y su leyenda. */
-function StackBar({ segments, label }: { segments: Segment[]; label: string }) {
+function LegendItem({ s }: { s: Segment }) {
+  return (
+    <li className={`${styles.item} ${s.you ? styles.you : ""}`}>
+      <span className={`${styles.dot} ${s.className ?? ""}`} style={s.color ? { background: s.color } : undefined} aria-hidden />
+      <span className={styles.name}>{s.label}</span>
+      <span className={styles.val}>{pctText(s.share)}</span>
+    </li>
+  );
+}
+
+/** Barra apilada (suma 100 %) y su leyenda: tu parte a la vista, la de los demás en un desplegable (`rest` dice cuántos). */
+function StackBar({ segments, label, rest }: { segments: Segment[]; label: string; rest: (n: number) => string }) {
   const shown = segments.filter((s) => s.share > 0);
+  const others = segments.filter((s) => !s.you);
   return (
     <>
       <div className={styles.bar} role="img" aria-label={label}>
@@ -35,14 +47,15 @@ function StackBar({ segments, label }: { segments: Segment[]; label: string }) {
         ))}
       </div>
       <ul className={styles.legend}>
-        {segments.map((s) => (
-          <li key={s.key} className={`${styles.item} ${s.you ? styles.you : ""}`}>
-            <span className={`${styles.dot} ${s.className ?? ""}`} style={s.color ? { background: s.color } : undefined} aria-hidden />
-            <span className={styles.name}>{s.label}</span>
-            <span className={styles.val}>{pctText(s.share)}</span>
-          </li>
-        ))}
+        {segments.filter((s) => s.you).map((s) => <LegendItem key={s.key} s={s} />)}
       </ul>
+      {others.length > 0 && (
+        <Fold inline summary={rest(others.length)}>
+          <ul className={styles.legend}>
+            {others.map((s) => <LegendItem key={s.key} s={s} />)}
+          </ul>
+        </Fold>
+      )}
     </>
   );
 }
@@ -81,6 +94,7 @@ export async function SharePanel({ businessId }: { businessId: string }) {
   const day = new Intl.DateTimeFormat(intlLocale(lang), { day: "numeric", month: "short", year: "numeric", timeZone: BUSINESS_TZ });
   const pick = (x: { es: string; en: string }) => (lang === "en" ? x.en : x.es);
   const youLabel = t(`Tú (${b.name})`, `You (${b.name})`);
+  const rest = (n: number) => t(`Quién se lleva el resto (${n})`, `Who gets the rest (${n})`);
 
   // ---- Google: el último reporte de posiciones de cada zona (y el anterior para el cambio). ----
   const main = zones[0]?.code ?? 0;
@@ -168,6 +182,7 @@ export async function SharePanel({ businessId }: { businessId: string }) {
                 <span className="small muted">{t("de los clics posibles", "of the possible clicks")}</span>
               </div>
               <StackBar
+                rest={rest}
                 label={t(`Tu parte de los clics: ${pctText(organic.you)}`, `Your share of clicks: ${pctText(organic.you)}`)}
                 segments={[
                   { key: "you", label: youLabel, share: organic.you, color: brand, you: true },
@@ -266,6 +281,7 @@ export async function SharePanel({ businessId }: { businessId: string }) {
               </div>
               {ai.mentions > 0 && (
                 <StackBar
+                  rest={rest}
                   label={t(`Tu parte de las menciones: ${pctText(ai.you)}`, `Your share of mentions: ${pctText(ai.you)}`)}
                   segments={[
                     { key: "you", label: youLabel, share: ai.you, color: brand, you: true },

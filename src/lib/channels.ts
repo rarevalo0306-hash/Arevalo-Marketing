@@ -22,7 +22,12 @@ export type ChannelDef = {
   /** Límite de caracteres del texto; 0 = sin límite. */
   limit: number;
   what: string;
-  need: string;
+  /** Lo que gana el dueño al conectarlo, en palabras sencillas (lo primero que ve en la tarjeta). */
+  gain: string;
+  /** Pasos cuando hay botón de un clic (Facebook/Instagram/Google con OAuth, Email con Brevo de la app). */
+  easy?: string[];
+  /** Pasos para conectarlo a mano, con los nombres técnicos necesarios (tokens, permisos…). */
+  steps: string[];
   fields: CredentialField[];
 };
 
@@ -36,7 +41,18 @@ export const CHANNELS: ChannelDef[] = [
     kind: "Publicación",
     limit: 63206,
     what: "Publicaciones en la página del negocio",
-    need: "La Página de Facebook del negocio y un token de página con permiso pages_manage_posts (desde developers.facebook.com).",
+    gain: "Publica en la página de Facebook de tu negocio desde aquí, sin tener que entrar a Facebook.",
+    easy: [
+      "Presiona «Conectar con Facebook».",
+      "Entra con tu cuenta de Facebook (la que administra la página del negocio).",
+      "Elige la página de tu negocio. ¡Listo!",
+    ],
+    steps: [
+      "Entra a developers.facebook.com y crea una app de tipo «Negocio».",
+      "Genera un token de página con el permiso pages_manage_posts para la página de tu negocio.",
+      "Copia el ID de la página (aparece en la sección «Información» de tu página).",
+      "Pega aquí el ID y el token, y presiona «Guardar y probar».",
+    ],
     fields: [
       { key: "pageId", label: "ID de la página", placeholder: "1234567890" },
       { key: "accessToken", label: "Token de acceso de la página", secret: true },
@@ -49,7 +65,18 @@ export const CHANNELS: ChannelDef[] = [
     kind: "Post o Reel",
     limit: 2200,
     what: "Posts y Reels",
-    need: "Cuenta profesional de Instagram vinculada a la Página de Facebook, y un token con permiso instagram_content_publish.",
+    gain: "Publica fotos y Reels en el Instagram de tu negocio.",
+    easy: [
+      "Tu Instagram debe ser una cuenta profesional (de empresa o de creador) vinculada a la página de Facebook del negocio.",
+      "Presiona «Conectar con Facebook» y entra con tu cuenta de Facebook.",
+      "Elige la página del negocio: Instagram se conecta junto con ella.",
+    ],
+    steps: [
+      "Cambia tu Instagram a cuenta profesional y vincúlalo a la página de Facebook del negocio.",
+      "En developers.facebook.com genera un token con el permiso instagram_content_publish.",
+      "Busca el ID de tu cuenta de Instagram (es un número que empieza con 1784…).",
+      "Pega aquí el ID y el token, y presiona «Guardar y probar».",
+    ],
     fields: [
       { key: "igUserId", label: "ID de la cuenta de Instagram", placeholder: "17841400000000000" },
       { key: "accessToken", label: "Token de acceso", secret: true },
@@ -62,7 +89,13 @@ export const CHANNELS: ChannelDef[] = [
     kind: "Video",
     limit: 2200,
     what: "Videos",
-    need: "Una app en developers.tiktok.com con Content Posting API (video.publish). TikTok solo acepta videos.",
+    gain: "Sube videos a la cuenta de TikTok de tu negocio (TikTok solo acepta videos).",
+    steps: [
+      "Entra a developers.tiktok.com y crea una app.",
+      "Activa la Content Posting API con el permiso video.publish.",
+      "Copia el Client key, el Client secret y un Refresh token de tu cuenta.",
+      "Pega los tres aquí y presiona «Guardar y probar».",
+    ],
     fields: [
       { key: "clientKey", label: "Client key" },
       { key: "clientSecret", label: "Client secret", secret: true },
@@ -76,7 +109,18 @@ export const CHANNELS: ChannelDef[] = [
     kind: "Perfil de Negocio",
     limit: 1500,
     what: "Novedades en el Perfil de Negocio (Maps)",
-    need: "Perfil de Negocio verificado. Presiona \"Conectar con Google\" y entra con la cuenta dueña del perfil.",
+    gain: "Sal en Google Maps y en las búsquedas de Google con novedades y ofertas de tu negocio.",
+    easy: [
+      "Necesitas tu Perfil de Negocio de Google ya verificado.",
+      "Presiona «Conectar con Google» y entra con la cuenta de Google dueña del perfil.",
+      "Si administras varios perfiles, elige el de este negocio. ¡Listo!",
+    ],
+    steps: [
+      "Necesitas tu Perfil de Negocio de Google ya verificado.",
+      "En console.cloud.google.com crea un OAuth client ID con acceso a la Business Profile API.",
+      "Genera un Refresh token y busca el ID de la cuenta y el ID de la ubicación (solo los números).",
+      "Pega los datos aquí y presiona «Guardar y probar».",
+    ],
     fields: [
       { key: "accountId", label: "ID de la cuenta", placeholder: "accounts/123… → solo el número" },
       { key: "locationId", label: "ID de la ubicación", placeholder: "solo el número" },
@@ -92,7 +136,13 @@ export const CHANNELS: ChannelDef[] = [
     kind: "Artículo en tu sitio",
     limit: 0,
     what: "Un artículo nuevo en tu sitio, en español e inglés",
-    need: "Tu sitio en GitHub (con Vercel) preparado para recibir artículos, y un token de GitHub con permiso para escribir en ese repositorio.",
+    gain: "Publica artículos en tu página web para que más gente te encuentre en Google.",
+    steps: [
+      "Tu sitio web debe estar en GitHub, publicarse con Vercel y estar preparado para recibir artículos (pídele ayuda a quien hizo tu web).",
+      "En github.com → Settings → Developer settings, crea un token fine-grained con permiso Contents: escritura para ese repositorio.",
+      "Escribe el repositorio, la rama que publica Vercel (casi siempre main) y la dirección de tu sitio.",
+      "Pega el token y presiona «Guardar y probar».",
+    ],
     fields: [
       { key: "repo", label: "Repositorio en GitHub", placeholder: "rarevalo0306-hash/RicardoPA-Web" },
       { key: "branch", label: "Rama que publica Vercel", placeholder: "main" },
@@ -107,7 +157,18 @@ export const CHANNELS: ChannelDef[] = [
     kind: "Boletín",
     limit: 0,
     what: "Email a los contactos que aceptaron recibirlos",
-    need: "Una cuenta de Brevo (brevo.com, 300 correos al día gratis) o de Resend (resend.com) con tu dominio verificado, y su API key.",
+    gain: "Manda correos a tus clientes que aceptaron recibirlos.",
+    easy: [
+      "Escribe el nombre que verán tus clientes (por ejemplo, el nombre de tu negocio).",
+      "Escribe el email desde el que se envían los correos.",
+      "Presiona «Conectar Email». ¡Listo!",
+    ],
+    steps: [
+      "Crea una cuenta en Brevo (brevo.com, 300 correos al día gratis) o en Resend (resend.com).",
+      "Verifica tu dominio en esa cuenta (la parte de tu email después de la @, por ejemplo tunegocio.com).",
+      "Copia la API key (la de Brevo empieza con xkeysib-, la de Resend con re_).",
+      "Pega aquí el remitente y la API key, y presiona «Guardar y probar».",
+    ],
     fields: [
       { key: "from", label: "Remitente", placeholder: "Tu Negocio <info@tunegocio.com>" },
       { key: "apiKey", label: "API key de Brevo (xkeysib-…) o de Resend (re_…)", secret: true },
@@ -120,7 +181,13 @@ export const CHANNELS: ChannelDef[] = [
     kind: "Mensaje de texto",
     limit: 160,
     what: "Mensajes de texto a contactos que aceptaron recibirlos",
-    need: "Una cuenta de Twilio con un número registrado para enviar SMS (en EE. UU. requiere registro A2P 10DLC).",
+    gain: "Manda mensajes de texto al celular de clientes que aceptaron recibirlos.",
+    steps: [
+      "Crea una cuenta en Twilio (twilio.com) y consigue un número que pueda enviar SMS.",
+      "Si envías a EE. UU., registra ese número (registro A2P 10DLC).",
+      "Copia el Account SID y el Auth token desde tu panel de Twilio.",
+      "Pégalos aquí junto con el número que envía y presiona «Guardar y probar».",
+    ],
     fields: [
       { key: "accountSid", label: "Account SID" },
       { key: "authToken", label: "Auth token", secret: true },
@@ -133,7 +200,9 @@ type ChannelTextEn = {
   name?: string;
   kind: string;
   what: string;
-  need: string;
+  gain: string;
+  easy?: string[];
+  steps: string[];
   /** Solo los campos con texto en español; los nombres técnicos (Client key, API key…) se quedan igual. */
   fields?: Record<string, { label?: string; help?: string; placeholder?: string }>;
 };
@@ -143,24 +212,63 @@ const CHANNELS_EN: Record<ChannelId, ChannelTextEn> = {
   facebook: {
     kind: "Post",
     what: "Posts on the business's Page",
-    need: "The business's Facebook Page and a Page token with the pages_manage_posts permission (from developers.facebook.com).",
+    gain: "Post to your business's Facebook Page from here, without having to open Facebook.",
+    easy: [
+      "Click \"Connect with Facebook\".",
+      "Sign in with your Facebook account (the one that manages the business's Page).",
+      "Pick your business's Page. Done!",
+    ],
+    steps: [
+      "Go to developers.facebook.com and create an app of type \"Business\".",
+      "Generate a Page token with the pages_manage_posts permission for your business's Page.",
+      "Copy the Page ID (it's in the \"About\" section of your Page).",
+      "Paste the ID and the token here, then click \"Save and test\".",
+    ],
     fields: { pageId: { label: "Page ID" }, accessToken: { label: "Page access token" } },
   },
   instagram: {
     kind: "Post or Reel",
     what: "Posts and Reels",
-    need: "An Instagram professional account linked to the Facebook Page, and a token with the instagram_content_publish permission.",
+    gain: "Post photos and Reels to your business's Instagram.",
+    easy: [
+      "Your Instagram must be a professional account (business or creator) linked to the business's Facebook Page.",
+      "Click \"Connect with Facebook\" and sign in with your Facebook account.",
+      "Pick the business's Page: Instagram connects along with it.",
+    ],
+    steps: [
+      "Switch your Instagram to a professional account and link it to the business's Facebook Page.",
+      "On developers.facebook.com, generate a token with the instagram_content_publish permission.",
+      "Find your Instagram account ID (a number that starts with 1784…).",
+      "Paste the ID and the token here, then click \"Save and test\".",
+    ],
     fields: { igUserId: { label: "Instagram account ID" }, accessToken: { label: "Access token" } },
   },
   tiktok: {
     kind: "Video",
     what: "Videos",
-    need: "An app on developers.tiktok.com with the Content Posting API (video.publish). TikTok only accepts videos.",
+    gain: "Upload videos to your business's TikTok account (TikTok only accepts videos).",
+    steps: [
+      "Go to developers.tiktok.com and create an app.",
+      "Turn on the Content Posting API with the video.publish permission.",
+      "Copy the Client key, the Client secret and a Refresh token for your account.",
+      "Paste all three here and click \"Save and test\".",
+    ],
   },
   google: {
     kind: "Business Profile",
     what: "Updates on your Business Profile (Maps)",
-    need: "A verified Business Profile. Click \"Connect with Google\" and sign in with the account that owns the profile.",
+    gain: "Show up on Google Maps and Google Search with your business's news and offers.",
+    easy: [
+      "You need your Google Business Profile already verified.",
+      "Click \"Connect with Google\" and sign in with the Google account that owns the profile.",
+      "If you manage several profiles, pick this business's. Done!",
+    ],
+    steps: [
+      "You need your Google Business Profile already verified.",
+      "On console.cloud.google.com, create an OAuth client ID with access to the Business Profile API.",
+      "Generate a Refresh token and find the account ID and the location ID (just the numbers).",
+      "Paste the details here and click \"Save and test\".",
+    ],
     fields: {
       accountId: { label: "Account ID", placeholder: "accounts/123… → just the number" },
       locationId: { label: "Location ID", placeholder: "just the number" },
@@ -170,7 +278,13 @@ const CHANNELS_EN: Record<ChannelId, ChannelTextEn> = {
     name: "Website / SEO",
     kind: "Article on your website",
     what: "A new article on your website, in Spanish and English",
-    need: "Your website on GitHub (with Vercel) set up to receive articles, and a GitHub token with permission to write to that repository.",
+    gain: "Publish articles on your website so more people find you on Google.",
+    steps: [
+      "Your website must be on GitHub, published with Vercel and set up to receive articles (ask whoever built your site for help).",
+      "On github.com → Settings → Developer settings, create a fine-grained token with Contents: write permission for that repository.",
+      "Enter the repository, the branch Vercel publishes (almost always main) and your website address.",
+      "Paste the token and click \"Save and test\".",
+    ],
     fields: {
       repo: { label: "GitHub repository" },
       branch: { label: "Branch that Vercel publishes" },
@@ -181,7 +295,18 @@ const CHANNELS_EN: Record<ChannelId, ChannelTextEn> = {
   email: {
     kind: "Newsletter",
     what: "Email to contacts who agreed to receive it",
-    need: "A Brevo account (brevo.com, 300 free emails a day) or a Resend account (resend.com) with your domain verified, plus its API key.",
+    gain: "Send emails to customers who agreed to receive them.",
+    easy: [
+      "Enter the name your customers will see (for example, your business name).",
+      "Enter the email address the emails are sent from.",
+      "Click \"Connect Email\". Done!",
+    ],
+    steps: [
+      "Create an account on Brevo (brevo.com, 300 free emails a day) or Resend (resend.com).",
+      "Verify your domain in that account (the part of your email after the @, for example yourbusiness.com).",
+      "Copy the API key (Brevo's starts with xkeysib-, Resend's with re_).",
+      "Paste the sender and the API key here, then click \"Save and test\".",
+    ],
     fields: {
       from: { label: "Sender", placeholder: "Your Business <info@yourbusiness.com>" },
       apiKey: { label: "Brevo API key (xkeysib-…) or Resend API key (re_…)" },
@@ -191,12 +316,18 @@ const CHANNELS_EN: Record<ChannelId, ChannelTextEn> = {
     name: "Text (SMS)",
     kind: "Text message",
     what: "Text messages to contacts who agreed to receive them",
-    need: "A Twilio account with a number registered to send SMS (in the US this requires A2P 10DLC registration).",
+    gain: "Send text messages to the phones of customers who agreed to receive them.",
+    steps: [
+      "Create a Twilio account (twilio.com) and get a number that can send SMS.",
+      "If you send to the US, register that number (A2P 10DLC registration).",
+      "Copy the Account SID and the Auth token from your Twilio console.",
+      "Paste them here along with the sending number, then click \"Save and test\".",
+    ],
     fields: { from: { label: "Sending number" } },
   },
 };
 
-/** El canal con sus textos (nombre, tipo, qué publica, qué necesitas y campos) en el idioma de la app. */
+/** El canal con sus textos (nombre, tipo, qué publica, qué ganas, pasos y campos) en el idioma de la app. */
 export function channelText(def: ChannelDef, lang: UiLang): ChannelDef {
   if (lang !== "en") return def;
   const en = CHANNELS_EN[def.id];
@@ -205,7 +336,9 @@ export function channelText(def: ChannelDef, lang: UiLang): ChannelDef {
     name: en.name ?? def.name,
     kind: en.kind,
     what: en.what,
-    need: en.need,
+    gain: en.gain,
+    easy: en.easy,
+    steps: en.steps,
     fields: def.fields.map((f) => ({ ...f, ...en.fields?.[f.key] })),
   };
 }
