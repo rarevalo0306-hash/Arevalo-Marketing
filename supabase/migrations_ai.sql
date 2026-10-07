@@ -59,3 +59,5 @@ ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "seoMonthlyAt" TIMESTAMP(3);
 -- 2026-10-07: cada cuántos días revisar las posiciones (1, 7, 15 o 30) y listas de contactos.
 ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "seoRankDays" INTEGER NOT NULL DEFAULT 7;
 ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "lists" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+-- 2026-10-07: imágenes de la marca (logos sacados del manual y kit creado por la app: perfil, portadas, favicon…).
+ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "brandAssets" JSONB;

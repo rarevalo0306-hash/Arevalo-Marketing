@@ -1,6 +1,8 @@
 import { brandFromAi, brandFromBook, deleteTemplate, generateTemplates, getBrandBookUploadUrl, getUploadUrl, updateBrandKit } from "@/app/actions";
 import { saveBrandLogo } from "@/app/actions-brand";
 import { BrandKitForm } from "@/components/BrandKitForm";
+import { BookAssetsSection } from "@/components/brand/BookAssetsSection";
+import { BrandKitSection } from "@/components/brand/BrandKitSection";
 import { saveCustomTemplate } from "@/app/actions-media";
 import { PageHead } from "@/components/PageHead";
 import { SizesInfo } from "@/components/SizesInfo";
@@ -63,6 +65,9 @@ export default async function MarcaPage({ params }: { params: Promise<{ id: stri
           suggest: aiEnabled() ? brandFromAi.bind(null, id) : null,
         }}
       />
+
+      <BookAssetsSection businessId={id} />
+      <BrandKitSection businessId={id} />
 
       <section className="card" id="plantillas">
         <div className="row between">

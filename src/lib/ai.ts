@@ -104,7 +104,7 @@ function parseJson<T extends z.ZodTypeAny>(schema: T, text: string): z.infer<T> 
 // Si un modelo está saturado, se prueba el siguiente.
 const GEMINI_MODELS = () => [...new Set([process.env.GEMINI_MODEL || "gemini-flash-latest", "gemini-2.5-flash", "gemini-flash-lite-latest"])];
 
-type GeminiPart = { text: string } | { inlineData: { mimeType: string; data: string } };
+export type GeminiPart = { text: string } | { inlineData: { mimeType: string; data: string } };
 
 type GeminiResponse = {
   candidates?: {
@@ -144,7 +144,8 @@ async function geminiFetch(payload: string): Promise<GeminiResponse> {
 
 const geminiText = (data: GeminiResponse) => data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
 
-async function askGemini<T extends z.ZodTypeAny>(schema: T, system: string, user: string, maxTokens: number, files: GeminiPart[] = []): Promise<z.infer<T>> {
+/** Pregunta a Gemini con archivos o imágenes (PDF, fotos) y pide la respuesta con la forma de `schema`. */
+export async function askGemini<T extends z.ZodTypeAny>(schema: T, system: string, user: string, maxTokens: number, files: GeminiPart[] = []): Promise<z.infer<T>> {
   const data = await geminiFetch(
     JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
