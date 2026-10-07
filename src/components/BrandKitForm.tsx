@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import type { BrandKitResult } from "@/app/actions";
 import { BrandMockups } from "@/components/BrandMockups";
+import { startBookRun, useBookRun } from "@/components/brand/BookRun";
 import { useT } from "@/components/I18n";
 import f from "./BrandKitForm.module.css";
 
@@ -129,6 +131,9 @@ function BrandSource({ brandBook, onKit }: { brandBook: Props["brandBook"]; onKi
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
   const [bookUrl, setBookUrl] = useState(brandBook.url);
   const { t } = useT();
+  const businessId = useParams<{ id: string }>()?.id ?? "";
+  const run = useBookRun();
+  const pulling = run.businessId === businessId && (run.status === "opening" || run.status === "reading");
 
   function done(r: BrandKitResult) {
     if (r.ok) {
@@ -147,6 +152,8 @@ function BrandSource({ brandBook, onKit }: { brandBook: Props["brandBook"]; onKi
       const res = await fetch(uploadUrl, { method: "PUT", headers: { "Content-Type": f.type }, body: f });
       if (!res.ok) throw new Error(await res.text());
       setBookUrl(publicUrl);
+      // Al mismo tiempo, la IA saca los logos e imágenes del manual (se ven en "Imágenes de tu manual").
+      if (businessId) void startBookRun(businessId, f, { auto: true });
       done(await brandBook.read(publicUrl));
     } catch (e) {
       setNote({ ok: false, text: `${t("No se pudo subir", "Couldn't upload")}: ${(e as Error).message}` });
@@ -180,7 +187,7 @@ function BrandSource({ brandBook, onKit }: { brandBook: Props["brandBook"]; onKi
       <div className="grid-2" style={{ gap: 14 }}>
         <div className="source-option">
           <strong>{t("Subir mi manual de marca", "Upload my brand book")}</strong>
-          <span className="small muted">{t("PDF o imagen (PNG, JPG). Se guarda aquí para tenerlo siempre a mano, y la IA lo lee para llenar tus colores y letras.", "PDF or image (PNG, JPG). It's saved here so you always have it handy, and the AI reads it to fill in your colors and fonts.")}</span>
+          <span className="small muted">{t("PDF o imagen (PNG, JPG). Se guarda aquí para tenerlo siempre a mano, y la IA lo lee para llenar tus colores y letras y sacar tus logos e imágenes.", "PDF or image (PNG, JPG). It's saved here so you always have it handy, and the AI reads it to fill in your colors and fonts and pull out your logos and images.")}</span>
           {brandBook.upload ? (
             <label className="btn" style={{ cursor: busy ? "wait" : "pointer" }} aria-disabled={Boolean(busy)}>
               {busy === "book" ? t("La IA está leyendo tu manual…", "The AI is reading your brand book…") : bookUrl ? t("Subir otro manual", "Upload another brand book") : t("Subir manual", "Upload brand book")}
@@ -209,6 +216,12 @@ function BrandSource({ brandBook, onKit }: { brandBook: Props["brandBook"]; onKi
         </div>
       </div>
       {note && <p className={note.ok ? "note ok" : "note error"} role="status">{note.text}</p>}
+      {pulling && (
+        <p className="note info" role="status">
+          {t("La IA también está sacando tus logos e imágenes del manual. ", "The AI is also pulling your logos and images from the brand book. ")}
+          <a href="#imagenes-manual">{t("Míralas en «Imágenes de tu manual»", "See them in “Images from your brand book”")}</a>
+        </p>
+      )}
     </section>
   );
 }
@@ -229,6 +242,10 @@ export function BrandKitForm({ kit, save, upload, brandBook, saveLogo }: Props) 
   const [saving, setSaving] = useState(false);
   const { t } = useT();
   const fontCss = FONT_CHOICES.find(([id]) => id === font)?.[2] ?? "inherit";
+  // Los logos se guardan solos (también al aceptar uno del manual): si cambian en el servidor, se muestran aquí, y
+  // "Guardar la marca" no los pisa con el valor viejo.
+  useEffect(() => setLogo(kit.logoUrl), [kit.logoUrl]);
+  useEffect(() => setLogoLight(kit.logoLightUrl), [kit.logoLightUrl]);
 
   return (
     <>
