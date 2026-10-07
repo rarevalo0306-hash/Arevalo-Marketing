@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Fragment } from "react";
 import { connectBrevo, deleteConnection, saveConnection, testConnection } from "@/app/actions";
 import { disconnectGscFromConnections } from "@/app/actions-connections";
 import { ConnectionCard } from "@/components/ConnectionCard";
@@ -12,10 +13,16 @@ import { googleEnabled } from "@/lib/google-oauth";
 import { metaEnabled } from "@/lib/meta-oauth";
 import { connectionsNeedingReconnect } from "@/lib/connection-health";
 import { GSC_CHANNEL } from "@/lib/seo/gsc";
+import { serviceAccountEmail } from "@/lib/google-sa";
+import { libraryCounts } from "@/lib/library-sync";
+import { businessTzLabel, fmtWhen } from "@/lib/time";
+import { DriveCard } from "./DriveCard";
 import { GscCard } from "./GscCard";
 import s from "./conexiones.module.css";
 
 const GROUPS: ChannelGroup[] = ["social", "google", "messages"];
+// «Revisar ahora» en la carpeta de Google Drive puede tardar un minuto.
+export const maxDuration = 120;
 
 export default async function ConexionesPage({
   params,
@@ -29,10 +36,11 @@ export default async function ConexionesPage({
   const { lang, t } = await getT();
   const metaUrl = metaEnabled() ? `/api/meta/start?b=${id}` : null;
   const googleUrl = googleEnabled() ? `/api/google/start?b=${id}` : null;
-  const [b, gsc, health] = await Promise.all([
+  const [b, gsc, health, library] = await Promise.all([
     db.business.findUniqueOrThrow({ where: { id }, include: { connections: { where: { channel: { in: CHANNEL_IDS } } } } }),
     db.connection.findUnique({ where: { businessId_channel: { businessId: id, channel: GSC_CHANNEL } }, select: { label: true } }),
     connectionsNeedingReconnect(id),
+    libraryCounts(id),
   ]);
   // Canales cuya última publicación falló por permisos o clave vencida (y no se han vuelto a conectar).
   const broken = new Set(Object.keys(health).filter((ch) => CHANNEL_IDS.includes(ch as (typeof CHANNEL_IDS)[number])));
@@ -131,82 +139,122 @@ export default async function ConexionesPage({
         )}
         <nav className={s.index} aria-label={t("Todas las cuentas", "All accounts")}>
           {GROUPS.map((g) => (
-            <div key={g} className={s.indexGroup}>
-              <span className={s.indexTitle}>{groupTitle[g]}</span>
-              <ul>
-                {CHANNELS.filter((c) => c.group === g).map((c) => {
-                  const on = isOn(c.id);
-                  const bad = broken.has(c.id);
-                  return (
-                    <li key={c.id}>
-                      <a href={`#c-${c.id}`} className={bad ? s.bad : on ? s.on : undefined}>
+            <Fragment key={g}>
+              <div className={s.indexGroup}>
+                <span className={s.indexTitle}>{groupTitle[g]}</span>
+                <ul>
+                  {CHANNELS.filter((c) => c.group === g).map((c) => {
+                    const on = isOn(c.id);
+                    const bad = broken.has(c.id);
+                    return (
+                      <li key={c.id}>
+                        <a href={`#c-${c.id}`} className={bad ? s.bad : on ? s.on : undefined}>
+                          <span className={s.dot} aria-hidden="true" />
+                          {channelName(c.id, lang)}
+                          <span className="sr-only">{bad ? t(" (volver a conectar)", " (reconnect)") : on ? t(" (conectado)", " (connected)") : t(" (no conectado)", " (not connected)")}</span>
+                        </a>
+                      </li>
+                    );
+                  })}
+                  {g === "google" && (
+                    <li>
+                      <a href="#c-gsc" className={gsc ? s.on : undefined}>
                         <span className={s.dot} aria-hidden="true" />
-                        {channelName(c.id, lang)}
-                        <span className="sr-only">{bad ? t(" (volver a conectar)", " (reconnect)") : on ? t(" (conectado)", " (connected)") : t(" (no conectado)", " (not connected)")}</span>
+                        Search Console
+                        <span className="sr-only">{gsc ? t(" (conectado)", " (connected)") : t(" (no conectado)", " (not connected)")}</span>
                       </a>
                     </li>
-                  );
-                })}
-                {g === "google" && (
-                  <li>
-                    <a href="#c-gsc" className={gsc ? s.on : undefined}>
-                      <span className={s.dot} aria-hidden="true" />
-                      Search Console
-                      <span className="sr-only">{gsc ? t(" (conectado)", " (connected)") : t(" (no conectado)", " (not connected)")}</span>
-                    </a>
-                  </li>
-                )}
-              </ul>
-            </div>
+                  )}
+                </ul>
+              </div>
+              {g === "social" && (
+                <div className={s.indexGroup}>
+                  <span className={s.indexTitle}>{t("Tus fotos", "Your photos")}</span>
+                  <ul>
+                    <li>
+                      <a href="#c-drive" className={b.driveFolderId ? (b.driveError ? s.bad : s.on) : undefined}>
+                        <span className={s.dot} aria-hidden="true" />
+                        Google Drive
+                        <span className="sr-only">{b.driveFolderId ? t(" (conectada)", " (connected)") : t(" (no conectada)", " (not connected)")}</span>
+                      </a>
+                    </li>
+                  </ul>
+                </div>
+              )}
+            </Fragment>
           ))}
         </nav>
       </div>
       {GROUPS.map((g) => {
         const list = CHANNELS.filter((c) => c.group === g);
         return (
-          <section key={g} className={s.group} aria-labelledby={`g-${g}`}>
-            <div className={s.groupHead}>
-              <h2 id={`g-${g}`}>{groupTitle[g]}</h2>
-              <p className="small muted">{groupHelp[g]}</p>
-            </div>
-            <div className={`cards ${s.grid}`}>
-              {list.map((c) => {
-                const conn = b.connections.find((x) => x.channel === c.id);
-                const values = conn ? decryptJson(conn.secret) : {};
-                // Nunca mandamos los secretos al navegador: solo si están puestos o no.
-                const publicValues = Object.fromEntries(c.fields.map((f) => [f.key, f.secret ? "" : values[f.key] ?? ""]));
-                const secretSet = Object.fromEntries(c.fields.filter((f) => f.secret).map((f) => [f.key, Boolean(values[f.key])]));
-                const label = conn?.label.trim() ?? "";
-                return (
-                  <ConnectionCard
-                    key={c.id}
-                    channel={c}
-                    connected={Boolean(conn)}
-                    values={publicValues}
-                    secretSet={secretSet}
-                    save={saveConnection.bind(null, id, c.id)}
-                    remove={deleteConnection.bind(null, id, c.id)}
-                    test={testConnection.bind(null, id, c.id)}
-                    oauthUrl={c.id === "facebook" || c.id === "instagram" ? metaUrl : c.id === "google" ? googleUrl : null}
-                    oauthName={c.id === "google" ? "Google" : "Facebook"}
-                    brevo={c.id === "email" ? brevo : null}
-                    needsReconnect={broken.has(c.id)}
-                    account={label && !/^\d+$/.test(label) ? label : undefined}
+          <Fragment key={g}>
+            <section className={s.group} aria-labelledby={`g-${g}`}>
+              <div className={s.groupHead}>
+                <h2 id={`g-${g}`}>{groupTitle[g]}</h2>
+                <p className="small muted">{groupHelp[g]}</p>
+              </div>
+              <div className={`cards ${s.grid}`}>
+                {list.map((c) => {
+                  const conn = b.connections.find((x) => x.channel === c.id);
+                  const values = conn ? decryptJson(conn.secret) : {};
+                  // Nunca mandamos los secretos al navegador: solo si están puestos o no.
+                  const publicValues = Object.fromEntries(c.fields.map((f) => [f.key, f.secret ? "" : values[f.key] ?? ""]));
+                  const secretSet = Object.fromEntries(c.fields.filter((f) => f.secret).map((f) => [f.key, Boolean(values[f.key])]));
+                  const label = conn?.label.trim() ?? "";
+                  return (
+                    <ConnectionCard
+                      key={c.id}
+                      channel={c}
+                      connected={Boolean(conn)}
+                      values={publicValues}
+                      secretSet={secretSet}
+                      save={saveConnection.bind(null, id, c.id)}
+                      remove={deleteConnection.bind(null, id, c.id)}
+                      test={testConnection.bind(null, id, c.id)}
+                      oauthUrl={c.id === "facebook" || c.id === "instagram" ? metaUrl : c.id === "google" ? googleUrl : null}
+                      oauthName={c.id === "google" ? "Google" : "Facebook"}
+                      brevo={c.id === "email" ? brevo : null}
+                      needsReconnect={broken.has(c.id)}
+                      account={label && !/^\d+$/.test(label) ? label : undefined}
+                    />
+                  );
+                })}
+                {g === "google" && (
+                  <GscCard
+                    businessId={id}
+                    connected={Boolean(gsc)}
+                    site={gsc?.label ?? ""}
+                    enabled={googleEnabled()}
+                    hasWebsite={Boolean(b.website.trim())}
+                    disconnect={disconnectGscFromConnections.bind(null, id)}
                   />
-                );
-              })}
-              {g === "google" && (
-                <GscCard
-                  businessId={id}
-                  connected={Boolean(gsc)}
-                  site={gsc?.label ?? ""}
-                  enabled={googleEnabled()}
-                  hasWebsite={Boolean(b.website.trim())}
-                  disconnect={disconnectGscFromConnections.bind(null, id)}
-                />
-              )}
-            </div>
-          </section>
+                )}
+              </div>
+            </section>
+            {g === "social" && (
+              <section className={s.group} aria-labelledby="g-photos">
+                <div className={s.groupHead}>
+                  <h2 id="g-photos">{t("Tus fotos y videos", "Your photos and videos")}</h2>
+                  <p className="small muted">{t("Fotos reales de tu trabajo para que la IA las use en tus publicaciones.", "Real photos of your work for the AI to use in your posts.")}</p>
+                </div>
+                <div className={`cards ${s.grid}`}>
+                  <DriveCard
+                    businessId={id}
+                    businessName={b.name}
+                    configured={Boolean(serviceAccountEmail())}
+                    email={serviceAccountEmail()}
+                    folderId={b.driveFolderId}
+                    folderName={b.driveFolderName}
+                    lastCheck={b.driveSyncedAt ? `${fmtWhen(b.driveSyncedAt, lang)} (${businessTzLabel(lang)})` : ""}
+                    error={b.driveError}
+                    counts={library}
+                    aiReady={Boolean(process.env.GEMINI_API_KEY)}
+                  />
+                </div>
+              </section>
+            )}
+          </Fragment>
         );
       })}
     </>
