@@ -5,6 +5,7 @@ import { getT } from "@/lib/i18n-server";
 import { LangPicker } from "./I18n";
 import { MobileBizMenu } from "./MobileBizMenu";
 import { NavLinks } from "./NavLinks";
+import navStyles from "./nav/Nav.module.css";
 import { ThemePicker } from "./ThemePicker";
 
 export async function Sidebar({ activeId }: { activeId?: string }) {
@@ -58,8 +59,9 @@ export async function Sidebar({ activeId }: { activeId?: string }) {
         <div className="side-label">{t("Estilo", "Style")}</div>
         <ThemePicker />
       </div>
-      <form action={logout} className="desk-only">
-        <button type="submit" className="navlink" style={{ width: "100%", background: "none", border: 0, cursor: "pointer", font: "inherit" }}>
+      <form action={logout} className={`desk-only ${navStyles.side}`}>
+        <button type="submit" className={navStyles.row}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5M21 12H9" /></svg>
           {t("Salir", "Log out")}
         </button>
       </form>

@@ -1,6 +1,6 @@
 .wrap {
   border: 1.5px dashed var(--line-strong);
-  border-radius: 14px;
+  border-radius: var(--r-md);
   background: var(--surface-2);
 }
 .wrap[open] { border-style: solid; background: var(--surface); }

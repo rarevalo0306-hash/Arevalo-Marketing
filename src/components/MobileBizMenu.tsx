@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useT } from "@/components/I18n";
 
 type Biz = { id: string; name: string; color: string };
 
 /**
  * Celular: la barra de arriba solo muestra el negocio activo. Al tocarlo se abre la lista de negocios,
- * «Agregar negocio», el idioma, el estilo y «Salir» (children).
+ * «Agregar negocio», el idioma, el estilo y «Salir» (children). Las secciones van en la barra de abajo (NavLinks).
  */
 export function MobileBizMenu({ businesses, activeId, children }: { businesses: Biz[]; activeId?: string; children: React.ReactNode }) {
   const { t } = useT();
@@ -35,7 +36,8 @@ export function MobileBizMenu({ businesses, activeId, children }: { businesses: 
           <path d="m6 9 6 6 6-6" />
         </svg>
       </button>
-      {open && (
+      {/* Fuera de la barra de arriba: con el estilo Vidrio su desenfoque encerraría lo que es «fixed». */}
+      {open && createPortal(
         <>
           <div className="mbiz-backdrop" onClick={() => setOpen(false)} aria-hidden="true" />
           <div id="mbiz-menu" className="mbiz-menu" aria-label={t("Mis negocios", "My businesses")}>
@@ -54,7 +56,8 @@ export function MobileBizMenu({ businesses, activeId, children }: { businesses: 
             <div className="mbiz-sep" />
             {children}
           </div>
-        </>
+        </>,
+        document.body,
       )}
     </div>
   );

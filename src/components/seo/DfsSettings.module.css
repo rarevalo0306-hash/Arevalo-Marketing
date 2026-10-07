@@ -2,7 +2,7 @@
 
 .steps { display: flex; flex-direction: column; gap: 14px; }
 .step {
-  display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 16px;
+  display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: var(--r-lg);
   border: 1px solid var(--line); background: var(--surface-2);
 }
 .stepHead { display: flex; gap: 12px; align-items: flex-start; }
@@ -30,7 +30,7 @@
 .chipBtn:hover { background: var(--surface-hover); color: var(--ink); }
 
 /* Cascada país → estado → ciudad */
-.picker { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 14px; border: 1px dashed var(--line-strong); background: var(--surface); }
+.picker { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: var(--r-md); border: 1px dashed var(--line-strong); background: var(--surface); }
 .cascade { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 10px; }
 .level { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .level select { width: 100%; min-width: 0; }

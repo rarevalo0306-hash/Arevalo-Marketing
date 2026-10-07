@@ -21,7 +21,7 @@ import { BUSINESS_TZ } from "@/lib/time";
 const CARDS_SHOWN = 3;
 
 /** Tu competencia en Google: quiénes son, cuánto los visitan y qué búsquedas ganan que tú no. */
-export async function CompetitorsPanel({ businessId }: { businessId: string }) {
+export async function CompetitorsPanel({ businessId, competidor }: { businessId: string; competidor?: string }) {
   if (!dataForSeoEnabled()) return null;
   const { lang, t } = await getT();
   const b = await db.business.findUnique({
@@ -133,7 +133,7 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
         </p>
       )}
 
-      <CompetitorsForm action={runCompetitors.bind(null, businessId)} has={Boolean(row)} defaultDomains={report?.ownerDomains ?? []} />
+      <CompetitorsForm action={runCompetitors.bind(null, businessId)} has={Boolean(row)} defaultDomains={[...new Set([competidor ?? "", ...(report?.ownerDomains ?? [])].filter(Boolean))].slice(0, 3)} open={Boolean(competidor)} />
 
       {!row && (
         <p className="small muted">

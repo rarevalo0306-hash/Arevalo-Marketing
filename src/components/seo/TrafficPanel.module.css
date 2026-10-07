@@ -27,7 +27,7 @@
   gap: 6px;
   min-width: 0;
   padding: 14px 16px;
-  border-radius: 16px;
+  border-radius: var(--r-lg);
   border: 1px solid var(--line);
   border-top: 4px solid var(--c, var(--line-strong));
   background: var(--surface);

@@ -4,12 +4,12 @@
 @media (max-width: 560px) { .restore :global(.btn) { width: 100%; } }
 
 .rank {
-  width: 28px; height: 28px; border-radius: 14px; display: inline-grid; place-items: center; flex-shrink: 0;
+  width: 28px; height: 28px; border-radius: var(--r-md); display: inline-grid; place-items: center; flex-shrink: 0;
   background: var(--brand); color: #fff; font-weight: 800; font-size: 14px;
 }
 
 /* ---------- Leyenda ---------- */
-.legend { border: 1px solid var(--line); border-radius: 14px; background: var(--surface-hover); padding: 12px 14px; }
+.legend { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-hover); padding: 12px 14px; }
 .legend summary { cursor: pointer; font-weight: 700; font-size: 14px; color: var(--ink); text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 4px; }
 .legend summary::before { content: "ⓘ "; }
 .legend dl { margin: 12px 0 0; display: flex; flex-direction: column; gap: 12px; }
@@ -20,7 +20,7 @@
 /* ---------- Lista de búsquedas ---------- */
 .kwList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .kw {
-  display: flex; align-items: center; gap: 12px 18px; padding: 14px 16px; border-radius: 16px;
+  display: flex; align-items: center; gap: 12px 18px; padding: 14px 16px; border-radius: var(--r-lg);
   border: 1px solid var(--line); background: var(--surface-hover);
 }
 .kwMain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }

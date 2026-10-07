@@ -11,6 +11,8 @@ type Props = {
   has: boolean;
   /** Los sitios que escribió la vez anterior. */
   defaultDomains: string[];
+  /** Abrir el campo de sitios (ej. al llegar desde el buscador del Tablero con un competidor). */
+  open?: boolean;
 };
 
 /** Mientras se busca: pasos aproximados y el tiempo que lleva. */
@@ -42,13 +44,13 @@ function Working({ pending }: { pending: boolean }) {
   );
 }
 
-export function CompetitorsForm({ action, has, defaultDomains }: Props) {
+export function CompetitorsForm({ action, has, defaultDomains, open }: Props) {
   const { t } = useT();
   const [result, run, pending] = useActionState(action, null);
   return (
     <form action={run} className="stack" style={{ gap: 12 }}>
       {/* Ya buscó una vez: el campo opcional queda cerrado (cerrado igual se manda con el formulario). */}
-      <details className={fold.inline} open={!has}>
+      <details className={fold.inline} open={!has || open}>
         <summary>
           {defaultDomains.length
             ? t(`Sitios de tu competencia que escribiste (${defaultDomains.length})`, `Competitor websites you typed (${defaultDomains.length})`)
