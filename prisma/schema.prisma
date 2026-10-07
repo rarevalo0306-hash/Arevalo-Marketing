@@ -66,7 +66,14 @@ model Business {
   study         Json?
   studyInput    Json?
   studyAt       DateTime?
+  /// Carpeta de Google Drive con fotos y videos reales del negocio. La app la lee con su cuenta de servicio
+  /// (el dueño comparte la carpeta con ese correo como Lector). Cuándo se revisó por última vez y el último error.
+  driveFolderId   String   @default("")
+  driveFolderName String   @default("")
+  driveSyncedAt   DateTime?
+  driveError      String   @default("")
   createdAt   DateTime     @default(now())
+  library     LibraryItem[]
   connections Connection[]
   contacts    Contact[]
   posts       Post[]
@@ -163,4 +170,50 @@ model PostTarget {
   post        Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@index([postId])
+}
+
+/// Fotos y videos reales del negocio (de su carpeta de Google Drive), con lo que la IA vio en cada uno.
+/// Forma de `description` y listas de etiquetas/avisos: src/lib/library-shape.ts.
+model LibraryItem {
+  id          String    @id @default(cuid())
+  businessId  String
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  /// De dónde vino: drive
+  source      String    @default("drive")
+  /// Id del archivo en Google Drive.
+  externalId  String
+  name        String    @default("")
+  /// Carpeta dentro de la carpeta principal (ej. "Trabajos/Casa Pérez"), para dar contexto.
+  folderPath  String    @default("")
+  mimeType    String    @default("")
+  /// photo | video
+  kind        String    @default("photo")
+  /// Copia en el almacenamiento de la app (las fotos al revisarlas; los videos cuando se usan).
+  url         String    @default("")
+  thumbUrl    String    @default("")
+  width       Int       @default(0)
+  height      Int       @default(0)
+  durationSec Float     @default(0)
+  sizeBytes   Int       @default(0)
+  takenAt     DateTime?
+  modifiedAt  DateTime?
+  /// Lo que vio la IA (LibraryDescription).
+  description Json?
+  tags        String[]  @default([])
+  /// 1 a 5 (0 = sin revisar)
+  quality     Int       @default(0)
+  usable      Boolean   @default(true)
+  /// Avisos de privacidad: faces | address | plate | document | child
+  privacy     String[]  @default([])
+  /// new | ready | error | gone (ya no está en la carpeta)
+  status      String    @default("new")
+  error       String    @default("")
+  /// Lo que decidió el dueño: "" (decide la IA) | "use" (aprobada aunque tenga avisos) | "skip" (no usar)
+  choice      String    @default("")
+  usedCount   Int       @default(0)
+  lastUsedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@unique([businessId, externalId])
+  @@index([businessId, status])
 }
