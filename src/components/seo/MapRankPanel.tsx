@@ -60,8 +60,8 @@ export async function MapRankPanel({ businessId, mapId }: { businessId: string; 
         {header}
         <p className="note">
           {t(
-            "Para hacer el mapa, primero elige la zona donde buscan tus clientes en «Datos reales de Google», aquí arriba.",
-            "To make the map, first pick the area where your customers search in “Real Google data” above.",
+            "Para hacer el mapa, primero elige la zona donde buscan tus clientes en la pestaña «⚙ Ajustes».",
+            "To make the map, first pick the area where your customers search in the “⚙ Settings” tab.",
           )}
         </p>
       </section>

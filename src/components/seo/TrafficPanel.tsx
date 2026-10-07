@@ -47,7 +47,7 @@ export async function TrafficPanel({ businessId }: { businessId: string }) {
   );
 
   if (!dataForSeoEnabled())
-    return empty(t("Para ver las visitas de tu competencia, primero conecta DataForSEO (arriba, en Datos reales de Google).", "To see your competitors' traffic, first connect DataForSEO (above, in Real Google data)."));
+    return empty(t("Para ver las visitas de tu competencia, primero conecta DataForSEO (en la pestaña «⚙ Ajustes»).", "To see your competitors' traffic, first connect DataForSEO (in the “⚙ Settings” tab)."));
 
   const b = await db.business.findUnique({
     where: { id: businessId },
@@ -64,7 +64,7 @@ export async function TrafficPanel({ businessId }: { businessId: string }) {
       </>,
     );
   if (!zones.length)
-    return empty(t("Primero elige la zona donde buscan tus clientes (arriba, en Datos reales de Google).", "First pick the area where your customers search (above, in Real Google data)."));
+    return empty(t("Primero elige la zona donde buscan tus clientes (en la pestaña «⚙ Ajustes»).", "First pick the area where your customers search (in the “⚙ Settings” tab)."));
 
   const [[compRow], rows] = await Promise.all([
     latestReports(businessId, "competitors", 1),

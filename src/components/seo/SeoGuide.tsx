@@ -159,7 +159,7 @@ export async function SeoGuide({ businessId }: { businessId: string }) {
   ];
 
   const steps: [string, string, string, string, string][] = [
-    ["#dataforseo", "Elige tu zona y tus palabras clave", "en «Datos reales de Google»: lo que tus clientes escriben en Google (ej.: lo que vendes + tu ciudad).", "Pick your area and keywords", "in “Real Google data”: what your customers type on Google (e.g. what you sell + your city)."],
+    ["#dataforseo", "Elige tu zona y tus palabras clave", "en la pestaña «⚙ Ajustes»: lo que tus clientes escriben en Google (ej.: lo que vendes + tu ciudad).", "Pick your area and keywords", "in the “⚙ Settings” tab: what your customers type on Google (e.g. what you sell + your city)."],
     ["#palabras", "Mira cuánta gente las busca", "y sigue las ideas que sí se buscan.", "See how many people search them", "and track the ideas people do search."],
     ["#posiciones", "Revisa tus posiciones", "en Google y en el mapa: ahí sabes dónde estás parado.", "Check your rankings", "on Google and on the map: that's where you stand."],
     ["#perfil", "Mejora tu Perfil de Google", "(fotos, horario, reseñas): es lo que más ayuda para salir en el mapa.", "Improve your Google profile", "(photos, hours, reviews): it's what helps most to show up on the map."],

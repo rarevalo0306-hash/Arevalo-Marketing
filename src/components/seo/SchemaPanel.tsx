@@ -114,8 +114,8 @@ export async function SchemaPanel({ businessId }: { businessId: string }) {
       "The last audit didn't find this code on your home page. Paste it so Google knows for sure who you are, where you are and when you're open.",
     ),
     unknown: t(
-      "Todavía no revisamos tu página. Corre la Auditoría de tu página (abajo) para saber si ya lo tiene.",
-      "We haven't checked your website yet. Run the Website audit (below) to find out if it already has it.",
+      "Todavía no revisamos tu página. Corre la Auditoría de tu página (arriba, en esta misma pestaña) para saber si ya lo tiene.",
+      "We haven't checked your website yet. Run the Website audit (above, in this same tab) to find out if it already has it.",
     ),
   }[status.status];
 

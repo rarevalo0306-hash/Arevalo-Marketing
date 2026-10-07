@@ -105,8 +105,8 @@ export async function GbpPanel({ businessId }: { businessId: string }) {
         ) : (
           <p className="note">
             {t(
-              "Primero elige la zona donde buscan tus clientes en «Datos reales de Google» (arriba) y luego tu negocio en el ",
-              "First pick the area where your customers search in “Real Google data” (above) and then your business in the ",
+              "Primero elige la zona donde buscan tus clientes en la pestaña «⚙ Ajustes» y luego tu negocio en el ",
+              "First pick the area where your customers search in the “⚙ Settings” tab and then your business in the ",
             )}
             <a href="#mapa">{t("mapa de calor", "heatmap")}</a>.
           </p>

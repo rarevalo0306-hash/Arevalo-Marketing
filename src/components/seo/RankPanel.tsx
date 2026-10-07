@@ -121,9 +121,9 @@ export async function RankPanel({ businessId }: { businessId: string }) {
               <Link href={`/b/${businessId}/negocio`}>{t("Ajustes del negocio", "Business settings")}</Link>.
             </>
           ) : setup.missing === "location" ? (
-            t("Para ver tus posiciones, primero elige la zona donde buscan tus clientes en «Datos reales de Google», aquí arriba.", "To see your rankings, first pick the area where your customers search in “Real Google data” above.")
+            t("Para ver tus posiciones, primero elige la zona donde buscan tus clientes en la pestaña «⚙ Ajustes».", "To see your rankings, first pick the area where your customers search in the “⚙ Settings” tab.")
           ) : (
-            t("Para ver tus posiciones, primero agrega las palabras clave que quieres seguir en «Datos reales de Google», aquí arriba.", "To see your rankings, first add the keywords you want to track in “Real Google data” above.")
+            t("Para ver tus posiciones, primero agrega las palabras clave que quieres seguir en la pestaña «⚙ Ajustes».", "To see your rankings, first add the keywords you want to track in the “⚙ Settings” tab.")
           )}
         </p>
       </section>
@@ -285,8 +285,8 @@ export async function RankPanel({ businessId }: { businessId: string }) {
         (saved.length === 0 ? (
           <p className="small muted">
             {t(
-              "Todavía no has revisado tus posiciones. Presiona el botón, o enciende la revisión diaria en «Datos reales de Google» para que se haga sola cada día.",
-              "You haven't checked your rankings yet. Press the button, or turn on the daily check in “Real Google data” so it runs on its own every day.",
+              "Todavía no has revisado tus posiciones. Presiona el botón, o enciende la revisión diaria en la pestaña «⚙ Ajustes» para que se haga sola cada día.",
+              "You haven't checked your rankings yet. Press the button, or turn on the daily check in the “⚙ Settings” tab so it runs on its own every day.",
             )}
           </p>
         ) : parsed.some(Boolean) ? (

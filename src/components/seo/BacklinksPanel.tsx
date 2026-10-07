@@ -50,7 +50,7 @@ export async function BacklinksPanel({ businessId }: { businessId: string }) {
   );
 
   if (!dataForSeoEnabled())
-    return empty(t("Para ver tus enlaces, primero conecta DataForSEO (arriba, en Datos reales de Google).", "To see your links, first connect DataForSEO (above, in Real Google data)."));
+    return empty(t("Para ver tus enlaces, primero conecta DataForSEO (en la pestaña «⚙ Ajustes»).", "To see your links, first connect DataForSEO (in the “⚙ Settings” tab)."));
 
   const b = await db.business.findUnique({ where: { id: businessId }, select: { website: true } });
   if (!b) return null;

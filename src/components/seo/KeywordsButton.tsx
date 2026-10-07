@@ -84,7 +84,7 @@ export function FollowButton({ businessId, keyword, full }: { businessId: string
         className="btn link"
         style={{ minHeight: 0, padding: 0, whiteSpace: "nowrap" }}
         disabled={pending || full}
-        title={full ? t("Ya sigues 25 palabras clave. Quita alguna en el panel de arriba.", "You already track 25 keywords. Remove one in the panel above.") : undefined}
+        title={full ? t("Ya sigues 25 palabras clave. Quita alguna en la pestaña «⚙ Ajustes».", "You already track 25 keywords. Remove one in the “⚙ Settings” tab.") : undefined}
         onClick={() =>
           start(async () => {
             setError("");

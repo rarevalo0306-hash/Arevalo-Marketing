@@ -47,7 +47,7 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
               <Link href={`/b/${businessId}/negocio`}>{t("Ajustes del negocio", "Business settings")}</Link>.
             </>
           ) : (
-            t("Para buscar a tu competencia, primero elige la zona donde buscan tus clientes (arriba, en Datos reales de Google).", "To find your competition, first pick the area where your customers search (above, in Real Google data).")
+            t("Para buscar a tu competencia, primero elige la zona donde buscan tus clientes (en la pestaña «⚙ Ajustes»).", "To find your competition, first pick the area where your customers search (in the “⚙ Settings” tab).")
           )}
         </p>
       </section>
@@ -119,8 +119,8 @@ export async function CompetitorsPanel({ businessId }: { businessId: string }) {
       {!row && (
         <p className="small muted">
           {t(
-            "Consejo: revisa primero tus posiciones en Google (arriba). Así encontramos a los que te ganan en tu zona, no solo a los grandes del país.",
-            "Tip: check your Google rankings first (above). That way we find the ones beating you in your area, not just the big national sites.",
+            "Consejo: revisa primero tus posiciones en Google (pestaña «Google y Maps»). Así encontramos a los que te ganan en tu zona, no solo a los grandes del país.",
+            "Tip: check your Google rankings first (“Google & Maps” tab). That way we find the ones beating you in your area, not just the big national sites.",
           )}
         </p>
       )}

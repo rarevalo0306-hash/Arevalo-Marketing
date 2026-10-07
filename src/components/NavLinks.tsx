@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useT } from "@/components/I18n";
 
 const ICONS: Record<string, React.ReactNode> = {
@@ -31,23 +32,65 @@ const LINKS = [
   ["negocio", ["Ajustes del negocio", "Ajustes"], ["Business settings", "Settings"]],
 ] as const;
 
+/** En el celular caben estas primeras secciones en la barra de abajo; el resto va en «Más». */
+const MOBILE_BAR = 5;
+
+const Icon = ({ children }: { children: React.ReactNode }) => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
+);
+
 export function NavLinks({ businessId }: { businessId: string }) {
   const path = usePathname();
-  const { lang } = useT();
+  const { lang, t } = useT();
+  const [more, setMore] = useState(false);
+  // Al cambiar de página o con Escape se cierra el menú «Más».
+  useEffect(() => setMore(false), [path]);
+  useEffect(() => {
+    if (!more) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMore(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [more]);
+  const items = LINKS.map(([slug, es, en], i) => {
+    const [label, short] = lang === "en" ? en : es;
+    const href = `/b/${businessId}/${slug}`;
+    return { slug, label, short, href, on: path === href || path.startsWith(`${href}/`), inMore: i >= MOBILE_BAR };
+  });
+  const moreOn = items.some((x) => x.inMore && x.on);
   return (
-    <div className="navlinks">
-      {LINKS.map(([slug, es, en]) => {
-        const [label, short] = lang === "en" ? en : es;
-        const href = `/b/${businessId}/${slug}`;
-        const on = path === href;
-        return (
-          <Link key={slug} href={href} className={`navlink${on ? " on" : ""}${short ? "" : " nav-desk"}`} aria-current={on ? "page" : undefined}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{ICONS[slug]}</svg>
+    <>
+      <div className="navlinks">
+        {items.map(({ slug, label, short, href, on, inMore }) => (
+          <Link key={slug} href={href} className={`navlink${on ? " on" : ""}${inMore ? " nav-desk" : ""}`} aria-current={on ? "page" : undefined}>
+            <Icon>{ICONS[slug]}</Icon>
             <span className="nav-long">{label}</span>
             <span className="nav-short">{short}</span>
           </Link>
-        );
-      })}
-    </div>
+        ))}
+        <button type="button" className={`navlink nav-more-btn${moreOn || more ? " on" : ""}`} aria-expanded={more} aria-controls="nav-more" onClick={() => setMore((v) => !v)}>
+          <Icon>
+            <circle cx="5" cy="12" r="1.5" />
+            <circle cx="12" cy="12" r="1.5" />
+            <circle cx="19" cy="12" r="1.5" />
+          </Icon>
+          <span className="nav-short">{t("Más", "More")}</span>
+        </button>
+      </div>
+      {more && (
+        <>
+          <div className="nav-more-backdrop" onClick={() => setMore(false)} aria-hidden="true" />
+          <div id="nav-more" className="nav-more" role="menu" aria-label={t("Más secciones", "More sections")}>
+            {items
+              .filter((x) => x.inMore)
+              .map(({ slug, label, href, on }) => (
+                <Link key={slug} href={href} role="menuitem" className={`navlink${on ? " on" : ""}`} aria-current={on ? "page" : undefined}>
+                  <Icon>{ICONS[slug]}</Icon>
+                  {label}
+                </Link>
+              ))}
+          </div>
+        </>
+      )}
+    </>
   );
 }

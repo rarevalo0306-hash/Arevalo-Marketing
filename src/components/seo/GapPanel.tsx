@@ -35,7 +35,7 @@ export async function GapPanel({ businessId }: { businessId: string }) {
   );
 
   if (!dataForSeoEnabled())
-    return empty(t("Para ver estas palabras, primero conecta DataForSEO (arriba, en Datos reales de Google).", "To see these keywords, first connect DataForSEO (above, in Real Google data)."));
+    return empty(t("Para ver estas palabras, primero conecta DataForSEO (en la pestaña «⚙ Ajustes»).", "To see these keywords, first connect DataForSEO (in the “⚙ Settings” tab)."));
 
   const b = await db.business.findUnique({
     where: { id: businessId },
@@ -52,7 +52,7 @@ export async function GapPanel({ businessId }: { businessId: string }) {
       </>,
     );
   if (!zones.length)
-    return empty(t("Primero elige la zona donde buscan tus clientes (arriba, en Datos reales de Google).", "First pick the area where your customers search (above, in Real Google data)."));
+    return empty(t("Primero elige la zona donde buscan tus clientes (en la pestaña «⚙ Ajustes»).", "First pick the area where your customers search (in the “⚙ Settings” tab)."));
 
   const [[compRow], [row], [gbpRow]] = await Promise.all([latestReports(businessId, "competitors", 1), latestReports(businessId, "gap", 1), latestReports(businessId, "gbp", 1)]);
   const competitors = pickGapCompetitors(compRow ? readCompetitorsReport(compRow.data) : null);
