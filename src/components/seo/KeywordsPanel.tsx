@@ -80,8 +80,8 @@ export async function KeywordsPanel({ businessId }: { businessId: string }) {
         {header}
         <p className="note">
           {t(
-            "Para ver las búsquedas reales, elige tu zona de Google y escribe tus palabras clave en el panel de arriba (Datos reales de Google) y guarda.",
-            "To see real searches, pick your Google area and enter your keywords in the panel above (Real Google data) and save.",
+            "Para ver las búsquedas reales, elige tu zona de Google y escribe tus palabras clave en la pestaña «⚙ Ajustes» y guarda.",
+            "To see real searches, pick your Google area and enter your keywords in the “⚙ Settings” tab and save.",
           )}
         </p>
       </section>

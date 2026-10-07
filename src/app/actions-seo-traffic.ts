@@ -28,7 +28,7 @@ export async function runTraffic(businessId: string, _prev: TrafficResult, _f: F
   if (!self) return { ok: false, message: t("Primero agrega la dirección de tu página web en Ajustes del negocio.", "First add your website address in Business settings.") };
   const zones = readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName);
   if (!zones.length)
-    return { ok: false, message: t("Primero elige la zona donde buscan tus clientes (arriba, en Datos reales de Google).", "First pick the area where your customers search (above, in Real Google data).") };
+    return { ok: false, message: t("Primero elige la zona donde buscan tus clientes (en la pestaña «⚙ Ajustes»).", "First pick the area where your customers search (in the “⚙ Settings” tab).") };
 
   // Sin reporte de competencia se revisa solo tu página.
   const [compRow] = await latestReports(businessId, "competitors", 1);

@@ -76,8 +76,8 @@ export default async function EscribirPage({
           ) : !zones.length ? (
             <p className="note">
               {t("Primero elige tu zona de Google en ", "First pick your Google area in ")}
-              <Link href={back}>{t("SEO y visibilidad", "SEO and visibility")}</Link>
-              {t(" (Datos reales de Google) y guarda. Así miramos lo que ven tus clientes.", " (Real Google data) and save. That way we see what your customers see.")}
+              <Link href={`${back}?tab=ajustes`}>{t("SEO y visibilidad", "SEO and visibility")}</Link>
+              {t(" (pestaña «⚙ Ajustes») y guarda. Así miramos lo que ven tus clientes.", " (“⚙ Settings” tab) and save. That way we see what your customers see.")}
             </p>
           ) : (
             <WriterForm

@@ -94,7 +94,7 @@ export async function trackKeyword(businessId: string, keyword: string): Promise
   const tracked = readTrackedKeywords(b.seoKeywords).map((x) => x.toLowerCase());
   if (tracked.includes(k)) return { ok: true, message: t("Ya la sigues.", "You already track it.") };
   if (tracked.length >= MAX_TRACKED)
-    return { ok: false, message: t(`Ya sigues ${MAX_TRACKED} palabras clave. Quita alguna en el panel de arriba.`, `You already track ${MAX_TRACKED} keywords. Remove one in the panel above.`) };
+    return { ok: false, message: t(`Ya sigues ${MAX_TRACKED} palabras clave. Quita alguna en la pestaña «⚙ Ajustes».`, `You already track ${MAX_TRACKED} keywords. Remove one in the “⚙ Settings” tab.`) };
   await db.business.update({ where: { id: businessId }, data: { seoKeywords: [...tracked, k] } });
   revalidatePath(`/b/${businessId}/seo`);
   return { ok: true, message: t("Agregada.", "Added.") };

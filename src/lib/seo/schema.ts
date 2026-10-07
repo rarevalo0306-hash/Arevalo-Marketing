@@ -421,7 +421,7 @@ export function buildLocalBusinessSchema(input: SchemaInput): SchemaResult {
     const list = uniqueAreas.map((z) => ({ "@type": z.type, name: z.name }));
     schema.areaServed = list.length === 1 ? list[0] : list;
   } else
-    miss("areaServed", "optional", "zones", "Las zonas donde trabajas: elígelas en Datos reales de Google (arriba).", "The areas you serve: pick them in Real Google data (above).");
+    miss("areaServed", "optional", "zones", "Las zonas donde trabajas: elígelas en la pestaña «⚙ Ajustes».", "The areas you serve: pick them in the “⚙ Settings” tab.");
 
   const price = clean(input.priceRange, 99);
   if (price) schema.priceRange = price;
