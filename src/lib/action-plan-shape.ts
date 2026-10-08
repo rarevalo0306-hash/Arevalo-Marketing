@@ -2,7 +2,7 @@
 
 export type Bi = { es: string; en: string };
 
-export const TASK_SOURCES = ["audit", "onpage", "keywords", "content", "links", "local", "reviews", "ai", "schema", "gsc", "setup"] as const;
+export const TASK_SOURCES = ["audit", "onpage", "keywords", "content", "links", "local", "reviews", "ai", "schema", "gsc", "ga4", "setup"] as const;
 export type TaskSource = (typeof TASK_SOURCES)[number];
 
 export const TASK_AREAS = ["web", "google", "maps", "ia", "contenido", "enlaces", "marca"] as const;

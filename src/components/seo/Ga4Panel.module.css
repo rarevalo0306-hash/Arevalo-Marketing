@@ -1,0 +1,124 @@
+/* Visitas a tu página (Google Analytics 4): tarjetas, barras simples y columnas por día. Un solo color de datos
+   (el mismo azul validado de TrafficPanel), con su versión para "noche". */
+.tiles,
+.grid,
+.bars,
+.cols {
+  --bar: #2a78d6;
+}
+:global(html[data-theme="noche"]) .tiles,
+:global(html[data-theme="noche"]) .grid,
+:global(html[data-theme="noche"]) .bars,
+:global(html[data-theme="noche"]) .cols {
+  --bar: #3987e5;
+}
+
+.wrap { overflow-wrap: anywhere; min-width: 0; }
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 16px;
+}
+
+.auto { font-size: 13px; color: var(--muted); min-height: 0; }
+.auto:empty { display: none; }
+
+.hint { font-size: 12px; line-height: 1.4; color: var(--muted); }
+
+/* Dos por fila en el celular, cinco en la computadora. */
+.tiles { grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); }
+.tiles :global(.stat) { min-width: 0; }
+@media (max-width: 520px) {
+  .tiles :global(.stat) { padding: 12px; }
+  .tiles :global(.stat-value) { font-size: 24px; }
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+  gap: 20px 24px;
+  align-items: start;
+}
+
+.grid3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: 16px 24px;
+  align-items: start;
+}
+
+/* ---------- Barras ---------- */
+.bars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.barRow { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.barTop { display: flex; align-items: baseline; justify-content: space-between; gap: 4px 12px; flex-wrap: wrap; min-width: 0; }
+.barLabel { font-size: 14px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; min-width: 0; }
+.barNote { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.barSub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 12.5px; color: var(--muted); }
+.track { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.fill { height: 100%; border-radius: 4px; background: var(--bar); }
+
+/* ---------- Columnas por día ---------- */
+.cols {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  align-items: end;
+  gap: 2px;
+  height: 120px;
+  padding-bottom: 1px;
+  border-bottom: 1px solid var(--line-strong);
+}
+.col { display: flex; align-items: flex-end; height: 100%; min-width: 0; cursor: default; }
+.col:hover .colFill { opacity: 0.75; }
+.colFill { display: block; width: 100%; border-radius: 4px 4px 0 0; background: var(--bar); }
+.colAxis { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
+
+/* ---------- Listas simples (ciudades, países, aparatos) ---------- */
+.h4 { margin: 0; font-size: 13px; font-weight: 700; color: var(--ink); }
+.simple { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.simple li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 14px; min-width: 0; }
+.simple li:last-child { border-bottom: 0; }
+.simple strong { font-variant-numeric: tabular-nums; }
+
+/* ---------- Sin conectar ---------- */
+.connect {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--brand-soft);
+}
+.connectText { margin: 0; color: var(--ink); font-size: 15px; line-height: 1.5; font-weight: 500; }
+.code {
+  display: inline-block;
+  max-width: 100%;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+/* ---------- Elegir la propiedad ---------- */
+.picker { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.picker li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.picker li.suggested { border-color: var(--brand-2); background: var(--brand-soft); }
+
+.footer { display: flex; flex-wrap: wrap; gap: 10px; }

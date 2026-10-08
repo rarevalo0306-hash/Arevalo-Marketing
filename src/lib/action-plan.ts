@@ -8,6 +8,7 @@ import {
   backlinksTasks,
   cannibalTasks,
   decayTasks,
+  ga4Tasks,
   gapTasks,
   gbpTasks,
   gscTasks,
@@ -23,6 +24,7 @@ import {
   type Saved,
 } from "@/lib/action-plan-rules";
 import { db } from "@/lib/db";
+import { GA4_CHANNEL } from "@/lib/ga4-shape";
 import type { UiLang } from "@/lib/i18n";
 import { readTrackedKeywords, readZones } from "@/lib/seo/dataforseo";
 import { businessTopicVocab, gbpCategory } from "@/lib/seo/gap";
@@ -33,7 +35,7 @@ import { latestReports, saveReport, type SeoKind } from "@/lib/seo/reports";
 export type PlanRefresh = { added: number; open: number; gone: number };
 
 /** Los reportes que alimentan el plan: si alguno es más nuevo que el último plan, el plan se vuelve a armar. */
-export const PLAN_INPUT_KINDS: SeoKind[] = ["audit", "onpage", "decay", "cannibal", "gsc", "rank", "keywords", "gap", "backlinks", "outreach", "gbp", "reviews", "maprank", "ai"];
+export const PLAN_INPUT_KINDS: SeoKind[] = ["audit", "onpage", "decay", "cannibal", "gsc", "rank", "keywords", "gap", "backlinks", "outreach", "gbp", "reviews", "maprank", "ai", "ga4"];
 /** Resúmenes del plan que se guardan (kind "plan"). */
 export const PLAN_KEEP = 30;
 /** Mapas de calor que se leen (el último de cada búsqueda). */
@@ -65,7 +67,7 @@ export async function buildPlanDrafts(businessId: string, now = new Date()): Pro
   if (!b) return null;
   const zones = readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName);
   const per = Math.max(1, zones.length);
-  const [audit, onpage, decay, cannibal, gsc, rank, keywords, gap, backlinks, outreach, gbp, reviews, maps, ai, gscConn, questions] = await Promise.all([
+  const [audit, onpage, decay, cannibal, gsc, rank, keywords, gap, backlinks, outreach, gbp, reviews, maps, ai, gscConn, questions, ga4, ga4Conn] = await Promise.all([
     latestReports(businessId, "audit"),
     latestReports(businessId, "onpage"),
     latestReports(businessId, "decay"),
@@ -82,6 +84,9 @@ export async function buildPlanDrafts(businessId: string, now = new Date()): Pro
     latestReports(businessId, "ai"),
     db.connection.findUnique({ where: { businessId_channel: { businessId, channel: GSC_CHANNEL } }, select: { id: true } }),
     loadQuestions(businessId).catch(() => null),
+    latestReports(businessId, "ga4"),
+    // Conectado = con la propiedad elegida (la etiqueta es su nombre).
+    db.connection.findUnique({ where: { businessId_channel: { businessId, channel: GA4_CHANNEL } }, select: { label: true } }),
   ]);
   const ctx: RuleCtx = {
     businessId,
@@ -94,6 +99,7 @@ export async function buildPlanDrafts(businessId: string, now = new Date()): Pro
   const drafts = mergeDrafts(
     setupTasks({ website: b.website, keywords: readTrackedKeywords(b.seoKeywords).length, zones: zones.length, study: !!b.study, now }, ctx),
     gscTasks({ connected: !!gscConn, saved: savedOf(gsc[0]), now }, ctx),
+    ga4Tasks({ connected: !!ga4Conn, saved: ga4Conn?.label ? savedOf(ga4[0]) : null, now }, ctx),
     auditTasks(savedOf(audit[0]), ctx),
     schemaTasks(savedOf(audit[0]), ctx),
     gbpTasks(savedOf(gbp[0]), savedOf(reviews[0]), ctx),
@@ -124,6 +130,7 @@ export async function buildPlanDrafts(businessId: string, now = new Date()): Pro
   stamp("reviews", reviews);
   stamp("maprank", maps);
   stamp("ai", ai);
+  stamp("ga4", ga4);
   return { drafts, sources };
 }
 

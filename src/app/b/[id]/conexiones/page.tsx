@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Fragment } from "react";
 import { connectBrevo, deleteConnection, saveConnection, testConnection } from "@/app/actions";
 import { disconnectGscFromConnections } from "@/app/actions-connections";
+import { disconnectGa4 } from "@/app/actions-ga4";
 import { ConnectionCard } from "@/components/ConnectionCard";
 import { PageHead } from "@/components/PageHead";
 import { UploadLinkCard } from "@/components/library/UploadLinkCard";
@@ -11,7 +12,8 @@ import { CHANNEL_IDS, CHANNELS, channelName, type ChannelGroup } from "@/lib/cha
 import { decryptJson } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
-import { googleEnabled } from "@/lib/google-oauth";
+import { GA4_CHANNEL } from "@/lib/ga4-shape";
+import { googleEnabled, googleRedirectUri } from "@/lib/google-oauth";
 import { metaEnabled } from "@/lib/meta-oauth";
 import { connectionsNeedingReconnect } from "@/lib/connection-health";
 import { GSC_CHANNEL } from "@/lib/seo/gsc";
@@ -21,6 +23,7 @@ import { r2Enabled } from "@/lib/r2";
 import { uploadStats } from "@/lib/upload";
 import { businessTzLabel, fmtWhen } from "@/lib/time";
 import { DriveCard } from "./DriveCard";
+import { Ga4Card } from "./Ga4Card";
 import { GscCard } from "./GscCard";
 import s from "./conexiones.module.css";
 
@@ -40,9 +43,10 @@ export default async function ConexionesPage({
   const { lang, t } = await getT();
   const metaUrl = metaEnabled() ? `/api/meta/start?b=${id}` : null;
   const googleUrl = googleEnabled() ? `/api/google/start?b=${id}` : null;
-  const [b, gsc, health, library, uploads, origin] = await Promise.all([
+  const [b, gsc, ga4, health, library, uploads, origin] = await Promise.all([
     db.business.findUniqueOrThrow({ where: { id }, include: { connections: { where: { channel: { in: CHANNEL_IDS } } } } }),
     db.connection.findUnique({ where: { businessId_channel: { businessId: id, channel: GSC_CHANNEL } }, select: { label: true } }),
+    db.connection.findUnique({ where: { businessId_channel: { businessId: id, channel: GA4_CHANNEL } }, select: { label: true } }),
     connectionsNeedingReconnect(id),
     libraryCounts(id),
     uploadStats(id),
@@ -171,6 +175,15 @@ export default async function ConexionesPage({
                       </a>
                     </li>
                   )}
+                  {g === "google" && (
+                    <li>
+                      <a href="#c-ga4" className={ga4?.label ? s.on : undefined}>
+                        <span className={s.dot} aria-hidden="true" />
+                        Google Analytics
+                        <span className="sr-only">{ga4?.label ? t(" (conectado)", " (connected)") : t(" (no conectado)", " (not connected)")}</span>
+                      </a>
+                    </li>
+                  )}
                 </ul>
               </div>
               {g === "social" && (
@@ -241,6 +254,16 @@ export default async function ConexionesPage({
                     enabled={googleEnabled()}
                     hasWebsite={Boolean(b.website.trim())}
                     disconnect={disconnectGscFromConnections.bind(null, id)}
+                  />
+                )}
+                {g === "google" && (
+                  <Ga4Card
+                    businessId={id}
+                    connected={Boolean(ga4)}
+                    property={ga4?.label ?? ""}
+                    enabled={googleEnabled()}
+                    redirectUri={googleRedirectUri()}
+                    disconnect={disconnectGa4.bind(null, id)}
                   />
                 )}
               </div>

@@ -10,9 +10,13 @@ export const GOOGLE_COOKIE = "am_google";
 export const GOOGLE_SCOPE = "https://www.googleapis.com/auth/business.manage";
 /** Search Console ("Tus búsquedas en Google"): solo lectura, se pide aparte del Perfil de Negocio. */
 export const GSC_SCOPE = "https://www.googleapis.com/auth/webmasters.readonly";
+/** Google Analytics 4 ("Visitas a tu página"): solo lectura, se pide aparte. */
+export const GA4_SCOPE = "https://www.googleapis.com/auth/analytics.readonly";
 
-/** Para qué se pide el permiso de Google: publicar en el Perfil de Negocio o leer Search Console. */
-export type GooglePurpose = "profile" | "gsc";
+/** Para qué se pide el permiso de Google: publicar en el Perfil de Negocio, leer Search Console o leer Analytics. */
+export type GooglePurpose = "profile" | "gsc" | "ga4";
+
+const PURPOSE_SCOPE: Record<GooglePurpose, string> = { profile: GOOGLE_SCOPE, gsc: GSC_SCOPE, ga4: GA4_SCOPE };
 
 export const googleEnabled = () => Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 
@@ -24,20 +28,22 @@ export function googleAuthUrl(businessId: string, purpose: GooglePurpose = "prof
     client_id: process.env.GOOGLE_CLIENT_ID!,
     redirect_uri: googleRedirectUri(),
     response_type: "code",
-    scope: purpose === "gsc" ? GSC_SCOPE : GOOGLE_SCOPE,
+    scope: PURPOSE_SCOPE[purpose] ?? GOOGLE_SCOPE,
     // offline + consent: Google entrega un refresh token que no vence mientras no se revoque.
     access_type: "offline",
     prompt: "consent",
     include_granted_scopes: "true",
-    // Search Console usa el mismo regreso (/api/google/callback); el propósito va dentro del state firmado.
-    state: makeState(purpose === "gsc" ? `gsc:${businessId}` : businessId),
+    // Search Console y Analytics usan el mismo regreso (/api/google/callback); el propósito va dentro del state firmado.
+    state: makeState(purpose === "profile" ? businessId : `${purpose}:${businessId}`),
   });
   return `https://accounts.google.com/o/oauth2/v2/auth?${q}`;
 }
 
 /** Separa el propósito del negocio en lo que devuelve readState (sin prefijo = Perfil de Negocio). */
 export function googleStatePurpose(value: string): { purpose: GooglePurpose; businessId: string } {
-  return value.startsWith("gsc:") ? { purpose: "gsc", businessId: value.slice(4) } : { purpose: "profile", businessId: value };
+  if (value.startsWith("gsc:")) return { purpose: "gsc", businessId: value.slice(4) };
+  if (value.startsWith("ga4:")) return { purpose: "ga4", businessId: value.slice(4) };
+  return { purpose: "profile", businessId: value };
 }
 
 /** Cambia el código por un refresh token (para guardar) y un access token (para usar ya). */

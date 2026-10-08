@@ -8,6 +8,7 @@
 // - Lo que no tiene que ver con lo que vende el negocio no entra (vocabulario de gap.ts: isRelevantKeyword).
 // - Si un reporte falta o tiene un formato viejo, la regla no devuelve nada (sin errores).
 import { taskScore, type Bi, type TaskArea, type TaskDraft } from "@/lib/action-plan-shape";
+import { GA4_BUSY_PAGE, hasKeyEventsSetUp, isLowEngagementPage, organicShare, readGa4Report } from "@/lib/ga4-shape";
 import { translator } from "@/lib/i18n";
 import * as auditModule from "@/lib/seo/audit";
 import { ISSUE_TEXT, readAuditReport, type Issue } from "@/lib/seo/audit";
@@ -63,6 +64,7 @@ const SOURCE_TEXT = {
   questions: bi("las preguntas que muestra Google", "the questions Google shows"),
   rank: bi("tus posiciones en Google", "your Google rankings"),
   gsc: bi("Search Console", "Search Console"),
+  ga4: bi("Google Analytics (visitas a tu página)", "Google Analytics (website visits)"),
   gap: bi("la comparación con tu competencia", "the competitor comparison"),
   backlinks: bi("la revisión de enlaces", "the backlinks check"),
   gbp: bi("tu Perfil de Google", "your Google profile"),
@@ -725,6 +727,146 @@ export function gscTasks(input: { connected: boolean; saved: Saved | null; now: 
       }),
     );
   return [...near, ...ctr];
+}
+
+// ---------- 8b. Google Analytics: visitas reales de la página ----------
+
+/** Visitas mínimas en 28 días para que el reparto de visitas (de dónde llegan) diga algo. */
+export const GA4_MIN_SESSIONS = 50;
+/** Menos de esto de las visitas llegando desde Google (gratis) = muy poco. */
+export const GA4_LOW_ORGANIC = 0.15;
+/** Páginas con muchas visitas donde la gente se va enseguida: como máximo estas tareas. */
+export const GA4_BOUNCE_MAX = 3;
+
+/**
+ * Sin Google Analytics conectado → «Conecta Google Analytics». Con el último reporte: marcar las llamadas y
+ * formularios como acciones importantes, muy pocas visitas desde Google y páginas por donde entran muchos y se van.
+ */
+export function ga4Tasks(input: { connected: boolean; saved: Saved | null; now: Date }, ctx: RuleCtx): TaskDraft[] {
+  const href = seo(ctx, "web", "ga4");
+  if (!input.connected) {
+    if (!ctx.website.trim()) return [];
+    return [
+      task({
+        key: "setup:ga4",
+        source: "setup",
+        area: "web",
+        title: bi("Conecta Google Analytics", "Connect Google Analytics"),
+        detail: detailOf(
+          [
+            bi(
+              "Es gratis y te dice cuántas personas visitan tu página, de dónde llegan y cuántas te llaman o te escriben. Con eso el plan te avisa qué páginas espantan a la gente.",
+              "It's free and tells you how many people visit your website, where they come from and how many call or message you. With it, the plan tells you which pages drive people away.",
+            ),
+            bi(
+              "Si tu página todavía no tiene Google Analytics, pídele a quien la hizo que lo instale.",
+              "If your website doesn't have Google Analytics yet, ask whoever built it to install it.",
+            ),
+          ],
+          "business",
+          input.now,
+        ),
+        impact: 1,
+        effort: 1,
+        href: `/b/${ctx.businessId}/conexiones#c-ga4`,
+      }),
+    ];
+  }
+  const report = input.saved ? readGa4Report(input.saved.data) : null;
+  if (!input.saved || !report) return [];
+  const at = input.saved.createdAt;
+  const total = report.totals.sessions;
+  const out: TaskDraft[] = [];
+
+  if (total >= GA4_BUSY_PAGE && hasKeyEventsSetUp(report) === false)
+    out.push(
+      task({
+        key: "ga4:key-events",
+        source: "ga4",
+        area: "web",
+        title: bi("Marca las llamadas y formularios como acciones importantes en Analytics", "Mark calls and forms as key events in Analytics"),
+        detail: detailOf(
+          [
+            bi(
+              `Tu página tuvo ${fmtNum(total, "es")} visitas en 28 días, pero Analytics no cuenta cuántas terminaron en una llamada, un WhatsApp o un formulario. Sin eso no sabes qué te trae clientes.`,
+              `Your website had ${fmtNum(total, "en")} visits in 28 days, but Analytics doesn't count how many ended in a call, a WhatsApp or a form. Without that you can't tell what brings you customers.`,
+            ),
+            bi(
+              "Cómo: pídele a quien maneja tu página que mida los clics en tu teléfono y WhatsApp y el envío del formulario, y que los marque como «eventos clave» en Google Analytics (Administrar › Eventos clave).",
+              "How: ask whoever runs your website to track clicks on your phone and WhatsApp and form submissions, and mark them as \"key events\" in Google Analytics (Admin › Key events).",
+            ),
+          ],
+          "ga4",
+          at,
+        ),
+        impact: 2,
+        effort: 1,
+        href,
+      }),
+    );
+
+  const share = organicShare(report);
+  if (total >= GA4_MIN_SESSIONS && share < GA4_LOW_ORGANIC) {
+    const pct = Math.round(share * 100);
+    out.push(
+      task({
+        key: "ga4:organic-low",
+        source: "ga4",
+        area: "google",
+        title: { es: `Casi nadie llega desde Google: solo el ${pct} % de tus visitas`, en: `Hardly anyone comes from Google: only ${pct}% of your visits` },
+        detail: detailOf(
+          [
+            bi(
+              `De ${fmtNum(total, "es")} visitas en 28 días, solo ${pct} de cada 100 llegaron buscando en Google (gratis). Las demás vienen de redes, anuncios o de gente que ya te conoce.`,
+              `Out of ${fmtNum(total, "en")} visits in 28 days, only ${pct} in 100 came from searching on Google (free). The rest come from social media, ads or people who already know you.`,
+            ),
+            bi(
+              "Cómo: sigue las tareas de «Posiciones en Google» de este plan: una página por cada servicio con la búsqueda en el título, texto útil y tu zona.",
+              "How: follow the \"Google rankings\" tasks in this plan: one page per service with the search in the title, useful text and your area.",
+            ),
+          ],
+          "ga4",
+          at,
+        ),
+        impact: 2,
+        effort: 3,
+        href,
+      }),
+    );
+  }
+
+  const bounce = report.landingPages
+    .filter((p) => p.key.startsWith("/") && isLowEngagementPage(p, total))
+    .sort((a, b) => b.sessions - a.sessions)
+    .slice(0, GA4_BOUNCE_MAX)
+    .map((p) => {
+      const path = p.key.split("?")[0] || "/";
+      const pct = Math.round(p.engagementRate * 100);
+      return task({
+        key: `ga4:bounce:${path.toLowerCase()}`,
+        source: "content",
+        area: "web",
+        title: { es: `La gente entra a «${path}» y se va enseguida`, en: `People land on “${path}” and leave right away` },
+        detail: detailOf(
+          [
+            bi(
+              `${fmtNum(p.sessions, "es")} visitas entraron por esta página en 28 días y solo el ${pct} % se quedó a ver (más de 10 segundos, otra página o una acción).`,
+              `${fmtNum(p.sessions, "en")} visits landed on this page in 28 days and only ${pct}% stayed (over 10 seconds, another page or an action).`,
+            ),
+            bi(
+              "Cómo: que arriba se vea de inmediato qué ofreces y en qué zona, una foto real de tu trabajo y un botón claro para llamar o escribir por WhatsApp. Revisa que cargue rápido en el celular.",
+              "How: make what you offer and where clear right at the top, add a real photo of your work and a clear button to call or WhatsApp. Check that it loads fast on mobile.",
+            ),
+          ],
+          "ga4",
+          at,
+        ),
+        impact: p.sessions >= Math.max(100, total * 0.25) ? 3 : 2,
+        effort: 2,
+        href,
+      });
+    });
+  return [...out, ...bounce];
 }
 
 // ---------- 9. Lo que tu competencia tiene y tú no (gap) ----------
