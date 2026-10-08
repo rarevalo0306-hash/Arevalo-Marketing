@@ -9,6 +9,8 @@ import {
   backlinksTasks,
   cannibalTasks,
   decayTasks,
+  directoryTasks,
+  DIR_TOP,
   ga4Tasks,
   gapTasks,
   gbpTasks,
@@ -25,6 +27,7 @@ import {
   type RuleCtx,
   type Saved,
 } from "@/lib/action-plan-rules";
+import { directoriesFor, napIssues } from "@/lib/directories";
 import { ISSUE_IDS } from "@/lib/seo/audit";
 import { buildCannibal } from "@/lib/seo/cannibal";
 import { businessTopicVocab, isRelevantKeyword } from "@/lib/seo/gap";
@@ -554,6 +557,63 @@ describe("visibilidad en las IAs (datos reales de Fameseg)", () => {
     expect(list[0].impact).toBe(3);
     expect(list[0].detail!.es).toContain("«Inmenicsa»");
     expect(keys(aiTasks({ data: famesegAiWithTone(), createdAt: AT }, ctx))).toContain("ai:negative");
+  });
+});
+
+describe("directorios y reseñas", () => {
+  const NOW = new Date(AT);
+  const daysAgo = (n: number) => new Date(NOW.getTime() - n * 86_400_000);
+  const dirs = directoriesFor({ region: "ca", kind: "home", name: "Fameseg", city: "Managua" }).map((d) => ({ id: d.id, name: d.name, priority: d.priority, kind: d.kind, why: d.why }));
+  const base = { dirs, listings: [], googleKnown: false, issues: [], napAt: null, reviewLink: true, lastShared: daysAgo(3), now: NOW };
+  it("los 3 directorios más importantes donde no estás (Google cuenta si ya conocemos tu perfil)", () => {
+    const top = dirs.filter((d) => d.kind === "listing").slice(0, DIR_TOP).map((d) => `dir:${d.id}`);
+    expect(top[0]).toBe("dir:google");
+    expect(keys(directoryTasks(base, ctx))).toEqual(top);
+    const known = directoryTasks({ ...base, googleKnown: true }, ctx);
+    expect(keys(known)).toEqual(top.slice(1));
+    const listed = directoryTasks({ ...base, googleKnown: true, listings: [{ directory: dirs[1].id, status: "claimed" }, { directory: dirs[2].id, status: "skip" }] }, ctx);
+    expect(listed).toEqual([]);
+    const g = directoryTasks(base, ctx)[0];
+    expect(g).toMatchObject({ source: "local", area: "maps", impact: 3, href: `/b/${ID}/directorios#dir-google` });
+    expect(g.title.es).toBe("Crea o reclama tu Perfil de Google");
+    expect(last(g)).toBe(`Según tu lista de directorios del ${fmtDate(AT, "es")}.`);
+  });
+  it("las fichas con datos distintos se piden corregir", () => {
+    const list = directoryTasks(
+      { ...base, googleKnown: true, listings: [{ directory: "facebook", status: "needs-fix" }, { directory: "instagram", status: "listed", napOk: false }, { directory: "waze", status: "listed", napOk: true }, { directory: "bogus", status: "needs-fix" }] },
+      ctx,
+    );
+    expect(keys(list).filter((k) => k.startsWith("dir-fix:"))).toEqual(["dir-fix:facebook", "dir-fix:instagram"]);
+    expect(list.find((t) => t.key === "dir-fix:facebook")!.title.es).toBe("Corrige tus datos en Facebook (página del negocio)");
+  });
+  it("nombre, dirección o teléfono distintos → una tarea con las diferencias y la fecha del perfil", () => {
+    const issues = napIssues([
+      { id: "app", values: { name: "Fameseg", phone: "+505 8888 8888" } },
+      { id: "gbp", values: { name: "Fameseg Cortinas Managua", phone: "+505 7777 7777", address: "Km 5 Carretera Norte, Managua" } },
+    ]);
+    const t = directoryTasks({ ...base, googleKnown: true, listings: dirs.slice(1, 3).map((d) => ({ directory: d.id, status: "listed" })), issues, napAt: AT }, ctx);
+    expect(keys(t)).toEqual(["nap:mismatch"]);
+    expect(t[0]).toMatchObject({ impact: 3, effort: 1, href: `/b/${ID}/directorios#datos` });
+    expect(t[0].detail!.es).toContain("«+505 7777 7777»");
+    expect(t[0].detail!.es).toContain("palabras de más");
+    expect(last(t[0])).toBe(`Según tu Perfil de Google del ${fmtDate(AT, "es")}.`);
+  });
+  it("link de reseñas sin compartir en 30 días (o nunca) → recordatorio; sin link, nada", () => {
+    const quiet = { ...base, googleKnown: true, listings: dirs.slice(1, 3).map((d) => ({ directory: d.id, status: "listed" })) };
+    expect(directoryTasks({ ...quiet, lastShared: daysAgo(10) }, ctx)).toEqual([]);
+    const old = directoryTasks({ ...quiet, lastShared: daysAgo(45) }, ctx);
+    expect(keys(old)).toEqual(["reviews:share-link"]);
+    expect(old[0]).toMatchObject({ source: "reviews", area: "maps", href: `/b/${ID}/directorios#resenas` });
+    expect(old[0].detail!.es).toContain("Hace 45 días");
+    expect(old[0].detail!.es).toContain("Nunca ofrezcas nada a cambio");
+    expect(directoryTasks({ ...quiet, lastShared: null }, ctx)[0].detail!.es).toContain("Todavía no has compartido");
+    expect(directoryTasks({ ...quiet, lastShared: null, reviewLink: false }, ctx)).toEqual([]);
+  });
+  it("claves estables entre corridas", () => {
+    const a = keys(directoryTasks({ ...base, lastShared: null }, ctx));
+    const b = keys(directoryTasks({ ...base, lastShared: null, now: new Date(NOW.getTime() + 86_400_000) }, ctx));
+    expect(a).toEqual(b);
+    for (const k of a) expect(k).not.toMatch(/\d{4}-\d\d/);
   });
 });
 

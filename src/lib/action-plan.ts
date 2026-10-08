@@ -8,6 +8,7 @@ import {
   backlinksTasks,
   cannibalTasks,
   decayTasks,
+  directoryTasks,
   ga4Tasks,
   gapTasks,
   gbpTasks,
@@ -24,6 +25,7 @@ import {
   type Saved,
 } from "@/lib/action-plan-rules";
 import { db } from "@/lib/db";
+import { directoryPlanInput } from "@/lib/directories-data";
 import { GA4_CHANNEL } from "@/lib/ga4-shape";
 import type { UiLang } from "@/lib/i18n";
 import { readTrackedKeywords, readZones } from "@/lib/seo/dataforseo";
@@ -67,7 +69,7 @@ export async function buildPlanDrafts(businessId: string, now = new Date()): Pro
   if (!b) return null;
   const zones = readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName);
   const per = Math.max(1, zones.length);
-  const [audit, onpage, decay, cannibal, gsc, rank, keywords, gap, backlinks, outreach, gbp, reviews, maps, ai, gscConn, questions, ga4, ga4Conn] = await Promise.all([
+  const [audit, onpage, decay, cannibal, gsc, rank, keywords, gap, backlinks, outreach, gbp, reviews, maps, ai, gscConn, questions, ga4, ga4Conn, dirs] = await Promise.all([
     latestReports(businessId, "audit"),
     latestReports(businessId, "onpage"),
     latestReports(businessId, "decay"),
@@ -87,6 +89,11 @@ export async function buildPlanDrafts(businessId: string, now = new Date()): Pro
     latestReports(businessId, "ga4"),
     // Conectado = con la propiedad elegida (la etiqueta es su nombre).
     db.connection.findUnique({ where: { businessId_channel: { businessId, channel: GA4_CHANNEL } }, select: { label: true } }),
+    // Directorios y reseñas (/directorios): si algo falla aquí, el resto del plan sigue.
+    directoryPlanInput(businessId).catch((e) => {
+      console.error("[plan] directories", e);
+      return null;
+    }),
   ]);
   const ctx: RuleCtx = {
     businessId,
@@ -112,6 +119,7 @@ export async function buildPlanDrafts(businessId: string, now = new Date()): Pro
     questionTasks(questions, ctx),
     backlinksTasks(savedOf(backlinks[0]), savedOf(outreach[0]), ctx),
     aiTasks(savedOf(ai[0]), ctx),
+    dirs ? directoryTasks({ ...dirs, now }, ctx) : [],
   );
   const sources: PlanSummary["sources"] = {};
   const stamp = (kind: SeoKind, rows: { createdAt: Date }[]) => {
