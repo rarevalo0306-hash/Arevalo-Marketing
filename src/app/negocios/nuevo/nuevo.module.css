@@ -13,3 +13,10 @@
   content: counter(step); position: absolute; left: 16px; top: 14px; width: 28px; height: 28px; border-radius: var(--r-md);
   display: grid; place-items: center; background: var(--brand-soft); color: var(--ink); font-weight: 800; font-size: 14px;
 }
+
+/* Dueño o representante */
+.owner { border: 1px solid var(--line); border-radius: var(--r-md); padding: 14px; margin: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.owner legend { padding: 0 6px; }
+.ownerGrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.ownerGrid > :first-child { grid-column: 1 / -1; }
+@media (max-width: 520px) { .ownerGrid { grid-template-columns: minmax(0, 1fr); } }

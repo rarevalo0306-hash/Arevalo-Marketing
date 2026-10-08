@@ -49,13 +49,16 @@ describe("menú por herramientas", () => {
   });
 
   it("grupos y barra del celular", () => {
-    const seo = NAV_GROUPS.find((g) => g.key === "seo")!;
+    const seo = NAV_GROUPS.find((g) => g.key === "diagnostico")!;
     expect(isGroupOn(ID, seo, here("/b/biz1/seo", "web"))).toBe(true);
-    expect(isGroupOn(ID, seo, here("/b/biz1/seo", "ia"))).toBe(false);
+    expect(isGroupOn(ID, seo, here("/b/biz1/seo", "ia"))).toBe(true);
+    expect(isGroupOn(ID, seo, here("/b/biz1/publicar"))).toBe(false);
     const on = (h: NavHere) => MOBILE_TABS.filter((x) => x.on(h, "/b/biz1/")).map((x) => x.key);
-    expect(on(here("/b/biz1/seo", "local"))).toEqual(["seo"]);
-    expect(on(here("/b/biz1/seo/escribir"))).toEqual(["contenido"]);
-    expect(on(here("/b/biz1/plan"))).toEqual(["contenido"]);
-    expect(on(here("/b/biz1/marca"))).toEqual([]);
+    expect(on(here("/b/biz1/seo", "local"))).toEqual(["diagnostico"]);
+    expect(on(here("/b/biz1/estudio"))).toEqual(["diagnostico"]);
+    expect(on(here("/b/biz1/seo/escribir"))).toEqual(["publicar"]);
+    expect(on(here("/b/biz1/plan"))).toEqual(["publicar"]);
+    expect(on(here("/b/biz1/marca"))).toEqual(["marca"]);
+    expect(on(here("/b/biz1/conexiones"))).toEqual([]);
   });
 });

@@ -67,6 +67,22 @@ const PATHS: Record<string, React.ReactNode> = {
       <path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" />
     </>
   ),
+  negocio: (
+    <>
+      <path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16" />
+      <path d="M15 9h4a1 1 0 0 1 1 1v11" />
+      <path d="M3 21h18" />
+      <path d="M8 8h3M8 12h3M8 16h3" />
+    </>
+  ),
+  marca: (
+    <>
+      <path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.6-.9 1.2-1.8l-.4-.9a1.6 1.6 0 0 1 1.5-2.3H17a4 4 0 0 0 4-4C21 6.9 17 3 12 3Z" />
+      <circle cx="7.5" cy="11.5" r="1.2" />
+      <circle cx="10.5" cy="7.5" r="1.2" />
+      <circle cx="15" cy="7.8" r="1.2" />
+    </>
+  ),
   mas: (
     <>
       <circle cx="5" cy="12" r="1.5" />

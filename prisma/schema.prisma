@@ -13,6 +13,10 @@ model Business {
   name        String
   color       String       @default("#126BBC")
   website     String       @default("")
+  /// Dueño o representante del negocio: a quién se le manda el reporte y con quién se habla.
+  ownerName   String       @default("")
+  ownerEmail  String       @default("")
+  ownerPhone  String       @default("")
   /// Lo que la IA debe saber del negocio: servicios, zona, teléfono, tono, lo que nunca debe decir.
   aiProfile     String     @default("")
   /// Si es true, lo que planea la IA se programa solo; si es false, queda como borrador para aprobar.

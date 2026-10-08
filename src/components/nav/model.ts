@@ -33,175 +33,72 @@ export type NavGroup = {
   items: NavItem[];
 };
 
+// Ordenado por las fases del trabajo con cada negocio: 1 Negocio → 2 Diagnóstico (la IA conoce el negocio) → 3 Marca →
+// 4 Campañas y publicación → 5 Resultados. Inicio arriba, con lo urgente de hoy.
 export const NAV_GROUPS: NavGroup[] = [
   {
     key: "tablero",
     icon: "tablero",
-    label: ["Tablero", "Dashboard"],
-    items: [{ key: "inicio", label: ["Tablero", "Dashboard"], path: "inicio" }],
+    label: ["Inicio", "Home"],
+    items: [{ key: "inicio", label: ["Inicio", "Home"], path: "inicio" }],
   },
   {
-    key: "seo",
+    key: "negocio",
+    icon: "negocio",
+    label: ["Negocio", "Business"],
+    items: [
+      { key: "negocio", label: ["Datos del negocio", "Business details"], path: "negocio" },
+      { key: "conexiones", label: ["Conexiones", "Connections"], path: "conexiones" },
+    ],
+  },
+  {
+    key: "diagnostico",
     icon: "seo",
-    label: ["SEO", "SEO"],
+    label: ["Diagnóstico", "Diagnosis"],
     items: [
-      {
-        key: "seo-resumen",
-        label: ["Resumen", "Overview"],
-        path: "seo",
-        tab: "resumen",
-      },
-      {
-        key: "seo-google",
-        label: ["Posiciones en Google", "Google rankings"],
-        path: "seo",
-        tab: "google",
-      },
-      {
-        key: "seo-palabras",
-        label: ["Palabras clave", "Keywords"],
-        path: "seo",
-        tab: "google",
-        hash: "palabras",
-      },
-      {
-        key: "seo-web",
-        label: ["Tu página web", "Your website"],
-        path: "seo",
-        tab: "web",
-        also: ["seo/gsc"],
-      },
-      {
-        key: "seo-enlaces",
-        label: ["Enlaces", "Backlinks"],
-        path: "seo",
-        tab: "competencia",
-        hash: "enlaces",
-      },
+      { key: "seo-resumen", label: ["Resumen y plan", "Summary & plan"], path: "seo", tab: "resumen" },
+      { key: "estudio", label: ["Estudio del negocio", "Business study"], path: "estudio" },
+      { key: "seo-google", label: ["Posiciones en Google", "Google rankings"], path: "seo", tab: "google" },
+      { key: "seo-palabras", label: ["Palabras clave", "Keywords"], path: "seo", tab: "google", hash: "palabras" },
+      { key: "seo-web", label: ["Tu página web", "Your website"], path: "seo", tab: "web", also: ["seo/gsc"] },
+      { key: "seo-competencia", label: ["Competencia y tráfico", "Competitors & traffic"], path: "seo", tab: "competencia" },
+      { key: "seo-enlaces", label: ["Enlaces", "Backlinks"], path: "seo", tab: "competencia", hash: "enlaces" },
+      { key: "local-mapa", label: ["Google Maps", "Google Maps"], path: "seo", tab: "local" },
+      { key: "local-perfil", label: ["Perfil de Google", "Google profile"], path: "seo", tab: "local", hash: "perfil" },
+      { key: "seo-ia", label: ["Visibilidad en IA", "AI visibility"], path: "seo", tab: "ia" },
+      { key: "seo-ajustes", label: ["Ajustes del diagnóstico", "Diagnosis settings"], path: "seo", tab: "ajustes" },
     ],
   },
   {
-    key: "local",
-    icon: "local",
-    label: ["Local", "Local"],
+    key: "marca",
+    icon: "marca",
+    label: ["Marca", "Brand"],
     items: [
-      {
-        key: "local-mapa",
-        label: ["Mapa de calor", "Map heatmap"],
-        path: "seo",
-        tab: "local",
-      },
-      {
-        key: "local-perfil",
-        label: ["Perfil de Google", "Google profile"],
-        path: "seo",
-        tab: "local",
-        hash: "perfil",
-      },
+      { key: "marca", label: ["Identidad y kit", "Identity & kit"], path: "marca" },
+      { key: "plantillas", label: ["Plantillas", "Templates"], path: "marca", hash: "plantillas" },
+      // Las fotos y videos reales del negocio (Drive y link de subida) que la IA usa en las publicaciones.
+      { key: "fotos", label: ["Tus fotos y videos", "Your photos & videos"], path: "fotos" },
     ],
   },
   {
-    key: "ia",
-    icon: "ia",
-    label: ["Visibilidad en IA", "AI visibility"],
-    items: [
-      {
-        key: "seo-ia",
-        label: ["Visibilidad en IA", "AI visibility"],
-        path: "seo",
-        tab: "ia",
-      },
-    ],
-  },
-  {
-    key: "competencia",
-    icon: "competencia",
-    label: ["Competencia y tráfico", "Competitors & traffic"],
-    items: [
-      {
-        key: "seo-competencia",
-        label: ["Competencia y tráfico", "Competitors & traffic"],
-        path: "seo",
-        tab: "competencia",
-      },
-    ],
-  },
-  {
-    key: "contenido",
-    icon: "contenido",
-    label: ["Contenido", "Content"],
-    items: [
-      {
-        key: "estudio",
-        label: ["Estudio del negocio", "Business study"],
-        path: "estudio",
-      },
-      {
-        key: "plan",
-        label: ["Ideas y Plan IA", "Ideas & AI plan"],
-        path: "plan",
-      },
-      {
-        key: "escribir",
-        label: ["Escribir artículo", "Write an article"],
-        path: "seo/escribir",
-      },
-    ],
-  },
-  {
-    key: "redes",
+    key: "campanas",
     icon: "redes",
-    label: ["Redes sociales", "Social media"],
+    label: ["Campañas y publicación", "Campaigns & publishing"],
     items: [
+      { key: "plan", label: ["Ideas y plan con IA", "Ideas & AI plan"], path: "plan" },
       { key: "publicar", label: ["Publicar", "Publish"], path: "publicar" },
-      // Las fotos y videos reales del negocio (su carpeta de Google Drive) que la IA usa en las publicaciones.
-      { key: "fotos", label: ["Tus fotos", "Your photos"], path: "fotos" },
+      { key: "escribir", label: ["Artículo para la web", "Website article"], path: "seo/escribir" },
       { key: "historial", label: ["Historial", "History"], path: "historial" },
-      { key: "contactos", label: ["Contactos", "Contacts"], path: "contactos" },
+      { key: "contactos", label: ["Contactos (email)", "Contacts (email)"], path: "contactos" },
+      { key: "anuncios", label: ["Anuncios pagados", "Paid ads"], path: "", soon: true },
     ],
   },
   {
-    key: "reportes",
+    key: "resultados",
     icon: "reportes",
-    label: ["Reportes", "Reports"],
+    label: ["Resultados", "Results"],
     items: [
-      {
-        key: "seo-reportes",
-        label: ["Reportes", "Reports"],
-        path: "seo",
-        tab: "reportes",
-        also: ["seo/reporte"],
-      },
-    ],
-  },
-  {
-    key: "anuncios",
-    icon: "anuncios",
-    label: ["Anuncios", "Ads"],
-    items: [{ key: "anuncios", label: ["Anuncios", "Ads"], path: "", soon: true }],
-  },
-  {
-    key: "config",
-    icon: "config",
-    label: ["Configuración", "Settings"],
-    items: [
-      { key: "marca", label: ["Marca", "Brand"], path: "marca" },
-      {
-        key: "conexiones",
-        label: ["Conexiones", "Connections"],
-        path: "conexiones",
-      },
-      {
-        key: "negocio",
-        label: ["Ajustes del negocio", "Business settings"],
-        path: "negocio",
-      },
-      {
-        key: "seo-ajustes",
-        label: ["Ajustes de SEO", "SEO settings"],
-        path: "seo",
-        tab: "ajustes",
-      },
+      { key: "seo-reportes", label: ["Reportes y avisos", "Reports & alerts"], path: "seo", tab: "reportes", also: ["seo/reporte"] },
     ],
   },
 ];
@@ -248,31 +145,31 @@ const under = (path: string, p: string) => path === p || path.startsWith(`${p}/`
 export const MOBILE_TABS: MobileTab[] = [
   {
     key: "tablero",
-    label: ["Tablero", "Dashboard"],
+    label: ["Inicio", "Home"],
     icon: "tablero",
     path: "inicio",
     on: (h, b) => under(h.pathname, `${b}inicio`),
   },
   {
-    key: "seo",
-    label: ["SEO", "SEO"],
+    key: "diagnostico",
+    label: ["Diagnóstico", "Diagnosis"],
     icon: "seo",
     path: "seo",
-    // Toda la página de SEO menos «Escribir artículo» (que va con Contenido).
-    on: (h, b) => under(h.pathname, `${b}seo`) && !under(h.pathname, `${b}seo/escribir`),
+    // Toda la página de SEO (menos «Artículo para la web», que va con Publicar) y el estudio del negocio.
+    on: (h, b) => (under(h.pathname, `${b}seo`) && !under(h.pathname, `${b}seo/escribir`)) || under(h.pathname, `${b}estudio`),
   },
   {
     key: "publicar",
     label: ["Publicar", "Publish"],
     icon: "redes",
     path: "publicar",
-    on: (h, b) => under(h.pathname, `${b}publicar`),
+    on: (h, b) => ["publicar", "plan", "seo/escribir", "historial"].some((p) => under(h.pathname, b + p)),
   },
   {
-    key: "contenido",
-    label: ["Contenido", "Content"],
-    icon: "contenido",
-    path: "estudio",
-    on: (h, b) => ["estudio", "plan", "seo/escribir"].some((p) => under(h.pathname, b + p)),
+    key: "marca",
+    label: ["Marca", "Brand"],
+    icon: "marca",
+    path: "marca",
+    on: (h, b) => ["marca", "fotos"].some((p) => under(h.pathname, b + p)),
   },
 ];
