@@ -13,6 +13,8 @@ import type { Business } from "@prisma/client";
 import { renderDesign, fitToShape, type Brand, type DesignInput } from "@/lib/design";
 import { DESIGN_SHAPES, StoredTemplate } from "@/lib/design-shapes";
 import { adaptPlan, formatFor } from "@/lib/formats";
+import { db } from "@/lib/db";
+import { guessLang, sloganFrom } from "@/lib/design-layout";
 import { fixedMediaName, mediaExists, mediaUrlFor, publicMediaUrl, readMedia, readSidecar, storeBuffer, writeSidecar } from "@/lib/media";
 import { readProvenance, writePhotoMeta, type PhotoMeta, type Provenance } from "@/lib/photo-meta";
 import { readMapPlace } from "@/lib/seo/maprank";
@@ -21,7 +23,21 @@ import { readStudy, topKeywords } from "@/lib/study-shape";
 // ---------- Nota que acompaña a cada foto ----------
 
 export type Sidecar =
-  | { v: 1; kind: "design"; brand: Brand; headline: string; steps?: string[]; template: StoredTemplate; photoUrl?: string; provenance?: Omit<Provenance, "c2pa"> }
+  | {
+      v: 1;
+      kind: "design";
+      brand: Brand;
+      headline: string;
+      steps?: string[];
+      template: StoredTemplate;
+      photoUrl?: string;
+      /** Campos opcionales del diseño (texto corto, botón, eslogan y punto importante de la foto). */
+      sub?: string;
+      cta?: string;
+      slogan?: string;
+      focus?: { x: number; y: number };
+      provenance?: Omit<Provenance, "c2pa">;
+    }
   | { v: 1; kind: "photo"; ai: boolean; provenance?: Omit<Provenance, "c2pa"> };
 
 function readNote(json: unknown): Sidecar | null {
@@ -40,8 +56,18 @@ function readNote(json: unknown): Sidecar | null {
     steps: Array.isArray(o.steps) ? o.steps.map(String).slice(0, 3) : [],
     template: tpl.data,
     photoUrl: typeof o.photoUrl === "string" ? o.photoUrl : undefined,
+    sub: typeof o.sub === "string" ? o.sub : undefined,
+    cta: typeof o.cta === "string" ? o.cta : undefined,
+    slogan: typeof o.slogan === "string" ? o.slogan : undefined,
+    focus: readFocus(o.focus),
     provenance: (o.provenance as Sidecar["provenance"]) ?? undefined,
   };
+}
+
+function readFocus(v: unknown): { x: number; y: number } | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const { x, y } = v as { x?: unknown; y?: unknown };
+  return typeof x === "number" && typeof y === "number" && x >= 0 && x <= 1 && y >= 0 && y <= 1 ? { x, y } : undefined;
 }
 
 // ---------- Datos del negocio para la foto ----------
@@ -139,6 +165,8 @@ export async function storeAiPhoto(data: Buffer, contentType: string, folder: st
 
 /** Dibuja un diseño con la marca, le pone los datos del negocio, lo guarda y anota cómo se hizo. */
 export async function storeDesign(input: DesignInput, folder: string, meta?: PhotoMeta): Promise<string> {
+  // El eslogan de la marca (sección Marca) va en el pie si quien llama no lo pasó.
+  if (input.slogan === undefined && input.brand.slogan === undefined) input = { ...input, slogan: await businessSlogan(folder, input.headline) };
   const jpg = await renderDesign(input);
   // Si la foto de fondo era de IA, el diseño lo sigue diciendo (se copia la marca de origen).
   let provenance: Omit<Provenance, "c2pa"> | undefined;
@@ -149,9 +177,19 @@ export async function storeDesign(input: DesignInput, folder: string, meta?: Pho
   const keep = provenance?.digitalSourceType ? { digitalSourceType: compositeOf(provenance.digitalSourceType) } : {};
   const file = meta ? writePhotoMeta(jpg, meta, keep) : jpg;
   const { url } = await storeBuffer(file, "image/jpeg", folder);
-  const note: Sidecar = { v: 1, kind: "design", brand: input.brand, headline: input.headline, steps: input.steps, template: input.template, photoUrl: input.photoUrl, provenance: keep.digitalSourceType ? keep : undefined };
+  const note: Sidecar = { v: 1, kind: "design", brand: input.brand, headline: input.headline, steps: input.steps, template: input.template, photoUrl: input.photoUrl, sub: input.sub, cta: input.cta, slogan: input.slogan, focus: input.focus, provenance: keep.digitalSourceType ? keep : undefined };
   await writeSidecar(url, note).catch(() => {});
   return url;
+}
+
+/** El eslogan del negocio (Business.brandIdentity.slogan, texto o { es, en }) en el idioma del titular, o "". */
+export async function businessSlogan(businessId: string, headline: string): Promise<string> {
+  try {
+    const row = await db.business.findUnique({ where: { id: businessId }, select: { brandIdentity: true } });
+    return sloganFrom(row?.brandIdentity, guessLang(headline));
+  } catch {
+    return "";
+  }
 }
 
 /** Un diseño hecho sobre una imagen de IA es una "composición con IA" (vocabulario IPTC). */
@@ -173,6 +211,40 @@ export type PostForMedia = {
 };
 
 /**
+ * La foto de `mediaUrl` en el tamaño de `channel`, exactamente como se publica (sin guardarla): los diseños
+ * se vuelven a dibujar en la forma de la red; las fotos sin letras se recortan con recorte inteligente; las
+ * demás se mandan tal cual si la red las acepta, o centradas sobre un fondo desenfocado.
+ * Devuelve null si la red no tiene formato propio o si la original ya sirve tal cual (con credenciales C2PA).
+ * La usa la vista previa de cada red (/api/plantilla/canal) para mostrar el recorte real.
+ */
+export async function imageForChannel(mediaUrl: string, channel: string, note?: Sidecar | null): Promise<{ out: Buffer; keep: Omit<Provenance, "c2pa"> } | null> {
+  const f = formatFor(channel);
+  if (!f) return null;
+  const { w, h } = DESIGN_SHAPES[f.shape];
+  if (note === undefined) note = readNote(await readSidecar(mediaUrl));
+  let keep: Omit<Provenance, "c2pa"> = note?.provenance ?? {};
+  if (note?.kind === "design") {
+    // Diseño con la marca: se vuelve a dibujar en el tamaño de la red.
+    const out = await renderDesign({ brand: note.brand, headline: note.headline, steps: note.steps, template: note.template, photoUrl: note.photoUrl, shape: f.shape, sub: note.sub, cta: note.cta, slogan: note.slogan, focus: note.focus });
+    return { out, keep };
+  }
+  const src = await readMedia(mediaUrl);
+  const info = await sharp(src).metadata();
+  const prov = readProvenance(src);
+  keep = { digitalSourceType: keep.digitalSourceType ?? prov.digitalSourceType, creatorTool: keep.creatorTool ?? prov.creatorTool, credit: keep.credit ?? prov.credit };
+  const rw = (info.orientation ?? 1) >= 5 ? info.height ?? w : info.width ?? w;
+  const rh = (info.orientation ?? 1) >= 5 ? info.width ?? h : info.height ?? h;
+  const plan = adaptPlan(rw / rh, f, { hasText: note?.kind !== "photo" });
+  if (plan === "keep") {
+    // Ya sirve: si trae credenciales C2PA se manda la original sin tocar. Las redes piden JPEG.
+    if (prov.c2pa) return null;
+    return { out: info.format === "jpeg" ? src : await sharp(src).rotate().flatten({ background: "#ffffff" }).jpeg({ quality: 92, mozjpeg: true }).toBuffer(), keep };
+  }
+  if (plan === "crop") return { out: await sharp(src).rotate().resize(w, h, { fit: "cover", position: sharp.strategy.attention }).jpeg({ quality: 90, mozjpeg: true }).toBuffer(), keep };
+  return { out: await fitToShape(await sharp(src).rotate().toBuffer(), w, h), keep };
+}
+
+/**
  * La dirección de la foto que se manda a `channel`, ya en su tamaño y con los datos del negocio.
  * Videos, canales sin formato propio y cualquier error: devuelve la foto original (nunca bloquea la publicación).
  */
@@ -181,37 +253,16 @@ export async function mediaForChannel(post: PostForMedia, channel: string): Prom
   const f = formatFor(channel);
   if (post.mediaType !== "photo" || !post.mediaUrl || !f) return original;
   try {
-    const { w, h } = DESIGN_SHAPES[f.shape];
     // Nombre fijo por publicación y canal: si ya se hizo (por ejemplo al reintentar), se reutiliza.
-    const hex = createHash("sha1").update(`${post.id ?? ""}|${post.mediaUrl}|${f.shape}|v1`).digest("hex");
+    const hex = createHash("sha1").update(`${post.id ?? ""}|${post.mediaUrl}|${f.shape}|v2`).digest("hex");
     const name = fixedMediaName(hex, "jpg");
     if (await mediaExists(post.businessId, name)) return publicMediaUrl(mediaUrlFor(post.businessId, name));
 
     const note = readNote(await readSidecar(post.mediaUrl));
     const meta = photoMetaFor(post.business, { title: post.seoTitle || post.subject || (note?.kind === "design" ? note.headline : ""), text: post.text });
-    let out: Buffer;
-    let keep: Omit<Provenance, "c2pa"> = note?.provenance ?? {};
-    if (note?.kind === "design") {
-      // Diseño con la marca: se vuelve a dibujar en el tamaño de la red.
-      out = await renderDesign({ brand: note.brand, headline: note.headline, steps: note.steps, template: note.template, photoUrl: note.photoUrl, shape: f.shape });
-    } else {
-      const src = await readMedia(post.mediaUrl);
-      const info = await sharp(src).metadata();
-      const prov = readProvenance(src);
-      keep = { digitalSourceType: keep.digitalSourceType ?? prov.digitalSourceType, creatorTool: keep.creatorTool ?? prov.creatorTool, credit: keep.credit ?? prov.credit };
-      const rw = (info.orientation ?? 1) >= 5 ? info.height ?? w : info.width ?? w;
-      const rh = (info.orientation ?? 1) >= 5 ? info.width ?? h : info.height ?? h;
-      const plan = adaptPlan(rw / rh, f, { hasText: note?.kind !== "photo" });
-      if (plan === "keep") {
-        // Ya sirve: si trae credenciales C2PA se manda la original sin tocar. Las redes piden JPEG.
-        if (prov.c2pa) return original;
-        out = info.format === "jpeg" ? src : await sharp(src).rotate().flatten({ background: "#ffffff" }).jpeg({ quality: 92, mozjpeg: true }).toBuffer();
-      } else if (plan === "crop") {
-        out = await sharp(src).rotate().resize(w, h, { fit: "cover", position: sharp.strategy.attention }).jpeg({ quality: 90, mozjpeg: true }).toBuffer();
-      } else {
-        out = await fitToShape(await sharp(src).rotate().toBuffer(), w, h);
-      }
-    }
+    const made = await imageForChannel(post.mediaUrl, channel, note);
+    if (!made) return original;
+    const { out, keep } = made;
     const stored = await storeBuffer(writePhotoMeta(out, meta, keep), "image/jpeg", post.businessId, name);
     return publicMediaUrl(stored.url);
   } catch {

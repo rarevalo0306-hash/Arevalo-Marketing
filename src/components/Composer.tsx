@@ -9,6 +9,9 @@ import type { VideoJob } from "@/lib/fal";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { MediaStep } from "@/components/ComposerMedia";
+import { PostPreview, type PreviewMediaInfo } from "@/components/preview/PostPreview";
+import { formatFor } from "@/lib/formats";
+import { isNetworkView } from "@/lib/preview";
 import { useT } from "@/components/I18n";
 import { IdeaList } from "@/components/IdeaList";
 import s from "./Composer.module.css";
@@ -31,6 +34,9 @@ type Props = {
   businessId: string;
   businessName: string;
   color: string;
+  /** Logo y web del negocio (para la vista previa de cada red). */
+  logoUrl?: string;
+  website?: string;
   connected: ChannelId[];
   contactCounts: { email: number; sms: number };
   action: (f: FormData) => Promise<void>;
@@ -114,6 +120,8 @@ export function Composer({
   businessId,
   businessName,
   color,
+  logoUrl = "",
+  website = "",
   connected,
   contactCounts,
   action,
@@ -138,7 +146,6 @@ export function Composer({
   const [mediaLink, setMediaLink] = useState("");
   // Email solo si el negocio tiene contactos que aceptaron recibirlo, y nunca marcado de entrada.
   const [on, setOn] = useState<Set<ChannelId>>(() => new Set(connected.filter((c) => c !== "email")));
-  const [preview, setPreview] = useState<ChannelId | null>(null);
   const [when, setWhen] = useState<"now" | "later">("now");
   const [localDate, setLocalDate] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -440,7 +447,6 @@ export function Composer({
   // Email: se ve solo si hay contactos que aceptaron recibirlo.
   const channels = CHANNELS.filter((c) => c.id !== "email" || contactCounts.email > 0 || on.has("email")).map((c) => channelText(c, uiLang));
   const selected = channels.filter((c) => on.has(c.id));
-  const pv = selected.find((c) => c.id === preview) ?? selected[0];
   const ready = selected.filter((c) => !isBlocked(c.id, draftFor(c.id))).length;
   const scheduledIso = useMemo(() => (localDate ? new Date(localDate).toISOString() : ""), [localDate]);
   const cant = uploading || !!mediaBusy || !selected.length || !text.trim() || (when === "later" && !scheduledIso);
@@ -459,19 +465,63 @@ export function Composer({
       return next;
     });
 
-  let head = "";
-  let headLabel = "";
-  const pvText = pv ? textFor(pv.id) : text;
   const placeholderBody = t("Tu mensaje aparecerá aquí.", "Your message will appear here.");
-  let body = pvText || placeholderBody;
-  // El pie del SMS (SMS_FOOTER) va tal cual se envía a los clientes.
-  if (pv?.id === "sms") body = smsBody(pvText || placeholderBody);
-  if (pv?.id === "seo") {
-    head = seoTitle || t("[Título del artículo]", "[Article title]");
-    headLabel = t("Artículo en tu página web (en español e inglés)", "Article on your website (in Spanish and English)");
+  /** Vista simple para los canales sin pantalla de red (email, SMS, artículo de la web). */
+  function otherPreview(id: ChannelId) {
+    const c = channels.find((x) => x.id === id);
+    if (!c) return null;
+    const pvText = textFor(id);
+    let body = pvText || placeholderBody;
+    let head = "";
+    let headLabel = "";
+    // El pie del SMS (SMS_FOOTER) va tal cual se envía a los clientes.
+    if (id === "sms") body = smsBody(pvText || placeholderBody);
+    if (id === "seo") {
+      head = seoTitle || t("[Título del artículo]", "[Article title]");
+      headLabel = t("Artículo en tu página web (en español e inglés)", "Article on your website (in Spanish and English)");
+    }
+    if (id === "email") { head = subject || t("[Asunto del email]", "[Email subject]"); headLabel = t("Asunto", "Subject"); }
+    return (
+      <div className="preview" style={{ width: "100%" }}>
+        <div className="preview-head">
+          <span className="avatar" style={{ background: color }}>{businessName.trim().charAt(0).toUpperCase()}</span>
+          <div>
+            <div style={{ fontWeight: 600 }}>{businessName}</div>
+            <div className="small muted">{c.kind} · {c.name}</div>
+          </div>
+        </div>
+        {head && (
+          <div style={{ padding: "14px 16px 0" }}>
+            <div className="small muted" style={{ fontWeight: 500 }}>{headLabel}</div>
+            <div style={{ fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>{head}</div>
+            {id === "seo" && <div className="small muted" style={{ marginTop: 4 }}>{t(
+              "La IA ordena tu texto en secciones, lo traduce al inglés y elige una foto de tu sitio. No agrega datos que no escribiste.",
+              "AI organizes your text into sections, translates it into English, and picks a photo from your website. It doesn't add facts you didn't write.",
+            )}</div>}
+          </div>
+        )}
+        {shownMedia !== "none" && id !== "sms" && (
+          <div className="preview-media">
+            {shownMedia === "video" ? <video src={mediaSrc} controls muted /> : (
+              // eslint-disable-next-line @next/next/no-img-element -- vista previa local (blob:) o enlace externo
+              <img src={mediaSrc} alt={t("Vista previa del archivo", "File preview")} />
+            )}
+          </div>
+        )}
+        <div className="preview-body">{body}</div>
+      </div>
+    );
   }
-  if (pv?.id === "email") { head = subject || t("[Asunto del email]", "[Email subject]"); headLabel = t("Asunto", "Subject"); }
-
+  /** La foto de cada red: la exacta que se publica (la dibuja el servidor) si la foto ya está guardada. */
+  const showingDesign = !!basePhoto && !!mediaLink && mediaLink !== basePhoto;
+  function mediaFor(id: ChannelId): PreviewMediaInfo {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const stored = mediaLink.startsWith(`${origin}/media/`) ? mediaLink.slice(origin.length) : mediaLink;
+    const exact = shownMedia === "photo" && !fileUrl && (/^https:\/\//.test(stored) || /^\/media\//.test(stored)) && formatFor(id)
+      ? `/api/plantilla/canal?b=${encodeURIComponent(businessId)}&c=${id}&u=${encodeURIComponent(stored)}`
+      : undefined;
+    return { type: shownMedia, url: mediaSrc, exactUrl: exact, design: showingDesign };
+  }
   const magicRunning = magicStep >= 0 && magicStep < 3;
   const busy = aiBusy || magicRunning;
   // Con IA: el paso de la idea se ve al principio, mientras la IA trabaja, o si lo vuelves a abrir.
@@ -723,60 +773,31 @@ export function Composer({
               <h2 id="h-prev" className={s.stepTitle}>{t("Vista previa", "Preview")}</h2>
               <span className="small muted">{t("Así se verá en cada lugar", "How it will look in each place")}</span>
             </div>
-            {!pv ? (
-              <p className="empty">{t("Elige al menos un canal para ver la vista previa.", "Pick at least one channel to see the preview.")}</p>
-            ) : (
-              <>
-                <div className="tabs" role="tablist" aria-label={t("Canales", "Channels")}>
-                  {selected.map((c) => (
-                    <button key={c.id} type="button" role="tab" aria-selected={c.id === pv.id} className={c.id === pv.id ? "tab on" : "tab"} onClick={() => setPreview(c.id)}>{c.name}</button>
-                  ))}
-                </div>
-                <div className="preview">
-                  <div className="preview-head">
-                    <span className="avatar" style={{ background: color }}>{businessName.trim().charAt(0).toUpperCase()}</span>
-                    <div>
-                      <div style={{ fontWeight: 600 }}>{businessName}</div>
-                      <div className="small muted">{pv.kind} · {pv.name}</div>
-                    </div>
-                  </div>
-                  {head && (
-                    <div style={{ padding: "14px 16px 0" }}>
-                      <div className="small muted" style={{ fontWeight: 500 }}>{headLabel}</div>
-                      <div style={{ fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>{head}</div>
-                      {pv.id === "seo" && <div className="small muted" style={{ marginTop: 4 }}>{t(
-                        "La IA ordena tu texto en secciones, lo traduce al inglés y elige una foto de tu sitio. No agrega datos que no escribiste.",
-                        "AI organizes your text into sections, translates it into English, and picks a photo from your website. It doesn't add facts you didn't write.",
-                      )}</div>}
-                    </div>
-                  )}
-                  {shownMedia !== "none" && pv.id !== "sms" && (
-                    <div className="preview-media">
-                      {shownMedia === "video" ? <video src={mediaSrc} controls muted /> : (
-                        // eslint-disable-next-line @next/next/no-img-element -- vista previa local (blob:) o enlace externo
-                        <img src={mediaSrc} alt={t("Vista previa del archivo", "File preview")} />
-                      )}
-                    </div>
-                  )}
-                  <div className="preview-body">{body}</div>
-                </div>
-                {variants[pv.id] !== undefined && (
-                  <div className="stack">
-                    <label htmlFor="variant" className="small" style={{ fontWeight: 600 }}>{t(`Texto solo para ${pv.name}`, `Text just for ${pv.name}`)}</label>
-                    <textarea
-                      id="variant"
-                      className="field"
-                      rows={5}
-                      value={variants[pv.id]}
-                      onChange={(e) => setVariants((v) => ({ ...v, [pv.id]: e.target.value }))}
-                    />
-                  </div>
-                )}
-                {notesFor(pv.id, draftFor(pv.id), uiLang).filter((x) => x.id !== "empty").map((x) => (
-                  <p key={x.id} className="note">{x.text}</p>
-                ))}
-              </>
-            )}
+            <PostPreview
+              brand={{ name: businessName, color, logoUrl: logoUrl || undefined, website: website || undefined }}
+              channels={selected.map((c) => c.id)}
+              textFor={textFor}
+              mediaFor={mediaFor}
+              renderOther={otherPreview}
+              below={(view, id) => {
+                const c = channels.find((x) => x.id === id);
+                // En las redes, la vista previa ya avisa si es muy largo o falta la foto.
+                const dup = isNetworkView(view) ? ["empty", "tooLong", "needsMedia", "needsVideo"] : ["empty"];
+                return (
+                  <>
+                    {variants[id] !== undefined && c && (
+                      <div className="stack">
+                        <label htmlFor="variant" className="small" style={{ fontWeight: 600 }}>{t(`Texto solo para ${c.name}`, `Text just for ${c.name}`)}</label>
+                        <textarea id="variant" className="field" rows={5} value={variants[id]} onChange={(e) => setVariants((v) => ({ ...v, [id]: e.target.value }))} />
+                      </div>
+                    )}
+                    {notesFor(id, draftFor(id), uiLang).filter((x) => !dup.includes(x.id)).map((x) => (
+                      <p key={x.id} className="note">{x.text}</p>
+                    ))}
+                  </>
+                );
+              }}
+            />
           </section>
 
           <section className={`card ${s.step} ${s.aWhen}`} aria-labelledby="h-when">

@@ -63,6 +63,8 @@ export default async function PublicarPage({
         businessId={id}
         businessName={b.name}
         color={b.color}
+        logoUrl={b.logoUrl}
+        website={b.website}
         connected={b.connections.map((c) => c.channel as ChannelId)}
         contactCounts={{ email, sms }}
         action={createPost.bind(null, id)}

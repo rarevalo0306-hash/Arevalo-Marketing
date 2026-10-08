@@ -1,0 +1,131 @@
+/* Vista previa por red. Las pestañas usan los colores del tema (Claro, Noche, Vidrio); la publicación imita
+   la pantalla de cada red (fondo blanco y letras oscuras), así se ve igual que en el celular del cliente. */
+.wrap { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+/* ---------- Pestañas (chips que se deslizan a los lados en el celular) ---------- */
+.tabs {
+  position: relative; display: flex; gap: 6px; overflow-x: auto; padding: 2px 2px 4px; scrollbar-width: thin;
+  scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch;
+}
+.chip {
+  position: relative; display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; scroll-snap-align: start;
+  min-height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line-strong);
+  background: var(--surface); color: var(--ink); font: 600 13.5px var(--body); cursor: pointer; white-space: nowrap;
+}
+.chip:hover { background: var(--surface-hover); }
+.chip:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.chipOn { background: var(--brand); border-color: var(--brand); color: #fff; }
+.chipOn:hover { background: var(--brand); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; box-shadow: 0 0 0 2px var(--surface); }
+.dotError { background: #dc2626; }
+
+.panel { display: flex; flex-direction: column; align-items: center; gap: 10px; min-width: 0; touch-action: pan-y; }
+.pager { display: flex; align-items: center; gap: 10px; }
+.pager :global(.btn) { min-width: 40px; justify-content: center; font-size: 18px; line-height: 1; }
+
+.notes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.noteItem { margin: 0; }
+.tip { opacity: 0.92; }
+
+/* ---------- La publicación (imita cada red) ---------- */
+.frame {
+  --pv-ink: #0f1419; --pv-muted: #65676b; --pv-line: #e4e6eb; --pv-link: #1d63c9;
+  width: 100%; max-width: 440px; overflow: hidden; border-radius: 14px; background: #fff; color: var(--pv-ink);
+  border: 1px solid var(--line-strong); box-shadow: 0 6px 20px rgba(16, 24, 40, 0.08);
+  font: 400 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  text-align: left;
+}
+.head { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+.who { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.name { font-weight: 700; font-size: 14px; color: var(--pv-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.head > .name { flex: 1; }
+.sub { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--pv-muted); }
+.sub .icon { width: 12px; height: 12px; }
+.body { padding: 4px 12px 10px; display: flex; flex-direction: column; gap: 6px; }
+.meta { display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--pv-muted); text-transform: uppercase; letter-spacing: 0.02em; }
+.foot { display: flex; justify-content: flex-end; padding: 0 12px 10px; }
+.count { font-size: 11.5px; color: var(--pv-muted); font-variant-numeric: tabular-nums; text-transform: none; letter-spacing: 0; }
+.countOver { color: #c62828; font-weight: 700; }
+.grow { flex: 1; }
+.icon { width: 22px; height: 22px; flex-shrink: 0; }
+
+.avatar {
+  display: grid; place-items: center; flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%;
+  color: #fff; font-weight: 700; font-size: 15px; overflow: hidden;
+}
+.avatarImg { object-fit: contain; background: #fff; border: 1px solid var(--pv-line); padding: 3px; }
+.avatarSq { border-radius: 6px; }
+.ring { display: inline-flex; padding: 2px; border-radius: 50%; background: linear-gradient(45deg, #f9ce34, #ee2a7b, #6228d7); }
+.ring .avatar { width: 32px; height: 32px; border: 2px solid #fff; }
+
+.text { margin: 0; font-size: 14px; line-height: 1.42; color: var(--pv-ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+.textDark { color: #fff; font-size: 13px; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5); }
+.lead { font-weight: 700; }
+.link { color: var(--pv-link); }
+.plainLink { color: inherit; }
+.tag { color: var(--pv-link); }
+.textDark .tag, .textDark .link { color: #fff; font-weight: 700; }
+.placeholder { color: var(--pv-muted); font-style: italic; }
+.more { border: 0; padding: 0; background: none; font: inherit; font-weight: 600; color: var(--pv-muted); cursor: pointer; }
+.textDark .more { color: #fff; }
+.more:focus-visible { outline: 2px solid var(--pv-link); outline-offset: 1px; }
+
+/* Foto o video en el cuadro de la red. */
+.media { position: relative; width: 100%; overflow: hidden; background: #f0f2f5; }
+.mediaRound { width: calc(100% - 24px); margin: 4px 12px 10px; border-radius: 14px; border: 1px solid var(--pv-line); }
+.xMain .mediaRound { width: 100%; margin: 8px 0 4px; }
+.fill { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.blur { filter: blur(18px) brightness(0.75); transform: scale(1.15); }
+.badge {
+  position: absolute; left: 8px; bottom: 8px; padding: 4px 9px; border-radius: 999px;
+  background: rgba(0, 0, 0, 0.62); color: #fff; font-size: 11.5px; font-weight: 600;
+}
+.noMedia { padding: 28px 12px; text-align: center; background: #fdecea; color: #b42318; font-size: 13px; font-weight: 600; }
+
+/* Instagram */
+.igActions { display: flex; align-items: center; gap: 14px; padding: 10px 12px 4px; }
+
+/* Facebook y LinkedIn */
+.fbBar {
+  display: flex; justify-content: space-around; gap: 4px; margin: 0 12px; padding: 6px 0 8px;
+  border-top: 1px solid var(--pv-line); color: var(--pv-muted); font-size: 13px; font-weight: 600;
+}
+.fbBar span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.fbBar .icon { width: 18px; height: 18px; }
+.fb .body, .li .body { padding-top: 0; }
+@media (max-width: 400px) { .li .fbBar span { font-size: 0; gap: 0; } .li .fbBar .icon { width: 20px; height: 20px; } }
+
+/* Google */
+.gb { border-radius: 12px; }
+.gbBtn {
+  align-self: flex-start; margin-top: 4px; padding: 7px 16px; border-radius: 999px; border: 1px solid #dadce0;
+  color: #1a73e8; font-weight: 600; font-size: 13.5px;
+}
+
+/* X */
+.xRow { display: flex; gap: 10px; padding: 12px 12px 4px; }
+.xMain { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.xWho { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.xWho .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.xBar { display: flex; justify-content: space-between; padding: 6px 0 2px; color: var(--pv-muted); }
+.xBar .icon { width: 18px; height: 18px; }
+
+/* Reel de Instagram y TikTok: pantalla vertical 9:16 con los botones de la red encima. */
+.story {
+  position: relative; max-width: 300px; aspect-ratio: 9 / 16; background: #000; color: #fff; border-color: #000;
+}
+.storyMedia { position: absolute; inset: 0; display: flex; }
+.storyMedia .media { position: absolute; inset: 0; height: 100%; aspect-ratio: auto !important; background: #111; }
+.storyEmpty { margin: auto; padding: 16px; text-align: center; font-size: 13px; color: #ddd; }
+.safeTop { position: absolute; left: 0; right: 0; top: 0; height: 14%; background: linear-gradient(rgba(0, 0, 0, 0.45), transparent); pointer-events: none; }
+.safeBottom { position: absolute; left: 0; right: 0; bottom: 0; height: 32%; background: linear-gradient(transparent, rgba(0, 0, 0, 0.6)); pointer-events: none; }
+.storySide { position: absolute; right: 10px; bottom: 26%; display: flex; flex-direction: column; gap: 16px; color: #fff; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5)); }
+.storyFoot { position: absolute; left: 12px; right: 52px; bottom: 14px; display: flex; flex-direction: column; gap: 6px; }
+.storyWho { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.storyWho .avatar { width: 28px; height: 28px; font-size: 12px; }
+.follow { padding: 2px 8px; border: 1px solid rgba(255, 255, 255, 0.8); border-radius: 6px; font-size: 12px; font-weight: 600; }
+.storyMusic { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; opacity: 0.9; }
+.storyMusic .icon { width: 14px; height: 14px; }
+.storyCount { position: absolute; top: 10px; right: 12px; }
+.storyCount .count { color: #fff; background: rgba(0, 0, 0, 0.5); padding: 2px 8px; border-radius: 999px; }
+.storyCount .countOver { background: #c62828; }
