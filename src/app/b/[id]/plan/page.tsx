@@ -18,7 +18,12 @@ export default async function PlanPage({ params }: { params: Promise<{ id: strin
   const { lang, t } = await getT();
   const fmt = new Intl.DateTimeFormat(intlLocale(lang), { dateStyle: "full", timeStyle: "short", timeZone: BUSINESS_TZ });
   const b = await db.business.findUniqueOrThrow({ where: { id }, include: { connections: { where: { channel: { in: CHANNEL_IDS } }, select: { channel: true } } } });
-  const drafts = await db.post.findMany({ where: { businessId: id, status: "draft" }, include: { targets: true }, orderBy: { scheduledAt: "asc" } });
+  // Los borradores de campañas paradas o terminadas quedan cancelados: se ven en la campaña, no aquí.
+  const drafts = await db.post.findMany({
+    where: { businessId: id, status: "draft", OR: [{ campaignId: null }, { campaign: { is: { status: { notIn: ["stopped", "ended"] } } } }] },
+    include: { targets: true, campaign: { select: { id: true, name: true } } },
+    orderBy: { scheduledAt: "asc" },
+  });
   const connected = new Set(b.connections.map((c) => c.channel));
   const today = new Date().toLocaleDateString("en-CA", { timeZone: BUSINESS_TZ });
   const nowLocal = `${today}T${new Date().toLocaleTimeString("en-GB", { timeZone: BUSINESS_TZ, hour: "2-digit", minute: "2-digit" })}`;
@@ -31,6 +36,11 @@ export default async function PlanPage({ params }: { params: Promise<{ id: strin
         prefix={t("Plan con IA para", "AI plan for")}
         title={t("Plan con IA", "AI plan")}
         subtitle={t("La IA prepara tus publicaciones de la semana. Tú revisas, cambias lo que quieras y apruebas.", "The AI prepares your posts for the week. You review them, change whatever you want, and approve.")}
+        actions={
+          <Link href={`/b/${id}/campanas/nueva`} className="btn outline">
+            {t("Convertir en campaña", "Turn into a campaign")}
+          </Link>
+        }
       />
       {!aiEnabled() ? (
         <div className="card empty">{t("Falta la clave de la IA (GEMINI_API_KEY) en Vercel.", "The AI key (GEMINI_API_KEY) is missing in Vercel.")}</div>
@@ -59,6 +69,11 @@ export default async function PlanPage({ params }: { params: Promise<{ id: strin
                   <div className="row between">
                     <div className="row">
                       <span className="pill draft">{t("Borrador", "Draft")}</span>
+                      {p.campaign && (
+                        <Link href={`/b/${id}/campanas/${p.campaign.id}`} className="small">
+                          {t("Campaña", "Campaign")}: {p.campaign.name}
+                        </Link>
+                      )}
                       <span className="small muted">{t("Saldría el", "Would go out on")} {fmt.format(p.scheduledAt)}</span>
                     </div>
                   </div>
