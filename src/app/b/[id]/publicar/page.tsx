@@ -1,5 +1,6 @@
 import { aiDesign, aiImage, aiVideoCheck, aiVideoStart, aiWrite, createPost, getUploadUrl } from "@/app/actions";
 import { moreIdeas } from "@/app/actions-ideas";
+import { postAltTexts } from "@/app/actions-posts";
 import { libraryForPicker, libraryMedia, libraryPhotoFor } from "@/app/actions-library";
 import { Composer } from "@/components/Composer";
 import { PageHead } from "@/components/PageHead";
@@ -14,6 +15,11 @@ import { getT } from "@/lib/i18n-server";
 import { imagesEnabled } from "@/lib/imagegen";
 import { readDescription } from "@/lib/library-shape";
 import { usesSupabaseStorage } from "@/lib/media";
+import { businessCity, businessKeywords } from "@/lib/post-seo";
+import type { StudioKind } from "@/components/posts/PostTypePicker";
+
+/** ?tipo=foto|diseno|carrusel|historia → el tipo con el que abre el estudio. */
+const TIPOS: Record<string, StudioKind> = { foto: "photo", diseno: "design", "diseño": "design", carrusel: "carousel", historia: "story" };
 
 // Publicar en varios canales (y esperar a que Instagram procese un video) puede tardar.
 export const maxDuration = 300;
@@ -23,7 +29,7 @@ export default async function PublicarPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ idea?: string; magic?: string; foto?: string }>;
+  searchParams: Promise<{ idea?: string; magic?: string; foto?: string; tipo?: string }>;
 }) {
   const { id } = await params;
   const q = await searchParams;
@@ -55,8 +61,8 @@ export default async function PublicarPage({
       <PageHead
         business={b}
         prefix={t("Publicando como", "Publishing as")}
-        title={t("Nueva publicación", "New post")}
-        subtitle={t("Elige una idea, revisa y publica. La IA lo adapta a cada canal que elijas.", "Pick an idea, review it and publish. AI adapts it to each channel you choose.")}
+        title={t("Posts: fotos y diseños", "Posts: photos and designs")}
+        subtitle={t("Elige qué publicar, revisa y publica. Cada red recibe su tamaño y tus palabras clave.", "Choose what to post, review it and publish. Each network gets its size and your keywords.")}
       />
       <Composer
         key={id}
@@ -77,6 +83,13 @@ export default async function PublicarPage({
         initialIdea={(q.idea ?? photoIdea).slice(0, 2000)}
         autoMagic={q.magic === "1"}
         initialMedia={initialMedia}
+        initialKind={q.tipo ? TIPOS[q.tipo.toLowerCase()] : undefined}
+        keywords={businessKeywords(b)}
+        city={businessCity(b)}
+        altTexts={postAltTexts.bind(null, id)}
+        aiAlt={!!process.env.GEMINI_API_KEY}
+        videosHref={`/b/${id}/videos`}
+        seoHref={`/b/${id}/seo`}
         library={{ list: libraryForPicker.bind(null, id), media: libraryMedia.bind(null, id), photoFor: libraryPhotoFor.bind(null, id), manageHref: `/b/${id}/fotos` }}
         aiMedia={imagesEnabled() ? { image: aiImage.bind(null, id), video: videoEnabled(), videoStart: aiVideoStart.bind(null, id), videoCheck: aiVideoCheck.bind(null, id), design: aiDesign.bind(null, id), autoBrand: b.brandImages, templates } : null}
       />

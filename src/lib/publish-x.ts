@@ -3,7 +3,7 @@
 // (initialize → append → finalize → status). X cobra por uso (pay-per-use): hay que tener créditos.
 import { createHmac, randomBytes } from "node:crypto";
 import { PublishError, required, sleep } from "@/lib/publishers/http";
-import type { Creds, PublishInput, Publisher } from "@/lib/publishers/types";
+import { mediaOf, type Creds, type PublishInput, type Publisher } from "@/lib/publishers/types";
 
 const API = "https://api.x.com";
 const KEYS = ["apiKey", "apiSecret", "accessToken", "accessSecret"];
@@ -95,14 +95,21 @@ async function download(url: string): Promise<{ data: Blob; type: string; size: 
 
 type MediaData = { data: { id: string; processing_info?: { state: string; check_after_secs?: number; error?: { message?: string } } } };
 
-async function uploadPhoto(creds: Creds, mediaUrl: string): Promise<string> {
+async function uploadPhoto(creds: Creds, mediaUrl: string, alt?: string): Promise<string> {
   const file = await download(mediaUrl);
   const body = new FormData();
   body.set("media", file.data, "image");
   body.set("media_category", "tweet_image");
   const r = await xFetch<MediaData>("POST", `${API}/2/media/upload`, creds, body);
+  if (alt) {
+    // Texto alternativo (POST /2/media/metadata). Es opcional: si X no lo acepta, la foto se publica igual.
+    await xFetch("POST", `${API}/2/media/metadata`, creds, JSON.stringify({ id: r.data.id, metadata: { alt_text: { text: alt.slice(0, 1000) } } }), true).catch(() => undefined);
+  }
   return r.data.id;
 }
+
+/** X acepta hasta 4 fotos (o 1 video) por publicación. */
+export const X_MAX_PHOTOS = 4;
 
 async function uploadVideo(creds: Creds, mediaUrl: string): Promise<string> {
   const file = await download(mediaUrl);
@@ -134,17 +141,23 @@ async function uploadVideo(creds: Creds, mediaUrl: string): Promise<string> {
 
 async function publish(input: PublishInput, rawCreds: Creds) {
   const creds = clean(rawCreds);
-  let mediaId = "";
-  if (input.mediaUrl && input.mediaType === "photo") mediaId = await uploadPhoto(creds, input.mediaUrl);
-  if (input.mediaUrl && input.mediaType === "video") mediaId = await uploadVideo(creds, input.mediaUrl);
+  const files = mediaOf(input);
+  const ids: string[] = [];
+  if (files[0]?.type === "video") ids.push(await uploadVideo(creds, files[0].url));
+  else {
+    const photos = files.filter((m) => m.type === "photo").slice(0, input.kind === "carousel" ? X_MAX_PHOTOS : 1);
+    for (const p of photos) ids.push(await uploadPhoto(creds, p.url, p.alt));
+  }
   const r = await xFetch<{ data: { id: string } }>(
     "POST",
     `${API}/2/tweets`,
     creds,
-    JSON.stringify({ text: input.text, ...(mediaId ? { media: { media_ids: [mediaId] } } : {}) }),
+    JSON.stringify({ text: input.text, ...(ids.length ? { media: { media_ids: ids } } : {}) }),
     true,
   );
-  return { url: `https://x.com/i/web/status/${r.data.id}`, detail: "Publicado en X" };
+  const extra = files.filter((m) => m.type === "photo").length - X_MAX_PHOTOS;
+  const detail = ids.length > 1 ? `Publicado en X con ${ids.length} fotos${extra > 0 ? ` (X acepta hasta ${X_MAX_PHOTOS}; las otras ${extra} no se enviaron)` : ""}` : "Publicado en X";
+  return { url: `https://x.com/i/web/status/${r.data.id}`, detail };
 }
 
 export const x: Publisher = {

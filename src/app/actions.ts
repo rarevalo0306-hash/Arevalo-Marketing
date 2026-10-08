@@ -1,5 +1,6 @@
 "use server";
 
+import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -18,6 +19,8 @@ import { createImage, IMAGE_PROVIDERS, imagesEnabled } from "@/lib/imagegen";
 import { ownerFields } from "@/lib/owner";
 import { pickLibraryPhotos } from "@/lib/library";
 import { createSignedUpload, isOwnFile, saveUpload, storeRemote } from "@/lib/media";
+import { ALT_MAX, checkPostMedia, postKindFor, readPostMedia } from "@/lib/post-media";
+import { altTexts, focusForUrl } from "@/lib/post-seo";
 import { GOOGLE_COOKIE, saveGoogleLocation, type GoogleLocation } from "@/lib/google-oauth";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
@@ -29,6 +32,13 @@ import { stormEvent, stormSchedule } from "@/lib/storm";
 import { businessDay, localToUtc } from "@/lib/time";
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
+const safeJson = (v: string): unknown => {
+  try {
+    return v ? JSON.parse(v) : null;
+  } catch {
+    return null;
+  }
+};
 const HEX = /^#[0-9a-fA-F]{6}$/;
 
 async function business(id: string) {
@@ -252,8 +262,8 @@ export async function getUploadUrl(businessId: string, contentType: string) {
 }
 
 export async function createPost(businessId: string, f: FormData) {
-  await business(businessId);
-  const { t } = await getT();
+  const biz = await business(businessId);
+  const { lang, t } = await getT();
   const text = String(f.get("text") ?? "").trim();
   if (!text) throw new Error(t("Escribe tu mensaje", "Write your message"));
   const channels = f.getAll("channels").map(String).filter((c): c is ChannelId => CHANNEL_IDS.includes(c as ChannelId));
@@ -271,6 +281,34 @@ export async function createPost(businessId: string, f: FormData) {
   } else {
     mediaType = "none";
   }
+
+  // Tipo de publicación (foto/diseño, carrusel, historia o video) y sus fotos con el texto alternativo.
+  // Carrusel: de 2 a 10 fotos en `media`; la primera también va en mediaUrl (lo de antes sigue igual).
+  const kind = postKindFor(str(f, "kind"), mediaType);
+  let items = readPostMedia(safeJson(str(f, "media")));
+  if (kind === "carousel") {
+    items = items.filter((i) => /^https?:\/\//i.test(i.url));
+    if (items[0]) {
+      mediaUrl = items[0].url;
+      mediaType = "photo";
+    }
+  } else {
+    // Una sola foto o video: la de mediaUrl, con el texto alternativo que venga para ella.
+    const alt = items.find((i) => i.url === mediaUrl)?.alt ?? items[0]?.alt ?? "";
+    items = mediaUrl && (mediaType === "photo" || mediaType === "video") ? [{ url: mediaUrl, alt, type: mediaType }] : [];
+  }
+  const problem = checkPostMedia(kind, items);
+  if (problem) throw new Error(lang === "en" ? problem.en : problem.es);
+  // Texto alternativo con palabras clave: el que escribió el dueño (o la IA) o, si falta, la plantilla.
+  let altText = str(f, "altText").slice(0, ALT_MAX) || items[0]?.alt || "";
+  if (items.some((i) => i.type === "photo" && !i.alt) || (!altText && items[0]?.type === "photo")) {
+    const filled = await altTexts(biz, items.map((i) => ({ url: i.url })), text, lang === "en" ? "en" : "es", { ai: false }).catch(() => null);
+    items = items.map((i, n) => (i.alt || i.type !== "photo" ? i : { ...i, alt: filled?.alts[n] ?? "" }));
+    altText ||= items[0]?.alt ?? "";
+  }
+  // El punto importante de cada foto de «Tus fotos» (para recortarla bien en cada red).
+  items = await Promise.all(items.map(async (i) => (i.focus || i.type !== "photo" ? i : { ...i, focus: await focusForUrl(i.url, businessId) })));
+  const media = items.length ? (items.map((i) => ({ url: i.url, alt: i.alt, type: i.type, ...(i.focus ? { focus: i.focus } : {}) })) as Prisma.InputJsonValue) : undefined;
 
   const later = str(f, "when") === "later";
   let scheduledAt = new Date();
@@ -300,6 +338,9 @@ export async function createPost(businessId: string, f: FormData) {
       seoTitle: str(f, "seoTitle"),
       mediaUrl,
       mediaType: mediaType === "photo" || mediaType === "video" ? mediaType : "none",
+      kind,
+      media,
+      altText,
       scheduledAt,
       targets: { create: channels.map((channel) => ({ channel })) },
     },
@@ -570,12 +611,14 @@ async function templatesOf(businessId: string): Promise<StoredTemplate[]> {
 /** Diseña un post con la marca del negocio y una plantilla, y guarda el resultado. */
 async function brandPhoto(
   b: BrandRow,
-  opts: { photoUrl?: string; headline: string; steps?: string[]; template?: number; shape?: DesignShape; seed?: number },
+  opts: { photoUrl?: string; headline: string; steps?: string[]; template?: number; shape?: DesignShape; seed?: number; focus?: { x: number; y: number } },
 ): Promise<string> {
   const list = await templatesOf(b.id);
   const template = pickTemplate(list, opts.template ?? -1, { headline: opts.headline, steps: opts.steps, hasPhoto: !!opts.photoUrl, seed: opts.seed });
   // Se guarda con los datos del negocio (autor, lugar, palabras clave) y con la receta para rehacerlo en el tamaño de cada red.
-  return storeDesign({ brand: brandOf(b), template, headline: opts.headline, photoUrl: opts.photoUrl, steps: opts.steps, shape: opts.shape }, b.id, photoMetaFor(b, { title: opts.headline }));
+  // El punto importante de la foto (si es de «Tus fotos»), para que el recorte del diseño no corte lo que importa.
+  const focus = opts.focus ?? (opts.photoUrl ? await focusForUrl(opts.photoUrl, b.id) : undefined);
+  return storeDesign({ brand: brandOf(b), template, headline: opts.headline, photoUrl: opts.photoUrl, steps: opts.steps, shape: opts.shape, focus }, b.id, photoMetaFor(b, { title: opts.headline }));
 }
 
 export async function aiDesign(businessId: string, photoUrl: string, headline: string, shape: string, template = -1, steps: string[] = []): Promise<MediaResult> {

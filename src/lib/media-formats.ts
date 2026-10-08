@@ -12,13 +12,17 @@ import sharp from "sharp";
 import type { Business } from "@prisma/client";
 import { renderDesign, fitToShape, type Brand, type DesignInput } from "@/lib/design";
 import { DESIGN_SHAPES, StoredTemplate } from "@/lib/design-shapes";
-import { adaptPlan, formatFor } from "@/lib/formats";
+import { adaptPlan, formatFor, formatKey } from "@/lib/formats";
 import { db } from "@/lib/db";
 import { guessLang, sloganFrom } from "@/lib/design-layout";
-import { fixedMediaName, mediaExists, mediaUrlFor, publicMediaUrl, readMedia, readSidecar, storeBuffer, writeSidecar } from "@/lib/media";
+import { mediaExists, mediaUrlFor, publicMediaUrl, readMedia, readSidecar, seoMediaName, storeBuffer, writeSidecar } from "@/lib/media";
 import { readProvenance, writePhotoMeta, type PhotoMeta, type Provenance } from "@/lib/photo-meta";
 import { readMapPlace } from "@/lib/seo/maprank";
 import { readStudy, topKeywords } from "@/lib/study-shape";
+import { smartCrop } from "@/lib/post-crop";
+import { businessKeywords, focusForUrl } from "@/lib/post-focus";
+import { pickPostKeywords, seoSlug } from "@/lib/post-keywords";
+import type { Focus, PostKind } from "@/lib/post-media";
 
 // ---------- Nota que acompaña a cada foto ----------
 
@@ -72,7 +76,10 @@ function readFocus(v: unknown): { x: number; y: number } | undefined {
 
 // ---------- Datos del negocio para la foto ----------
 
-type BizForMeta = Pick<Business, "name" | "website" | "hashtags" | "study" | "studyInput" | "seoMapPlace" | "seoLocations" | "seoLocationName">;
+type BizForMeta = Pick<Business, "name" | "website" | "hashtags" | "study" | "studyInput" | "seoMapPlace" | "seoLocations" | "seoLocationName"> & {
+  /** Palabras que el negocio sigue en SEO: las que van con el post van primero (y dan el nombre del archivo). */
+  seoKeywords?: Business["seoKeywords"];
+};
 
 const COUNTRY_CODES: Record<string, string> = {
   "united states": "US", usa: "US", "estados unidos": "US", nicaragua: "NI", mexico: "MX", méxico: "MX", "costa rica": "CR", honduras: "HN",
@@ -133,7 +140,10 @@ const firstLine = (s: string, max: number) => s.replace(/https?:\/\/\S+/g, "").r
 /** Todos los datos para escribir en la foto: negocio, lugar, título, descripción y palabras clave. */
 export function photoMetaFor(b: BizForMeta, post: { title?: string; text?: string; keywords?: string[] } = {}): PhotoMeta {
   const study = readStudy(b.study);
-  const kws = [...(post.keywords ?? []), ...hashtagsIn(post.text ?? ""), ...(study ? topKeywords(study, 6) : []), ...hashtagsIn(b.hashtags ?? "")];
+  // Las palabras del negocio que van con este post (las que sigue en SEO primero).
+  const own = businessKeywords({ seoKeywords: b.seoKeywords ?? null, study: b.study });
+  const picked = own.length && (post.title || post.text) ? pickPostKeywords(`${post.title ?? ""}\n${post.text ?? ""}`, own, 3) : [];
+  const kws = [...(post.keywords ?? []), ...picked, ...hashtagsIn(post.text ?? ""), ...(study ? topKeywords(study, 6) : []), ...hashtagsIn(b.hashtags ?? "")];
   const seen = new Set<string>();
   const keywords = kws.map((k) => k.trim()).filter((k) => k && !seen.has(k.toLowerCase()) && seen.add(k.toLowerCase())).slice(0, 15);
   const place = businessPlace(b);
@@ -152,11 +162,20 @@ export function photoContextFor(b: BizForMeta & { color: string }, post: { title
 
 // ---------- Guardar fotos y diseños ----------
 
+/** Nombre del archivo con palabras clave para Google: "portones-enrollables-managua-a1b2c3d4e5f6.jpg". */
+export function seoNameFor(meta: Pick<PhotoMeta, "keywords" | "city"> | undefined, ext: "jpg" | "png" | "webp", hex?: string): string | undefined {
+  if (!meta) return hex ? seoMediaName("", ext, hex) : undefined;
+  const slug = seoSlug(meta.keywords?.[0], meta.city);
+  return slug ? seoMediaName(slug, ext, hex) : hex ? seoMediaName("", ext, hex) : undefined;
+}
+const EXT: Record<string, "jpg" | "png" | "webp"> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+
 /** Guarda una foto hecha por la IA con los datos del negocio (sin tocar las marcas de IA) y su nota. */
 export async function storeAiPhoto(data: Buffer, contentType: string, folder: string, meta?: PhotoMeta): Promise<string> {
   const prov = readProvenance(data);
   const file = meta ? writePhotoMeta(data, meta) : data;
-  const { url } = await storeBuffer(file, contentType, folder);
+  const ext = EXT[contentType];
+  const { url } = await storeBuffer(file, contentType, folder, ext ? seoNameFor(meta, ext) : undefined);
   const { c2pa: _c2pa, ...provenance } = prov;
   void _c2pa;
   await writeSidecar(url, { v: 1, kind: "photo", ai: true, provenance } satisfies Sidecar).catch(() => {});
@@ -176,7 +195,7 @@ export async function storeDesign(input: DesignInput, folder: string, meta?: Pho
   }
   const keep = provenance?.digitalSourceType ? { digitalSourceType: compositeOf(provenance.digitalSourceType) } : {};
   const file = meta ? writePhotoMeta(jpg, meta, keep) : jpg;
-  const { url } = await storeBuffer(file, "image/jpeg", folder);
+  const { url } = await storeBuffer(file, "image/jpeg", folder, seoNameFor(meta, "jpg"));
   const note: Sidecar = { v: 1, kind: "design", brand: input.brand, headline: input.headline, steps: input.steps, template: input.template, photoUrl: input.photoUrl, sub: input.sub, cta: input.cta, slogan: input.slogan, focus: input.focus, provenance: keep.digitalSourceType ? keep : undefined };
   await writeSidecar(url, note).catch(() => {});
   return url;
@@ -217,7 +236,12 @@ export type PostForMedia = {
  * Devuelve null si la red no tiene formato propio o si la original ya sirve tal cual (con credenciales C2PA).
  * La usa la vista previa de cada red (/api/plantilla/canal) para mostrar el recorte real.
  */
-export async function imageForChannel(mediaUrl: string, channel: string, note?: Sidecar | null): Promise<{ out: Buffer; keep: Omit<Provenance, "c2pa"> } | null> {
+export async function imageForChannel(
+  mediaUrl: string,
+  channel: string,
+  note?: Sidecar | null,
+  opts: { focus?: Focus | null; exact?: boolean } = {},
+): Promise<{ out: Buffer; keep: Omit<Provenance, "c2pa"> } | null> {
   const f = formatFor(channel);
   if (!f) return null;
   const { w, h } = DESIGN_SHAPES[f.shape];
@@ -225,22 +249,25 @@ export async function imageForChannel(mediaUrl: string, channel: string, note?: 
   let keep: Omit<Provenance, "c2pa"> = note?.provenance ?? {};
   if (note?.kind === "design") {
     // Diseño con la marca: se vuelve a dibujar en el tamaño de la red.
-    const out = await renderDesign({ brand: note.brand, headline: note.headline, steps: note.steps, template: note.template, photoUrl: note.photoUrl, shape: f.shape, sub: note.sub, cta: note.cta, slogan: note.slogan, focus: note.focus });
+    const out = await renderDesign({ brand: note.brand, headline: note.headline, steps: note.steps, template: note.template, photoUrl: note.photoUrl, shape: f.shape, sub: note.sub, cta: note.cta, slogan: note.slogan, focus: note.focus ?? (note.photoUrl ? await focusForUrl(note.photoUrl) : undefined) });
     return { out, keep };
   }
+  // El punto importante: el que vino con la publicación o, si la foto es de «Tus fotos», el que se guardó al
+  // mejorarla. Una foto revisada de la biblioteca es una foto real (no un diseño con letras): se puede recortar.
+  const focus = opts.focus === undefined ? await focusForUrl(mediaUrl) : (opts.focus ?? undefined);
   const src = await readMedia(mediaUrl);
   const info = await sharp(src).metadata();
   const prov = readProvenance(src);
   keep = { digitalSourceType: keep.digitalSourceType ?? prov.digitalSourceType, creatorTool: keep.creatorTool ?? prov.creatorTool, credit: keep.credit ?? prov.credit };
   const rw = (info.orientation ?? 1) >= 5 ? info.height ?? w : info.width ?? w;
   const rh = (info.orientation ?? 1) >= 5 ? info.width ?? h : info.height ?? h;
-  const plan = adaptPlan(rw / rh, f, { hasText: note?.kind !== "photo" });
+  const plan = adaptPlan(rw / rh, f, { hasText: note?.kind !== "photo" && !focus, exact: opts.exact, focus: !!focus });
   if (plan === "keep") {
     // Ya sirve: si trae credenciales C2PA se manda la original sin tocar. Las redes piden JPEG.
     if (prov.c2pa) return null;
     return { out: info.format === "jpeg" ? src : await sharp(src).rotate().flatten({ background: "#ffffff" }).jpeg({ quality: 92, mozjpeg: true }).toBuffer(), keep };
   }
-  if (plan === "crop") return { out: await sharp(src).rotate().resize(w, h, { fit: "cover", position: sharp.strategy.attention }).jpeg({ quality: 90, mozjpeg: true }).toBuffer(), keep };
+  if (plan === "crop") return { out: await smartCrop(src, w, h, focus), keep };
   return { out: await fitToShape(await sharp(src).rotate().toBuffer(), w, h), keep };
 }
 
@@ -248,19 +275,25 @@ export async function imageForChannel(mediaUrl: string, channel: string, note?: 
  * La dirección de la foto que se manda a `channel`, ya en su tamaño y con los datos del negocio.
  * Videos, canales sin formato propio y cualquier error: devuelve la foto original (nunca bloquea la publicación).
  */
-export async function mediaForChannel(post: PostForMedia, channel: string): Promise<string> {
+export async function mediaForChannel(post: PostForMedia, channel: string, opts: { kind?: PostKind | string; focus?: Focus | null } = {}): Promise<string> {
   const original = publicMediaUrl(post.mediaUrl);
-  const f = formatFor(channel);
+  // Historias de Instagram y Facebook: 9:16. Carruseles: todas las fotos con la forma exacta (Instagram recorta
+  // todas a la forma de la primera).
+  const key = formatKey(channel, opts.kind);
+  const f = formatFor(key);
   if (post.mediaType !== "photo" || !post.mediaUrl || !f) return original;
+  const exact = opts.kind === "carousel" || key.endsWith(":story");
   try {
-    // Nombre fijo por publicación y canal: si ya se hizo (por ejemplo al reintentar), se reutiliza.
-    const hex = createHash("sha1").update(`${post.id ?? ""}|${post.mediaUrl}|${f.shape}|v2`).digest("hex");
-    const name = fixedMediaName(hex, "jpg");
-    if (await mediaExists(post.businessId, name)) return publicMediaUrl(mediaUrlFor(post.businessId, name));
-
     const note = readNote(await readSidecar(post.mediaUrl));
     const meta = photoMetaFor(post.business, { title: post.seoTitle || post.subject || (note?.kind === "design" ? note.headline : ""), text: post.text });
-    const made = await imageForChannel(post.mediaUrl, channel, note);
+    // Nombre fijo por publicación, foto y forma (con palabras clave para Google): si ya se hizo (por ejemplo al
+    // reintentar), se reutiliza.
+    const focus = opts.focus === undefined ? await focusForUrl(post.mediaUrl, post.businessId) : opts.focus;
+    const hex = createHash("sha1").update(`${post.id ?? ""}|${post.mediaUrl}|${f.shape}|${exact ? "x" : ""}|${focus ? `${focus.x},${focus.y}` : ""}|v3`).digest("hex");
+    const name = seoNameFor(meta, "jpg", hex)!;
+    if (await mediaExists(post.businessId, name)) return publicMediaUrl(mediaUrlFor(post.businessId, name));
+
+    const made = await imageForChannel(post.mediaUrl, key, note, { focus: focus ?? null, exact });
     if (!made) return original;
     const { out, keep } = made;
     const stored = await storeBuffer(writePhotoMeta(out, meta, keep), "image/jpeg", post.businessId, name);

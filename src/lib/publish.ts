@@ -6,6 +6,33 @@ import { decideReconnect } from "@/lib/connection-health";
 import { mediaForChannel } from "@/lib/media-formats";
 import { PUBLISHERS } from "@/lib/publishers";
 import { readStudy, topKeywords } from "@/lib/study-shape";
+import { STORY_CHANNELS } from "@/lib/formats";
+import { isPostKind, readPostMedia, type PostKind } from "@/lib/post-media";
+import { TIKTOK_NO_PHOTOS } from "@/lib/publishers/tiktok";
+import type { PublishMedia } from "@/lib/publishers/types";
+
+/** Cuántas fotos de un carrusel manda cada red (Instagram y Facebook 10, LinkedIn 20, X 4, las demás solo la primera). */
+const CAROUSEL_LIMIT: Partial<Record<ChannelId, number>> = { instagram: 10, facebook: 10, linkedin: 20, x: 4 };
+/** Redes donde una historia se publica como post normal (no tienen historias por la API). */
+const STORY_AS_POST: Partial<Record<ChannelId, string>> = {
+  linkedin: "LinkedIn no tiene historias; se publicó como post",
+  x: "X no tiene historias; se publicó como post",
+  google: "Google no tiene historias; se publicó como novedad",
+};
+
+type PostRow = { id: string; businessId: string; mediaUrl: string; mediaType: string; text: string; subject: string; seoTitle: string; kind: string; media: unknown; altText: string };
+
+/** Las fotos (o el video) de la publicación ya en el tamaño de `channel`, con su texto alternativo. */
+async function mediaForTarget<B extends Parameters<typeof mediaForChannel>[0]["business"]>(post: PostRow & { business: B }, channel: ChannelId, kind: PostKind): Promise<PublishMedia[]> {
+  const items = readPostMedia(post.media, post);
+  const limit = kind === "carousel" ? (CAROUSEL_LIMIT[channel] ?? 1) : 1;
+  const out: PublishMedia[] = [];
+  for (const item of items.slice(0, limit)) {
+    const url = await mediaForChannel({ ...post, mediaUrl: item.url, mediaType: item.type }, channel, { kind, focus: item.focus });
+    out.push({ url, type: item.type, ...(item.alt || post.altText ? { alt: item.alt || post.altText } : {}) });
+  }
+  return out;
+}
 
 /**
  * Publica una publicación en sus canales pendientes.
@@ -35,6 +62,8 @@ export async function publishPost(postId: string): Promise<void> {
     businessName: post.business.name,
     contacts: post.business.contacts,
     keywords: study ? topKeywords(study, 15) : [],
+    kind: isPostKind(post.kind) ? post.kind : ("post" as PostKind),
+    altText: post.altText,
   };
 
   const variants = (post.variants ?? {}) as Partial<Record<ChannelId, string>>;
@@ -55,6 +84,10 @@ export async function publishPost(postId: string): Promise<void> {
       } else if (!conn) {
         status = "skipped";
         detail = `${def.name} no está conectado para este negocio`;
+      } else if (channel === "tiktok" && post.mediaType !== "video") {
+        // TikTok solo recibe videos desde la app: las fotos, carruseles e historias de foto se saltan (no es un error).
+        status = "skipped";
+        detail = TIKTOK_NO_PHOTOS;
       } else if (audienceGap(channel, post.business.contacts)) {
         // Sin nadie a quien enviarle: se salta (no es un error) y se explica por qué.
         status = "skipped";
@@ -65,9 +98,11 @@ export async function publishPost(postId: string): Promise<void> {
           detail = blocking.map((n) => n.text).join(" ");
         } else {
           try {
-            const res = await PUBLISHERS[channel].publish({ ...input, text, mediaUrl: await mediaForChannel(post, channel) }, decryptJson(conn.secret));
+            const media = await mediaForTarget(post, channel, input.kind);
+            const res = await PUBLISHERS[channel].publish({ ...input, text, mediaUrl: media[0]?.url ?? publicMediaUrl(post.mediaUrl), media }, decryptJson(conn.secret));
             status = "sent";
             detail = res.detail;
+            if (input.kind === "story" && !(STORY_CHANNELS as readonly string[]).includes(channel) && STORY_AS_POST[channel]) detail += ` (${STORY_AS_POST[channel]})`;
             externalUrl = res.url ?? "";
           } catch (e) {
             detail = (e as Error).message || "Error desconocido";

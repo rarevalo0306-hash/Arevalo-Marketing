@@ -10,7 +10,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { MediaStep } from "@/components/ComposerMedia";
 import { PostPreview, type PreviewMediaInfo } from "@/components/preview/PostPreview";
-import { formatFor } from "@/lib/formats";
+import { formatFor, formatKey } from "@/lib/formats";
+import type { AltResult } from "@/app/actions-posts";
+import { PostTypePicker, type StudioKind } from "@/components/posts/PostTypePicker";
+import { CarouselSlides, type Slide } from "@/components/posts/CarouselSlides";
+import { AltTextField } from "@/components/posts/AltTextField";
+import { KeywordChips } from "@/components/posts/KeywordChips";
+import ps from "@/components/posts/posts.module.css";
+import { applyGbpLead, gbpKeywordHint, hashtagsFor, pickPostKeywords, withHashtags } from "@/lib/post-keywords";
+import { CAROUSEL_MAX, CAROUSEL_MIN } from "@/lib/post-media";
 import { isNetworkView } from "@/lib/preview";
 import { useT } from "@/components/I18n";
 import { IdeaList } from "@/components/IdeaList";
@@ -80,6 +88,19 @@ type Props = {
   } | null;
   /** Foto o video ya elegido al abrir (desde «Tus fotos» → «Crear publicación con esta foto»). */
   initialMedia?: { url: string; type: "photo" | "video" } | { error: string } | null;
+  /** Tipo de publicación al abrir: foto, diseño, carrusel o historia. */
+  initialKind?: StudioKind;
+  /** Palabras clave del negocio (las que sigue en SEO + las del estudio) y su ciudad: hashtags, texto alternativo y Google. */
+  keywords?: string[];
+  city?: string;
+  /** Texto alternativo de las fotos: con la plantilla (`ai` false, sin costo) o escrito por la IA. */
+  altTexts?: ((items: { url: string; what?: string }[], text: string, ai: boolean) => Promise<AltResult>) | null;
+  /** Si la IA puede escribir el texto alternativo. */
+  aiAlt?: boolean;
+  /** La sección Videos (Reels, TikTok, YouTube). */
+  videosHref?: string;
+  /** SEO (para elegir palabras clave). */
+  seoHref?: string;
 };
 
 /** Las copias locales (/media/…) necesitan la dirección completa para publicarse y diseñarse. */
@@ -136,8 +157,27 @@ export function Composer({
   bilingual = false,
   library = null,
   initialMedia = null,
+  initialKind,
+  keywords = [],
+  city = "",
+  altTexts = null,
+  aiAlt = false,
+  videosHref = "",
+  seoHref = "",
 }: Props) {
   const { lang: uiLang, t } = useT();
+  // Qué se publica: foto, diseño (foto + texto con la marca), carrusel (2 a 10 fotos) o historia (9:16).
+  const [studio, setStudio] = useState<StudioKind>(initialKind ?? (aiMedia?.autoBrand ? "design" : "photo"));
+  // Carrusel: las fotos 2 a 10 (la 1 es la del paso de la foto).
+  const [slides, setSlidesState] = useState<Slide[]>([]);
+  // Texto alternativo de la foto (la 1 del carrusel) y lo que muestra (de «Tus fotos» o de la idea de la IA).
+  const [alt, setAlt] = useState("");
+  const [altEdited, setAltEdited] = useState(false);
+  const [what, setWhat] = useState("");
+  const [altBusy, setAltBusy] = useState(false);
+  const [altNote, setAltNote] = useState("");
+  // Hashtags que el dueño cambió en cada red (si no, salen de las palabras clave).
+  const [tagEdits, setTagEdits] = useState<Partial<Record<ChannelId, string[]>>>({});
   const [text, setText] = useState("");
   const [subject, setSubject] = useState("");
   const [seoTitle, setSeoTitle] = useState("");
@@ -173,7 +213,7 @@ export function Composer({
   // Foto original (sin diseño), para poder volver a diseñarla con otro titular o tamaño.
   const [basePhoto, setBasePhoto] = useState("");
   const [headline, setHeadline] = useState("");
-  const [shape, setShape] = useState("square");
+  const [shape, setShape] = useState(initialKind === "story" ? "story" : "square");
   const [template, setTemplate] = useState(-1);
   const [steps, setSteps] = useState<string[]>([]);
   const [libError, setLibError] = useState("");
@@ -186,6 +226,21 @@ export function Composer({
   const [started, setStarted] = useState(false);
   // Volver a abrir el paso de la idea después de empezar (para cambiarla o usar la IA otra vez).
   const [boxOpen, setBoxOpen] = useState(false);
+
+  /** La marca se pone sola en «Diseño» (y en «Historia» si el negocio lo pidió); en «Foto» y «Carrusel», no. */
+  const brandAuto = studio === "design" || (studio === "story" && !!aiMedia?.autoBrand);
+
+  /** Nueva foto: el texto alternativo se vuelve a llenar solo (salvo que el dueño lo haya escrito). */
+  function resetAlt() {
+    setAltEdited(false);
+    setAltNote("");
+  }
+
+  function chooseStudio(k: StudioKind) {
+    setStudio(k);
+    if (k === "story") setShape("story");
+    else if (shape === "story") setShape("square");
+  }
 
   async function runDesign(photo = basePhoto) {
     if (!aiMedia || !photo) return;
@@ -208,13 +263,15 @@ export function Composer({
     setFileUrl("");
     try {
       setMediaBusy(t("Creando la imagen…", "Creating the image…"));
-      const img = await aiMedia.image(description, kind === "video" ? "vertical" : "square");
+      const img = await aiMedia.image(description, kind === "video" || studio === "story" ? "vertical" : "square");
       if (!img.ok) return setMediaError(img.error);
       if (kind === "photo") {
         setMediaType("photo");
         setMediaLink(img.url);
         setBasePhoto(img.url);
-        if (aiMedia.autoBrand && head.trim()) {
+        setWhat(description.trim());
+        resetAlt();
+        if (brandAuto && head.trim()) {
           setMediaBusy(t("Diseñando con tu marca…", "Designing with your brand…"));
           onBrand?.();
           const d = await aiMedia.design(img.url, head, shape, template, theSteps);
@@ -308,7 +365,9 @@ export function Composer({
         setMediaType("photo");
         setMediaLink(url);
         setBasePhoto(url);
-        if (aiMedia?.autoBrand && p.imageHeadline.trim()) {
+        setWhat("");
+        resetAlt();
+        if (aiMedia && brandAuto && p.imageHeadline.trim()) {
           setMagicStep(2);
           setMediaBusy(t("Diseñando con tu marca…", "Designing with your brand…"));
           try {
@@ -404,6 +463,8 @@ export function Composer({
     setMediaType(r.type);
     setMediaLink(url);
     setBasePhoto(r.type === "photo" ? url : "");
+    setWhat(c.description ? c.description[uiLang] : "");
+    resetAlt();
     return "";
   }
 
@@ -415,6 +476,8 @@ export function Composer({
     setMediaType(f.type.startsWith("video/") ? "video" : "photo");
     setBasePhoto("");
     setMediaLink("");
+    setWhat("");
+    resetAlt();
     if (!upload) return;
     setUploading(true);
     try {
@@ -437,19 +500,114 @@ export function Composer({
     setBasePhoto("");
     setMediaType("none");
     setUploadError("");
+    setWhat("");
+    setAlt("");
+    resetAlt();
+  }
+
+  // ---------- Carrusel ----------
+
+  const setSlides = (fn: (prev: Slide[]) => Slide[]) => setSlidesState(fn);
+  /** Agrega una foto al carrusel (si todavía no hay foto 1, pasa a ser la 1) y le llena el texto alternativo. */
+  function addSlide(sl: { url: string; what: string }) {
+    const url = absUrl(sl.url);
+    if (!mediaLinkRef.current && !fileUrlRef.current) {
+      setMediaType("photo");
+      setMediaLink(url);
+      setBasePhoto(url);
+      setWhat(sl.what);
+      resetAlt();
+      return;
+    }
+    setSlidesState((prev) => (prev.length + 1 >= CAROUSEL_MAX ? prev : [...prev, { url, alt: "", what: sl.what }]));
+    if (altTexts)
+      void altTexts([{ url, what: sl.what }], text || idea, false)
+        .then((r) => r.ok && r.alts[0] && setSlidesState((prev) => prev.map((x) => (x.url === url && !x.alt ? { ...x, alt: r.alts[0] } : x))))
+        .catch(() => undefined);
+  }
+  /** Pone la foto `i` de las demás como foto 1 (la 1 pasa a su lugar). */
+  function makeFirst(i: number) {
+    const sl = slides[i];
+    if (!sl) return;
+    const old = mediaLink && mediaType === "photo" ? { url: mediaLink, alt, what } : null;
+    setSlidesState((prev) => (old ? prev.map((x, n) => (n === i ? old : x)) : prev.filter((_, n) => n !== i)));
+    setFileUrl("");
+    setMediaType("photo");
+    setMediaLink(sl.url);
+    setBasePhoto(sl.url);
+    setWhat(sl.what);
+    setAlt(sl.alt);
+    setAltEdited(!!sl.alt);
+  }
+
+  /** «✦ Escribir con IA»: el texto alternativo de todas las fotos con palabras clave (una sola llamada). */
+  async function runAltAi() {
+    if (!altTexts || !mainPhoto) return;
+    setAltBusy(true);
+    setAltNote("");
+    try {
+      const list = [{ url: mainPhoto, what }, ...(studio === "carousel" ? slides.map((x) => ({ url: x.url, what: x.what })) : [])];
+      const r = await altTexts(list, text || idea, true);
+      if (!r.ok) return setAltNote(r.error);
+      if (r.alts[0]) {
+        setAlt(r.alts[0]);
+        setAltEdited(true);
+      }
+      if (studio === "carousel") setSlidesState((prev) => prev.map((x, n) => ({ ...x, alt: r.alts[n + 1] || x.alt })));
+      if (r.note) setAltNote(r.note);
+    } catch (e) {
+      setAltNote(errorText(e, uiLang));
+    } finally {
+      setAltBusy(false);
+    }
   }
 
   useEffect(() => () => { if (fileUrl) URL.revokeObjectURL(fileUrl); }, [fileUrl]);
 
+  // La foto 1 ya guardada (con dirección): su texto alternativo se llena solo con la plantilla (sin costo).
+  const mainPhoto = mediaType === "photo" && !fileUrl && /^https?:\/\//.test(mediaLink) ? mediaLink : "";
+  useEffect(() => {
+    if (!altTexts || !mainPhoto || altEdited) return;
+    let alive = true;
+    altTexts([{ url: mainPhoto, what }], text || idea, false)
+      .then((r) => {
+        if (alive && r.ok && r.alts[0]) setAlt(r.alts[0]);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+    // Solo cuando cambia la foto (no con cada letra del texto).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainPhoto]);
+
   const draft: Draft = { text, subject, seoTitle, mediaType };
-  const textFor = (id: ChannelId) => variants[id]?.trim() || text;
+  const baseTextFor = (id: ChannelId) => variants[id]?.trim() || text;
+  // Palabras clave de esta publicación (1 a 3) y los hashtags de cada red (editables).
+  const postKeywords = useMemo(() => pickPostKeywords(`${seoTitle}\n${text}\n${idea}`, keywords, 3), [seoTitle, text, idea, keywords]);
+  const tagsFor = (id: ChannelId) => tagEdits[id] ?? hashtagsFor(id, postKeywords, city, baseTextFor(id));
+  /** El texto que se publica en cada red: su versión + los hashtags. */
+  const textFor = (id: ChannelId) => withHashtags(baseTextFor(id), tagsFor(id));
   const draftFor = (id: ChannelId): Draft => ({ ...draft, text: textFor(id) });
   // Email: se ve solo si hay contactos que aceptaron recibirlo.
   const channels = CHANNELS.filter((c) => c.id !== "email" || contactCounts.email > 0 || on.has("email")).map((c) => channelText(c, uiLang));
   const selected = channels.filter((c) => on.has(c.id));
   const ready = selected.filter((c) => !isBlocked(c.id, draftFor(c.id))).length;
   const scheduledIso = useMemo(() => (localDate ? new Date(localDate).toISOString() : ""), [localDate]);
-  const cant = uploading || !!mediaBusy || !selected.length || !text.trim() || (when === "later" && !scheduledIso);
+  const mediaSrcNow = fileUrl || mediaLink;
+  const slideCount = studio === "carousel" ? (mediaSrcNow && mediaType === "photo" ? 1 : 0) + slides.length : 0;
+  // Lo que falta según el tipo: carrusel de 2 a 10 fotos; historia con una foto o un video.
+  const kindProblem =
+    studio === "carousel"
+      ? mediaType === "video" && mediaSrcNow
+        ? t("El carrusel solo lleva fotos. Quita el video o usa la sección Videos.", "A carousel only takes photos. Remove the video or use the Videos section.")
+        : slideCount < CAROUSEL_MIN
+          ? t(`Agrega al menos ${CAROUSEL_MIN} fotos al carrusel.`, `Add at least ${CAROUSEL_MIN} photos to the carousel.`)
+          : ""
+      : studio === "story" && !mediaSrcNow
+        ? t("La historia necesita una foto o un video.", "The story needs a photo or a video.")
+        : "";
+  const cant = uploading || !!mediaBusy || !selected.length || !text.trim() || (when === "later" && !scheduledIso) || !!kindProblem;
   const n = selected.length;
   const label = when === "later"
     ? t(`Programar en ${n} ${n === 1 ? "canal" : "canales"}`, `Schedule on ${n} ${n === 1 ? "channel" : "channels"}`)
@@ -514,13 +672,22 @@ export function Composer({
   }
   /** La foto de cada red: la exacta que se publica (la dibuja el servidor) si la foto ya está guardada. */
   const showingDesign = !!basePhoto && !!mediaLink && mediaLink !== basePhoto;
-  function mediaFor(id: ChannelId): PreviewMediaInfo {
+  function exactFor(url: string, id: ChannelId): string | undefined {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
-    const stored = mediaLink.startsWith(`${origin}/media/`) ? mediaLink.slice(origin.length) : mediaLink;
-    const exact = shownMedia === "photo" && !fileUrl && (/^https:\/\//.test(stored) || /^\/media\//.test(stored)) && formatFor(id)
-      ? `/api/plantilla/canal?b=${encodeURIComponent(businessId)}&c=${id}&u=${encodeURIComponent(stored)}`
+    const stored = url.startsWith(`${origin}/media/`) ? url.slice(origin.length) : url;
+    // Historias de Instagram y Facebook: el tamaño 9:16 ("instagram:story").
+    const key = formatKey(id, studio === "story" ? "story" : undefined);
+    return (/^https:\/\//.test(stored) || /^\/media\//.test(stored)) && formatFor(key)
+      ? `/api/plantilla/canal?b=${encodeURIComponent(businessId)}&c=${encodeURIComponent(key)}&u=${encodeURIComponent(stored)}`
       : undefined;
-    return { type: shownMedia, url: mediaSrc, exactUrl: exact, design: showingDesign };
+  }
+  function mediaFor(id: ChannelId): PreviewMediaInfo {
+    const exact = shownMedia === "photo" && !fileUrl ? exactFor(mediaLink, id) : undefined;
+    const items =
+      studio === "carousel" && shownMedia === "photo"
+        ? [{ url: mediaSrc, exactUrl: exact, alt }, ...slides.map((x) => ({ url: x.url, exactUrl: exactFor(x.url, id), alt: x.alt }))]
+        : undefined;
+    return { type: shownMedia, url: mediaSrc, exactUrl: exact, design: showingDesign, items };
   }
   const magicRunning = magicStep >= 0 && magicStep < 3;
   const busy = aiBusy || magicRunning;
@@ -534,11 +701,34 @@ export function Composer({
   const N = { idea: 1, text: first + 1, media: first + 2, where: first + 3, when: first + 4 };
   const otherLang = lang === "en" ? t("español", "Spanish") : t("inglés", "English");
   const biMissing = bi && fromAi && !!aiSocial && !aiSocial.facebookOther && !aiSocial.instagramOther;
-  const showDesign = !!aiMedia && mediaType === "photo" && (!!basePhoto || /^https:\/\//.test(mediaLink));
+  const showDesign = !!aiMedia && mediaType === "photo" && (!!basePhoto || /^https:\/\//.test(mediaLink)) && (studio === "design" || studio === "story" || showingDesign);
+  // Lo que se manda: el tipo, las fotos (con su texto alternativo) y el texto de cada red con sus hashtags.
+  const postKind = studio === "carousel" ? "carousel" : studio === "story" ? "story" : "post";
+  const mainUrl = /^https?:\/\//i.test(mediaLink) ? mediaLink : "";
+  const mediaPayload = studio === "carousel"
+    ? [...(mainUrl && mediaType === "photo" ? [{ url: mainUrl, alt }] : []), ...slides.map((x) => ({ url: x.url, alt: x.alt }))]
+    : mainUrl ? [{ url: mainUrl, alt }] : [];
+  const submitVariants: Partial<Record<ChannelId, string>> = { ...variants };
+  for (const c of selected) if (tagsFor(c.id).length) submitVariants[c.id] = textFor(c.id);
+  const gbpHint = on.has("google") && text.trim() ? gbpKeywordHint(baseTextFor("google"), postKeywords[0] ?? "", city, uiLang) : null;
+  const mediaTitle =
+    studio === "carousel" ? t("Las fotos del carrusel", "The carousel photos")
+      : studio === "story" ? t("Foto o video de la historia", "Story photo or video")
+        : studio === "design" ? t("Foto y diseño con tu marca", "Photo and brand design")
+          : t("Tu foto", "Your photo");
+  const mediaSub =
+    studio === "carousel" ? t(`De ${CAROUSEL_MIN} a ${CAROUSEL_MAX} fotos. Cada red recibe todas en su tamaño (Instagram 4:5, Facebook 4:5, LinkedIn 1:1, X hasta 4).`, `${CAROUSEL_MIN} to ${CAROUSEL_MAX} photos. Each network gets them all in its size (Instagram 4:5, Facebook 4:5, LinkedIn 1:1, X up to 4).`)
+      : studio === "story" ? t("Vertical 9:16 (1080×1920). Lo importante, lejos de los bordes de arriba y de abajo.", "Vertical 9:16 (1080×1920). Keep what matters away from the top and bottom edges.")
+        : studio === "design" ? t("Elige la foto y ponle un titular con tu logo y tus colores.", "Pick the photo and add a headline with your logo and colors.")
+          : t("Las publicaciones con foto llegan a más gente. Cada red la recibe en su tamaño, sin cortar lo importante.", "Posts with a photo reach more people. Each network gets it in its size, without cutting what matters.");
 
   return (
     <form action={action} className={s.form}>
-      <input type="hidden" name="variants" value={JSON.stringify(variants)} />
+      {videosHref && <PostTypePicker value={studio} onChange={chooseStudio} videosHref={videosHref} />}
+      <input type="hidden" name="variants" value={JSON.stringify(submitVariants)} />
+      <input type="hidden" name="kind" value={postKind} />
+      <input type="hidden" name="media" value={JSON.stringify(mediaPayload)} />
+      <input type="hidden" name="altText" value={alt} />
       <input type="hidden" name="source" value={fromAi ? "ai" : "manual"} />
       <input type="hidden" name="mediaType" value={shownMedia} />
       <input type="hidden" name="mediaLink" value={/^https?:\/\//i.test(mediaLink) ? mediaLink : ""} />
@@ -670,10 +860,18 @@ export function Composer({
               <p className="note ok">{t(`Facebook e Instagram llevan tu mensaje y, debajo, la versión en ${otherLang}. Míralo en la vista previa.`, `Facebook and Instagram carry your message and, below it, the ${otherLang} version. See it in the preview.`)}</p>
             )}
             {biMissing && <p className="note">{t(`Para agregar la versión en ${otherLang}, pídele el texto otra vez a la IA («Cambiar la idea»).`, `To add the ${otherLang} version, ask AI for the text again ("Change the idea").`)}</p>}
+            <KeywordChips
+              keywords={postKeywords}
+              channels={selected.map((c) => c.id)}
+              tagsFor={tagsFor}
+              setTags={(c, tags) => setTagEdits((prev) => ({ ...prev, [c]: tags }))}
+              seoHref={seoHref || `/b/${businessId}/seo`}
+            />
           </section>
 
           <section className={`card ${s.step} ${s.aMedia}`} aria-labelledby="h-media">
-            <StepHead n={N.media} id="h-media" title={t("Foto o video (opcional)", "Photo or video (optional)")} sub={t("Las publicaciones con foto llegan a más gente.", "Posts with a photo reach more people.")} />
+            <StepHead n={N.media} id="h-media" title={videosHref ? mediaTitle : t("Foto o video (opcional)", "Photo or video (optional)")} sub={videosHref ? mediaSub : t("Las publicaciones con foto llegan a más gente.", "Posts with a photo reach more people.")} />
+            {studio === "carousel" && <p className="small" style={{ margin: 0, fontWeight: 700 }}>{t("Foto 1 (la portada)", "Photo 1 (the cover)")}</p>}
             <MediaStep
               mediaType={shownMedia}
               mediaSrc={mediaSrc}
@@ -689,7 +887,7 @@ export function Composer({
               ai={
                 aiMedia
                   ? {
-                      video: aiMedia.video,
+                      video: aiMedia.video && (studio === "photo" || studio === "story"),
                       imageIdea,
                       setImageIdea,
                       busy: mediaBusy,
@@ -718,6 +916,47 @@ export function Composer({
                   : null
               }
             />
+            {videosHref && studio === "photo" && shownMedia === "video" && (
+              <p className="note info">
+                {t("Para videos (Reels, TikTok, YouTube) lo mejor es la sección Videos: ahí se preparan en el tamaño de cada red.", "For videos (Reels, TikTok, YouTube) the best place is the Videos section: it prepares them in each network's size.")}{" "}
+                <Link href={videosHref}>{t("Ir a Videos", "Go to Videos")}</Link>
+              </p>
+            )}
+            {shownMedia === "photo" && (
+              <AltTextField
+                id="altText"
+                label={studio === "carousel" ? t("Descripción de la foto 1 (texto alternativo)", "Photo 1 description (alt text)") : undefined}
+                value={alt}
+                onChange={(v) => { setAlt(v); setAltEdited(true); }}
+                onAi={aiAlt && altTexts && mainPhoto ? () => void runAltAi() : null}
+                busy={altBusy}
+                note={altNote}
+              />
+            )}
+            {studio === "carousel" && (
+              <CarouselSlides
+                first={mediaSrc}
+                slides={slides}
+                setSlides={setSlides}
+                add={addSlide}
+                makeFirst={makeFirst}
+                upload={upload}
+                aiImage={aiMedia ? (d) => aiMedia.image(d, "square") : null}
+                library={
+                  library
+                    ? {
+                        load: library.list,
+                        manageHref: library.manageHref,
+                        url: async (c) => {
+                          const r = await library.media(c.id);
+                          return r.ok ? { url: r.url } : { error: r.error };
+                        },
+                      }
+                    : null
+                }
+              />
+            )}
+            {kindProblem && (mediaSrcNow || studio === "carousel") && <p className="note" role="status">{kindProblem}</p>}
           </section>
 
           <section className={`card ${s.step} ${s.aWhere}`} aria-labelledby="h-where">
@@ -778,6 +1017,7 @@ export function Composer({
               channels={selected.map((c) => c.id)}
               textFor={textFor}
               mediaFor={mediaFor}
+              mode={postKind}
               renderOther={otherPreview}
               below={(view, id) => {
                 const c = channels.find((x) => x.id === id);
@@ -789,6 +1029,18 @@ export function Composer({
                       <div className="stack">
                         <label htmlFor="variant" className="small" style={{ fontWeight: 600 }}>{t(`Texto solo para ${c.name}`, `Text just for ${c.name}`)}</label>
                         <textarea id="variant" className="field" rows={5} value={variants[id]} onChange={(e) => setVariants((v) => ({ ...v, [id]: e.target.value }))} />
+                      </div>
+                    )}
+                    {id === "google" && gbpHint && (
+                      <div className={ps.hint}>
+                        <p className="note info" style={{ margin: 0 }}>
+                          {gbpHint.city
+                            ? t(`Consejo para Google: pon «${gbpHint.keyword}» y «${gbpHint.city}» en la primera frase. Así Google entiende qué ofreces y dónde.`, `Tip for Google: put "${gbpHint.keyword}" and "${gbpHint.city}" in the first sentence. That way Google understands what you offer and where.`)
+                            : t(`Consejo para Google: pon «${gbpHint.keyword}» en la primera frase. Así Google entiende qué ofreces.`, `Tip for Google: put "${gbpHint.keyword}" in the first sentence. That way Google understands what you offer.`)}
+                        </p>
+                        <button type="button" className="btn small" onClick={() => setVariants((v) => ({ ...v, google: applyGbpLead(baseTextFor("google"), gbpHint) }))}>
+                          {t(`Agregar «${gbpHint.lead}» al inicio`, `Add "${gbpHint.lead}" at the start`)}
+                        </button>
                       </div>
                     )}
                     {notesFor(id, draftFor(id), uiLang).filter((x) => !dup.includes(x.id)).map((x) => (
@@ -830,7 +1082,7 @@ export function Composer({
             <div className={s.send}>
               <SubmitButton disabled={cant} label={uploading ? t("Esperando a que suba el archivo…", "Waiting for the file to upload…") : label} />
               <span className="small muted">
-                {!selected.length ? t("Elige al menos un canal", "Pick at least one channel") : !text.trim() ? t("Escribe tu mensaje para empezar", "Write your message to get started") : t(`${ready} de ${n} listos`, `${ready} of ${n} ready`)}
+                {!selected.length ? t("Elige al menos un canal", "Pick at least one channel") : !text.trim() ? t("Escribe tu mensaje para empezar", "Write your message to get started") : kindProblem || t(`${ready} de ${n} listos`, `${ready} of ${n} ready`)}
               </span>
             </div>
           </section>
