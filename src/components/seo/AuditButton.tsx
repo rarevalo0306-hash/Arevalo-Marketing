@@ -8,6 +8,8 @@ type Props = {
   action: (prev: AuditResult, f: FormData) => Promise<AuditResult>;
   /** Ya hay un reporte guardado. */
   has: boolean;
+  /** Cuántas páginas se revisan como máximo. */
+  maxPages?: number;
 };
 
 /** Mientras se revisa: pasos aproximados y el tiempo que lleva. */
@@ -23,8 +25,9 @@ function Working({ pending }: { pending: boolean }) {
   if (!pending) return null;
   const steps: [number, string][] = [
     [0, t("Leyendo tus páginas…", "Reading your pages…")],
-    [20, t("Midiendo la velocidad con Google…", "Measuring speed with Google…")],
-    [55, t("Buscando problemas…", "Looking for problems…")],
+    [15, t("Midiendo la velocidad con Google…", "Measuring speed with Google…")],
+    [35, t("Revisando datos para Google, archivos para IAs y páginas viejas…", "Checking data for Google, AI files and old pages…")],
+    [70, t("Probando enlaces y fotos, y buscando problemas…", "Testing links and images, and looking for problems…")],
   ];
   const now = steps.findLastIndex(([at]) => seconds >= at);
   return (
@@ -33,13 +36,13 @@ function Working({ pending }: { pending: boolean }) {
         {steps.map(([, label], i) => <li key={label} className={i < now ? "done" : i === now ? "now" : ""}>{label}</li>)}
       </ul>
       <p className="small muted">
-        {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")} · {t("Puede tardar de 1 a 2 minutos. No cierres esta página.", "It can take 1 to 2 minutes. Don't close this page.")}
+        {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")} · {t("Puede tardar de 1 a 3 minutos. No cierres esta página.", "It can take 1 to 3 minutes. Don't close this page.")}
       </p>
     </div>
   );
 }
 
-export function AuditButton({ action, has }: Props) {
+export function AuditButton({ action, has, maxPages = 60 }: Props) {
   const { t } = useT();
   const [result, run, pending] = useActionState(action, null);
   return (
@@ -49,7 +52,7 @@ export function AuditButton({ action, has }: Props) {
           <button type="submit" className="btn ai">
             {has ? t("Volver a revisar", "Check again") : t("Revisar mi página", "Check my website")}
           </button>
-          <span className="small muted">{t("Gratis. Revisa hasta 30 páginas.", "Free. Checks up to 30 pages.")}</span>
+          <span className="small muted">{t(`Gratis. Revisa hasta ${maxPages} páginas.`, `Free. Checks up to ${maxPages} pages.`)}</span>
         </div>
       )}
       <Working pending={pending} />

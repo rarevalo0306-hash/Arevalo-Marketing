@@ -271,7 +271,7 @@ export async function restoreStudy(businessId: string) {
 
 // ---------- Negocio nuevo ----------
 
-/** Crea el negocio y lleva al dueño al estudio, donde la IA lee su página web y arma el perfil. */
+/** Crea el negocio y lleva al dueño al diagnóstico guiado, donde la IA empieza sola a leer su página web. */
 export async function createBusinessFromWeb(f: FormData) {
   const { t } = await getT();
   const name = str(f, "name");
@@ -281,5 +281,5 @@ export async function createBusinessFromWeb(f: FormData) {
   const owner = ownerFields(f);
   if (owner.ownerEmail === null) throw new Error(t("El correo del dueño no es válido.", "The owner's email isn't valid."));
   const b = await db.business.create({ data: { name, color, website, ...owner, ownerEmail: owner.ownerEmail } });
-  redirect(website ? `/b/${b.id}/estudio?leer=1` : `/b/${b.id}/estudio`);
+  redirect(`/b/${b.id}/diagnostico`);
 }

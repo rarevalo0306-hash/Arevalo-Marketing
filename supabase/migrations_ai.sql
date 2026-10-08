@@ -105,3 +105,25 @@ ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "uploadToken" TEXT NOT NULL DEFA
 ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "ownerName" TEXT NOT NULL DEFAULT '';
 ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "ownerEmail" TEXT NOT NULL DEFAULT '';
 ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "ownerPhone" TEXT NOT NULL DEFAULT '';
+-- 2026-10-08: plan de acción único (tareas del diagnóstico).
+CREATE TABLE IF NOT EXISTS "ActionTask" (
+  "id" TEXT NOT NULL,
+  "businessId" TEXT NOT NULL,
+  "key" TEXT NOT NULL,
+  "source" TEXT NOT NULL,
+  "area" TEXT NOT NULL,
+  "title" JSONB NOT NULL,
+  "detail" JSONB,
+  "impact" INTEGER NOT NULL DEFAULT 2,
+  "effort" INTEGER NOT NULL DEFAULT 2,
+  "href" TEXT NOT NULL DEFAULT '',
+  "status" TEXT NOT NULL DEFAULT 'todo',
+  "doneAt" TIMESTAMP(3),
+  "firstSeen" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "lastSeen" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "ActionTask_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "ActionTask_businessId_fkey" FOREIGN KEY ("businessId") REFERENCES "Business"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "ActionTask_businessId_key_key" ON "ActionTask"("businessId", "key");
+CREATE INDEX IF NOT EXISTS "ActionTask_businessId_status_idx" ON "ActionTask"("businessId", "status");

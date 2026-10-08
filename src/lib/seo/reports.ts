@@ -25,7 +25,10 @@ export type SeoKind =
   | "decay"
   | "outreach"
   | "schema"
-  | "setup";
+  | "setup"
+  // Diagnóstico inicial guiado (estado de cada paso) y el resumen del plan de acción.
+  | "diagnosis"
+  | "plan";
 
 export async function saveReport(businessId: string, kind: SeoKind, data: Prisma.InputJsonValue) {
   return db.seoReport.create({ data: { businessId, kind, data } });

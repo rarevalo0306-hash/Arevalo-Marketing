@@ -1,83 +1,85 @@
-// Auditoría SEO gratis del sitio del negocio: recorre hasta 30 páginas, lee robots.txt y el sitemap,
-// revisa enlaces rotos, mide la velocidad con Google PageSpeed y arma una lista de problemas con un puntaje.
+// Auditoría SEO gratis del sitio del negocio, parecida al «Site Audit» de Semrush: recorre hasta 60 páginas, lee
+// robots.txt, el sitemap y /llms.txt, revisa enlaces y fotos rotos, datos estructurados (JSON-LD), direcciones viejas de
+// WordPress, cómo están enlazadas las páginas, lo que necesitan las IAs, y mide la velocidad con Google PageSpeed.
+// Arma una lista de problemas (cada uno con id estable, gravedad, grupo, páginas y el valor exacto) y un puntaje.
 // Sin dependencias nuevas: el HTML se lee con expresiones regulares (suficiente para estas revisiones).
+// Los ids, gravedades y grupos están en audit-ids.ts; los textos en audit-text.ts; la comparación en audit-compare.ts.
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { bi } from "@/lib/i18n";
+import { checkLlmsTxt, robotsAiCheck, type LlmsTxtState, type RobotsAi } from "@/lib/seo/audit-ai";
+import {
+  CATEGORY_LABEL,
+  ISSUE_IDS,
+  ISSUE_META,
+  ISSUE_SEVERITY,
+  isIssueId,
+  isSiteLevel,
+  SEVERITY_RANK,
+  type IssueCategory,
+  type IssueId,
+  type Severity,
+} from "@/lib/seo/audit-ids";
+import { checkJsonLd, type SchemaFinding, type SchemaFindingKind } from "@/lib/seo/audit-schema";
+import { isJunkWpUrl, isWpComHost, linkGraph, textHash, WP_PROBES } from "@/lib/seo/audit-site";
+import { ISSUE_TEXT } from "@/lib/seo/audit-text";
+
+export { CATEGORY_LABEL, ISSUE_IDS, ISSUE_META, ISSUE_SEVERITY, ISSUE_TEXT, isIssueId };
+export type { IssueCategory, IssueId, Severity };
+export { LEGACY_ISSUE_IDS, NEW_ISSUE_IDS, ISSUE_CATEGORIES, type IssueUnit } from "@/lib/seo/audit-ids";
 
 export const AUDIT_UA = "Mozilla/5.0 (compatible; ArevaloMarketingBot/1.0)";
-const MAX_PAGES = 30;
-const MAX_ATTEMPTS = 60; // incluye respuestas que no son HTML
-const CONCURRENCY = 4;
+/** Páginas que se leen como máximo. */
+export const MAX_PAGES = 60;
+const MAX_ATTEMPTS = 120; // incluye respuestas que no son HTML
+const CONCURRENCY = 6;
 const REQ_TIMEOUT = 10_000;
-const CRAWL_MS = 75_000; // leer páginas
-const TOTAL_MS = 90_000; // leer páginas + revisar enlaces
+const CRAWL_MS = 100_000; // leer páginas
+const TOTAL_MS = 135_000; // leer páginas + revisar enlaces, fotos y direcciones viejas
 const MAX_LINK_CHECKS = 50;
+const MAX_IMAGE_CHECKS = 40;
+const MAX_JUNK_CHECKS = 20;
 const PSI_TIMEOUT = 60_000;
 const MAX_HTML_CHARS = 3_000_000;
+/** Cuántas direcciones afectadas se guardan por problema (con su valor). `pages` guarda solo las primeras 10. */
+const MAX_ITEMS = 100;
+
+// Límites de cada revisión (los mismos que dicen los textos).
+const LIMITS = {
+  titleLong: 60,
+  titleShort: 20,
+  descShort: 70,
+  descLong: 160,
+  thinWords: 250,
+  slowMs: 3000,
+  longParagraphWords: 150,
+  lowTextRatio: 10,
+  manyLinks: 250,
+  heavyBytes: 2_000_000,
+  deepClicks: 3,
+};
 
 // ---------- Tipos ----------
 
-export const ISSUE_IDS = [
-  "page-errors",
-  "broken-links",
-  "missing-title",
-  "no-https",
-  "no-viewport",
-  "http-no-redirect",
-  "noindex",
-  "duplicate-title",
-  "title-too-long",
-  "missing-description",
-  "duplicate-description",
-  "missing-h1",
-  "images-no-alt",
-  "slow-page",
-  "no-sitemap",
-  "no-structured-data",
-  "title-too-short",
-  "description-length",
-  "multiple-h1",
-  "thin-content",
-  "no-og-image",
-  "missing-lang",
-  "no-robots",
-] as const;
-export type IssueId = (typeof ISSUE_IDS)[number];
-export type Severity = "error" | "warning" | "notice";
+/** Una dirección afectada y el valor exacto que causa el problema (ej. el título largo), con una nota corta. */
+export type IssueItem = { url: string; value?: string; detail?: { es: string; en: string } };
 
-export const ISSUE_SEVERITY: Record<IssueId, Severity> = {
-  "page-errors": "error",
-  "broken-links": "error",
-  "missing-title": "error",
-  "no-https": "error",
-  "http-no-redirect": "warning",
-  "no-viewport": "error",
-  noindex: "warning",
-  "duplicate-title": "warning",
-  "title-too-long": "warning",
-  "missing-description": "warning",
-  "duplicate-description": "warning",
-  "missing-h1": "warning",
-  "images-no-alt": "warning",
-  "slow-page": "warning",
-  "no-sitemap": "warning",
-  "no-structured-data": "warning",
-  "title-too-short": "notice",
-  "description-length": "notice",
-  "multiple-h1": "notice",
-  "thin-content": "notice",
-  "no-og-image": "notice",
-  "missing-lang": "notice",
-  "no-robots": "notice",
+export type Issue = {
+  id: IssueId;
+  severity: Severity;
+  /** Las primeras 10 direcciones afectadas (formato de siempre). */
+  pages: string[];
+  /** Cuántas páginas (o enlaces, direcciones o fotos, según ISSUE_META[id].unit) tienen el problema. */
+  count: number;
+  /** Grupo del panel (Rastreo, Contenido…). Los reportes viejos no lo traen: readAuditReport lo completa. */
+  category?: IssueCategory;
+  /** Hasta 100 direcciones con el valor exacto. Los reportes viejos no lo traen: se arma con `pages`. */
+  items?: IssueItem[];
+  /** Total de casos cuando no es igual a `count` (ej. 695 enlaces a wp.com en 23 páginas). */
+  total?: number;
 };
 
-/** Problemas de todo el sitio (no de páginas sueltas): restan el peso completo. */
-const SITE_LEVEL = new Set<IssueId>(["no-sitemap", "no-robots", "no-structured-data", "http-no-redirect"]);
-
-export type Issue = { id: IssueId; severity: Severity; pages: string[]; count: number };
-
-/** Lo que se lee del HTML de una página. */
+/** Lo que se lee del HTML de una página. Los campos opcionales son de la versión 2 (los reportes viejos no los tienen). */
 export type PageAnalysis = {
   title: string;
   description: string;
@@ -96,10 +98,35 @@ export type PageAnalysis = {
   jsonLd: boolean;
   schema: string[];
   https: boolean;
+  h2Count?: number;
+  /** Tiene una zona principal (<main>, <article> o role="main"). */
+  hasMain?: boolean;
+  /** Párrafos de más de 150 palabras, el más largo y cómo empieza. */
+  longParagraphs?: number;
+  longestParagraph?: number;
+  longSample?: string;
+  /** Texto visible ÷ HTML, en %. */
+  textRatio?: number;
+  /** Todos los enlaces <a href> (internos y externos). */
+  linksTotal?: number;
+  /** Enlaces o fotos que apuntan a wp.com / wordpress.com, y un ejemplo. */
+  wpLinks?: number;
+  wpSample?: string;
+  /** Archivos que se cargan por http en una página https (hasta 5) y cuántos son. */
+  mixed?: string[];
+  mixedCount?: number;
+  /** Etiquetas hreflang (versiones en otros idiomas). */
+  hreflang?: number;
+  /** Huella del texto visible, para encontrar páginas con el mismo texto. */
+  textHash?: string;
+  /** Problemas en los datos estructurados (JSON-LD). */
+  schemaFindings?: SchemaFinding[];
+  /** Direcciones de las fotos (para revisar las rotas; no se guardan). */
+  imageUrls?: string[];
 };
 
 /** Lo que se guarda de cada página. */
-export type AuditPage = Omit<PageAnalysis, "links"> & {
+export type AuditPage = Omit<PageAnalysis, "links" | "imageUrls"> & {
   url: string;
   finalUrl: string;
   status: number;
@@ -107,9 +134,19 @@ export type AuditPage = Omit<PageAnalysis, "links"> & {
   bytes: number;
   internalLinks: number;
   error?: string;
+  /** Clics desde el inicio (null = no se llega siguiendo enlaces de las páginas leídas). */
+  depth?: number | null;
+  /** Cuántas de las páginas leídas enlazan a esta. */
+  inlinks?: number;
+  inSitemap?: boolean;
 };
 
 export type BrokenLink = { url: string; status: number; from: string[] };
+
+/** Una dirección vieja de WordPress que se encontró. `live` = responde 200 y Google la puede mostrar. */
+export type JunkUrl = { url: string; status: number; where: "sitemap" | "link" | "probe"; live: boolean };
+/** Una dirección del sitemap que no sirve: da error, manda a otra o está escondida. */
+export type SitemapBad = { url: string; status: number; why: "error" | "redirect" | "noindex"; to?: string };
 
 export type SiteInfo = {
   /** La página de inicio después de las redirecciones. */
@@ -125,6 +162,27 @@ export type SiteInfo = {
   checkedLinks: number;
   /** Se cortó por tiempo antes de leer todo. */
   stoppedEarly: boolean;
+  // ----- versión 2 (opcionales: los reportes viejos no los tienen) -----
+  /** false = robots.txt o el sitemap no respondieron: no se sabe si existen y no se marcan como problema. */
+  robotsChecked?: boolean;
+  sitemapChecked?: boolean;
+  /** Qué dice robots.txt de Google y de los robots de IA. */
+  robotsAi?: RobotsAi;
+  /** /llms.txt (null = no se pudo revisar). */
+  llms?: LlmsTxtState | null;
+  /** Si la otra versión (con o sin www) manda a la principal (null = no existe o no se pudo probar). */
+  wwwRedirects?: boolean | null;
+  altHost?: string;
+  junkUrls?: JunkUrl[];
+  sitemapBad?: SitemapBad[];
+  brokenImages?: BrokenLink[];
+  checkedImages?: number;
+  /** El sitemap dice qué página es de cada idioma (hreflang). */
+  sitemapHreflang?: boolean;
+  /** Páginas por clics desde el inicio: {"0":1,"1":12,"2":30,"3":8,"4+":3,"none":2}. */
+  depthCounts?: Record<string, number>;
+  /** Las páginas leídas son todas las que se encontraron (no se cortó por el tope). */
+  crawlComplete?: boolean;
 };
 
 export type PageSpeed =
@@ -140,7 +198,8 @@ export type PageSpeed =
   | { error: string };
 
 export type AuditReport = {
-  version: 1;
+  /** 1 = primera versión (23 revisiones); 2 = revisión profunda. */
+  version: 1 | 2;
   website: string;
   startedAt: string;
   finishedAt: string;
@@ -149,6 +208,10 @@ export type AuditReport = {
   pagespeed: PageSpeed;
   issues: Issue[];
   score: number;
+  /** Qué problemas se revisaron (para comparar con revisiones viejas sin contar como «nuevo» lo que antes no se miraba). */
+  checks?: IssueId[];
+  /** Cuántas páginas se leen como máximo en esta versión. */
+  maxPages?: number;
 };
 
 // ---------- Leer HTML ----------
@@ -172,6 +235,7 @@ export function decodeEntities(s: string): string {
 }
 
 const clean = (s: string) => decodeEntities(s.replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim();
+const wordCount = (s: string) => s.split(" ").filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
 
 /** Atributos de una etiqueta: <a href="x" rel=nofollow> → { href: "x", rel: "nofollow" }. */
 function attrs(tag: string): Record<string, string> {
@@ -207,31 +271,6 @@ export function normalizeUrl(u: URL | string): string {
   return url.href;
 }
 
-/** Tipos de schema.org (JSON-LD) en la página, incluidos los de @graph. */
-function jsonLdTypes(html: string): { found: boolean; types: string[] } {
-  const types = new Set<string>();
-  let found = false;
-  const walk = (v: unknown, depth: number) => {
-    if (depth > 8 || !v || typeof v !== "object") return;
-    if (Array.isArray(v)) return v.forEach((x) => walk(x, depth + 1));
-    const o = v as Record<string, unknown>;
-    const t = o["@type"];
-    for (const x of Array.isArray(t) ? t : [t]) if (typeof x === "string") types.add(x.replace(/^https?:\/\/schema\.org\//, ""));
-    for (const k of Object.keys(o)) if (k !== "@type") walk(o[k], depth + 1);
-  };
-  for (const m of html.matchAll(/<script\b[^>]*type\s*=\s*["']?application\/ld\+json["']?[^>]*>([\s\S]*?)<\/script>/gi)) {
-    const raw = m[1].trim();
-    if (!raw) continue;
-    found = true;
-    try {
-      walk(JSON.parse(raw), 0);
-    } catch {
-      for (const t of raw.matchAll(/"@type"\s*:\s*"([^"]+)"/g)) types.add(t[1]);
-    }
-  }
-  return { found, types: [...types].slice(0, 20) };
-}
-
 const ORG_TYPES = new Set([
   "Organization", "LocalBusiness", "Corporation", "NGO", "ProfessionalService", "HomeAndConstructionBusiness", "Store",
   "Restaurant", "FoodEstablishment", "MedicalBusiness", "MedicalClinic", "Dentist", "Physician", "LegalService", "Attorney",
@@ -246,10 +285,25 @@ const ORG_TYPES = new Set([
 export const hasBusinessSchema = (types: string[]) =>
   types.some((t) => ORG_TYPES.has(t) || /(Business|Store|Service|Contractor|Agency|Organization)$/.test(t));
 
+/** Etiquetas que cargan archivos (para revisar «contenido mixto»: http dentro de una página https). */
+const RESOURCE_ATTRS: [string, string[]][] = [
+  ["img", ["src", "srcset"]],
+  ["script", ["src"]],
+  ["iframe", ["src"]],
+  ["source", ["src", "srcset"]],
+  ["video", ["src", "poster"]],
+  ["audio", ["src"]],
+  ["embed", ["src"]],
+  ["object", ["data"]],
+];
+const LINK_RESOURCE = /\b(stylesheet|icon|preload|modulepreload|apple-touch-icon|manifest)\b/i;
+const srcsetUrls = (v: string) => v.split(",").map((s) => s.trim().split(/\s+/)[0]).filter(Boolean);
+
 export function analyzePage(html: string, url: string): PageAnalysis {
   const page = new URL(url);
-  const doc = html.slice(0, MAX_HTML_CHARS).replace(/<!--[\s\S]*?-->/g, " ");
-  const ld = jsonLdTypes(doc);
+  const raw = html.slice(0, MAX_HTML_CHARS);
+  const doc = raw.replace(/<!--[\s\S]*?-->/g, " ");
+  const ld = checkJsonLd(doc);
   // Sin scripts, estilos, noscript (píxeles de seguimiento) ni SVG (tienen su propio <title>).
   const body = doc.replace(/<(script|style|noscript|template|svg)\b[\s\S]*?<\/\1>/gi, " ");
 
@@ -280,27 +334,82 @@ export function analyzePage(html: string, url: string): PageAnalysis {
   const imgs = tags(body, "img");
   const bodyStart = body.search(/<body\b/i);
   const visible = clean(bodyStart >= 0 ? body.slice(bodyStart) : body.replace(/<head\b[\s\S]*?<\/head>/i, " "));
-  const words = visible.split(" ").filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+  const words = wordCount(visible);
 
   const links = new Set<string>();
+  let linksTotal = 0;
+  let wpLinks = 0;
+  let wpSample = "";
+  const ownWp = isWpComHost(page.hostname);
+  const countWp = (u: URL) => {
+    if (ownWp || !isWpComHost(u.hostname)) return;
+    wpLinks++;
+    if (!wpSample) wpSample = u.href.slice(0, 200);
+  };
   for (const a of tags(body, "a")) {
     const href = a.href?.trim();
     if (!href || href.startsWith("#") || /^(mailto|tel|sms|javascript|data|whatsapp|fax):/i.test(href)) continue;
+    linksTotal++;
     try {
       const u = new URL(href, base);
-      if ((u.protocol === "http:" || u.protocol === "https:") && sameSite(u.hostname, page.hostname)) links.add(normalizeUrl(u));
+      if ((u.protocol === "http:" || u.protocol === "https:") && sameSite(u.hostname, page.hostname)) {
+        if (links.size < 300) links.add(normalizeUrl(u));
+      } else countWp(u);
     } catch {
       /* enlace mal escrito: se ignora */
     }
-    if (links.size >= 300) break;
   }
 
+  // Fotos: direcciones (para revisar las rotas) y las que vienen de wp.com.
+  const imageUrls = new Set<string>();
+  for (const i of imgs) {
+    for (const v of [i.src, ...srcsetUrls(i.srcset ?? "")]) {
+      const u = abs(v);
+      if (!/^https?:/i.test(u)) continue;
+      try {
+        countWp(new URL(u));
+      } catch {
+        /* se ignora */
+      }
+      if (v === i.src && imageUrls.size < 40) imageUrls.add(u);
+    }
+  }
+
+  // Contenido mixto: archivos por http en una página https (los <script src> se buscan en el HTML con scripts).
+  const mixed = new Set<string>();
+  if (page.protocol === "https:") {
+    for (const [name, keys] of RESOURCE_ATTRS) {
+      for (const tag of tags(name === "script" ? doc : body, name)) {
+        for (const k of keys) {
+          const vals = k === "srcset" ? srcsetUrls(tag[k] ?? "") : [tag[k] ?? ""];
+          for (const v of vals) if (/^http:\/\//i.test(v.trim())) mixed.add(v.trim().slice(0, 200));
+        }
+      }
+    }
+    for (const l of tags(body, "link")) if (LINK_RESOURCE.test(l.rel ?? "") && /^http:\/\//i.test((l.href ?? "").trim())) mixed.add(l.href.trim().slice(0, 200));
+  }
+
+  // Párrafos muy largos (difíciles de citar para una IA).
+  let longParagraphs = 0;
+  let longestParagraph = 0;
+  let longSample = "";
+  for (const m of body.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)) {
+    const text = clean(m[1]);
+    const n = wordCount(text);
+    if (n > LIMITS.longParagraphWords) longParagraphs++;
+    if (n > longestParagraph) {
+      longestParagraph = n;
+      longSample = `${text.split(" ").slice(0, 12).join(" ")}…`;
+    }
+  }
+
+  const linkTags = tags(body, "link");
   return {
     title: clean(body.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "").slice(0, 300),
     description: meta("description").replace(/\s+/g, " ").slice(0, 500),
     h1Count: h1s.length,
     h1: clean(h1s[0]?.[1] ?? "").slice(0, 200),
-    canonical: abs(tags(body, "link").find((l) => (l.rel ?? "").toLowerCase().split(/\s+/).includes("canonical"))?.href),
+    canonical: abs(linkTags.find((l) => (l.rel ?? "").toLowerCase().split(/\s+/).includes("canonical"))?.href),
     noindex: /noindex|\bnone\b/i.test(robots),
     lang: (tags(body, "html")[0]?.lang ?? "").trim().slice(0, 20),
     images: imgs.length,
@@ -312,54 +421,140 @@ export function analyzePage(html: string, url: string): PageAnalysis {
     jsonLd: ld.found,
     schema: ld.types,
     https: page.protocol === "https:",
+    h2Count: (body.match(/<h2\b/gi) ?? []).length,
+    hasMain: /<(main|article)\b|\brole\s*=\s*["']?main\b/i.test(body),
+    longParagraphs,
+    longestParagraph,
+    longSample: longParagraphs ? longSample.slice(0, 160) : "",
+    textRatio: Math.round((visible.length / Math.max(1, raw.length)) * 1000) / 10,
+    linksTotal,
+    wpLinks,
+    wpSample,
+    mixed: [...mixed].slice(0, 5),
+    mixedCount: mixed.size,
+    hreflang: linkTags.filter((l) => (l.rel ?? "").toLowerCase().includes("alternate") && l.hreflang).length,
+    textHash: words >= 30 ? textHash(visible.toLowerCase()) : "",
+    schemaFindings: ld.findings,
+    imageUrls: [...imageUrls],
   };
 }
 
 // ---------- Problemas y puntaje ----------
 
-const SEVERITY_RANK: Record<Severity, number> = { error: 0, warning: 1, notice: 2 };
 const isOk = (p: AuditPage) => !p.error && p.status >= 200 && p.status < 400;
+const bi2 = (es: string, en: string) => ({ es, en });
+const SCHEMA_ISSUE: Record<SchemaFindingKind, IssueId> = {
+  "invalid-json": "schema-invalid-json",
+  "wrong-property": "schema-wrong-property",
+  "business-incomplete": "schema-business-incomplete",
+  "opening-hours": "schema-opening-hours",
+  "org-incomplete": "schema-org-incomplete",
+};
+const primaryLang = (l: string) => l.toLowerCase().split(/[-_]/)[0];
+const normText = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+
+/** «Responde 404 · está en /contacto, /servicios». */
+const brokenNote = (b: BrokenLink) => {
+  const from = b.from.slice(0, 3).map((f) => {
+    try {
+      const u = new URL(f);
+      return `${u.pathname}${u.search}` || "/";
+    } catch {
+      return f;
+    }
+  });
+  return bi2(`Responde ${b.status}${from.length ? ` · está en ${from.join(", ")}` : ""}`, `Returns ${b.status}${from.length ? ` · found on ${from.join(", ")}` : ""}`);
+};
 
 export function findIssues(pages: AuditPage[], site: SiteInfo): Issue[] {
-  const hits = new Map<IssueId, string[]>();
-  const add = (id: IssueId, url: string) => hits.set(id, [...(hits.get(id) ?? []), url]);
+  const hits = new Map<IssueId, Map<string, IssueItem>>();
+  const totals = new Map<IssueId, number>();
+  const add = (id: IssueId, url: string, value?: string, detail?: { es: string; en: string }) => {
+    const m = hits.get(id) ?? new Map<string, IssueItem>();
+    if (!m.has(url)) m.set(url, { url, ...(value ? { value } : {}), ...(detail ? { detail } : {}) });
+    hits.set(id, m);
+  };
   const ok = pages.filter(isOk);
+  const homeKey = site.home ? normalizeUrl(site.home) : "";
 
-  for (const p of pages) if (!p.error && p.status >= 400) add("page-errors", p.url);
+  for (const p of pages) if (!p.error && p.status >= 400) add("page-errors", p.url, String(p.status));
   for (const p of ok) {
     const u = p.finalUrl || p.url;
     if (!p.title) add("missing-title", u);
-    else if (p.title.length > 60) add("title-too-long", u);
-    else if (p.title.length < 20) add("title-too-short", u);
+    else if (p.title.length > LIMITS.titleLong) add("title-too-long", u, p.title, bi2(`${p.title.length} letras`, `${p.title.length} characters`));
+    else if (p.title.length < LIMITS.titleShort) add("title-too-short", u, p.title, bi2(`${p.title.length} letras`, `${p.title.length} characters`));
     if (!p.description) add("missing-description", u);
-    else if (p.description.length < 70 || p.description.length > 160) add("description-length", u);
+    else if (p.description.length < LIMITS.descShort || p.description.length > LIMITS.descLong)
+      add("description-length", u, p.description, bi2(`${p.description.length} letras (${p.description.length > LIMITS.descLong ? "muy larga" : "muy corta"})`, `${p.description.length} characters (${p.description.length > LIMITS.descLong ? "too long" : "too short"})`));
     if (p.h1Count === 0) add("missing-h1", u);
-    else if (p.h1Count > 1) add("multiple-h1", u);
-    if (p.imagesNoAlt > 0) add("images-no-alt", u);
+    else if (p.h1Count > 1) add("multiple-h1", u, p.h1, bi2(`${p.h1Count} títulos H1`, `${p.h1Count} H1 headings`));
+    if (p.h1Count > 0 && p.h1 && p.title && normText(p.h1) === normText(p.title)) add("h1-same-as-title", u, p.h1);
+    if (p.imagesNoAlt > 0) add("images-no-alt", u, undefined, bi2(`${p.imagesNoAlt} de ${p.images} fotos sin descripción`, `${p.imagesNoAlt} of ${p.images} images without alt text`));
     if (p.noindex) add("noindex", u);
-    else if (p.words < 250) add("thin-content", u);
+    else if (p.words < LIMITS.thinWords) add("thin-content", u, String(p.words), bi2(`${p.words} palabras`, `${p.words} words`));
     if (!p.https) add("no-https", u);
     if (!p.viewport) add("no-viewport", u);
     if (!p.ogImage) add("no-og-image", u);
-    if (p.ms > 3000) add("slow-page", u);
+    if (p.ms > LIMITS.slowMs) add("slow-page", u, `${(p.ms / 1000).toFixed(1)} s`);
     if (!p.lang) add("missing-lang", u);
+
+    // ----- versión 2: solo si la página trae esos datos (los reportes viejos no) -----
+    if ((p.longParagraphs ?? 0) > 0)
+      add("long-paragraphs", u, p.longSample, bi2(`${p.longParagraphs} ${p.longParagraphs === 1 ? "párrafo largo" : "párrafos largos"}; el más largo tiene ${p.longestParagraph} palabras`, `${p.longParagraphs} long ${p.longParagraphs === 1 ? "paragraph" : "paragraphs"}; the longest has ${p.longestParagraph} words`));
+    if (p.hasMain !== undefined && !p.noindex) {
+      const noMain = !p.hasMain;
+      const noH2 = (p.h2Count ?? 0) === 0 && p.words >= 300;
+      if (noMain || noH2) {
+        const what = [noMain && "<main>/<article>", noH2 && "<h2>"].filter(Boolean).join(" + ");
+        add("weak-semantic-html", u, what, bi2(`Falta: ${what}`, `Missing: ${what}`));
+      }
+    }
+    if (p.textRatio !== undefined && p.bytes > 0 && p.textRatio < LIMITS.lowTextRatio) add("low-text-ratio", u, `${p.textRatio}%`, bi2(`Texto: ${p.textRatio}% del código`, `Text: ${p.textRatio}% of the code`));
+    if ((p.linksTotal ?? 0) > LIMITS.manyLinks) add("too-many-links", u, String(p.linksTotal), bi2(`${p.linksTotal} enlaces`, `${p.linksTotal} links`));
+    if ((p.wpLinks ?? 0) > 0) {
+      add("wp-com-links", u, p.wpSample, bi2(`${p.wpLinks} ${p.wpLinks === 1 ? "enlace o foto" : "enlaces o fotos"} a wp.com`, `${p.wpLinks} ${p.wpLinks === 1 ? "link or image" : "links or images"} to wp.com`));
+      totals.set("wp-com-links", (totals.get("wp-com-links") ?? 0) + (p.wpLinks ?? 0));
+    }
+    if ((p.mixedCount ?? 0) > 0) add("mixed-content", u, p.mixed?.[0], bi2(`${p.mixedCount} ${p.mixedCount === 1 ? "archivo" : "archivos"} por http`, `${p.mixedCount} ${p.mixedCount === 1 ? "file" : "files"} over http`));
+    if (p.bytes > LIMITS.heavyBytes) add("large-html", u, `${(p.bytes / 1_000_000).toFixed(1)} MB`);
+    const byKind = new Map<SchemaFindingKind, string[]>();
+    for (const f of p.schemaFindings ?? []) byKind.set(f.kind, [...(byKind.get(f.kind) ?? []), f.value]);
+    for (const [kind, values] of byKind) add(SCHEMA_ISSUE[kind], u, values.slice(0, 3).join(" · "));
+    if (typeof p.depth === "number" && p.depth > LIMITS.deepClicks && !p.noindex) add("deep-pages", u, String(p.depth), bi2(`${p.depth} clics desde el inicio`, `${p.depth} clicks from the home page`));
+    const isHome = homeKey && normalizeUrl(u) === homeKey;
+    if (!isHome && !p.noindex && p.inlinks === 1) add("single-inlink", u);
+    if (!isHome && !p.noindex && p.inSitemap && p.inlinks === 0 && ok.length >= 5)
+      add("orphan-pages", u, undefined, bi2(`En el sitemap; ninguna de las ${ok.length} páginas leídas la enlaza`, `In the sitemap; none of the ${ok.length} pages read link to it`));
   }
 
   // Duplicados: entre las páginas que Google puede mostrar, contando una vez las que apuntan al mismo canonical.
   const docs = new Map<string, AuditPage>();
   for (const p of ok) if (!p.noindex) docs.set(p.canonical || p.finalUrl || p.url, p);
-  const dupes = (id: IssueId, key: (p: AuditPage) => string) => {
+  const dupes = (id: IssueId, key: (p: AuditPage) => string, value?: (p: AuditPage) => string) => {
     const groups = new Map<string, string[]>();
     for (const [url, p] of docs) {
       const k = key(p).trim().toLowerCase();
       if (k) groups.set(k, [...(groups.get(k) ?? []), url]);
     }
-    for (const urls of groups.values()) if (urls.length > 1) urls.forEach((u) => add(id, u));
+    for (const urls of groups.values())
+      if (urls.length > 1) for (const u of urls) add(id, u, value?.(docs.get(u)!), bi2(`Igual en ${urls.length} páginas`, `Same on ${urls.length} pages`));
   };
-  dupes("duplicate-title", (p) => p.title);
-  dupes("duplicate-description", (p) => p.description);
+  dupes("duplicate-title", (p) => p.title, (p) => p.title);
+  dupes("duplicate-description", (p) => p.description, (p) => p.description);
+  dupes("duplicate-content", (p) => p.textHash ?? "");
+
+  // Sitio en dos idiomas sin decirle a Google qué página es de cada idioma.
+  const langs = new Set(ok.map((p) => primaryLang(p.lang)).filter(Boolean));
+  if (langs.size >= 2 && !site.sitemapHreflang)
+    for (const p of ok) if (p.hreflang === 0 && !p.noindex) add("hreflang-missing", p.finalUrl || p.url, p.lang || undefined, bi2(`Idioma de la página: ${p.lang || "?"}`, `Page language: ${p.lang || "?"}`));
 
   // Si la página ya abre con https, que http no redirija es otro problema (menor) que no tener https.
+  let origin = "";
+  try {
+    origin = site.home ? new URL(site.home).origin : "";
+  } catch {
+    /* sin inicio válido */
+  }
   if (site.httpRedirects === false) {
     try {
       add(site.https ? "http-no-redirect" : "no-https", `http://${new URL(site.home).host}/`);
@@ -367,19 +562,72 @@ export function findIssues(pages: AuditPage[], site: SiteInfo): Issue[] {
       /* sin inicio válido */
     }
   }
-  for (const b of site.brokenLinks) add("broken-links", b.url);
+  for (const b of site.brokenLinks) add("broken-links", b.url, String(b.status), brokenNote(b));
   if (site.home) {
-    if (!site.sitemap) add("no-sitemap", site.home);
-    if (!site.robots) add("no-robots", site.home);
+    if (!site.sitemap && site.sitemapChecked !== false) add("no-sitemap", site.home);
+    if (!site.robots && site.robotsChecked !== false) add("no-robots", site.home);
     if (!site.localBusinessSchema) add("no-structured-data", site.home);
   }
 
+  // ----- versión 2: de todo el sitio -----
+  if (origin) {
+    const ai = site.robotsAi;
+    if (ai?.blocksGoogle) add("robots-blocks-site", `${origin}/robots.txt`, "Disallow: /");
+    if (ai?.searchBlocked.length) add("ai-search-bots-blocked", `${origin}/robots.txt`, ai.searchBlocked.join(", "));
+    if (ai?.trainingBlocked.length) add("ai-training-bots-blocked", `${origin}/robots.txt`, ai.trainingBlocked.join(", "));
+    const llms = site.llms;
+    if (llms?.status === "missing")
+      add("llms-txt-missing", `${origin}/llms.txt`, undefined, llms.why === "html" ? bi2("Responde una página web, no un archivo de texto", "It returns a web page, not a text file") : bi2("No existe (no encontrada)", "Doesn't exist (not found)"));
+    if (llms?.status === "invalid") {
+      const PROBLEM: Record<string, [string, string]> = {
+        empty: ["está vacío", "it's empty"],
+        "no-title": ["no empieza con «# Nombre»", "doesn't start with \"# Name\""],
+        "no-summary": ["falta el resumen «>»", "the \"> summary\" is missing"],
+        "no-links": ["no tiene enlaces a tus páginas", "has no links to your pages"],
+      };
+      add("llms-txt-invalid", `${origin}/llms.txt`, llms.problems.join(", "), bi2(llms.problems.map((x) => PROBLEM[x][0]).join("; "), llms.problems.map((x) => PROBLEM[x][1]).join("; ")));
+    }
+    if (site.wwwRedirects === false && site.altHost) add("www-mismatch", `${new URL(origin).protocol}//${site.altHost}/`, site.altHost);
+  }
+  const WHERE: Record<JunkUrl["where"], [string, string]> = { sitemap: ["en el sitemap", "in the sitemap"], link: ["enlazada desde tu sitio", "linked from your site"], probe: ["sigue abierta", "still open"] };
+  for (const j of site.junkUrls ?? [])
+    if (j.live || j.where === "sitemap") add("wp-junk-urls", j.url, String(j.status || "—"), bi2(`Responde ${j.status || "sin respuesta"} · ${WHERE[j.where][0]}`, `Returns ${j.status || "no response"} · ${WHERE[j.where][1]}`));
+  const WHY: Record<SitemapBad["why"], [string, string]> = { error: ["da error", "returns an error"], redirect: ["manda a otra página", "redirects to another page"], noindex: ["está escondida de Google (noindex)", "is hidden from Google (noindex)"] };
+  for (const s of site.sitemapBad ?? [])
+    add("sitemap-bad-urls", s.url, s.to ?? String(s.status), bi2(`${WHY[s.why][0]}${s.to ? `: ${s.to}` : ""}${s.why === "error" ? ` (${s.status})` : ""}`, `${WHY[s.why][1]}${s.to ? `: ${s.to}` : ""}${s.why === "error" ? ` (${s.status})` : ""}`));
+  for (const b of site.brokenImages ?? []) add("broken-images", b.url, String(b.status), brokenNote(b));
+
   return ISSUE_IDS.filter((id) => hits.has(id))
-    .map((id) => {
-      const urls = [...new Set(hits.get(id))];
-      return { id, severity: ISSUE_SEVERITY[id], count: urls.length, pages: urls.slice(0, 10) };
+    .map((id): Issue => {
+      const items = [...hits.get(id)!.values()];
+      const total = totals.get(id);
+      return {
+        id,
+        severity: ISSUE_SEVERITY[id],
+        count: items.length,
+        pages: items.slice(0, 10).map((i) => i.url),
+        category: ISSUE_META[id].category,
+        items: items.slice(0, MAX_ITEMS),
+        ...(total && total !== items.length ? { total } : {}),
+      };
     })
     .sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] || b.count - a.count);
+}
+
+/** Peso de cada gravedad en la nota (el mismo que AUDIT_WEIGHT en verdict.ts). */
+const WEIGHT: Record<Severity, number> = { error: 12, warning: 4, notice: 1 };
+
+/**
+ * Cuántos puntos le quita cada problema a la nota: peso × (0.5 + 0.5 × parte). Sin redondear, de mayor a menor.
+ * Es la misma cuenta que scoreFor (el panel la muestra en «¿Cómo se calcula la nota?»).
+ */
+export function auditBreakdown(issues: Pick<Issue, "id" | "severity" | "count">[], pageCount: number): { id: IssueId; severity: Severity; points: number }[] {
+  return issues
+    .map((i) => {
+      const share = isSiteLevel(i.id) || pageCount <= 0 ? 1 : Math.min(1, Math.max(0, i.count) / pageCount);
+      return { id: i.id, severity: i.severity, points: (WEIGHT[i.severity] ?? 0) * (0.5 + 0.5 * share) };
+    })
+    .sort((a, b) => b.points - a.points);
 }
 
 /**
@@ -387,16 +635,11 @@ export function findIssues(pages: AuditPage[], site: SiteInfo): Issue[] {
  *   peso × (0.5 + 0.5 × parte)
  * peso: error 12, advertencia 4, sugerencia 1.
  * parte: páginas afectadas ÷ páginas revisadas (máximo 1); los problemas de todo el sitio (sitemap, robots.txt,
- * datos estructurados) cuentan como parte = 1. Así un problema en una sola página resta la mitad de su peso y
- * en todas, el peso completo. Se redondea y nunca baja de 0.
+ * datos estructurados, llms.txt…) cuentan como parte = 1. Así un problema en una sola página resta la mitad de su peso
+ * y en todas, el peso completo. Se redondea y nunca baja de 0.
  */
 export function scoreFor(issues: Pick<Issue, "id" | "severity" | "count">[], pageCount: number): number {
-  const WEIGHT: Record<Severity, number> = { error: 12, warning: 4, notice: 1 };
-  let score = 100;
-  for (const i of issues) {
-    const share = SITE_LEVEL.has(i.id) || pageCount <= 0 ? 1 : Math.min(1, Math.max(0, i.count) / pageCount);
-    score -= (WEIGHT[i.severity] ?? 0) * (0.5 + 0.5 * share);
-  }
+  const score = 100 - auditBreakdown(issues, pageCount).reduce((s, d) => s + d.points, 0);
   return Math.max(0, Math.min(100, Math.round(score)));
 }
 
@@ -580,11 +823,12 @@ export async function pageSpeed(url: string): Promise<PageSpeed> {
   }
 }
 
-/** Las direcciones de un sitemap (<loc>) y si es un índice de sitemaps. */
-export function parseSitemap(xml: string): { index: boolean; urls: string[] } {
+/** Las direcciones de un sitemap (<loc>), si es un índice de sitemaps y si dice el idioma de cada página (hreflang). */
+export function parseSitemap(xml: string): { index: boolean; urls: string[]; hreflang: boolean } {
   const urls = [...xml.matchAll(/<loc>\s*(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?\s*<\/loc>/gi)].map((m) => decodeEntities(m[1].trim())).filter(Boolean);
-  return { index: /<sitemapindex\b/i.test(xml), urls };
+  return { index: /<sitemapindex\b/i.test(xml), urls, hreflang: /<(?:xhtml:)?link\b[^>]*hreflang\s*=/i.test(xml) };
 }
+
 
 // ---------- Auditoría completa ----------
 
@@ -597,10 +841,28 @@ export async function runAudit(website: string): Promise<AuditReport> {
   const net = makeFetcher();
   const start = startUrl(website);
   await net.guard(start);
+  /** Como net.get, pero si la conexión se corta (no por tiempo) se intenta hasta dos veces más. */
+  const getRetry = async (url: string, method: "GET" | "HEAD", until: number): Promise<Fetched> => {
+    for (const wait of [400, 1200]) {
+      try {
+        return await net.get(url, method, left(until));
+      } catch (e) {
+        if (reason(e) === "timeout" || left(until) < 2000 + wait) throw e;
+        await sleep(wait);
+      }
+    }
+    return net.get(url, method, left(until));
+  };
 
   const pages: AuditPage[] = [];
   const statusOf = new Map<string, number>();
+  /** Dirección pedida → dirección final (después de redirecciones). */
+  const finalOf = new Map<string, string>();
   const linkSources = new Map<string, Set<string>>();
+  /** Para cada página leída, a qué páginas internas enlaza (para contar clics desde el inicio). */
+  const edges = new Map<string, string[]>();
+  /** Foto → páginas donde está. */
+  const imageSources = new Map<string, Set<string>>();
   const recorded = new Set<string>();
   const seen = new Set<string>();
   const queue: string[] = [];
@@ -612,7 +874,7 @@ export async function runAudit(website: string): Promise<AuditReport> {
     const t = Date.now();
     let f: Fetched;
     try {
-      f = await net.get(url, "GET", left(crawlUntil));
+      f = await getRetry(url, "GET", crawlUntil);
     } catch (e) {
       if (isHome) throw e;
       if (left(crawlUntil) > 500 && !recorded.has(url)) {
@@ -624,6 +886,7 @@ export async function runAudit(website: string): Promise<AuditReport> {
     const final = normalizeUrl(f.url);
     statusOf.set(url, f.status);
     statusOf.set(final, f.status);
+    finalOf.set(url, final);
     if (isHome) siteHost = new URL(final).hostname;
     if (!sameSite(new URL(final).hostname, siteHost) || recorded.has(final)) {
       drop(f.res);
@@ -652,12 +915,18 @@ export async function runAudit(website: string): Promise<AuditReport> {
     const a = analyzePage(body.text, final);
     if (/noindex|\bnone\b/i.test(f.res.headers.get("x-robots-tag") ?? "")) a.noindex = true;
     if (isHome) homeSchema = a.schema;
-    const { links, ...rest } = a;
+    const { links, imageUrls, ...rest } = a;
     pages.push({ ...rest, url, finalUrl: final, status: f.status, ms: Date.now() - t, bytes: body.bytes, internalLinks: links.length });
+    edges.set(final, links);
     for (const l of links) {
       const from = linkSources.get(l) ?? new Set<string>();
       from.add(final);
       linkSources.set(l, from);
+    }
+    for (const img of imageUrls ?? []) {
+      const from = imageSources.get(img) ?? new Set<string>();
+      from.add(final);
+      imageSources.set(img, from);
     }
     return links;
   };
@@ -680,7 +949,11 @@ export async function runAudit(website: string): Promise<AuditReport> {
   seen.add(homeUrl);
   let homeLinks: string[] | null;
   try {
-    homeLinks = await visit(homeUrl, true);
+    // El inicio es indispensable: si falla (por ejemplo, se demoró una vez), se intenta otra vez.
+    homeLinks = await visit(homeUrl, true).catch(async () => {
+      await sleep(500);
+      return visit(homeUrl, true);
+    });
   } catch (e) {
     throw bi(`No se pudo abrir ${start.href} (${reason(e)}). Revisa que la dirección esté bien escrita y que la página funcione.`, `Couldn't open ${start.href} (${reason(e)}). Check that the address is spelled right and the site is up.`);
   }
@@ -688,31 +961,76 @@ export async function runAudit(website: string): Promise<AuditReport> {
     throw bi(`${start.href} no parece una página web (no devolvió HTML).`, `${start.href} doesn't look like a web page (it didn't return HTML).`);
   }
   const home = pages[0].finalUrl;
-  const origin = new URL(home).origin;
+  const homeU = new URL(home);
+  const origin = homeU.origin;
   homeLinks.forEach(enqueue);
 
-  // 2. Velocidad con Google (en paralelo) + robots.txt y sitemap
+  // 2. Velocidad con Google, /llms.txt, http→https y www (en paralelo) + robots.txt y sitemap
   const psi = pageSpeed(home);
+  const llmsP = (async (): Promise<LlmsTxtState | null> => {
+    try {
+      const r = await getRetry(`${origin}/llms.txt`, "GET", Math.min(allUntil, Date.now() + REQ_TIMEOUT));
+      if (r.status >= 400) {
+        drop(r.res);
+        return checkLlmsTxt(r.status, "", "");
+      }
+      const { text } = await readText(r.res);
+      return checkLlmsTxt(r.status, r.res.headers.get("content-type") ?? "", text.slice(0, 200_000));
+    } catch {
+      return null;
+    }
+  })();
+  const https = homeU.protocol === "https:";
+  const httpP = (async (): Promise<boolean | null> => {
+    if (!https) return null;
+    try {
+      const r = await net.get(`http://${homeU.host}/`, "GET", Math.min(REQ_TIMEOUT, Math.max(3000, left(allUntil))));
+      drop(r.res);
+      return new URL(r.url).protocol === "https:";
+    } catch {
+      return null;
+    }
+  })();
+  const altHost = homeU.hostname.startsWith("www.") ? homeU.hostname.slice(4) : `www.${homeU.hostname}`;
+  const wwwP = (async (): Promise<boolean | null> => {
+    try {
+      const r = await net.get(`${homeU.protocol}//${altHost}/`, "GET", Math.min(REQ_TIMEOUT, left(allUntil)));
+      drop(r.res);
+      if (r.status >= 400) return null; // la otra versión no existe: no hay nada que unir
+      return new URL(r.url).hostname === homeU.hostname;
+    } catch {
+      return null; // no existe (DNS) o no responde
+    }
+  })();
+
   let robots = false;
+  /** false = robots.txt no respondió (ni que sí ni que no): no se marca como problema. */
+  let robotsChecked = true;
+  let robotsAi: RobotsAi | undefined;
   let sitemapFiles: string[] = [];
   try {
-    const r = await net.get(`${origin}/robots.txt`, "GET", left(crawlUntil));
+    const r = await getRetry(`${origin}/robots.txt`, "GET", crawlUntil);
     if (r.status === 200) {
       const { text } = await readText(r.res);
       if (!/^\s*</.test(text)) {
         robots = true;
+        robotsAi = robotsAiCheck(text);
         sitemapFiles = [...text.matchAll(/^\s*sitemap\s*:\s*(\S+)/gim)].map((m) => m[1]);
       }
     } else drop(r.res);
   } catch {
-    /* sin robots.txt */
+    robotsChecked = false;
   }
   if (!sitemapFiles.length) sitemapFiles = [`${origin}/sitemap.xml`];
   let sitemap = false;
+  /** Algún sitemap respondió (aunque sea «no existe»). Si ninguno respondió, no se sabe y no se marca como problema. */
+  let sitemapChecked = false;
+  let sitemapHreflang = false;
   const sitemapUrls = new Set<string>();
-  const readSitemap = async (url: string): Promise<{ index: boolean; urls: string[] } | null> => {
+  const readSitemap = async (url: string): Promise<ReturnType<typeof parseSitemap> | null> => {
     try {
-      const r = await net.get(url, "GET", left(crawlUntil));
+      const r = await getRetry(url, "GET", crawlUntil);
+      sitemapChecked = true;
       if (r.status !== 200) {
         drop(r.res);
         return null;
@@ -731,12 +1049,27 @@ export async function runAudit(website: string): Promise<AuditReport> {
     if (s.index) {
       // Un nivel de índice: hasta 5 sitemaps hijos.
       const children = await Promise.all(s.urls.slice(0, 5).map(readSitemap));
-      for (const c of children) if (c && !c.index) c.urls.forEach((u) => sitemapUrls.add(u));
-    } else s.urls.forEach((u) => sitemapUrls.add(u));
+      for (const c of children)
+        if (c && !c.index) {
+          c.urls.forEach((u) => sitemapUrls.add(u));
+          if (c.hreflang) sitemapHreflang = true;
+        }
+    } else {
+      s.urls.forEach((u) => sitemapUrls.add(u));
+      if (s.hreflang) sitemapHreflang = true;
+    }
+  }
+  const sitemapNorm = new Set<string>();
+  for (const u of [...sitemapUrls].slice(0, 500)) {
+    try {
+      sitemapNorm.add(normalizeUrl(u));
+    } catch {
+      /* dirección mal escrita en el sitemap */
+    }
   }
   [...sitemapUrls].slice(0, 500).forEach(enqueue);
 
-  // 3. Recorrer el sitio: 4 a la vez, hasta 30 páginas o hasta que se acabe el tiempo.
+  // 3. Recorrer el sitio: 6 a la vez, hasta 60 páginas o hasta que se acabe el tiempo.
   let inflight = 0;
   let attempts = 1;
   const worker = async () => {
@@ -764,45 +1097,118 @@ export async function runAudit(website: string): Promise<AuditReport> {
     }
   };
   await Promise.all(Array.from({ length: CONCURRENCY }, worker));
-  const stoppedEarly = queue.length > 0 && pages.length < MAX_PAGES;
+  const pending = queue.filter((u) => !recorded.has(u)).length;
+  const stoppedEarly = pending > 0 && pages.length < MAX_PAGES;
 
-  // 4. Enlaces rotos: los enlaces internos que no se leyeron arriba (hasta 50), con HEAD y si falla, GET.
-  const toCheck = [...linkSources.keys()].filter((u) => !statusOf.has(u)).slice(0, MAX_LINK_CHECKS);
-  await pool(toCheck, CONCURRENCY, async (u) => {
-    if (left(allUntil) < 500) return;
+  // 4. Enlaces rotos (hasta 50), fotos rotas (hasta 40) y direcciones viejas de WordPress (hasta 20), 6 a la vez.
+  const checkStatus = async (u: string, map: Map<string, number>, until: number) => {
+    if (left(until) < 500) return;
     try {
-      const h = await net.get(u, "HEAD", left(allUntil));
+      const h = await net.get(u, "HEAD", left(until));
       drop(h.res);
-      if (![400, 403, 405, 501].includes(h.status)) return void statusOf.set(u, h.status);
+      if (![400, 403, 405, 501].includes(h.status)) return void map.set(u, h.status);
     } catch {
       /* se intenta con GET */
     }
     try {
-      const g = await net.get(u, "GET", left(allUntil));
+      const g = await net.get(u, "GET", left(until));
       drop(g.res);
-      statusOf.set(u, g.status);
+      map.set(u, g.status);
     } catch {
       /* no se sabe: no se marca como roto */
     }
-  });
+  };
+  const imageStatus = new Map<string, number>();
+  const toCheck = [...linkSources.keys()].filter((u) => !statusOf.has(u)).slice(0, MAX_LINK_CHECKS);
+  const imagesToCheck = [...imageSources].sort((a, b) => b[1].size - a[1].size).map(([u]) => u).slice(0, MAX_IMAGE_CHECKS);
+
+  // Direcciones viejas: las del sitemap, las enlazadas y unas clásicas que se prueban aunque nadie las enlace.
+  const junkWhere = new Map<string, JunkUrl["where"]>();
+  for (const u of sitemapNorm) if (isJunkWpUrl(u)) junkWhere.set(u, "sitemap");
+  for (const u of linkSources.keys()) if (isJunkWpUrl(u) && !junkWhere.has(u)) junkWhere.set(u, "link");
+  for (const p of WP_PROBES) {
+    const u = normalizeUrl(new URL(p, origin));
+    if (!junkWhere.has(u)) junkWhere.set(u, "probe");
+  }
+  const junkUrls: JunkUrl[] = [];
+  const pageByUrl = new Map<string, AuditPage>();
+  for (const p of pages) {
+    pageByUrl.set(p.url, p);
+    pageByUrl.set(p.finalUrl, p);
+  }
+  const checkJunk = async (u: string) => {
+    const where = junkWhere.get(u)!;
+    const known = pageByUrl.get(u);
+    let status = known ? known.status : 0;
+    let final = known ? known.finalUrl : u;
+    let noindex = known?.noindex ?? false;
+    let canonical = known?.canonical ?? "";
+    if (!known) {
+      if (left(allUntil) < 500) return;
+      try {
+        const r = await net.get(u, "GET", left(allUntil));
+        status = r.status;
+        final = normalizeUrl(r.url);
+        const type = r.res.headers.get("content-type") ?? "";
+        if (r.status === 200 && /html/i.test(type)) {
+          const a = analyzePage((await readText(r.res)).text, final);
+          noindex = a.noindex || /noindex|\bnone\b/i.test(r.res.headers.get("x-robots-tag") ?? "");
+          canonical = a.canonical;
+        } else drop(r.res);
+      } catch {
+        return;
+      }
+    }
+    // Sigue abierta si responde 200 en una dirección vieja, Google la puede mostrar y no apunta a otra página.
+    const pointsElsewhere = !!canonical && normalizeUrl(canonical) !== final && !isJunkWpUrl(canonical);
+    const live = status === 200 && isJunkWpUrl(final) && !noindex && !pointsElsewhere;
+    if (live || where === "sitemap") junkUrls.push({ url: u, status, where, live });
+  };
+
+  const tasks: (() => Promise<void>)[] = [
+    ...toCheck.map((u) => () => checkStatus(u, statusOf, allUntil)),
+    ...imagesToCheck.map((u) => () => checkStatus(u, imageStatus, allUntil)),
+    ...[...junkWhere.keys()].slice(0, MAX_JUNK_CHECKS).map((u) => () => checkJunk(u)),
+  ];
+  await pool(tasks, CONCURRENCY, (task) => task());
+
   const brokenLinks: BrokenLink[] = [...linkSources]
     .filter(([u]) => (statusOf.get(u) ?? 0) >= 400)
     .slice(0, 50)
     .map(([url, from]) => ({ url, status: statusOf.get(url)!, from: [...from].slice(0, 5) }));
+  const brokenImages: BrokenLink[] = [...imageSources]
+    .filter(([u]) => (imageStatus.get(u) ?? 0) >= 400)
+    .slice(0, 50)
+    .map(([url, from]) => ({ url, status: imageStatus.get(url)!, from: [...from].slice(0, 5) }));
 
-  // 5. https y redirección desde http
-  const https = new URL(home).protocol === "https:";
-  let httpRedirects: boolean | null = null;
-  if (https) {
-    try {
-      const r = await net.get(`http://${new URL(home).host}/`, "GET", Math.min(REQ_TIMEOUT, Math.max(3000, left(allUntil))));
-      drop(r.res);
-      httpRedirects = new URL(r.url).protocol === "https:";
-    } catch {
-      httpRedirects = null;
-    }
+  // 5. Cómo están enlazadas las páginas: clics desde el inicio, enlaces que recibe cada una y si está en el sitemap.
+  const alias = (u: string) => finalOf.get(u) ?? u;
+  const graph = linkGraph(home, edges, alias);
+  const depthCounts: Record<string, number> = {};
+  const crawlComplete = pending === 0;
+  for (const p of pages) {
+    if (!isOk(p)) continue;
+    const key = p.finalUrl || p.url;
+    const d = graph.depth.get(key);
+    p.depth = d ?? null;
+    p.inlinks = graph.inlinks.get(key) ?? 0;
+    p.inSitemap = sitemapNorm.has(normalizeUrl(p.url)) || sitemapNorm.has(normalizeUrl(key));
+    const bucket = d === undefined ? "none" : d > LIMITS.deepClicks ? `${LIMITS.deepClicks + 1}+` : String(d);
+    depthCounts[bucket] = (depthCounts[bucket] ?? 0) + 1;
   }
 
+  // 6. Direcciones del sitemap que no sirven (solo las que se leyeron; las viejas de WordPress van aparte).
+  const sitemapBad: SitemapBad[] = [];
+  for (const p of pages) {
+    const u = normalizeUrl(p.url);
+    if (!sitemapNorm.has(u) || isJunkWpUrl(u) || p.error) continue;
+    const final = p.finalUrl || p.url;
+    if (p.status >= 400) sitemapBad.push({ url: u, status: p.status, why: "error" });
+    else if (final !== u) sitemapBad.push({ url: u, status: p.status, why: "redirect", to: final });
+    else if (p.noindex) sitemapBad.push({ url: u, status: p.status, why: "noindex" });
+  }
+
+  const [llms, httpRedirects, wwwRedirects] = await Promise.all([llmsP, httpP, wwwP]);
   const site: SiteInfo = {
     home,
     robots,
@@ -814,10 +1220,31 @@ export async function runAudit(website: string): Promise<AuditReport> {
     brokenLinks,
     checkedLinks: [...linkSources.keys()].filter((u) => statusOf.has(u)).length,
     stoppedEarly,
+    robotsChecked,
+    sitemapChecked,
+    ...(robotsAi ? { robotsAi } : {}),
+    llms,
+    wwwRedirects,
+    altHost,
+    junkUrls: junkUrls.slice(0, 50),
+    sitemapBad: sitemapBad.slice(0, 100),
+    brokenImages,
+    checkedImages: imageStatus.size,
+    sitemapHreflang,
+    depthCounts,
+    crawlComplete,
   };
   const issues = findIssues(pages, site);
+  // Qué se revisó de verdad (si algo no se pudo probar, no cuenta como «arreglado» al comparar).
+  const skipped = new Set<IssueId>([
+    ...(robotsAi ? [] : (["robots-blocks-site", "ai-search-bots-blocked", "ai-training-bots-blocked"] as IssueId[])),
+    ...(llms ? [] : (["llms-txt-missing", "llms-txt-invalid"] as IssueId[])),
+    ...(wwwRedirects === null ? (["www-mismatch"] as IssueId[]) : []),
+    ...(robotsChecked ? [] : (["no-robots"] as IssueId[])),
+    ...(sitemapChecked ? [] : (["no-sitemap"] as IssueId[])),
+  ]);
   return {
-    version: 1,
+    version: 2,
     website: start.href,
     startedAt: startedAt.toISOString(),
     finishedAt: new Date().toISOString(),
@@ -826,6 +1253,8 @@ export async function runAudit(website: string): Promise<AuditReport> {
     pagespeed: await psi,
     issues,
     score: scoreFor(issues, pages.length),
+    checks: ISSUE_IDS.filter((id) => !skipped.has(id)),
+    maxPages: MAX_PAGES,
   };
 }
 
@@ -848,12 +1277,45 @@ const bool = (v: unknown) => v === true;
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const strs = (v: unknown) => arr(v).filter((x): x is string => typeof x === "string");
+/** Un campo opcional: solo se copia si viene (así los reportes viejos quedan igual que antes). */
+const opt = <K extends string, T>(k: K, v: T | undefined): Partial<Record<K, T>> => (v === undefined ? {} : ({ [k]: v } as Record<K, T>));
+const optNum = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+const optBool = (v: unknown) => (typeof v === "boolean" ? v : undefined);
+const optStr = (v: unknown) => (typeof v === "string" ? v : undefined);
+const biOf = (v: unknown) => {
+  const o = obj(v);
+  return typeof o.es === "string" || typeof o.en === "string" ? { es: str(o.es) || str(o.en), en: str(o.en) || str(o.es) } : undefined;
+};
+const brokenOf = (v: unknown): BrokenLink[] =>
+  arr(v).map((x) => {
+    const b = obj(x);
+    return { url: str(b.url), status: num(b.status), from: strs(b.from) };
+  });
+const SCHEMA_KINDS = new Set<string>(["invalid-json", "wrong-property", "business-incomplete", "opening-hours", "org-incomplete"]);
+
+function readRobotsAi(v: unknown): RobotsAi | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const o = obj(v);
+  return { blocksGoogle: bool(o.blocksGoogle), searchBlocked: strs(o.searchBlocked), trainingBlocked: strs(o.trainingBlocked) };
+}
+function readLlms(v: unknown): LlmsTxtState | null | undefined {
+  if (v === null) return null;
+  const o = obj(v);
+  if (o.status === "ok") return { status: "ok" };
+  if (o.status === "missing") return { status: "missing", why: o.why === "html" ? "html" : "not-found" };
+  if (o.status === "invalid") return { status: "invalid", problems: strs(o.problems).filter((p): p is "empty" | "no-title" | "no-summary" | "no-links" => ["empty", "no-title", "no-summary", "no-links"].includes(p)) };
+  return undefined;
+}
 
 export function readAuditReport(data: unknown): AuditReport | null {
   const d = obj(data);
   if (!Array.isArray(d.pages) || !Array.isArray(d.issues)) return null;
   const pages: AuditPage[] = arr(d.pages).map((x) => {
     const p = obj(x);
+    const findings = arr(p.schemaFindings)
+      .map(obj)
+      .filter((f) => SCHEMA_KINDS.has(str(f.kind)))
+      .map((f) => ({ kind: str(f.kind) as SchemaFindingKind, value: str(f.value) }));
     return {
       url: str(p.url),
       finalUrl: str(p.finalUrl) || str(p.url),
@@ -877,14 +1339,37 @@ export function readAuditReport(data: unknown): AuditReport | null {
       schema: strs(p.schema),
       https: bool(p.https),
       ...(typeof p.error === "string" ? { error: p.error } : {}),
+      ...opt("h2Count", optNum(p.h2Count)),
+      ...opt("hasMain", optBool(p.hasMain)),
+      ...opt("longParagraphs", optNum(p.longParagraphs)),
+      ...opt("longestParagraph", optNum(p.longestParagraph)),
+      ...opt("longSample", optStr(p.longSample)),
+      ...opt("textRatio", optNum(p.textRatio)),
+      ...opt("linksTotal", optNum(p.linksTotal)),
+      ...opt("wpLinks", optNum(p.wpLinks)),
+      ...opt("wpSample", optStr(p.wpSample)),
+      ...opt("mixed", Array.isArray(p.mixed) ? strs(p.mixed) : undefined),
+      ...opt("mixedCount", optNum(p.mixedCount)),
+      ...opt("hreflang", optNum(p.hreflang)),
+      ...opt("textHash", optStr(p.textHash)),
+      ...opt("schemaFindings", Array.isArray(p.schemaFindings) ? findings : undefined),
+      ...opt("depth", p.depth === null ? null : optNum(p.depth)),
+      ...opt("inlinks", optNum(p.inlinks)),
+      ...opt("inSitemap", optBool(p.inSitemap)),
     };
   });
   const issues: Issue[] = arr(d.issues).flatMap((x) => {
     const i = obj(x);
-    const id = str(i.id) as IssueId;
-    if (!(ISSUE_IDS as readonly string[]).includes(id)) return [];
+    const id = str(i.id);
+    if (!isIssueId(id)) return [];
     const urls = strs(i.pages);
-    return [{ id, severity: ISSUE_SEVERITY[id], pages: urls, count: num(i.count, urls.length) }];
+    const items: IssueItem[] = Array.isArray(i.items)
+      ? arr(i.items)
+          .map(obj)
+          .filter((it) => typeof it.url === "string")
+          .map((it) => ({ url: str(it.url), ...opt("value", optStr(it.value)), ...opt("detail", biOf(it.detail)) }))
+      : urls.map((url) => ({ url }));
+    return [{ id, severity: ISSUE_SEVERITY[id], pages: urls, count: num(i.count, urls.length), category: ISSUE_META[id].category, items, ...opt("total", optNum(i.total)) }];
   });
   const s = obj(d.site);
   const site: SiteInfo = {
@@ -895,12 +1380,43 @@ export function readAuditReport(data: unknown): AuditReport | null {
     https: bool(s.https),
     httpRedirects: typeof s.httpRedirects === "boolean" ? s.httpRedirects : null,
     localBusinessSchema: bool(s.localBusinessSchema),
-    brokenLinks: arr(s.brokenLinks).map((x) => {
-      const b = obj(x);
-      return { url: str(b.url), status: num(b.status), from: strs(b.from) };
-    }),
+    brokenLinks: brokenOf(s.brokenLinks),
     checkedLinks: num(s.checkedLinks),
     stoppedEarly: bool(s.stoppedEarly),
+    ...opt("robotsChecked", optBool(s.robotsChecked)),
+    ...opt("sitemapChecked", optBool(s.sitemapChecked)),
+    ...opt("robotsAi", readRobotsAi(s.robotsAi)),
+    ...opt("llms", readLlms(s.llms)),
+    ...opt("wwwRedirects", typeof s.wwwRedirects === "boolean" ? s.wwwRedirects : s.wwwRedirects === null ? null : undefined),
+    ...opt("altHost", optStr(s.altHost)),
+    ...opt(
+      "junkUrls",
+      Array.isArray(s.junkUrls)
+        ? arr(s.junkUrls).map((x) => {
+            const j = obj(x);
+            const where: JunkUrl["where"] = j.where === "sitemap" || j.where === "link" ? j.where : "probe";
+            return { url: str(j.url), status: num(j.status), where, live: bool(j.live) };
+          })
+        : undefined,
+    ),
+    ...opt(
+      "sitemapBad",
+      Array.isArray(s.sitemapBad)
+        ? arr(s.sitemapBad).map((x) => {
+            const b = obj(x);
+            const why: SitemapBad["why"] = b.why === "redirect" || b.why === "noindex" ? b.why : "error";
+            return { url: str(b.url), status: num(b.status), why, ...opt("to", optStr(b.to)) };
+          })
+        : undefined,
+    ),
+    ...opt("brokenImages", Array.isArray(s.brokenImages) ? brokenOf(s.brokenImages) : undefined),
+    ...opt("checkedImages", optNum(s.checkedImages)),
+    ...opt("sitemapHreflang", optBool(s.sitemapHreflang)),
+    ...opt(
+      "depthCounts",
+      s.depthCounts && typeof s.depthCounts === "object" ? Object.fromEntries(Object.entries(obj(s.depthCounts)).filter(([, v]) => typeof v === "number")) as Record<string, number> : undefined,
+    ),
+    ...opt("crawlComplete", optBool(s.crawlComplete)),
   };
   const ps = obj(d.pagespeed);
   const pagespeed: PageSpeed =
@@ -915,8 +1431,9 @@ export function readAuditReport(data: unknown): AuditReport | null {
           cls: str(ps.cls),
           tbt: str(ps.tbt),
         };
+  const checks = strs(d.checks).filter(isIssueId);
   return {
-    version: 1,
+    version: d.version === 2 ? 2 : 1,
     website: str(d.website),
     startedAt: str(d.startedAt),
     finishedAt: str(d.finishedAt),
@@ -925,103 +1442,41 @@ export function readAuditReport(data: unknown): AuditReport | null {
     pagespeed,
     issues: issues.sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] || b.count - a.count),
     score: Math.max(0, Math.min(100, Math.round(num(d.score, scoreFor(issues, pages.length))))),
+    ...(checks.length ? { checks } : {}),
+    ...opt("maxPages", optNum(d.maxPages)),
   };
 }
 
-// ---------- Textos de cada problema ----------
+// ---------- Para otras pantallas (plan de acción): cada problema listo para mostrar ----------
 
-type IssueCopy = { title: string; fix: string };
-export const ISSUE_TEXT: Record<IssueId, { es: IssueCopy; en: IssueCopy }> = {
-  "page-errors": {
-    es: { title: "Páginas que no abren", fix: "Algunas páginas dan error (por ejemplo, «no encontrada»). Arréglalas o haz que lleven a una página que sí exista, y quita los enlaces que apuntan a ellas." },
-    en: { title: "Pages that don't load", fix: "Some pages return an error (like \"not found\"). Fix them or redirect them to a page that exists, and remove links pointing to them." },
-  },
-  "broken-links": {
-    es: { title: "Enlaces rotos", fix: "Hay enlaces en tu página que llevan a páginas que no existen. Cámbialos por la dirección correcta o quítalos." },
-    en: { title: "Broken links", fix: "Some links on your site go to pages that don't exist. Point them to the right address or remove them." },
-  },
-  "missing-title": {
-    es: { title: "Páginas sin título", fix: "Cada página necesita su propio título de 50 a 60 letras que diga de qué trata y tu ciudad. Es lo que sale en azul en Google." },
-    en: { title: "Pages without a title", fix: "Each page needs its own title of 50-60 characters that says what the page is about and your city. It's the blue headline people see on Google." },
-  },
-  "no-https": {
-    es: { title: "Sin conexión segura (https)", fix: "Tu página debe abrir con https (el candado). Pídele a quien maneja tu hosting que active el certificado SSL gratis y que http mande siempre a https." },
-    en: { title: "No secure connection (https)", fix: "Your site should open with https (the padlock). Ask whoever runs your hosting to turn on a free SSL certificate and send all http visits to https." },
-  },
-  "http-no-redirect": {
-    es: { title: "La versión http no manda a https", fix: "Tu página abre con https, pero si alguien entra por http se queda en la versión sin candado. Pídele a quien maneja tu hosting que mande siempre http a https." },
-    en: { title: "http doesn't redirect to https", fix: "Your site opens with https, but anyone who comes in through http stays on the version without the padlock. Ask whoever runs your hosting to always send http to https." },
-  },
-  "no-viewport": {
-    es: { title: "No se adapta al celular", fix: "Falta la etiqueta que hace que la página se vea bien en el celular. Pídele a tu diseñador que agregue la etiqueta «viewport»; Google da prioridad a las páginas que se ven bien en el teléfono." },
-    en: { title: "Not mobile-friendly", fix: "The tag that makes the page fit on phones is missing. Ask your web designer to add the \"viewport\" tag; Google favors pages that work well on phones." },
-  },
-  noindex: {
-    es: { title: "Páginas escondidas de Google", fix: "Estas páginas le dicen a Google que no las muestre (noindex). Si quieres que la gente las encuentre, quita esa opción en tu editor de página." },
-    en: { title: "Pages hidden from Google", fix: "These pages tell Google not to show them (noindex). If you want people to find them, turn that setting off in your website editor." },
-  },
-  "duplicate-title": {
-    es: { title: "Títulos repetidos", fix: "Varias páginas tienen el mismo título. Dale a cada una un título distinto que diga el servicio específico y tu ciudad." },
-    en: { title: "Duplicate titles", fix: "Several pages share the same title. Give each one a different title that names the specific service and your city." },
-  },
-  "title-too-long": {
-    es: { title: "Títulos muy largos", fix: "Google corta los títulos de más de 60 letras. Acórtalos y pon primero lo más importante: el servicio y la ciudad." },
-    en: { title: "Titles too long", fix: "Google cuts off titles longer than 60 characters. Shorten them and put the most important part first: the service and the city." },
-  },
-  "missing-description": {
-    es: { title: "Sin descripción", fix: "Escribe para cada página una descripción de 120 a 155 letras que invite a hacer clic: qué ofreces, dónde y por qué elegirte. Es el texto gris debajo del título en Google." },
-    en: { title: "Missing description", fix: "Write a 120-155 character description for each page that makes people want to click: what you offer, where, and why choose you. It's the gray text under the title on Google." },
-  },
-  "duplicate-description": {
-    es: { title: "Descripciones repetidas", fix: "Varias páginas tienen la misma descripción. Escribe una distinta para cada página, según lo que ofrece esa página." },
-    en: { title: "Duplicate descriptions", fix: "Several pages share the same description. Write a different one for each page, based on what that page offers." },
-  },
-  "missing-h1": {
-    es: { title: "Sin título principal (H1)", fix: "Cada página necesita un título grande arriba (H1) que diga de qué trata, por ejemplo «Reparación de techos en Miami»." },
-    en: { title: "Missing main heading (H1)", fix: "Each page needs one big heading at the top (H1) that says what it's about, like \"Roof Repair in Miami\"." },
-  },
-  "images-no-alt": {
-    es: { title: "Fotos sin descripción (alt)", fix: "Agrega a cada foto una descripción corta de lo que muestra (texto alternativo). Ayuda a salir en Google Imágenes y a las personas con problemas de vista." },
-    en: { title: "Images without alt text", fix: "Add a short description of what each photo shows (alt text). It helps you show up in Google Images and helps people with low vision." },
-  },
-  "slow-page": {
-    es: { title: "Páginas lentas", fix: "Estas páginas tardan más de 3 segundos en responder. Usa fotos más livianas, quita lo que no uses y considera un hosting más rápido." },
-    en: { title: "Slow pages", fix: "These pages take more than 3 seconds to respond. Use lighter photos, remove what you don't use, and consider faster hosting." },
-  },
-  "no-sitemap": {
-    es: { title: "Sin mapa del sitio (sitemap)", fix: "Un sitemap le dice a Google qué páginas tienes. La mayoría de los editores (WordPress, Wix, Squarespace) lo crean solos: actívalo y envíalo en Google Search Console." },
-    en: { title: "No sitemap", fix: "A sitemap tells Google which pages you have. Most website builders (WordPress, Wix, Squarespace) make one for you: turn it on and submit it in Google Search Console." },
-  },
-  "no-structured-data": {
-    es: { title: "Google no sabe que eres un negocio local", fix: "Agrega a tu página de inicio los datos del negocio en formato de Google (LocalBusiness): nombre, dirección, teléfono y horario. Ayuda a salir en el mapa y en las IAs." },
-    en: { title: "Google can't tell you're a local business", fix: "Add your business details to your home page in Google's format (LocalBusiness): name, address, phone and hours. It helps you show up on the map and in AI answers." },
-  },
-  "title-too-short": {
-    es: { title: "Títulos muy cortos", fix: "Un título de menos de 20 letras desperdicia espacio. Agrega el servicio y tu ciudad, por ejemplo «Plomero en Doral | Tu Negocio»." },
-    en: { title: "Titles too short", fix: "A title under 20 characters wastes space. Add the service and your city, like \"Plumber in Doral | Your Business\"." },
-  },
-  "description-length": {
-    es: { title: "Descripción muy corta o muy larga", fix: "La descripción funciona mejor con 120 a 155 letras: menos dice muy poco y más se corta en Google." },
-    en: { title: "Description too short or too long", fix: "Descriptions work best at 120-155 characters: shorter says too little and longer gets cut off on Google." },
-  },
-  "multiple-h1": {
-    es: { title: "Más de un título principal (H1)", fix: "Usa un solo título grande (H1) por página y los demás como subtítulos (H2), para que Google entienda cuál es el tema." },
-    en: { title: "More than one main heading (H1)", fix: "Use just one big heading (H1) per page and make the others subheadings (H2), so Google knows what the main topic is." },
-  },
-  "thin-content": {
-    es: { title: "Poco texto", fix: "Estas páginas tienen menos de 250 palabras. Explica mejor el servicio: qué incluye, a quién ayudas, en qué zonas trabajas y preguntas frecuentes." },
-    en: { title: "Not much text", fix: "These pages have fewer than 250 words. Explain the service better: what's included, who you help, the areas you serve, and common questions." },
-  },
-  "no-og-image": {
-    es: { title: "Sin foto al compartir", fix: "Cuando alguien comparte tu página en Facebook o WhatsApp no sale foto. Elige una imagen para compartir (og:image) en tu editor de página." },
-    en: { title: "No image when shared", fix: "When someone shares your page on Facebook or WhatsApp, no photo shows up. Pick a sharing image (og:image) in your website editor." },
-  },
-  "missing-lang": {
-    es: { title: "No dice en qué idioma está", fix: "La página no indica su idioma. Pídele a tu diseñador que lo marque (por ejemplo, lang=\"es\") para que Google la muestre a quien habla ese idioma." },
-    en: { title: "Language not set", fix: "The page doesn't say what language it's in. Ask your web designer to set it (for example, lang=\"en\") so Google shows it to the right people." },
-  },
-  "no-robots": {
-    es: { title: "Sin archivo robots.txt", fix: "Es un archivo pequeño que guía a Google por tu página y le dice dónde está el sitemap. Casi todos los editores lo pueden crear; no es urgente." },
-    en: { title: "No robots.txt file", fix: "It's a small file that guides Google through your site and points to your sitemap. Most website builders can create it; it's not urgent." },
-  },
+export type IssueView = {
+  id: IssueId;
+  severity: Severity;
+  category: IssueCategory;
+  categoryLabel: { es: string; en: string };
+  title: { es: string; en: string };
+  fix: { es: string; en: string };
+  /** En qué se cuenta (páginas, enlaces, direcciones, fotos o todo el sitio). */
+  unit: (typeof ISSUE_META)[IssueId]["unit"];
+  count: number;
+  total?: number;
+  items: IssueItem[];
 };
+
+/** Un problema con todo lo necesario para convertirlo en tarea (título y arreglo en es/en, grupo, direcciones y valores). */
+export function issueView(i: Issue): IssueView {
+  const meta = ISSUE_META[i.id];
+  const t = ISSUE_TEXT[i.id];
+  return {
+    id: i.id,
+    severity: ISSUE_SEVERITY[i.id],
+    category: meta.category,
+    categoryLabel: CATEGORY_LABEL[meta.category],
+    title: { es: t.es.title, en: t.en.title },
+    fix: { es: t.es.fix, en: t.en.fix },
+    unit: meta.unit,
+    count: i.count,
+    ...(i.total !== undefined ? { total: i.total } : {}),
+    items: i.items?.length ? i.items : i.pages.map((url) => ({ url })),
+  };
+}

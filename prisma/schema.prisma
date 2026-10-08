@@ -80,6 +80,7 @@ model Business {
   uploadToken     String   @default("")
   createdAt   DateTime     @default(now())
   library     LibraryItem[]
+  tasks       ActionTask[]
   connections Connection[]
   contacts    Contact[]
   posts       Post[]
@@ -221,5 +222,38 @@ model LibraryItem {
   createdAt   DateTime  @default(now())
 
   @@unique([businessId, externalId])
+  @@index([businessId, status])
+}
+
+/// Plan de acción único: cada problema u oportunidad encontrada en el diagnóstico (auditoría, páginas, palabras,
+/// enlaces, Maps, reseñas, IAs…) como una tarea en palabras simples. `key` es estable para no duplicar al volver a
+/// armar el plan; lo que ya no aparece queda "gone". Forma de los textos: src/lib/action-plan-shape.ts.
+model ActionTask {
+  id         String    @id @default(cuid())
+  businessId String
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  key        String
+  /// De qué reporte salió: audit | onpage | keywords | content | links | local | reviews | ai | schema | gsc | setup
+  source     String
+  /// Para agrupar: web | google | maps | ia | contenido | enlaces | marca
+  area       String
+  /// { es, en }
+  title      Json
+  /// { es, en }: por qué importa y cómo se arregla
+  detail     Json?
+  /// 3 alto · 2 medio · 1 bajo
+  impact     Int       @default(2)
+  /// 1 fácil · 2 medio · 3 difícil
+  effort     Int       @default(2)
+  /// Dónde se ve o se arregla dentro de la app (/b/<id>/...)
+  href       String    @default("")
+  /// todo | done | dismissed | gone
+  status     String    @default("todo")
+  doneAt     DateTime?
+  firstSeen  DateTime  @default(now())
+  lastSeen   DateTime  @default(now())
+  createdAt  DateTime  @default(now())
+
+  @@unique([businessId, key])
   @@index([businessId, status])
 }

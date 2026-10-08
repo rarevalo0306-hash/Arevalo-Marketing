@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ActionPlanToday } from "@/components/plan/ActionPlanToday";
 import { Suspense } from "react";
 import { DashSearch, MAX_Q, SearchResult } from "@/components/dashboard/DashSearch";
 import s from "@/components/dashboard/Dashboard.module.css";
@@ -64,6 +65,7 @@ export default async function InicioPage({ params, searchParams }: { params: Pro
 
       <div className={s.main}>
         <div className={s.todayCol}>
+          <ActionPlanToday businessId={id} />
           <Suspense fallback={<TodayListSkeleton />}>
             <TodayList businessId={id} />
           </Suspense>
