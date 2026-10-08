@@ -86,12 +86,15 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: "redes",
     label: ["Campañas y publicación", "Campaigns & publishing"],
     items: [
+      { key: "campanas", label: ["Campañas", "Campaigns"], path: "campanas" },
+      { key: "publicar", label: ["Posts (fotos y diseños)", "Posts (photos & designs)"], path: "publicar" },
+      { key: "videos", label: ["Videos", "Videos"], path: "videos" },
       { key: "plan", label: ["Ideas y plan con IA", "Ideas & AI plan"], path: "plan" },
-      { key: "publicar", label: ["Publicar", "Publish"], path: "publicar" },
+      { key: "anuncios", label: ["Anuncios pagados", "Paid ads"], path: "anuncios" },
+      { key: "directorios", label: ["Directorios y reseñas", "Directories & reviews"], path: "directorios" },
       { key: "escribir", label: ["Artículo para la web", "Website article"], path: "seo/escribir" },
       { key: "historial", label: ["Historial", "History"], path: "historial" },
       { key: "contactos", label: ["Contactos (email)", "Contacts (email)"], path: "contactos" },
-      { key: "anuncios", label: ["Anuncios pagados", "Paid ads"], path: "", soon: true },
     ],
   },
   {
@@ -164,7 +167,7 @@ export const MOBILE_TABS: MobileTab[] = [
     label: ["Publicar", "Publish"],
     icon: "redes",
     path: "publicar",
-    on: (h, b) => ["publicar", "plan", "seo/escribir", "historial"].some((p) => under(h.pathname, b + p)),
+    on: (h, b) => ["publicar", "campanas", "videos", "plan", "anuncios", "directorios", "seo/escribir", "historial"].some((p) => under(h.pathname, b + p)),
   },
   {
     key: "marca",

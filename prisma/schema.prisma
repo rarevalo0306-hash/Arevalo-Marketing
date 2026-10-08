@@ -84,6 +84,9 @@ model Business {
   createdAt   DateTime     @default(now())
   library     LibraryItem[]
   tasks       ActionTask[]
+  campaigns   Campaign[]
+  aiActions   AiAction[]
+  listings    DirectoryListing[]
   connections Connection[]
   contacts    Contact[]
   posts       Post[]
@@ -162,10 +165,99 @@ model Post {
   status      String       @default("scheduled")
   scheduledAt DateTime     @default(now())
   createdAt   DateTime     @default(now())
+  /// Qué es: post (una foto/diseño o solo texto) | carousel (varias fotos) | story (historia 9:16) | video
+  kind        String       @default("post")
+  /// Varias fotos (carrusel) o detalles de la foto: [{ url, alt, focus? {x,y} }]. Si falta, se usa mediaUrl.
+  media       Json?
+  /// Texto alternativo de la foto (con palabras clave) para Google, Facebook, LinkedIn y lectores de pantalla.
+  altText     String       @default("")
+  /// Campaña a la que pertenece (null = publicación suelta).
+  campaignId  String?
+  campaign    Campaign?    @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   business    Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
   targets     PostTarget[]
 
   @@index([status, scheduledAt])
+  @@index([campaignId])
+}
+
+/// Campaña: un objetivo con fechas, canales y reglas. Tres modos: manual (el dueño hace todo), approval (la IA
+/// propone y el dueño aprueba cada publicación) y auto (la IA publica sola dentro de los límites de `rules`).
+/// Forma de `rules`: CampaignRules en src/lib/campaign-shape.ts.
+model Campaign {
+  id          String     @id @default(cuid())
+  businessId  String
+  business    Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name        String
+  /// Para qué es (en palabras del dueño): "más llamadas para reparación de portones"…
+  goal        String     @default("")
+  /// manual | approval | auto
+  mode        String     @default("approval")
+  /// draft | active | paused | stopped (parada de emergencia) | ended
+  status      String     @default("draft")
+  startsAt    DateTime   @default(now())
+  endsAt      DateTime?
+  channels    String[]   @default([])
+  /// Publicaciones por semana (gratis).
+  perWeek     Int        @default(3)
+  keywords    String[]   @default([])
+  /// Límites y reglas: temas prohibidos, máximo por día, horas sin publicar, avisos…
+  rules       Json?
+  /// Presupuesto de anuncios pagados en centavos de dólar (0 = solo gratis) y lo gastado.
+  budgetCents Int        @default(0)
+  spentCents  Int        @default(0)
+  /// Anuncios creados en cada plataforma (ids externos, estado). Forma: src/lib/ads-shape.ts.
+  ads         Json?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  posts       Post[]
+  actions     AiAction[]
+
+  @@index([businessId, status])
+}
+
+/// Registro de lo que hizo la IA (sola o con aprobación): publicaciones, anuncios, pausas, paradas, fotos…
+/// Sirve para el historial de cada campaña y para el reporte diario.
+model AiAction {
+  id         String    @id @default(cuid())
+  businessId String
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  campaignId String?
+  campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  /// Qué hizo, con un punto: post.draft | post.scheduled | post.published | post.skipped | ad.created | ad.paused |
+  /// campaign.started | campaign.paused | campaign.stopped | campaign.ended | limit.reached | alert.sent …
+  kind       String
+  /// { es, en }: una frase para el dueño.
+  summary    Json
+  detail     Json?
+  /// auto (la IA sola) | approved (el dueño aprobó) | owner (lo hizo el dueño)
+  actor      String    @default("auto")
+  costCents  Int       @default(0)
+  postId     String?
+  createdAt  DateTime  @default(now())
+
+  @@index([businessId, createdAt])
+  @@index([campaignId, createdAt])
+}
+
+/// El negocio en directorios (Google, Bing, Apple, Yelp, Facebook…): si está, si los datos coinciden y el link.
+model DirectoryListing {
+  id         String    @id @default(cuid())
+  businessId String
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  /// Clave del directorio (lista en src/lib/directories.ts).
+  directory  String
+  /// todo | listed | claimed | needs-fix | skip
+  status     String    @default("todo")
+  url        String    @default("")
+  notes      String    @default("")
+  /// Nombre, dirección y teléfono iguales a los del negocio (null = sin revisar).
+  napOk      Boolean?
+  checkedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([businessId, directory])
 }
 
 model PostTarget {
