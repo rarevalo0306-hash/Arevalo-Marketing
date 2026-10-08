@@ -72,6 +72,8 @@ model Business {
   driveFolderName String   @default("")
   driveSyncedAt   DateTime?
   driveError      String   @default("")
+  /// Link privado para que los técnicos suban fotos y videos sin entrar a la app (/subir/<token>). "" = sin link.
+  uploadToken     String   @default("")
   createdAt   DateTime     @default(now())
   library     LibraryItem[]
   connections Connection[]
@@ -178,9 +180,9 @@ model LibraryItem {
   id          String    @id @default(cuid())
   businessId  String
   business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  /// De dónde vino: drive
+  /// De dónde vino: drive | upload (link de subida, guardado en Cloudflare R2)
   source      String    @default("drive")
-  /// Id del archivo en Google Drive.
+  /// Id del archivo en Google Drive, o la llave del archivo original en R2.
   externalId  String
   name        String    @default("")
   /// Carpeta dentro de la carpeta principal (ej. "Trabajos/Casa Pérez"), para dar contexto.

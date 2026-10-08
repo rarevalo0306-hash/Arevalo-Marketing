@@ -99,3 +99,5 @@ CREATE TABLE IF NOT EXISTS "LibraryItem" (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "LibraryItem_businessId_externalId_key" ON "LibraryItem"("businessId", "externalId");
 CREATE INDEX IF NOT EXISTS "LibraryItem_businessId_status_idx" ON "LibraryItem"("businessId", "status");
+-- 2026-10-08: link de subida para técnicos (las fotos y videos van a Cloudflare R2).
+ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "uploadToken" TEXT NOT NULL DEFAULT '';
