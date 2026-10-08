@@ -28,7 +28,9 @@ export type SeoKind =
   | "setup"
   // Diagnóstico inicial guiado (estado de cada paso) y el resumen del plan de acción.
   | "diagnosis"
-  | "plan";
+  | "plan"
+  // Visitas reales de la página web (Google Analytics 4): src/lib/ga4.ts.
+  | "ga4";
 
 export async function saveReport(businessId: string, kind: SeoKind, data: Prisma.InputJsonValue) {
   return db.seoReport.create({ data: { businessId, kind, data } });
