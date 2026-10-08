@@ -158,6 +158,15 @@ describe("pickLibraryPhotos", () => {
     expect(updates[0]).toMatchObject({ where: { businessId: "biz", id: { in: ["door", "door2"] } }, data: { usedCount: { increment: 1 } } });
   });
 
+  it("devuelve la foto mejorada si existe, salvo que el dueño eligió la original", async () => {
+    rows.push({ ...door, enhancedUrl: "/media/door-mejor.jpg", useEnhanced: true }, { ...motor, enhancedUrl: "/media/motor-mejor.jpg", useEnhanced: false });
+    const out = await pickLibraryPhotos("biz", [{ text: "Cortinas metálicas para tu local" }, { text: "Motor eléctrico para portón" }]);
+    expect(out).toEqual([
+      { id: "door", url: "/media/door-mejor.jpg" },
+      { id: "motor", url: "/media/motor.jpg" },
+    ]);
+  });
+
   it("sin fotos, todo queda para la IA", async () => {
     expect(await pickLibraryPhotos("biz", [{ text: "Cortinas" }])).toEqual([null]);
     expect(updates).toHaveLength(0);

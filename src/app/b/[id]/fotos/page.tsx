@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PageHead } from "@/components/PageHead";
+import { EnhanceAll } from "@/components/library/EnhanceAll";
 import { LibraryItemCard } from "@/components/library/LibraryItemCard";
 import { ReviewNow } from "@/components/library/ReviewNow";
 import { UploadLinkCard } from "@/components/library/UploadLinkCard";
@@ -8,6 +9,8 @@ import { appOrigin } from "@/lib/app-origin";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
 import { asLibraryFilter, LIBRARY_FILTERS, libraryCounts, loadLibrary, PAGE_SIZE, type LibraryFilter } from "@/lib/library";
+import { AI_HINTS_COST_USD, pendingWhere } from "@/lib/photo-enhance-run";
+import { readEnhanceInfo } from "@/lib/photo-enhance-shape";
 import { r2Enabled } from "@/lib/r2";
 import { fmtWhen } from "@/lib/time";
 import { uploadStats } from "@/lib/upload";
@@ -33,7 +36,16 @@ export default async function FotosPage({ params, searchParams }: { params: Prom
   const { lang, t } = await getT();
   const b = await db.business.findUniqueOrThrow({ where: { id }, select: { id: true, name: true, color: true, driveFolderId: true, driveFolderName: true, driveSyncedAt: true, driveError: true, uploadToken: true } });
   const connected = !!b.driveFolderId;
-  const [counts, page, uploads, origin] = await Promise.all([libraryCounts(id), loadLibrary(id, filter, limit), uploadStats(id), appOrigin()]);
+  const [counts, page, uploads, origin, toEnhance, enhancedCount] = await Promise.all([
+    libraryCounts(id),
+    loadLibrary(id, filter, limit),
+    uploadStats(id),
+    appOrigin(),
+    db.libraryItem.findMany({ where: pendingWhere(id), select: { privacy: true, enhanceInfo: true } }),
+    db.libraryItem.count({ where: { businessId: id, kind: "photo", status: { not: "gone" }, enhancedUrl: { not: "" } } }),
+  ]);
+  // Las que faltan y tienen avisos de privacidad sin indicaciones de la IA: esas se le preguntan aparte (con costo).
+  const aiPhotos = toEnhance.filter((r) => r.privacy.length > 0 && !readEnhanceInfo(r.enhanceInfo)?.hints).length;
   const r2 = r2Enabled();
   const uploadCard = (
     <UploadLinkCard businessId={id} businessName={b.name} configured={r2} token={b.uploadToken} origin={origin} total={uploads.total} pending={uploads.pending} anchor="link-subida" />
@@ -160,6 +172,17 @@ export default async function FotosPage({ params, searchParams }: { params: Prom
             </section>
             {uploadCard}
           </div>
+
+          {photos > 0 && (
+            <EnhanceAll
+              businessId={id}
+              pending={toEnhance.length}
+              enhanced={enhancedCount}
+              aiPhotos={aiPhotos}
+              aiCost={AI_HINTS_COST_USD}
+              aiReady={Boolean(process.env.GEMINI_API_KEY)}
+            />
+          )}
 
           <nav className={`tabs ${s.filters}`} aria-label={t("Filtrar fotos", "Filter photos")}>
             {LIBRARY_FILTERS.map((f) => (

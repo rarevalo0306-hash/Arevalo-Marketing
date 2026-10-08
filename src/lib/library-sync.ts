@@ -1,12 +1,13 @@
 import sharp from "sharp";
 import { z } from "zod";
-import type { LibraryItem } from "@prisma/client";
+import { Prisma, type LibraryItem } from "@prisma/client";
 import { askGemini, type GeminiPart } from "@/lib/ai";
 import { db } from "@/lib/db";
 import { downloadFile, getThumbnail, listMedia, type DriveFile } from "@/lib/drive";
 import { serviceAccountEnabled } from "@/lib/google-sa";
 import { bi, BiError, errorText, translator, type T, type UiLang } from "@/lib/i18n";
 import { PRIVACY_FLAGS, type LibraryDescription, type PrivacyFlag } from "@/lib/library-shape";
+import { BLUR_REASONS, ENHANCE_VERSION, hintsFromAnswer, type EnhanceHints } from "@/lib/photo-enhance-shape";
 import { readMedia, storeBuffer } from "@/lib/media";
 import { newKey, publicUrl, putObject, r2Enabled } from "@/lib/r2";
 import { readInput, readStudy } from "@/lib/study-shape";
@@ -104,6 +105,13 @@ export const AnalysisSchema = z.object({
       reasonEs: z.string().describe("If not usable or quality <= 2: why, short, in Spanish. Otherwise empty"),
       reasonEn: z.string().describe("The same in English, or empty"),
       privacy: z.array(z.enum(PRIVACY_FLAGS)),
+      // Para la copia mejorada (photo-enhance): enderezar, lo importante y qué tapar. Van en la misma pregunta (sin costo extra).
+      straighten: z.number().describe("Degrees to rotate the photo clockwise so the horizon or the vertical lines of walls and doors are level (negative = counter-clockwise). 0 if level, intentional or unsure"),
+      focusX: z.number().describe("Center of the main subject, 0 = left edge, 1 = right edge"),
+      focusY: z.number().describe("Center of the main subject, 0 = top edge, 1 = bottom edge"),
+      hide: z
+        .array(z.object({ what: z.enum(BLUR_REASONS), box: z.array(z.number()).describe("[ymin, xmin, ymax, xmax] from 0 to 1000") }))
+        .describe("Private details to blur in the improved copy. Empty if none"),
     }),
   ),
 });
@@ -114,7 +122,12 @@ export type ItemAnalysis = {
   quality: number;
   usable: boolean;
   privacy: PrivacyFlag[];
+  /** Para la copia mejorada (solo si la IA contestó esos campos). */
+  hints?: EnhanceHints;
 };
+
+/** El modelo de Gemini que se usa (para contarlo en la foto mejorada). */
+export const aiModelName = () => process.env.GEMINI_MODEL || "gemini-flash-latest";
 
 const words = (list: unknown, max: number) =>
   [
@@ -152,12 +165,14 @@ export function parseAnalysis(raw: unknown, count: number): Map<number, ItemAnal
     const privacy = [
       ...new Set((Array.isArray(it.privacy) ? it.privacy : []).filter((p): p is PrivacyFlag => (PRIVACY_FLAGS as readonly string[]).includes(String(p)))),
     ];
+    const hints = hintsFromAnswer(it, "review", aiModelName());
     out.set(n, {
       description,
       tags: words(it.tags, 12),
       quality,
       usable,
       privacy,
+      ...(hints ? { hints } : {}),
     });
   }
   return out;
@@ -189,8 +204,14 @@ For each item:
 - quality 1-5: 5 = sharp, well lit, well framed, ready to post; 4 = good; 3 = acceptable; 2 = blurry, dark, tilted or badly cut; 1 = unusable. Small previews are low resolution on purpose: do not lower the quality for resolution alone.
 - usable: false for screenshots, memes, documents, receipts or invoices, images that are mostly text, and anything unrelated to the business (personal photos, random objects). Otherwise true.
 - reasonEs / reasonEn: when usable is false or quality is 2 or less, say why in a few plain words; otherwise empty strings.
-- privacy: list every flag that applies: "faces" = the face of an identifiable person (not tiny, blurred or from behind); "address" = a readable address, house number or street sign; "plate" = a readable vehicle license plate; "document" = a readable document, ID, invoice or screen with personal data; "child" = a child appears. Empty list if none.`;
+- privacy: list every flag that applies: "faces" = the face of an identifiable person (not tiny, blurred or from behind); "address" = a readable address, house number or street sign; "plate" = a readable vehicle license plate; "document" = a readable document, ID, invoice or screen with personal data; "child" = a child appears. Empty list if none.
+${ENHANCE_RULES}`;
 }
+
+/** Lo que se pide para la copia mejorada (también en la pregunta aparte de photo-enhance-run). */
+export const ENHANCE_RULES = `- straighten: if the photo is tilted (the horizon, floor line or the vertical edges of walls, doors and posts lean), the degrees to rotate it clockwise to make it level (negative = counter-clockwise), usually between -6 and 6. 0 when it is level, when the angle is clearly intentional, or when you are unsure. Converging lines from perspective are not tilt.
+- focusX / focusY: the center of the main subject (the work, product or person that matters), from 0 to 1 (left to right, top to bottom).
+- hide: boxes around private details to blur in the improved copy: "plate" = a readable license plate; "address" = a readable house number, address or street sign; "document" = a readable document, ID, invoice or screen with personal data; "face" = the face of a customer or passer-by (NOT the business's own staff working or posing); "child" = a child's face. Box = [ymin, xmin, ymax, xmax] from 0 to 1000, tight around the detail. Never include the business's own logo, signs, phone number or vehicle branding. Empty list if nothing must be hidden.`;
 
 // ---------- Copias de las fotos ----------
 
@@ -417,13 +438,13 @@ async function businessContext(businessId: string) {
 // ---------- Lo que suben los técnicos (Cloudflare R2) ----------
 
 /** Copias de lo subido: en R2 si está configurado, si no en el almacenamiento de siempre. */
-async function storeLibraryCopy(data: Buffer, businessId: string): Promise<string> {
+export async function storeLibraryCopy(data: Buffer, businessId: string): Promise<string> {
   if (r2Enabled()) return putObject(newKey(businessId, "jpg"), data, "image/jpeg");
   return (await storeBuffer(data, "image/jpeg", businessId)).url;
 }
 
 /** Vista de 768 px en JPG para la IA. */
-async function toPreview(raw: Buffer): Promise<Buffer> {
+export async function toPreview(raw: Buffer): Promise<Buffer> {
   return sharp(raw, { failOn: "none" })
     .rotate()
     .resize({ width: 768, height: 768, fit: "inside", withoutEnlargement: true })
@@ -433,7 +454,7 @@ async function toPreview(raw: Buffer): Promise<Buffer> {
 }
 
 /** El archivo original subido (dirección pública de R2), como mucho `max` bytes. */
-async function fetchUpload(key: string, max: number): Promise<Buffer> {
+export async function fetchUpload(key: string, max: number): Promise<Buffer> {
   const res = await fetch(publicUrl(key));
   if (!res.ok) throw bi(`Cloudflare R2 no la entregó (${res.status}).`, `Cloudflare R2 didn't return it (${res.status}).`);
   if (Number(res.headers.get("content-length") ?? 0) > max) throw bi("pesa más de 40 MB.", "it's larger than 40 MB.");
@@ -633,6 +654,10 @@ async function reviewItems(
           privacy: a.privacy,
           status: p.error ? "error" : "ready",
           error: p.error,
+          // Lo nuevo que vio la IA reemplaza a la mejorada anterior (si la había); se vuelve a mejorar después.
+          enhancedUrl: "",
+          enhancedAt: null,
+          enhanceInfo: a.hints ? ({ v: ENHANCE_VERSION, hints: a.hints } as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
         },
       });
       if (p.error) tally.errors++;
@@ -655,7 +680,25 @@ export type SyncResult = {
   stopped: "" | "rate" | "time" | "noai";
   /** Error de Drive en palabras simples ("" si salió bien). */
   error: string;
+  /** Fotos mejoradas solas después de la revisión (con sharp, sin costo). */
+  enhanced?: number;
 };
+
+/**
+ * Después de revisar: mejora con sharp (gratis, sin preguntar otra vez a la IA) las fotos listas que todavía no tienen
+ * su copia mejorada, mientras quede tiempo. Nunca falla: lo que no alcance queda para «Mejorar todas» o la próxima vuelta.
+ */
+async function autoEnhance(businessId: string, lang: UiLang, msLeft: number): Promise<number> {
+  if (msLeft < 12_000) return 0;
+  try {
+    const { enhancePending } = await import("@/lib/photo-enhance-run");
+    const r = await enhancePending(businessId, { lang, budgetMs: msLeft - 6_000, limit: 30, askAi: false, preferOriginal: false });
+    return r.done;
+  } catch (e) {
+    console.error("[mejorar] después de revisar:", e instanceof Error ? e.message : e);
+    return 0;
+  }
+}
 
 /**
  * Revisa la carpeta del negocio: lista Drive, guarda lo nuevo, marca lo que ya no está y la IA mira hasta `limit`
@@ -751,7 +794,7 @@ export async function syncLibrary(businessId: string, opts: { lang?: UiLang; lim
       data: {
         ...fields(u.file),
         ...(status ? { status, error: "" } : {}),
-        ...(u.reanalyze ? { url: "", thumbUrl: "" } : {}),
+        ...(u.reanalyze ? { url: "", thumbUrl: "", enhancedUrl: "", enhancedAt: null, enhanceInfo: Prisma.DbNull } : {}),
       },
     });
   }
@@ -776,6 +819,7 @@ export async function syncLibrary(businessId: string, opts: { lang?: UiLang; lim
   result.errors = tally.errors;
   result.stopped = tally.stopped;
 
+  if (!tally.stopped || tally.stopped === "noai") result.enhanced = await autoEnhance(businessId, lang, budget - (Date.now() - start));
   result.pending = await db.libraryItem.count({
     where: { businessId, status: "new" },
   });
@@ -798,6 +842,7 @@ export function syncMessage(r: SyncResult, t: T): string {
   if (r.analyzed) parts.push(t(`la IA revisó ${r.analyzed}`, `the AI reviewed ${r.analyzed}`));
   if (r.gone) parts.push(t(`${r.gone} ya no está${r.gone === 1 ? "" : "n"} en la carpeta`, `${r.gone} no longer in the folder`));
   if (r.errors) parts.push(t(`${r.errors} con problema`, `${r.errors} with a problem`));
+  if (r.enhanced) parts.push(t(`${r.enhanced} foto${r.enhanced === 1 ? "" : "s"} mejorada${r.enhanced === 1 ? "" : "s"}`, `${r.enhanced} photo${r.enhanced === 1 ? "" : "s"} improved`));
   let msg = `${parts.join(", ")}.`;
   if (r.stopped === "noai")
     msg += t(
@@ -856,7 +901,7 @@ export async function runDueDriveSync(now = new Date(), budgetMs = 120_000): Pro
 
 // ---------- Lo que suben los técnicos: que la IA lo mire ----------
 
-export type UploadReviewResult = { analyzed: number; errors: number; pending: number; stopped: "" | "rate" | "time" | "noai" };
+export type UploadReviewResult = { analyzed: number; errors: number; pending: number; stopped: "" | "rate" | "time" | "noai"; enhanced?: number };
 
 /** La IA mira lo que subieron los técnicos y todavía no se revisó (los más viejos primero, hasta `limit`). */
 export async function analyzeUploads(businessId: string, opts: { lang?: UiLang; limit?: number; budgetMs?: number } = {}): Promise<UploadReviewResult> {
@@ -864,9 +909,11 @@ export async function analyzeUploads(businessId: string, opts: { lang?: UiLang; 
   const lang = opts.lang ?? "es";
   const { ctx } = await businessContext(businessId);
   const queued = (await db.libraryItem.findMany({ where: { businessId, source: "upload", status: "new" } })).filter((i) => claimable(i.error));
-  const tally = await reviewItems(pickBatch(queued, opts.limit ?? 12), { lang, ctx, start, budget: opts.budgetMs ?? 55_000 });
+  const budget = opts.budgetMs ?? 55_000;
+  const tally = await reviewItems(pickBatch(queued, opts.limit ?? 12), { lang, ctx, start, budget });
+  const enhanced = tally.analyzed ? await autoEnhance(businessId, lang, budget - (Date.now() - start)) : 0;
   const pending = await db.libraryItem.count({ where: { businessId, source: "upload", status: "new" } });
-  return { ...tally, pending };
+  return { ...tally, pending, enhanced };
 }
 
 /** Revisiones de lo subido que corren en este servidor (una por negocio); `again` = llegó algo más mientras tanto. */

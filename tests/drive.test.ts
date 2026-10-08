@@ -296,6 +296,13 @@ describe("lo que contesta la IA", () => {
     });
     expect(out.get(1)).toMatchObject({ usable: false, quality: 1, privacy: ["document"] });
     expect(out.get(1)!.description).toMatchObject({ scene: "other", reason: { es: "Es una captura de pantalla.", en: "It's a screenshot." } });
+    // Sin los campos de la mejora (respuesta vieja): sin indicaciones.
+    expect(out.get(2)!.hints).toBeUndefined();
+    const withHints = parseAnalysis(
+      { items: [{ n: 1, es: "Carro frente a la casa.", en: "Car in front of the house.", scene: "done", topics: [], tags: [], quality: 4, usable: true, reasonEs: "", reasonEn: "", privacy: ["plate"], straighten: -1.5, focusX: 0.5, focusY: 0.6, hide: [{ what: "plate", box: [800, 400, 850, 500] }] }] },
+      1,
+    );
+    expect(withHints.get(1)!.hints).toMatchObject({ rotate: -1.5, focus: { x: 0.5, y: 0.6 }, hide: [{ reason: "plate" }], from: "review" });
     expect(parseAnalysis(null, 3).size).toBe(0);
     expect(parseAnalysis({ items: "x" }, 3).size).toBe(0);
   });
