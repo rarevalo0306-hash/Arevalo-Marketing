@@ -4,6 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import type { ChannelId } from "@/lib/channels";
+import { identityPrompt } from "@/lib/brand-identity";
 import { FONTS, TemplateSpec } from "@/lib/design-shapes";
 import { bi, errorText, type UiLang } from "@/lib/i18n";
 import { finishReply, firstName, type GbpReview, replyLanguage, replySignature } from "@/lib/seo/gbp-shared";
@@ -61,7 +62,7 @@ const PlanSchema = z.object({
 });
 export type AiPlan = z.infer<typeof PlanSchema>;
 
-type BusinessAi = { name: string; website: string; aiProfile: string; aiText?: string; brandVoice?: string; hashtags?: string; study?: unknown };
+type BusinessAi = { name: string; website: string; aiProfile: string; aiText?: string; brandVoice?: string; hashtags?: string; study?: unknown; brandIdentity?: unknown };
 
 function rules(business: BusinessAi, lang: Lang): string {
   const study = studyContext(business.study);
@@ -71,7 +72,7 @@ What the business told you about itself (the ONLY facts you may state about it):
 <business_profile>
 ${business.aiProfile.trim() || "(no profile yet — keep statements about the business generic)"}
 </business_profile>
-${study ? `\nMarketing study of this business (strategy: who to talk to, which words people search, which areas and what the photos look like; use it to choose angles, keywords and image ideas, but it is NOT a source of facts about the business):\n<marketing_study>\n${study}\n</marketing_study>\n` : ""}${business.brandVoice?.trim() ? `\nBrand voice (follow it):\n<brand_voice>\n${business.brandVoice.trim()}\n</brand_voice>\n` : ""}${business.hashtags?.trim() ? `\nBrand hashtags (use some of them where hashtags fit): ${business.hashtags.trim()}\n` : ""}
+${study ? `\nMarketing study of this business (strategy: who to talk to, which words people search, which areas and what the photos look like; use it to choose angles, keywords and image ideas, but it is NOT a source of facts about the business):\n<marketing_study>\n${study}\n</marketing_study>\n` : ""}${business.brandVoice?.trim() ? `\nBrand voice (follow it):\n<brand_voice>\n${business.brandVoice.trim()}\n</brand_voice>\n` : ""}${identityPrompt(business)}${business.hashtags?.trim() ? `\nBrand hashtags (use some of them where hashtags fit): ${business.hashtags.trim()}\n` : ""}
 Rules:
 - Never invent facts about the business: no prices, discounts, statistics, years of experience, awards, license numbers, phone numbers, addresses or results unless they appear in the business profile.
 - If the business is a public adjuster or insurance-related: never promise or imply a result, a payout, a percentage or "more money"; do not give legal advice; say "free initial evaluation" only if the profile says so; keep claims general and educational.
@@ -796,7 +797,7 @@ What the business told you about itself (the ONLY facts you may state about it):
 ${business.aiProfile.trim() || "(no profile yet — keep statements about the business generic)"}
 </business_profile>
 Contact details for the call to action (use them exactly as written, and only these): ${[business.phone?.trim() && `phone ${business.phone.trim()}`, business.website.trim() && `website ${business.website.trim()}`].filter(Boolean).join(", ") || "(none given — invite readers to contact the business without inventing a phone, email or address)"}
-${study ? `\nMarketing study of this business (strategy only, NOT a source of facts about the business):\n<marketing_study>\n${study}\n</marketing_study>\n` : ""}${business.brandVoice?.trim() ? `\nBrand voice (follow it):\n<brand_voice>\n${business.brandVoice.trim()}\n</brand_voice>\n` : ""}
+${study ? `\nMarketing study of this business (strategy only, NOT a source of facts about the business):\n<marketing_study>\n${study}\n</marketing_study>\n` : ""}${business.brandVoice?.trim() ? `\nBrand voice (follow it):\n<brand_voice>\n${business.brandVoice.trim()}\n</brand_voice>\n` : ""}${identityPrompt(business)}
 Rules:
 - Never invent facts about the business: no prices, discounts, statistics, percentages, years of experience, awards, licenses, guarantees, reviews or results unless they appear in the business profile.
 - Do not invent general facts either: no made-up statistics, studies, laws, regulations, deadlines or costs. When something depends on the case (price, time, coverage), say so and invite readers to ask.
@@ -906,7 +907,7 @@ What the business told you about itself (the ONLY facts you may state about it):
 <business_profile>
 ${business.aiProfile.trim() || "(no profile yet — keep statements about the business generic)"}
 </business_profile>
-${study ? `\nMarketing study of this business (strategy only, NOT a source of facts about the business):\n<marketing_study>\n${study}\n</marketing_study>\n` : ""}${business.brandVoice?.trim() ? `\nBrand voice (follow it):\n<brand_voice>\n${business.brandVoice.trim()}\n</brand_voice>\n` : ""}
+${study ? `\nMarketing study of this business (strategy only, NOT a source of facts about the business):\n<marketing_study>\n${study}\n</marketing_study>\n` : ""}${business.brandVoice?.trim() ? `\nBrand voice (follow it):\n<brand_voice>\n${business.brandVoice.trim()}\n</brand_voice>\n` : ""}${identityPrompt(business)}
 Rules:
 - Never invent facts about the business: no prices, discounts, statistics, years of experience, awards, licenses, guarantees, reviews, hours, phone numbers or results unless they appear in the business profile.
 - If the business is a public adjuster or insurance-related: never promise or imply a result, a payout or "more money".
@@ -945,7 +946,7 @@ const ReviewReplySchema = z.object({
 });
 
 /** Lo que la IA sabe del negocio para contestar reseñas. */
-export type ReplyBusiness = { name: string; website: string; phone?: string; aiProfile: string; aiText?: string; brandVoice?: string };
+export type ReplyBusiness = { name: string; website: string; phone?: string; aiProfile: string; aiText?: string; brandVoice?: string; brandIdentity?: unknown };
 /** La reseña a contestar (lo mínimo de GbpReview). */
 export type ReplyReview = Pick<GbpReview, "name" | "rating" | "text" | "originalText" | "language" | "timeAgo">;
 
@@ -960,7 +961,7 @@ What the business told you about itself (the ONLY facts you may state about it):
 <business_profile>
 ${business.aiProfile.trim() || "(no profile yet — keep statements about the business generic)"}
 </business_profile>
-${business.brandVoice?.trim() ? `\nBrand voice (follow it):\n<brand_voice>\n${business.brandVoice.trim()}\n</brand_voice>\n` : ""}
+${business.brandVoice?.trim() ? `\nBrand voice (follow it):\n<brand_voice>\n${business.brandVoice.trim()}\n</brand_voice>\n` : ""}${identityPrompt(business)}
 Business phone for the invitation to talk: ${phone || "(none given — invite them to write or call the business without inventing a phone, email or address)"}
 
 Rules:

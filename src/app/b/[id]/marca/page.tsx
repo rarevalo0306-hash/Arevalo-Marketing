@@ -3,6 +3,7 @@ import { saveBrandBook } from "@/app/actions-brand-book";
 import { saveBrandLogo } from "@/app/actions-brand";
 import { BrandKitForm } from "@/components/BrandKitForm";
 import { BookAssetsSection } from "@/components/brand/BookAssetsSection";
+import { IdentitySection } from "@/components/brand/IdentitySection";
 import { BrandKitSection } from "@/components/brand/BrandKitSection";
 import { saveCustomTemplate } from "@/app/actions-media";
 import { PageHead } from "@/components/PageHead";
@@ -11,6 +12,7 @@ import { TemplateUpload } from "@/components/TemplateUpload";
 import { TemplatesAuto } from "@/components/TemplatesAuto";
 import { aiEnabled } from "@/lib/ai";
 import { readBrandAssets } from "@/lib/brand-assets";
+import { readBrandIdentity } from "@/lib/brand-identity-shape";
 import { db } from "@/lib/db";
 import { BUILTIN_TEMPLATES, builtinTemplateName, LAYOUTS } from "@/lib/design-shapes";
 import type { UiLang } from "@/lib/i18n";
@@ -47,6 +49,8 @@ export default async function MarcaPage({ params }: { params: Promise<{ id: stri
   const own = b.templates.map((x) => ({ key: x.id, name: x.name, layout: (x.spec as { layout?: (typeof LAYOUTS)[number] }).layout, own: true }));
   const shown = own.length ? own : BUILTIN_TEMPLATES.map((x, i) => ({ key: `builtin-${i}`, name: builtinTemplateName(x.name, lang), layout: x.layout, own: false }));
   const assets = readBrandAssets(b.brandAssets);
+  // Al usar una propuesta de identidad cambian colores y letras en el servidor: el formulario se vuelve a pintar con ellos.
+  const appliedAt = readBrandIdentity(b.brandIdentity).appliedAt;
   const v = b.createdAt.getTime().toString(36) + (b.templates.at(-1)?.createdAt.getTime().toString(36) ?? "");
   return (
     <>
@@ -57,6 +61,7 @@ export default async function MarcaPage({ params }: { params: Promise<{ id: stri
         subtitle={t("Logos, colores, letras, voz y plantillas. Todo lo que diseña y escribe la IA para este negocio sale con esta identidad.", "Logos, colors, fonts, voice, and templates. Everything the AI designs and writes for this business uses this identity.")}
       />
       <BrandKitForm
+        key={appliedAt || "kit"}
         kit={{ name: b.name, logoUrl: b.logoUrl, logoLightUrl: b.logoLightUrl, color: b.color, color2: b.color2, color3: b.color3, fontHeading: b.fontHeading, fontBody: b.fontBody, brandVoice: b.brandVoice, hashtags: b.hashtags, phone: b.phone, brandImages: b.brandImages, website: b.website }}
         save={updateBrandKit.bind(null, id)}
         saveLogo={saveBrandLogo.bind(null, id)}
@@ -74,6 +79,8 @@ export default async function MarcaPage({ params }: { params: Promise<{ id: stri
       >
         <BookAssetsSection businessId={id} />
       </BrandKitForm>
+
+      <IdentitySection businessId={id} />
 
       <BrandKitSection businessId={id} />
 

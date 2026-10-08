@@ -1,0 +1,58 @@
+/* «Tu identidad»: propuestas de la IA y el formulario de eslogan, mensajes, voz y música.
+   Colores con variables para que se vea bien en Claro, Noche y Vidrio. */
+
+.head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; min-width: 0; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+
+.progress { display: inline-flex; align-items: center; gap: 10px; margin: 0; font-size: 14px; font-weight: 600; color: var(--ink); }
+.spinner { width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--line-strong); border-top-color: var(--brand); animation: spin 0.9s linear infinite; flex-shrink: 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+
+/* ---------- Propuestas ---------- */
+.proposals { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr)); gap: 14px; }
+
+.proposal { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--line); border-radius: var(--r-md, 12px); background: var(--surface); overflow: hidden; }
+.chosen { border-color: var(--brand-2); box-shadow: 0 0 0 2px var(--brand-ring, var(--brand-soft)); }
+
+/* Mini post de ejemplo con los colores y las letras de la propuesta. */
+.mock { position: relative; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; min-height: 170px; padding: 18px 18px 16px; overflow: hidden; }
+.mockBar { position: absolute; top: 16px; left: 18px; width: 44px; height: 6px; border-radius: 3px; }
+.mockHead { font-size: 23px; line-height: 1.12; overflow-wrap: anywhere; }
+.mockSlogan { font-size: 14px; line-height: 1.35; opacity: 0.92; overflow-wrap: anywhere; }
+
+.body { display: flex; flex-direction: column; gap: 10px; padding: 14px; flex: 1; min-width: 0; }
+.name { margin: 0; font-size: 17px; line-height: 1.25; color: var(--ink); overflow-wrap: anywhere; }
+
+.palette { display: flex; flex-wrap: wrap; gap: 8px 12px; }
+.swatch { display: inline-flex; align-items: center; gap: 6px; }
+.chip { width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--line-strong); flex-shrink: 0; }
+.hex { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; font-variant-numeric: tabular-nums; }
+
+.facts { display: grid; gap: 8px; margin: 0; }
+.facts > div { display: grid; gap: 1px; min-width: 0; }
+.facts dt { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.facts dd { margin: 0; font-size: 14px; color: var(--ink); overflow-wrap: anywhere; }
+
+.use { align-self: flex-start; margin-top: auto; }
+.confirm { display: flex; flex-direction: column; gap: 8px; margin-top: auto; padding: 12px; border: 1px solid var(--line-strong); border-radius: var(--r, 10px); background: var(--surface-2); color: var(--ink); }
+.confirm p { margin: 0; }
+
+/* ---------- Formulario ---------- */
+.form { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.group { display: flex; flex-direction: column; gap: 12px; min-width: 0; margin: 0; padding: 16px 0 0; border: 0; border-top: 1px solid var(--line); }
+.legend { float: left; width: 100%; margin: 0 0 4px; padding: 0; font-size: 16px; font-weight: 700; color: var(--ink); }
+.legend + * { clear: both; }
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; min-width: 0; align-items: start; }
+@media (max-width: 640px) { .two { grid-template-columns: minmax(0, 1fr); } }
+
+.messages { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.message { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 12px 12px 12px 46px; border: 1px solid var(--line); border-radius: var(--r-md, 12px); background: var(--surface-2); min-width: 0; }
+.num { position: absolute; top: 12px; left: 12px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 12px; background: var(--brand-2); color: #fff; font-size: 13px; font-weight: 800; }
+@media (max-width: 480px) { .message { padding-left: 12px; padding-top: 44px; } }
+
+.range { display: flex; align-items: center; gap: 8px; }
+.range input { flex: 1 1 0; min-width: 0; }
+
+.bar { display: flex; flex-direction: column; gap: 8px; padding-top: 14px; border-top: 1px solid var(--line); }
