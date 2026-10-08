@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { DESIGN_SHAPES, renderDesign, samplePhoto, type DesignShape } from "@/lib/design";
 import { BUILTIN_TEMPLATES, StoredTemplate } from "@/lib/design-shapes";
+import { sloganFrom } from "@/lib/design-layout";
 import { errorText, type T } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { readSidecar } from "@/lib/media";
@@ -50,7 +51,7 @@ export async function GET(req: Request) {
   const photoUrl = await cleanPhoto(businessId, b.color);
   try {
     const jpg = await renderDesign({
-      brand: { name: b.name, color: b.color, color2: b.color2, color3: b.color3, logoUrl: b.logoUrl, logoLightUrl: b.logoLightUrl, phone: b.phone, website: b.website, fontHeading: b.fontHeading, fontBody: b.fontBody },
+      brand: { name: b.name, color: b.color, color2: b.color2, color3: b.color3, logoUrl: b.logoUrl, logoLightUrl: b.logoLightUrl, phone: b.phone, website: b.website, fontHeading: b.fontHeading, fontBody: b.fontBody, slogan: sloganFrom(b.brandIdentity, lang) },
       template: spec,
       headline: sample(t)[spec.layout] ?? t("Revisa tu casa después de la tormenta", "Check your home after the storm"),
       steps: [t("Toma fotos desde el suelo", "Take photos from the ground"), t("Guarda los recibos", "Keep your receipts"), t("Pide una evaluación", "Ask for an assessment")],

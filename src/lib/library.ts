@@ -5,8 +5,10 @@ import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { rankLibrary, usableNow, type LibraryCard, type MatchItem, type MatchQuery } from "@/lib/library-match";
 import { needsReview, readDescription } from "@/lib/library-shape";
+import { libraryPhotoUrl, readEnhanceInfo } from "@/lib/photo-enhance-shape";
 
 export * from "@/lib/library-match";
+export { libraryPhotoUrl } from "@/lib/photo-enhance-shape";
 
 // ---------- Filtros de la página ----------
 
@@ -65,17 +67,23 @@ const CARD_SELECT = {
   error: true,
   usedCount: true,
   lastUsedAt: true,
+  enhancedUrl: true,
+  enhanceInfo: true,
+  useEnhanced: true,
 } satisfies Prisma.LibraryItemSelect;
 
 type CardRow = Prisma.LibraryItemGetPayload<{ select: typeof CARD_SELECT }>;
 
 export function toCard(r: CardRow): LibraryCard {
+  const info = readEnhanceInfo(r.enhanceInfo);
+  const enhanced = r.kind === "photo" && r.enhancedUrl && r.useEnhanced;
   return {
     id: r.id,
     name: r.name,
     kind: r.kind === "video" ? "video" : "photo",
-    thumb: r.thumbUrl || (r.kind === "video" ? "" : r.url),
-    url: r.url,
+    thumb: (enhanced && info?.thumb) || r.thumbUrl || (r.kind === "video" ? "" : r.url),
+    // La que va en las publicaciones: la mejorada si existe y el dueño no eligió la original.
+    url: r.kind === "photo" ? libraryPhotoUrl(r) : r.url,
     durationSec: r.durationSec,
     description: readDescription(r.description),
     tags: r.tags,
@@ -90,6 +98,10 @@ export function toCard(r: CardRow): LibraryCard {
     source: r.source === "upload" ? "upload" : "drive",
     canUse: usableNow(r),
     needsReview: needsReview(r),
+    originalUrl: r.url,
+    enhancedUrl: r.enhancedUrl,
+    useEnhanced: r.useEnhanced,
+    enhance: info ? { ...info, hints: null } : null,
   };
 }
 
@@ -146,7 +158,7 @@ export async function markUsed(businessId: string, ids: string[]): Promise<void>
  * Las elegidas quedan marcadas como usadas. Nunca falla: si la biblioteca no se puede leer, todas quedan en null.
  */
 export async function pickLibraryPhotos(businessId: string, posts: MatchQuery[]): Promise<({ id: string; url: string } | null)[]> {
-  let items: MatchItem[] = [];
+  let items: (MatchItem & { enhancedUrl?: string; useEnhanced?: boolean })[] = [];
   try {
     items = await db.libraryItem.findMany({
       where: { businessId, kind: "photo", status: "ready", NOT: { choice: "skip" }, url: { not: "" } },
@@ -166,6 +178,8 @@ export async function pickLibraryPhotos(businessId: string, posts: MatchQuery[])
         height: true,
         usedCount: true,
         lastUsedAt: true,
+        enhancedUrl: true,
+        useEnhanced: true,
       },
     });
   } catch {
@@ -178,7 +192,8 @@ export async function pickLibraryPhotos(businessId: string, posts: MatchQuery[])
     const best = rankLibrary(items, { ...q, exclude: [...(q.exclude ?? []), ...taken] }, now);
     if (!best) return null;
     taken.add(best.id);
-    return { id: best.id, url: best.url };
+    // La mejorada si existe y el dueño no eligió la original.
+    return { id: best.id, url: libraryPhotoUrl(best as (typeof items)[number]) };
   });
   try {
     await markUsed(businessId, [...taken]);

@@ -40,6 +40,7 @@ const BUSINESS_FIELDS = {
   aiProfile: true,
   aiText: true,
   brandVoice: true,
+  brandIdentity: true,
   seoLanguage: true,
   seoMapPlace: true,
   seoLocations: true,
@@ -170,13 +171,14 @@ export async function refreshReviews(businessId: string, _prev: GbpResult, _f: F
   }
 }
 
-const replyBusiness = (b: { name: string; website: string; phone: string; aiProfile: string; aiText: string; brandVoice: string }) => ({
+const replyBusiness = (b: { name: string; website: string; phone: string; aiProfile: string; aiText: string; brandVoice: string; brandIdentity: unknown }) => ({
   name: b.name,
   website: b.website,
   phone: b.phone,
   aiProfile: b.aiProfile,
   aiText: b.aiText,
   brandVoice: b.brandVoice,
+  brandIdentity: b.brandIdentity,
 });
 
 /** La IA escribe la respuesta a una reseña y queda guardada como borrador (el dueño la puede cambiar). */

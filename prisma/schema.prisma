@@ -40,6 +40,9 @@ model Business {
   /// Imágenes de la marca: las que la IA sacó del manual (propuestas para aceptar o rechazar) y las que crea la app
   /// (foto de perfil, portadas, favicon, tarjeta…). Forma: BrandAssets en src/lib/brand-assets.ts.
   brandAssets   Json?
+  /// Identidad de la marca más allá de lo visual: eslogan, mensajes clave, voz (sí/no), música, y las propuestas
+  /// de identidad de la IA para escoger. Forma: BrandIdentity en src/lib/brand-identity-shape.ts.
+  brandIdentity Json?
   hashtags      String     @default("")
   template      String     @default("auto")
   /// SEO con DataForSEO: zona de Google (código y nombre de DataForSEO), idioma de búsqueda,
@@ -217,6 +220,13 @@ model LibraryItem {
   error       String    @default("")
   /// Lo que decidió el dueño: "" (decide la IA) | "use" (aprobada aunque tenga avisos) | "skip" (no usar)
   choice      String    @default("")
+  /// Versión mejorada por la app (luz, color, nitidez, enderezada, datos privados tapados). La original (`url`)
+  /// nunca se toca. Forma de `enhanceInfo`: EnhanceInfo en src/lib/photo-enhance-shape.ts.
+  enhancedUrl String    @default("")
+  enhanceInfo Json?
+  enhancedAt  DateTime?
+  /// Si las publicaciones usan la mejorada (true) o la original (false).
+  useEnhanced Boolean   @default(true)
   usedCount   Int       @default(0)
   lastUsedAt  DateTime?
   createdAt   DateTime  @default(now())

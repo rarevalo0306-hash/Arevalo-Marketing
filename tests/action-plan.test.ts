@@ -9,6 +9,7 @@ import {
   backlinksTasks,
   cannibalTasks,
   decayTasks,
+  ga4Tasks,
   gapTasks,
   gbpTasks,
   gscTasks,
@@ -390,6 +391,75 @@ describe("Search Console", () => {
     const list = gscTasks({ connected: true, saved: { data, createdAt: AT }, now: new Date(AT) }, ctx);
     expect(keys(list)).toEqual(["near:portones electricos managua", "ctr:cortinas metalicas precio"]);
     expect(list[0].impact).toBe(3);
+  });
+});
+
+describe("Google Analytics (visitas a tu página)", () => {
+  // Un reporte "ga4" con la forma del guardado (src/lib/ga4-shape.ts): 1 034 visitas, casi nada desde Google,
+  // sin llamadas ni formularios marcados y una página con muchas visitas donde la gente se va.
+  const ga4Data = {
+    version: 1,
+    propertyId: "312345678",
+    propertyName: "fameseg.com - GA4",
+    fetchedAt: AT,
+    timeZone: "America/Managua",
+    range: { start: "2026-09-08", end: "2026-10-05" },
+    previousRange: { start: "2026-08-11", end: "2026-09-07" },
+    totals: { users: 812, newUsers: 701, sessions: 1034, engagedSessions: 566, engagementRate: 0.547, avgEngagementSec: 65.7, keyEvents: 0, pageViews: 2210 },
+    previous: { users: 640, newUsers: 560, sessions: 820, engagedSessions: 410, engagementRate: 0.5, avgEngagementSec: 60, keyEvents: 0, pageViews: 1800 },
+    channels: [
+      { key: "Direct", sessions: 620, prevSessions: 500, engagedSessions: 300, keyEvents: 0 },
+      { key: "Organic Social", sessions: 320, prevSessions: 200, engagedSessions: 200, keyEvents: 0 },
+      { key: "Organic Search", sessions: 94, prevSessions: 120, engagedSessions: 66, keyEvents: 0 },
+    ],
+    landingPages: [
+      { key: "/", sessions: 512, engagementRate: 0.61, keyEvents: 0, avgEngagementSec: 50 },
+      { key: "/cortinas-metalicas?utm_source=fb", sessions: 210, engagementRate: 0.18, keyEvents: 0, avgEngagementSec: 10 },
+      { key: "/contacto", sessions: 15, engagementRate: 0.1, keyEvents: 0, avgEngagementSec: 4 },
+    ],
+    cities: [{ key: "Managua", country: "Nicaragua", sessions: 640 }],
+    countries: [{ key: "Nicaragua", country: "", sessions: 900 }],
+    devices: [{ key: "mobile", sessions: 800, prevSessions: 600, engagedSessions: 400, keyEvents: 0 }],
+    keyEvents: [],
+    keyEventsConfigured: ["purchase"],
+    organicTrend: [],
+  };
+  const now = new Date(AT);
+  it("sin conectar → «Conecta Google Analytics» (solo si hay página web)", () => {
+    const list = ga4Tasks({ connected: false, saved: null, now }, ctx);
+    expect(keys(list)).toEqual(["setup:ga4"]);
+    expect(list[0].href).toBe(`/b/${ID}/conexiones#c-ga4`);
+    expect(ga4Tasks({ connected: false, saved: null, now }, { ...ctx, website: "" })).toEqual([]);
+  });
+  it("conectado sin reporte (o sin propiedad elegida) → nada", () => {
+    expect(ga4Tasks({ connected: true, saved: null, now }, ctx)).toEqual([]);
+  });
+  it("acciones importantes sin marcar, pocas visitas desde Google y una página donde la gente se va", () => {
+    const list = ga4Tasks({ connected: true, saved: { data: ga4Data, createdAt: AT }, now }, ctx);
+    expect(keys(list)).toEqual(["ga4:key-events", "ga4:organic-low", "ga4:bounce:/cortinas-metalicas"]);
+    expect(list[0].title.es).toBe("Marca las llamadas y formularios como acciones importantes en Analytics");
+    expect(list[1].title.es).toBe("Casi nadie llega desde Google: solo el 9 % de tus visitas");
+    expect(list[2].title.es).toBe("La gente entra a «/cortinas-metalicas» y se va enseguida");
+    for (const t of list) {
+      expect(t.href).toBe(`/b/${ID}/seo?tab=web#ga4`);
+      expect(last(t)).toBe(`Según Google Analytics (visitas a tu página) del ${fmtDate(AT, "es")}.`);
+    }
+  });
+  it("con llamadas medidas, buena parte desde Google y páginas que enganchan → nada", () => {
+    const good = {
+      ...ga4Data,
+      totals: { ...ga4Data.totals, keyEvents: 37 },
+      keyEvents: [{ key: "click_to_call", count: 37, prevCount: 30 }],
+      channels: [...ga4Data.channels.slice(0, 2), { key: "Organic Search", sessions: 400, prevSessions: 300, engagedSessions: 250, keyEvents: 20 }],
+      landingPages: [ga4Data.landingPages[0]],
+    };
+    expect(ga4Tasks({ connected: true, saved: { data: good, createdAt: AT }, now }, ctx)).toEqual([]);
+  });
+  it("las claves no cambian aunque cambien los números", () => {
+    const a = keys(ga4Tasks({ connected: true, saved: { data: ga4Data, createdAt: AT }, now }, ctx));
+    const more = { ...ga4Data, totals: { ...ga4Data.totals, sessions: 1500 }, landingPages: [{ ...ga4Data.landingPages[1], sessions: 400, engagementRate: 0.2 }] };
+    const b = keys(ga4Tasks({ connected: true, saved: { data: more, createdAt: "2026-10-07T14:00:00.000Z" }, now }, ctx));
+    expect(b).toEqual(a);
   });
 });
 

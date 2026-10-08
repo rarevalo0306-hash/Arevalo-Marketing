@@ -1,9 +1,11 @@
 // Una foto o video en «Tus fotos»: qué vio la IA, avisos de privacidad, si se puede usar y botones.
 import Link from "next/link";
 import { ChoiceButtons } from "@/components/library/ChoiceButtons";
+import { EnhancePanel } from "@/components/library/EnhancePanel";
 import { translator, type UiLang } from "@/lib/i18n";
 import { fmtDuration, qualityWord, SCENE_LABEL, type LibraryCard } from "@/lib/library-match";
 import { PRIVACY_FLAGS, PRIVACY_LABEL, type PrivacyFlag } from "@/lib/library-shape";
+import e from "./Enhance.module.css";
 import s from "./Library.module.css";
 
 function StatePill({ c, lang }: { c: LibraryCard; lang: UiLang }) {
@@ -45,6 +47,11 @@ export function LibraryItemCard({ c, businessId, lang }: { c: LibraryCard; busin
         <span className={s.state}>
           <StatePill c={c} lang={lang} />
         </span>
+        {c.kind === "photo" && c.enhancedUrl && (
+          <span className={`${e.badge} ${c.useEnhanced ? "" : e.badgeOff}`} title={c.useEnhanced ? t("Tus publicaciones usan la foto mejorada", "Your posts use the improved photo") : t("Elegiste usar la original", "You chose to use the original")}>
+            {c.useEnhanced ? t("✨ Mejorada", "✨ Improved") : t("Original", "Original")}
+          </span>
+        )}
         {c.kind === "video" && (
           <span className={s.badge}>
             <span aria-hidden="true">▶</span> {c.durationSec > 0 ? fmtDuration(c.durationSec) : t("Video", "Video")}
@@ -95,6 +102,7 @@ export function LibraryItemCard({ c, businessId, lang }: { c: LibraryCard; busin
               {c.kind === "video" ? t("Crear publicación con este video", "Create a post with this video") : t("Crear publicación con esta foto", "Create a post with this photo")}
             </Link>
           )}
+          <EnhancePanel c={c} businessId={businessId} />
           {c.status !== "new" && <ChoiceButtons businessId={businessId} itemId={c.id} choice={c.choice} needsReview={c.needsReview} problem={c.status === "error"} />}
         </div>
       </div>

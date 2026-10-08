@@ -6,12 +6,12 @@ import { syncDriveNow, type DriveResult } from "@/app/actions-drive";
 import { db } from "@/lib/db";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
-import { markUsed, pickLibraryPhoto, usableLibrary, type LibraryCard } from "@/lib/library";
+import { libraryPhotoUrl, markUsed, pickLibraryPhoto, usableLibrary, type LibraryCard } from "@/lib/library";
 import { ensureStoredCopy } from "@/lib/library-files";
 import type { LibraryChoice } from "@/lib/library-shape";
 
 async function itemOf(businessId: string, itemId: string) {
-  const item = await db.libraryItem.findFirst({ where: { id: itemId, businessId }, select: { id: true, kind: true, url: true } });
+  const item = await db.libraryItem.findFirst({ where: { id: itemId, businessId }, select: { id: true, kind: true, url: true, enhancedUrl: true, useEnhanced: true } });
   if (!item) {
     const { t } = await getT();
     throw new Error(t("No encontramos esa foto. Puede que ya no esté en tu carpeta.", "We couldn't find that photo. It may no longer be in your folder."));
@@ -41,7 +41,8 @@ export async function libraryMedia(businessId: string, itemId: string): Promise<
   try {
     const item = await itemOf(businessId, itemId);
     // Las fotos ya tienen su copia; los videos (o lo que falte) se traen de Drive ahora.
-    const url = item.kind === "photo" && item.url ? item.url : await ensureStoredCopy(itemId);
+    // La foto mejorada si existe y el dueño no eligió la original.
+    const url = item.kind === "photo" && item.url ? libraryPhotoUrl(item) : await ensureStoredCopy(itemId);
     if (!url) return { ok: false, error: t("No se pudo traer el archivo de tu carpeta.", "Couldn't get the file from your folder.") };
     await markUsed(businessId, [itemId]).catch(() => undefined);
     return { ok: true, url, type: item.kind === "video" ? "video" : "photo" };

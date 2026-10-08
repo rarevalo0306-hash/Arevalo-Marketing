@@ -127,3 +127,10 @@ CREATE TABLE IF NOT EXISTS "ActionTask" (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "ActionTask_businessId_key_key" ON "ActionTask"("businessId", "key");
 CREATE INDEX IF NOT EXISTS "ActionTask_businessId_status_idx" ON "ActionTask"("businessId", "status");
+
+-- 2026-10-08: fase 3 (marca): identidad de la marca y fotos mejoradas por la app.
+ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "brandIdentity" JSONB;
+ALTER TABLE "LibraryItem" ADD COLUMN IF NOT EXISTS "enhancedUrl" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "LibraryItem" ADD COLUMN IF NOT EXISTS "enhanceInfo" JSONB;
+ALTER TABLE "LibraryItem" ADD COLUMN IF NOT EXISTS "enhancedAt" TIMESTAMP(3);
+ALTER TABLE "LibraryItem" ADD COLUMN IF NOT EXISTS "useEnhanced" BOOLEAN NOT NULL DEFAULT true;

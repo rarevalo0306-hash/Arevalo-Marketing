@@ -1,6 +1,8 @@
 import { cookies } from "next/headers";
 import { encryptJson } from "@/lib/crypto";
 import { db } from "@/lib/db";
+import { listGa4Properties, readGa4Connection, refreshGa4, writeGa4Connection } from "@/lib/ga4";
+import { autoPick, explainGa4Error } from "@/lib/ga4-shape";
 import { GOOGLE_COOKIE, googleExchange, googleStatePurpose, listLocations, saveGoogleLocation } from "@/lib/google-oauth";
 import { errorText, type T, type UiLang } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
@@ -72,6 +74,43 @@ async function searchConsole(url: URL, businessId: string, lang: UiLang, t: T) {
   }
 }
 
+/** "Conectar Google Analytics": guarda el permiso y la propiedad (sola si hay una; si hay varias, se elige en el panel). */
+async function analytics(url: URL, businessId: string, lang: UiLang, t: T) {
+  const base = (process.env.PUBLIC_BASE_URL || "").replace(/\/+$/, "");
+  const go = (params: Record<string, string>) =>
+    Response.redirect(`${base}/b/${businessId}/seo?${new URLSearchParams({ tab: "web", ...params })}#ga4`, 302);
+  if (url.searchParams.get("error"))
+    return go({
+      ga4: "error",
+      msg: t(
+        "No se dio el permiso para ver Google Analytics (o cancelaste). Vuelve a intentarlo y acepta el permiso.",
+        "Permission to view Google Analytics wasn't granted (or you canceled). Try again and accept the permission.",
+      ),
+    });
+  try {
+    const { refreshToken, accessToken } = await googleExchange(url.searchParams.get("code") ?? "");
+    const properties = await listGa4Properties(accessToken);
+    if (!properties.length)
+      return go({
+        ga4: "error",
+        msg: t(
+          "Esa cuenta de Google no tiene ninguna propiedad de Google Analytics 4. Entra con la cuenta que ve las estadísticas de tu página, o pide que te agreguen como usuario.",
+          "That Google account doesn't have any Google Analytics 4 property. Sign in with the account that sees your website's stats, or ask to be added as a user.",
+        ),
+      });
+    // Al volver a conectar se queda la propiedad que ya estaba elegida (si la cuenta todavía la ve).
+    const before = (await readGa4Connection(businessId))?.secret.propertyId;
+    const pick = properties.find((p) => p.id === before) ?? autoPick(properties);
+    await writeGa4Connection(businessId, { refreshToken, properties, propertyId: pick?.id, propertyName: pick?.name });
+    if (!pick) return go({ ga4: "choose" });
+    // Si los primeros datos fallan, el panel muestra el motivo guardado y el botón «Actualizar».
+    const first = await refreshGa4(businessId).catch(() => ({ ok: false }));
+    return go(first.ok ? { ga4: "ok" } : {});
+  } catch (e) {
+    return go({ ga4: "error", msg: explainGa4Error(errorText(e, lang), t).slice(0, 400) });
+  }
+}
+
 // Google devuelve a la persona aquí después de iniciar sesión y dar permiso.
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -81,6 +120,7 @@ export async function GET(req: Request) {
     return new Response(t("El enlace de conexión venció o no es válido. Vuelve a intentarlo desde Conexiones.", "The connection link expired or isn't valid. Try again from Connections."), { status: 400 });
 
   if (purpose === "gsc") return searchConsole(url, businessId, lang, t);
+  if (purpose === "ga4") return analytics(url, businessId, lang, t);
 
   if (url.searchParams.get("error")) return back(businessId, { google: "error", msg: t("Cancelaste la conexión con Google.", "You canceled the Google connection.") });
 

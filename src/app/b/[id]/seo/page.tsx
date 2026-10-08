@@ -9,6 +9,7 @@ import { CompetitorsPanel } from "@/components/seo/CompetitorsPanel";
 import { DfsSettingsPanel } from "@/components/seo/DfsSettingsPanel";
 import { GapPanel } from "@/components/seo/GapPanel";
 import { GbpPanel } from "@/components/seo/GbpPanel";
+import { Ga4Panel } from "@/components/seo/Ga4Panel";
 import { KeywordsPanel } from "@/components/seo/KeywordsPanel";
 import { MapRankPanel } from "@/components/seo/MapRankPanel";
 import { OnPagePanel } from "@/components/seo/OnPagePanel";
@@ -111,6 +112,7 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
           <DecayPanel businessId={id} />
           <CannibalPanel businessId={id} />
           <WriterCard businessId={id} />
+          <Ga4Panel businessId={id} />
           <div id="search-console">
             <SearchConsolePanel businessId={id} />
           </div>

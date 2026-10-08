@@ -1,6 +1,7 @@
 // Biblioteca: elegir la foto real que mejor va con una publicación, y cómo se muestra cada archivo.
 // Sin servidor ni base de datos: lo usan library.ts (servidor), el selector del compositor (navegador) y las pruebas.
 import { canUse, readDescription, type LibraryDescription, type UsableInput } from "@/lib/library-shape";
+import type { EnhanceInfo } from "@/lib/photo-enhance-shape";
 
 // ---------- Palabras ----------
 
@@ -179,6 +180,14 @@ export type LibraryCard = {
   source: "drive" | "upload";
   canUse: boolean;
   needsReview: boolean;
+  /** La foto tal como llegó (nunca cambia). `url` es la que se usa en publicaciones (la mejorada si toca). */
+  originalUrl: string;
+  /** La copia mejorada por la app ("" si no hay). */
+  enhancedUrl: string;
+  /** Si las publicaciones usan la mejorada. */
+  useEnhanced: boolean;
+  /** Lo que se hizo en la mejorada (sin las indicaciones de la IA), o null si nunca se intentó. */
+  enhance: EnhanceInfo | null;
 };
 
 
