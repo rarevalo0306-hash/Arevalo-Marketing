@@ -7,11 +7,13 @@ import { email, sms } from "./messaging";
 import { tiktok } from "./tiktok";
 import type { Publisher } from "./types";
 import { website } from "./website";
+import { youtube } from "./youtube";
 
 export const PUBLISHERS: Record<ChannelId, Publisher> = {
   facebook,
   instagram,
   tiktok,
+  youtube,
   google,
   seo: website,
   linkedin,
