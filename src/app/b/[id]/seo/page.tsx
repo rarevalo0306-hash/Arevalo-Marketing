@@ -24,6 +24,8 @@ import { SeoTabs, type SeoTab } from "@/components/seo/SeoTabs";
 import { VisibilityPanel } from "@/components/seo/VisibilityPanel";
 import { seoTabFrom } from "@/components/nav/model";
 import { WriterCard } from "@/components/seo/WriterCard";
+import { DiagnosisBanner } from "@/components/diagnosis/DiagnosisBanner";
+import { ActionPlanSection } from "@/components/plan/ActionPlanSection";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
 import { dataForSeoEnabled, readTrackedKeywords, readZones } from "@/lib/seo/dataforseo";
@@ -58,6 +60,8 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
       hint: "",
       content: (
         <>
+          <DiagnosisBanner businessId={id} />
+          <ActionPlanSection businessId={id} />
           {setupShown && (
             <SeoSetup
               businessId={id}

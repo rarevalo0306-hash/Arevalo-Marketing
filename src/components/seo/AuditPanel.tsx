@@ -2,66 +2,56 @@ import Link from "next/link";
 import { runSiteAudit } from "@/app/actions-seo-audit";
 import { AiPromptButton } from "@/components/seo/AiPromptButton";
 import { AuditButton } from "@/components/seo/AuditButton";
-import { capClass } from "@/components/seo/Fold";
+import { AuditIssues, shortUrl } from "@/components/seo/AuditIssues";
+import styles from "@/components/seo/AuditPanel.module.css";
+import { Fold } from "@/components/seo/Fold";
 import { HowToRead } from "@/components/seo/HowToRead";
 import { ScoreVerdict } from "@/components/seo/ScoreVerdict";
-import { ShowMore } from "@/components/seo/ShowMore";
 import { db } from "@/lib/db";
 import { intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
-import { ISSUE_TEXT, readAuditReport, type Issue, type Severity } from "@/lib/seo/audit";
+import { auditBreakdown, ISSUE_TEXT, MAX_PAGES, readAuditReport, type AuditReport, type Severity } from "@/lib/seo/audit";
+import { compareAudits } from "@/lib/seo/audit-compare";
 import { loadPromptContext } from "@/lib/seo/prompt-context";
 import { auditPrompt } from "@/lib/seo/prompts";
 import { latestReports } from "@/lib/seo/reports";
-import { AUDIT_WEIGHT, auditDeductions } from "@/lib/seo/verdict";
+import { AUDIT_WEIGHT } from "@/lib/seo/verdict";
 import { BUSINESS_TZ } from "@/lib/time";
 
-/** Cuántos problemas se ven antes de «Ver todos» (van primero los más graves). */
-const ISSUES_SHOWN = 5;
-
-const PILL: Record<Severity, string> = { error: "failed", warning: "partial", notice: "scheduled" };
-
-/** La dirección corta para mostrar: solo la ruta si es del mismo sitio. */
-function short(url: string, home: string): string {
-  try {
-    const u = new URL(url);
-    const h = new URL(home);
-    return u.host === h.host ? `${u.pathname}${u.search}` || "/" : url.replace(/^https?:\/\//, "");
-  } catch {
-    return url;
-  }
-}
+/** Cuántas revisiones se leen para el historial de la nota. */
+const HISTORY = 8;
 
 export async function AuditPanel({ businessId }: { businessId: string }) {
   const { lang, t } = await getT();
   const b = await db.business.findUnique({ where: { id: businessId }, select: { website: true } });
   const website = b?.website.trim() ?? "";
-  const rows = website ? await latestReports(businessId, "audit", 5) : [];
-  const report = rows[0] ? readAuditReport(rows[0].data) : null;
+  const rows = website ? await latestReports(businessId, "audit", HISTORY) : [];
+  // Las revisiones que se pueden leer, de la más nueva a la más vieja (la primera es la que se muestra).
+  const parsed = rows.map((r) => ({ at: r.createdAt, report: readAuditReport(r.data) })).filter((r): r is { at: Date; report: AuditReport } => !!r.report);
+  const report = rows[0] && parsed[0]?.at === rows[0].createdAt ? parsed[0].report : null;
+  const previous = report ? (parsed[1] ?? null) : null;
+  const compare = report ? compareAudits(report, previous?.report ?? null) : null;
   const fmt = new Intl.DateTimeFormat(intlLocale(lang), { dateStyle: "long", timeStyle: "short", timeZone: BUSINESS_TZ });
+  const day = new Intl.DateTimeFormat(intlLocale(lang), { day: "numeric", month: "short", timeZone: BUSINESS_TZ });
   const number = new Intl.NumberFormat(intlLocale(lang));
+  const one = new Intl.NumberFormat(intlLocale(lang), { maximumFractionDigits: 1 });
 
   const sevLabel: Record<Severity, string> = {
     error: t("Error", "Error"),
     warning: t("Advertencia", "Warning"),
     notice: t("Sugerencia", "Notice"),
   };
-  const one = new Intl.NumberFormat(intlLocale(lang), { maximumFractionDigits: 1 });
 
-  // Tendencia: los últimos puntajes, del más viejo al más nuevo.
-  const trend = rows
-    .map((r) => ({ at: r.createdAt, score: readAuditReport(r.data)?.score }))
-    .filter((r): r is { at: Date; score: number } => typeof r.score === "number")
-    .reverse();
-  const prev = trend.length > 1 ? trend[trend.length - 2].score : null;
+  // Historial: las últimas notas, de la más vieja a la más nueva.
+  const trend = parsed.map((r) => ({ at: r.at, score: r.report.score })).reverse();
 
   const header = (
     <div className="stack" style={{ gap: 4 }}>
       <h2>{t("Auditoría del sitio", "Site audit")}</h2>
       <p className="small muted">
         {t(
-          "Revisamos tu página web como lo hace Google: títulos, descripciones, fotos, enlaces rotos, velocidad en el celular y más. Te decimos qué arreglar primero.",
-          "We check your website the way Google does: titles, descriptions, photos, broken links, mobile speed and more. We tell you what to fix first.",
+          "Revisamos tu página web como lo hace Google y como la leen las IAs: títulos, textos, fotos, enlaces rotos, datos para Google, páginas viejas de WordPress, el archivo para IAs, velocidad en el celular y más. Te decimos qué arreglar primero.",
+          "We check your website the way Google does and the way AIs read it: titles, text, photos, broken links, data for Google, old WordPress pages, the AI file, mobile speed and more. We tell you what to fix first.",
         )}
       </p>
     </div>
@@ -84,12 +74,8 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
   const counts = (s: Severity) => report?.issues.filter((i) => i.severity === s).length ?? 0;
   const ps = report?.pagespeed;
   const home = report?.site.home || website;
-
-  const issueCount = (i: Issue) => {
-    if (i.id === "broken-links") return t(`${i.count} ${i.count === 1 ? "enlace" : "enlaces"}`, `${i.count} ${i.count === 1 ? "link" : "links"}`);
-    if (["no-sitemap", "no-robots", "no-structured-data"].includes(i.id)) return t("Todo el sitio", "Whole site");
-    return t(`${i.count} ${i.count === 1 ? "página" : "páginas"}`, `${i.count} ${i.count === 1 ? "page" : "pages"}`);
-  };
+  const depth = report?.site.depthCounts;
+  const depthKeys = depth ? Object.keys(depth).filter((k) => k !== "none").sort((a, b) => parseInt(a) - parseInt(b)) : [];
 
   return (
     <section className="card" id="auditoria">
@@ -98,13 +84,14 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
         {t("Página:", "Website:")} <a href={website.startsWith("http") ? website : `https://${website}`} target="_blank" rel="noopener noreferrer">{website}</a>
         {rows[0] && <> · {t("Última revisión:", "Last check:")} {fmt.format(rows[0].createdAt)}</>}
       </p>
-      <AuditButton action={action} has={rows.length > 0} />
+      <AuditButton action={action} has={rows.length > 0} maxPages={MAX_PAGES} />
       {report && (
         <HowToRead title={t("Cómo leer esto", "How to read this")}>
           <ul>
             <li>{t("La nota de 0 a 100 dice qué tan bien está armada tu página para Google: 90 o más es excelente, de 70 a 89 está bien, de 50 a 69 es regular y menos de 50 es urgente.", "The 0-100 score says how well your website is built for Google: 90 or more is excellent, 70 to 89 is good, 50 to 69 is fair and under 50 is urgent.")}</li>
             <li>{t("Arregla primero los errores (rojo), después las advertencias (amarillo). Las sugerencias son detalles.", "Fix the errors (red) first, then the warnings (yellow). Notices are details.")}</li>
-            <li>{t("La velocidad importa sobre todo en el celular: si tu página tarda, la gente se va antes de verla.", "Speed matters most on phones: if your page is slow, people leave before seeing it.")}</li>
+            <li>{t("Cada problema dice cómo arreglarlo y, al abrir la lista, la página exacta y lo que está mal (por ejemplo, el título que es muy largo).", "Each problem says how to fix it and, when you open the list, the exact page and what's wrong (for example, the title that's too long).")}</li>
+            <li>{t("«Arregladas» y «Nuevas» comparan con la revisión anterior, para que veas si vas avanzando.", "\"Fixed\" and \"New\" compare with the previous check, so you can see your progress.")}</li>
           </ul>
         </HowToRead>
       )}
@@ -127,23 +114,47 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
               </div>
               <span className="meter" style={{ display: "block" }}><span style={{ width: `${report.score}%` }} /></span>
               <ScoreVerdict score={report.score} lang={lang} />
-              {prev !== null && (
-                <span className="small muted">
-                  {report.score === prev
-                    ? t(`Igual que la vez anterior (${prev}).`, `Same as last time (${prev}).`)
-                    : report.score > prev
-                      ? t(`Subió ${report.score - prev} desde la vez anterior (${prev}).`, `Up ${report.score - prev} since last time (${prev}).`)
-                      : t(`Bajó ${prev - report.score} desde la vez anterior (${prev}).`, `Down ${prev - report.score} since last time (${prev}).`)}
-                </span>
+              {compare && previous && (
+                <div className={styles.compare}>
+                  <span className="small">
+                    {compare.scoreDelta === 0
+                      ? t(`Igual que en la revisión del ${day.format(previous.at)} (${compare.prevScore}).`, `Same as the check on ${day.format(previous.at)} (${compare.prevScore}).`)
+                      : compare.scoreDelta > 0
+                        ? t(`Subió ${compare.scoreDelta} desde la revisión del ${day.format(previous.at)} (${compare.prevScore}).`, `Up ${compare.scoreDelta} since the check on ${day.format(previous.at)} (${compare.prevScore}).`)
+                        : t(`Bajó ${-compare.scoreDelta} desde la revisión del ${day.format(previous.at)} (${compare.prevScore}).`, `Down ${-compare.scoreDelta} since the check on ${day.format(previous.at)} (${compare.prevScore}).`)}
+                  </span>
+                  <div className={styles.chips}>
+                    <span className={`${styles.chip} ${compare.totals.fixed ? styles.chipOk : ""}`}>{t(`Arregladas: ${compare.totals.fixed}`, `Fixed: ${compare.totals.fixed}`)}</span>
+                    <span className={`${styles.chip} ${compare.totals.added ? styles.chipBad : ""}`}>{t(`Nuevas: ${compare.totals.added}`, `New: ${compare.totals.added}`)}</span>
+                  </div>
+                  {(previous.report.maxPages ?? 30) < (report.maxPages ?? 30) && (
+                    <span className="small muted">
+                      {t(
+                        `Ahora leemos hasta ${report.maxPages} páginas (antes ${previous.report.maxPages ?? 30}): por eso pueden salir más páginas con el mismo problema.`,
+                        `We now read up to ${report.maxPages} pages (before: ${previous.report.maxPages ?? 30}), so more pages may show the same problem.`,
+                      )}
+                    </span>
+                  )}
+                  {compare.newChecks.length > 0 && (
+                    <span className="small muted">
+                      {t(
+                        `Esta revisión es más completa: ahora miramos ${compare.newChecks.length} cosas más (datos para Google, IAs, WordPress viejo, enlaces internos…). Si la nota bajó, puede ser por eso y no porque algo se haya dañado.`,
+                        `This check is more complete: we now look at ${compare.newChecks.length} more things (data for Google, AIs, old WordPress, internal links…). If the score went down, that may be why, not because something broke.`,
+                      )}
+                    </span>
+                  )}
+                </div>
               )}
               {trend.length > 1 && (
                 <div className="row" style={{ gap: 10, alignItems: "flex-end" }}>
-                  <div className="seo-trend" role="img" aria-label={t(`Últimos puntajes: ${trend.map((x) => x.score).join(", ")}`, `Recent scores: ${trend.map((x) => x.score).join(", ")}`)}>
+                  <div className="seo-trend" role="img" aria-label={t(`Últimas notas: ${trend.map((x) => x.score).join(", ")}`, `Recent scores: ${trend.map((x) => x.score).join(", ")}`)}>
                     {trend.map((x, i) => (
                       <span key={i} className={i === trend.length - 1 ? "last" : ""} style={{ height: `${Math.max(8, x.score)}%` }} title={`${fmt.format(x.at)}: ${x.score}`} />
                     ))}
                   </div>
-                  <span className="small muted">{trend.map((x) => x.score).join(" → ")}</span>
+                  <span className="small muted">
+                    {t("Historial:", "History:")} {trend.map((x) => x.score).join(" → ")}
+                  </span>
                 </div>
               )}
               <div className="row" style={{ gap: 8 }}>
@@ -156,13 +167,17 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
                   `${report.pages.length} páginas revisadas · ${report.site.checkedLinks} enlaces probados`,
                   `${report.pages.length} pages checked · ${report.site.checkedLinks} links tested`,
                 )}
+                {report.site.checkedImages ? t(` · ${report.site.checkedImages} fotos probadas`, ` · ${report.site.checkedImages} images tested`) : ""}
                 {report.site.stoppedEarly && t(" · se paró por tiempo antes de leerlo todo", " · stopped early because of the time limit")}
+                {!report.site.stoppedEarly &&
+                  report.site.crawlComplete === false &&
+                  t(` · tu sitio tiene más páginas; revisamos las primeras ${report.maxPages ?? report.pages.length}`, ` · your site has more pages; we checked the first ${report.maxPages ?? report.pages.length}`)}
               </span>
               <HowToRead title={t("¿Cómo se calcula la nota?", "How is the score calculated?")}>
                 <p>
                   {t(
-                    `Empezamos en 100 y cada problema resta puntos. Un error resta hasta ${AUDIT_WEIGHT.error}, una advertencia hasta ${AUDIT_WEIGHT.warning} y una sugerencia hasta ${AUDIT_WEIGHT.notice}. Si el problema está en una sola página resta la mitad; si está en todas las páginas revisadas (o es de todo el sitio, como el sitemap), resta completo. La nota nunca baja de 0.`,
-                    `We start at 100 and each problem takes points off. An error takes up to ${AUDIT_WEIGHT.error}, a warning up to ${AUDIT_WEIGHT.warning} and a notice up to ${AUDIT_WEIGHT.notice}. If the problem is on just one page it takes half; if it's on every page checked (or affects the whole site, like the sitemap), it takes the full amount. The score never goes below 0.`,
+                    `Empezamos en 100 y cada problema resta puntos. Un error resta hasta ${AUDIT_WEIGHT.error}, una advertencia hasta ${AUDIT_WEIGHT.warning} y una sugerencia hasta ${AUDIT_WEIGHT.notice}. Si el problema está en una sola página resta la mitad; si está en todas las páginas revisadas (o es de todo el sitio, como el sitemap o el archivo para IAs), resta completo. La nota nunca baja de 0.`,
+                    `We start at 100 and each problem takes points off. An error takes up to ${AUDIT_WEIGHT.error}, a warning up to ${AUDIT_WEIGHT.warning} and a notice up to ${AUDIT_WEIGHT.notice}. If the problem is on just one page it takes half; if it's on every page checked (or affects the whole site, like the sitemap or the AI file), it takes the full amount. The score never goes below 0.`,
                   )}
                 </p>
                 {report.issues.length > 0 && (
@@ -171,7 +186,7 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
                       <strong>{t(`Tu nota: 100 − lo que restó cada problema = ${report.score}`, `Your score: 100 − what each problem took off = ${report.score}`)}</strong>
                     </p>
                     <ul>
-                      {auditDeductions(report.issues, report.pages.length).map((d) => (
+                      {auditBreakdown(report.issues, report.pages.length).map((d) => (
                         <li key={d.id}>
                           −{one.format(d.points)} · {ISSUE_TEXT[d.id][lang].title} <span className="muted">({sevLabel[d.severity].toLowerCase()})</span>
                         </li>
@@ -233,6 +248,30 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
                   </span>
                 </>
               ) : null}
+
+              {depth && depthKeys.length > 0 && (
+                <>
+                  <span className="lbl" style={{ marginTop: 6 }}>{t("A cuántos clics están tus páginas", "How many clicks away your pages are")}</span>
+                  <ul className={styles.depth} aria-label={t("Páginas por clics desde el inicio", "Pages by clicks from the home page")}>
+                    {depthKeys.map((k) => (
+                      <li key={k} className={`${styles.depthTile} ${k.endsWith("+") ? styles.depthDeep : ""}`}>
+                        <strong>{number.format(depth[k])}</strong>
+                        <span>
+                          {k === "0"
+                            ? t("inicio", "home")
+                            : k.endsWith("+")
+                              ? t(`a ${k.replace("+", "")} clics o más`, `${k.replace("+", "")}+ clicks away`)
+                              : t(`a ${k} ${k === "1" ? "clic" : "clics"}`, `${k} ${k === "1" ? "click" : "clicks"} away`)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <span className="small muted">
+                    {t("Lo ideal es que cada página esté a 3 clics o menos desde el inicio.", "Ideally every page is 3 clicks or less from the home page.")}
+                    {(depth.none ?? 0) > 0 && t(` ${depth.none} no tienen enlaces desde las páginas que leímos.`, ` ${depth.none} have no links from the pages we read.`)}
+                  </span>
+                </>
+              )}
             </div>
           </div>
 
@@ -241,54 +280,19 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
             {report.issues.length === 0 ? (
               <p className="note ok">{t("¡No encontramos problemas! Tu página está en muy buena forma.", "We didn't find any problems! Your website is in great shape.")}</p>
             ) : (
-              <ShowMore hidden={report.issues.length - ISSUES_SHOWN} more={t(`Ver los ${report.issues.length} problemas`, `See all ${report.issues.length} problems`)}>
-              <ul className="seo-issues">
-                {report.issues.map((i, n) => {
-                  const copy = ISSUE_TEXT[i.id][lang];
-                  const broken = i.id === "broken-links" ? report.site.brokenLinks : [];
-                  const shown = broken.length > 0 ? Math.min(broken.length, 10) : i.pages.length;
-                  return (
-                    <li key={i.id} className={["seo-issue", capClass(n, ISSUES_SHOWN)].filter(Boolean).join(" ")}>
-                      <div className="row between">
-                        <span className="row" style={{ gap: 8 }}>
-                          <span className={`pill ${PILL[i.severity]}`}>{sevLabel[i.severity]}</span>
-                          <strong>{copy.title}</strong>
-                        </span>
-                        <span className="small muted">{issueCount(i)}</span>
-                      </div>
-                      <span className="small">{copy.fix}</span>
-                      {i.pages.length > 0 && (
-                        <details>
-                          <summary className="btn link" style={{ display: "inline-flex", minHeight: 0, padding: 0 }}>
-                            {i.id === "broken-links" ? t("Ver enlaces", "See links") : t("Ver páginas", "See pages")}
-                          </summary>
-                          <ul className="seo-urls">
-                            {broken.length > 0
-                              ? broken.slice(0, 10).map((l) => (
-                                  <li key={l.url}>
-                                    <a href={l.url} target="_blank" rel="noopener noreferrer">{short(l.url, home)}</a> <span className="muted">({l.status})</span>
-                                    {l.from.length > 0 && (
-                                      <span className="muted">
-                                        {" "}
-                                        · {t("está en", "found on")} {l.from.map((f) => short(f, home)).join(", ")}
-                                      </span>
-                                    )}
-                                  </li>
-                                ))
-                              : i.pages.map((u) => (
-                                  <li key={u}>
-                                    <a href={u} target="_blank" rel="noopener noreferrer">{short(u, home)}</a>
-                                  </li>
-                                ))}
-                            {i.count > shown && <li className="muted">{t(`y ${i.count - shown} más`, `and ${i.count - shown} more`)}</li>}
-                          </ul>
-                        </details>
-                      )}
+              <AuditIssues report={report} compare={compare} ctx={ctx} lang={lang} />
+            )}
+            {compare && compare.gone.length > 0 && (
+              <div className={styles.gone}>
+                <span className="lbl">{t("Ya arreglaste", "Already fixed")}</span>
+                <ul>
+                  {compare.gone.map((g) => (
+                    <li key={g.id}>
+                      <span aria-hidden="true">✓</span> {ISSUE_TEXT[g.id][lang].title} <span className="muted">({t(`la vez anterior: ${g.count}`, `last time: ${g.count}`)})</span>
                     </li>
-                  );
-                })}
-              </ul>
-              </ShowMore>
+                  ))}
+                </ul>
+              </div>
             )}
           </div>
 
@@ -298,11 +302,8 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
           </p>
 
           {report.pages.length > 0 && (
-            <details>
-              <summary className="btn link" style={{ display: "inline-flex", padding: 0 }}>
-                {t(`Ver las ${report.pages.length} páginas revisadas`, `See the ${report.pages.length} pages checked`)}
-              </summary>
-              <div className="table-wrap" style={{ marginTop: 10 }}>
+            <Fold summary={t(`Ver las ${report.pages.length} páginas revisadas`, `See the ${report.pages.length} pages checked`)}>
+              <div className="table-wrap">
                 <table>
                   <thead>
                     <tr>
@@ -310,6 +311,7 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
                       <th>{t("Estado", "Status")}</th>
                       <th>{t("Título (letras)", "Title (characters)")}</th>
                       <th>{t("Palabras", "Words")}</th>
+                      <th>{t("Clics desde el inicio", "Clicks from home")}</th>
                       <th>{t("Tiempo", "Time")}</th>
                     </tr>
                   </thead>
@@ -319,7 +321,7 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
                       return (
                         <tr key={`${p.url}-${i}`}>
                           <td className="small" style={{ wordBreak: "break-all" }}>
-                            <a href={p.finalUrl || p.url} target="_blank" rel="noopener noreferrer">{short(p.finalUrl || p.url, home)}</a>
+                            <a href={p.finalUrl || p.url} target="_blank" rel="noopener noreferrer">{shortUrl(p.finalUrl || p.url, home)}</a>
                             {p.title && <span className="muted" style={{ display: "block" }}>{p.title}</span>}
                           </td>
                           <td>
@@ -327,6 +329,7 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
                           </td>
                           <td className="small">{ok ? p.title.length : "—"}</td>
                           <td className="small">{ok ? number.format(p.words) : "—"}</td>
+                          <td className="small">{typeof p.depth === "number" ? p.depth : "—"}</td>
                           <td className="small">{p.ms ? `${number.format(Math.round(p.ms) / 1000)} s` : "—"}</td>
                         </tr>
                       );
@@ -334,10 +337,15 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
                   </tbody>
                 </table>
               </div>
-            </details>
+            </Fold>
           )}
 
-          {ctx && <AiPromptButton text={auditPrompt(ctx, report, lang)} />}
+          {ctx && (
+            <AiPromptButton
+              text={auditPrompt(ctx, report, lang)}
+              hint={t("Todos los problemas juntos, con cada página y cómo arreglarlo, listo para pegar.", "All the problems together, with each page and how to fix it, ready to paste.")}
+            />
+          )}
         </>
       )}
     </section>

@@ -1,6 +1,7 @@
 // Qué quiere decir una nota de 0 a 100 (auditoría, revisión de tus páginas, Perfil de Google) y cómo se calcula la de
 // la auditoría, en palabras simples. Puro: lo usan los paneles y las pruebas.
 import type { Issue, Severity } from "@/lib/seo/audit";
+import { isSiteLevel } from "@/lib/seo/audit-ids";
 
 export type ScoreLevel = "excellent" | "good" | "fair" | "urgent";
 
@@ -27,8 +28,6 @@ export const SCORE_SCALE: { level: ScoreLevel; range: string }[] = [
 
 /** Lo que resta cada tipo de problema de la auditoría (el mismo peso que scoreFor en audit.ts). */
 export const AUDIT_WEIGHT: Record<Severity, number> = { error: 12, warning: 4, notice: 1 };
-/** Problemas de todo el sitio: restan el peso completo (igual que SITE_LEVEL en audit.ts). */
-const SITE_LEVEL = new Set<string>(["no-sitemap", "no-robots", "no-structured-data", "http-no-redirect"]);
 
 /**
  * Cuántos puntos le quitó cada problema a la nota de la auditoría: peso × (0,5 + 0,5 × parte de las páginas), como
@@ -37,7 +36,7 @@ const SITE_LEVEL = new Set<string>(["no-sitemap", "no-robots", "no-structured-da
 export function auditDeductions(issues: Pick<Issue, "id" | "severity" | "count">[], pageCount: number): { id: Issue["id"]; severity: Severity; points: number }[] {
   return issues
     .map((i) => {
-      const share = SITE_LEVEL.has(i.id) || pageCount <= 0 ? 1 : Math.min(1, Math.max(0, i.count) / pageCount);
+      const share = isSiteLevel(i.id) || pageCount <= 0 ? 1 : Math.min(1, Math.max(0, i.count) / pageCount);
       return { id: i.id, severity: i.severity, points: (AUDIT_WEIGHT[i.severity] ?? 0) * (0.5 + 0.5 * share) };
     })
     .sort((a, b) => b.points - a.points);

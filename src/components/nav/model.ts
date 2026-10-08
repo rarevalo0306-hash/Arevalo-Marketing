@@ -56,6 +56,7 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: "seo",
     label: ["Diagnóstico", "Diagnosis"],
     items: [
+      { key: "diagnostico-inicial", label: ["Diagnóstico guiado", "Guided diagnosis"], path: "diagnostico" },
       { key: "seo-resumen", label: ["Resumen y plan", "Summary & plan"], path: "seo", tab: "resumen" },
       { key: "estudio", label: ["Estudio del negocio", "Business study"], path: "estudio" },
       { key: "seo-google", label: ["Posiciones en Google", "Google rankings"], path: "seo", tab: "google" },

@@ -3,7 +3,9 @@
 // cómo hacerlo, y las reglas (no inventar datos). Lo que la IA de la página no puede hacer (directorios, Perfil de
 // Google) sale como lista de tareas para el dueño. Todo puro: se prueba en tests/seo-prompts.test.ts.
 // La base (contexto, reglas, el código para Google) está en prompt-core.ts, que también usa el navegador.
-import { ISSUE_TEXT, type AuditReport, type IssueId, type Severity } from "@/lib/seo/audit";
+import type { AuditReport, Severity } from "@/lib/seo/audit";
+import { auditPromptItems } from "@/lib/seo/audit-prompt";
+import { AUDIT_AI_FIX } from "@/lib/seo/audit-text";
 import { hintText, HINT_EASY, type GapDomain } from "@/lib/seo/backlinks";
 import { fixText, issueWhy, severityLabel, type CannibalIssue, type CannibalReport } from "@/lib/seo/cannibal";
 import { decayActions, reasonLabel, reasonWhy, type DecayPage, type DecayReport } from "@/lib/seo/decay";
@@ -22,125 +24,15 @@ const num = (n: number, lang: PromptLang) => new Intl.NumberFormat(lang === "en"
 
 // ---------- Auditoría ----------
 
-/** Cómo arreglar cada problema de la auditoría, dicho para la IA que programa la página (más técnico que ISSUE_TEXT). */
-export const AI_FIX: Record<IssueId, { es: string; en: string }> = {
-  "page-errors": {
-    es: "Estas direcciones dan error (4xx/5xx). Arregla la página, o pon una redirección 301 a la página más parecida que sí funcione, y cambia los enlaces internos que apuntan a ellas.",
-    en: "These URLs return an error (4xx/5xx). Fix the page, or add a 301 redirect to the closest working page, and update every internal link that points to them.",
-  },
-  "broken-links": {
-    es: "Estos enlaces llevan a direcciones que dan error. En cada página donde aparecen, cámbialos por la dirección correcta o quítalos.",
-    en: "These links point to URLs that return an error. On each page where they appear, change them to the correct URL or remove them.",
-  },
-  "missing-title": {
-    es: "Agrega un <title> único de 50 a 60 caracteres que diga el servicio principal de la página y la ciudad.",
-    en: "Add a unique <title> of 50-60 characters that says the page's main service and the city.",
-  },
-  "no-https": {
-    es: "Haz que el sitio abra con https (certificado válido) y que toda visita por http:// vaya a https:// con una redirección 301.",
-    en: "Make the site load over https (valid certificate) and send every http:// request to https:// with a 301 redirect.",
-  },
-  "http-no-redirect": {
-    es: "Haz que http:// mande siempre a https:// con una redirección permanente (301).",
-    en: "Make http:// always redirect to https:// with a permanent (301) redirect.",
-  },
-  "no-viewport": {
-    es: 'Agrega <meta name="viewport" content="width=device-width, initial-scale=1"> en el <head> de todas las páginas.',
-    en: 'Add <meta name="viewport" content="width=device-width, initial-scale=1"> to the <head> of every page.',
-  },
-  noindex: {
-    es: "Estas páginas tienen «noindex» (meta robots o X-Robots-Tag), así que Google no las muestra. Si deben salir en Google, quítalo. Si esconderlas es a propósito (gracias, legales), déjalas.",
-    en: "These pages have \"noindex\" (meta robots or X-Robots-Tag), so Google doesn't show them. If they should appear on Google, remove it. If hiding them is intentional (thank-you, legal pages), leave them.",
-  },
-  "duplicate-title": {
-    es: "Varias páginas tienen el mismo <title>. Dale a cada una uno distinto (50 a 60 caracteres) con su servicio específico y la ciudad.",
-    en: "Several pages share the same <title>. Give each one a different title (50-60 characters) with its specific service and the city.",
-  },
-  "title-too-long": {
-    es: "Acorta el <title> a 60 caracteres como máximo, con el servicio y la ciudad al principio.",
-    en: "Shorten the <title> to 60 characters max, with the service and the city first.",
-  },
-  "missing-description": {
-    es: 'Agrega un <meta name="description"> único de 120 a 155 caracteres: qué ofrece la página, dónde y por qué elegir al negocio.',
-    en: 'Add a unique <meta name="description"> of 120-155 characters: what the page offers, where, and why choose the business.',
-  },
-  "duplicate-description": {
-    es: "Varias páginas tienen la misma meta descripción. Escribe una distinta para cada página, según lo que ofrece.",
-    en: "Several pages share the same meta description. Write a different one for each page, based on what it offers.",
-  },
-  "missing-h1": {
-    es: "Agrega un solo <h1> arriba que diga de qué trata la página (servicio + ciudad).",
-    en: "Add a single <h1> at the top that says what the page is about (service + city).",
-  },
-  "images-no-alt": {
-    es: 'Agrega un atributo alt corto y descriptivo a cada <img> (qué muestra la foto). Las imágenes decorativas llevan alt="".',
-    en: 'Add a short, descriptive alt attribute to every <img> (what the photo shows). Decorative images get alt="".',
-  },
-  "slow-page": {
-    es: "Estas páginas tardaron más de 3 segundos en responder. Comprime y redimensiona las fotos (WebP, tamaño real, carga diferida abajo de la pantalla), quita scripts que no se usen y activa la caché.",
-    en: "These pages took more than 3 seconds to respond. Compress and resize images (WebP, real display size, lazy-load below the fold), remove unused scripts and enable caching.",
-  },
-  "no-sitemap": {
-    es: "Crea /sitemap.xml con todas las páginas públicas y ponlo en robots.txt (Sitemap: <dirección del sitemap>).",
-    en: "Create /sitemap.xml listing every public page and reference it in robots.txt (Sitemap: <sitemap URL>).",
-  },
-  "no-structured-data": {
-    es: "Agrega datos estructurados LocalBusiness (JSON-LD) a la página de inicio: nombre, dirección, teléfono y horario. El dueño tiene el código listo en la sección «Código para Google» de su app; pídeselo si no te lo dio.",
-    en: "Add LocalBusiness structured data (JSON-LD) to the home page: name, address, phone and hours. The owner has the code ready in the \"Code for Google\" section of their app; ask for it if they didn't give it to you.",
-  },
-  "title-too-short": {
-    es: "Alarga el <title> a 30-60 caracteres agregando el servicio y la ciudad.",
-    en: "Lengthen the <title> to 30-60 characters by adding the service and the city.",
-  },
-  "description-length": {
-    es: "Reescribe la meta descripción para que tenga de 120 a 155 caracteres.",
-    en: "Rewrite the meta description so it's 120-155 characters long.",
-  },
-  "multiple-h1": {
-    es: "Deja un solo <h1> por página y convierte los demás en <h2>.",
-    en: "Keep a single <h1> per page and turn the others into <h2>.",
-  },
-  "thin-content": {
-    es: "Estas páginas tienen menos de 250 palabras. Agrega contenido útil: qué incluye el servicio, para quién es, zonas que atiende y preguntas frecuentes, usando solo datos que ya estén en el sitio.",
-    en: "These pages have fewer than 250 words. Add useful content: what the service includes, who it's for, areas served and FAQs, using only facts already on the site.",
-  },
-  "no-og-image": {
-    es: "Agrega las etiquetas og:image (y og:title, og:description) para que al compartir salga una foto. Usa una foto que ya esté en el sitio (1200×630).",
-    en: "Add og:image (plus og:title and og:description) tags so shared links show a photo. Use a photo already on the site (1200×630).",
-  },
-  "missing-lang": {
-    es: 'Pon el idioma en la etiqueta <html> (por ejemplo, lang="es").',
-    en: 'Set the language on the <html> tag (for example, lang="en").',
-  },
-  "no-robots": {
-    es: "Crea /robots.txt que permita leer el sitio y diga dónde está el sitemap.",
-    en: "Create /robots.txt that allows crawling and points to the sitemap.",
-  },
-};
+/** Cómo arreglar cada problema de la auditoría, dicho para la IA que programa la página (más técnico que ISSUE_TEXT). Vive en audit-text.ts. */
+export const AI_FIX = AUDIT_AI_FIX;
 
 const SEVERITY_TAG: Record<Severity, [string, string]> = { error: ["Error", "Error"], warning: ["Advertencia", "Warning"], notice: ["Sugerencia", "Notice"] };
 export const severityTag = (s: Severity, lang: PromptLang) => L(lang)(...SEVERITY_TAG[s]);
 
 /** Los problemas de la auditoría como cambios para la IA (los más graves primero). `max` recorta la lista. */
 export function auditItems(report: AuditReport, website: string, lang: PromptLang, max = 50): PromptItem[] {
-  const t = L(lang);
-  return report.issues.slice(0, max).map((i) => {
-    const item: PromptItem = { tag: severityTag(i.severity, lang), title: `${ISSUE_TEXT[i.id][lang].title} (${i.count} ${i.id === "broken-links" ? t(i.count === 1 ? "enlace" : "enlaces", i.count === 1 ? "link" : "links") : t(i.count === 1 ? "página" : "páginas", i.count === 1 ? "page" : "pages")})`, how: [AI_FIX[i.id][lang]] };
-    if (i.id === "broken-links" && report.site.brokenLinks.length) {
-      const list = report.site.brokenLinks.slice(0, 15);
-      item.detail = list.map((b) =>
-        t(
-          `Roto: ${b.url} (responde ${b.status})${b.from.length ? ` · está en: ${b.from.map((f) => absUrl(f, website)).join(", ")}` : ""}`,
-          `Broken: ${b.url} (returns ${b.status})${b.from.length ? ` · found on: ${b.from.map((f) => absUrl(f, website)).join(", ")}` : ""}`,
-        ),
-      );
-      if (i.count > list.length) item.moreUrls = i.count - list.length;
-    } else if (i.pages.length) {
-      item.urls = i.pages.map((u) => absUrl(u, website));
-      if (i.count > i.pages.length) item.moreUrls = i.count - i.pages.length;
-    }
-    return item;
-  });
+  return auditPromptItems(report.issues.slice(0, max), report, website, lang);
 }
 
 export function auditPrompt(ctx: PromptContext, report: AuditReport, lang: PromptLang): string {
