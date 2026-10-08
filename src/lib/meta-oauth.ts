@@ -18,6 +18,17 @@ export const META_SCOPES = [
   "instagram_content_publish",
 ];
 
+/**
+ * Permisos aparte para «Conectar anuncios» (Anuncios pagados): crear, leer y pausar anuncios en la cuenta de anuncios
+ * del negocio y promocionar sus publicaciones. Se piden en otro paso para no tocar la conexión de la página.
+ * Meta exige revisión de la app (App Review) con acceso avanzado para ads_management / ads_read si la app maneja
+ * cuentas de anuncios de otras personas; para la cuenta propia basta el acceso estándar.
+ */
+export const META_ADS_SCOPES = ["ads_management", "ads_read", "business_management", "pages_show_list", "pages_read_engagement", "pages_manage_ads"];
+
+/** Para qué se pide el permiso de Meta: publicar en la página (de siempre) o manejar anuncios pagados. */
+export type MetaPurpose = "page" | "ads";
+
 export const metaEnabled = () => Boolean(process.env.META_APP_ID && process.env.META_APP_SECRET);
 
 function baseUrl(): string {
@@ -44,17 +55,25 @@ export function readState(state: string): string | null {
   return parts[0];
 }
 
-export function authUrl(businessId: string): string {
+export function authUrl(businessId: string, purpose: MetaPurpose = "page"): string {
   const q = new URLSearchParams({
     client_id: process.env.META_APP_ID!,
     redirect_uri: redirectUri(),
-    state: makeState(businessId),
+    // Los anuncios usan el mismo regreso (/api/meta/callback); el propósito va dentro del state firmado.
+    state: makeState(purpose === "ads" ? `ads:${businessId}` : businessId),
     response_type: "code",
   });
   // Apps con "Facebook Login for Business" pueden usar una configuración (config_id) en vez de la lista de permisos.
-  if (process.env.META_CONFIG_ID) q.set("config_id", process.env.META_CONFIG_ID);
-  else q.set("scope", META_SCOPES.join(","));
+  const config = purpose === "ads" ? process.env.META_ADS_CONFIG_ID : process.env.META_CONFIG_ID;
+  if (config) q.set("config_id", config);
+  else q.set("scope", (purpose === "ads" ? META_ADS_SCOPES : META_SCOPES).join(","));
   return `https://www.facebook.com/v21.0/dialog/oauth?${q}`;
+}
+
+/** Separa el propósito del negocio en lo que devuelve readState (sin prefijo = página de Facebook, como siempre). */
+export function metaStatePurpose(value: string): { purpose: MetaPurpose; businessId: string } {
+  if (value.startsWith("ads:")) return { purpose: "ads", businessId: value.slice(4) };
+  return { purpose: "page", businessId: value };
 }
 
 /** Cambia el código por un token de usuario de larga duración (unos 60 días). */
