@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import { getT } from "@/lib/i18n-server";
-import { runDueDriveSync } from "@/lib/library-sync";
+import { runDueDriveSync, runDueUploadAnalysis } from "@/lib/library-sync";
 import { publishDue } from "@/lib/publish";
 import { runWeeklyReports } from "@/lib/seo/alerts";
 import { runDueRankChecks } from "@/lib/seo/rank";
@@ -50,6 +50,13 @@ export async function GET(req: Request) {
       if (drive) console.log("[drive] revisión automática:", drive.businessId, JSON.stringify(drive.result));
     } catch (e) {
       console.error("[drive] error en la revisión automática:", e instanceof Error ? e.message : e);
+    }
+    // Fotos y videos subidos con el link de los técnicos que quedaron sin revisar: como mucho UN negocio por llamada.
+    try {
+      const up = await runDueUploadAnalysis(new Date(), 270_000 - (Date.now() - started));
+      if (up) console.log("[subir] revisión automática:", up.businessId, JSON.stringify(up.result));
+    } catch (e) {
+      console.error("[subir] error en la revisión automática:", e instanceof Error ? e.message : e);
     }
   });
   return Response.json({ published });

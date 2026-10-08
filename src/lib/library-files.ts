@@ -1,5 +1,5 @@
 // Archivos de la biblioteca: la copia guardada de una foto o video de Drive. Las fotos se copian al revisarlas; los
-// videos solo cuando se usan en una publicación (son pesados).
+// videos solo cuando se usan en una publicación (son pesados). Lo subido con el link de los técnicos ya está en R2.
 import { db } from "@/lib/db";
 import { downloadFile } from "@/lib/drive";
 import { bi } from "@/lib/i18n";
@@ -33,6 +33,12 @@ export async function ensureStoredCopy(itemId: string): Promise<string> {
   const item = await db.libraryItem.findUnique({ where: { id: itemId } });
   if (!item) throw bi("Esa foto o video ya no está en la biblioteca.", "That photo or video is no longer in the library.");
   if (item.url) return item.url;
+  // Lo subido con el link: los videos ya tienen su dirección; una foto sin copia es que no se pudo abrir.
+  if (item.source === "upload")
+    throw bi(
+      "Esta foto subida no se pudo preparar para publicar" + (item.error && !item.error.startsWith("busy:") ? `: ${item.error}` : ". Espera a que la IA la revise."),
+      "This uploaded photo couldn't be prepared for posting" + (item.error && !item.error.startsWith("busy:") ? `: ${item.error}` : ". Wait for the AI to review it."),
+    );
   if (item.status === "gone") throw bi("Ese archivo ya no está en la carpeta de Google Drive.", "That file is no longer in the Google Drive folder.");
 
   if (item.kind === "video") {

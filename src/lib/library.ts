@@ -57,6 +57,7 @@ const CARD_SELECT = {
   choice: true,
   tags: true,
   folderPath: true,
+  source: true,
   description: true,
   width: true,
   height: true,
@@ -86,6 +87,7 @@ export function toCard(r: CardRow): LibraryCard {
     usedCount: r.usedCount,
     lastUsedAt: r.lastUsedAt ? r.lastUsedAt.toISOString() : null,
     folderPath: r.folderPath,
+    source: r.source === "upload" ? "upload" : "drive",
     canUse: usableNow(r),
     needsReview: needsReview(r),
   };

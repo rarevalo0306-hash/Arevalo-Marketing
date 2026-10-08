@@ -2,11 +2,15 @@ import Link from "next/link";
 import { PageHead } from "@/components/PageHead";
 import { LibraryItemCard } from "@/components/library/LibraryItemCard";
 import { ReviewNow } from "@/components/library/ReviewNow";
+import { UploadLinkCard } from "@/components/library/UploadLinkCard";
 import s from "@/components/library/Library.module.css";
+import { appOrigin } from "@/lib/app-origin";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
 import { asLibraryFilter, LIBRARY_FILTERS, libraryCounts, loadLibrary, PAGE_SIZE, type LibraryFilter } from "@/lib/library";
+import { r2Enabled } from "@/lib/r2";
 import { fmtWhen } from "@/lib/time";
+import { uploadStats } from "@/lib/upload";
 
 // «Revisar ahora» trae y revisa con IA lo nuevo de la carpeta.
 export const maxDuration = 300;
@@ -27,9 +31,13 @@ export default async function FotosPage({ params, searchParams }: { params: Prom
   const filter = asLibraryFilter(q.ver);
   const limit = Math.min(2000, Math.max(PAGE_SIZE, Math.round(Number(q.n) / PAGE_SIZE) * PAGE_SIZE || PAGE_SIZE));
   const { lang, t } = await getT();
-  const b = await db.business.findUniqueOrThrow({ where: { id }, select: { id: true, name: true, color: true, driveFolderId: true, driveFolderName: true, driveSyncedAt: true, driveError: true } });
+  const b = await db.business.findUniqueOrThrow({ where: { id }, select: { id: true, name: true, color: true, driveFolderId: true, driveFolderName: true, driveSyncedAt: true, driveError: true, uploadToken: true } });
   const connected = !!b.driveFolderId;
-  const [counts, page] = await Promise.all([libraryCounts(id), loadLibrary(id, filter, limit)]);
+  const [counts, page, uploads, origin] = await Promise.all([libraryCounts(id), loadLibrary(id, filter, limit), uploadStats(id), appOrigin()]);
+  const r2 = r2Enabled();
+  const uploadCard = (
+    <UploadLinkCard businessId={id} businessName={b.name} configured={r2} token={b.uploadToken} origin={origin} total={uploads.total} pending={uploads.pending} anchor="link-subida" />
+  );
   const conexiones = `/b/${id}/conexiones#c-drive`;
   const href = (f: LibraryFilter, n?: number) => {
     const p = new URLSearchParams();
@@ -60,85 +68,98 @@ export default async function FotosPage({ params, searchParams }: { params: Prom
           "Your business's real photos and videos. When the AI prepares a post, it first looks here for a photo that fits the topic, and only creates a new one if none fits.",
         )}
         aside={
-          <Link className="btn outline" href={`/b/${id}/publicar`}>
-            {t("Nueva publicación", "New post")}
-          </Link>
+          <>
+            {r2 && b.uploadToken && (
+              <a className="btn" href={`/subir/${b.uploadToken}`} target="_blank" rel="noopener noreferrer">
+                {t("Subir fotos", "Upload photos")}
+              </a>
+            )}
+            <Link className="btn outline" href={`/b/${id}/publicar`}>
+              {t("Nueva publicación", "New post")}
+            </Link>
+          </>
         }
       />
 
       {!connected && counts.todas === 0 ? (
-        <section className={`card ${s.empty}`}>
-          <span className={s.emptyIcon}>
-            <FolderIcon size={28} />
-          </span>
-          <h2>{t("Conecta tu carpeta de fotos", "Connect your photo folder")}</h2>
-          <p>
-            {t(
-              "Pon tus fotos y videos de trabajos en una carpeta de Google Drive y conéctala aquí. La app las mira cada día, la IA entiende qué muestra cada una, y las usa en tus publicaciones en vez de fotos inventadas.",
-              "Put your job photos and videos in a Google Drive folder and connect it here. The app checks it every day, the AI understands what each one shows, and uses them in your posts instead of made-up photos.",
-            )}
-          </p>
-          <Link className="btn on" href={conexiones}>
-            {t("Conectar mi carpeta de Drive", "Connect my Drive folder")}
-          </Link>
-        </section>
+        <div className={s.sources}>
+          <section className={`card ${s.empty}`}>
+            <span className={s.emptyIcon}>
+              <FolderIcon size={28} />
+            </span>
+            <h2>{t("Conecta tu carpeta de fotos", "Connect your photo folder")}</h2>
+            <p>
+              {t(
+                "Pon tus fotos y videos de trabajos en una carpeta de Google Drive y conéctala aquí. La app las mira cada día, la IA entiende qué muestra cada una, y las usa en tus publicaciones en vez de fotos inventadas.",
+                "Put your job photos and videos in a Google Drive folder and connect it here. The app checks it every day, the AI understands what each one shows, and uses them in your posts instead of made-up photos.",
+              )}
+            </p>
+            <Link className="btn on" href={conexiones}>
+              {t("Conectar mi carpeta de Drive", "Connect my Drive folder")}
+            </Link>
+          </section>
+          {uploadCard}
+        </div>
       ) : (
         <>
-          <section className={`card ${s.source}`} aria-label={t("De dónde vienen", "Where they come from")}>
-            <div className={s.sourceText}>
-              <span className={s.folder}>
-                <span className={s.folderIcon}>
-                  <FolderIcon />
+          <div className={s.sources}>
+            <section className={`card ${s.source}`} aria-label={t("De dónde vienen", "Where they come from")}>
+              <div className={s.sourceText}>
+                <span className={s.folder}>
+                  <span className={s.folderIcon}>
+                    <FolderIcon />
+                  </span>
+                  {connected ? (
+                    <>
+                      {t("Carpeta de Google Drive", "Google Drive folder")}
+                      {b.driveFolderName ? `: «${b.driveFolderName}»` : ""}
+                    </>
+                  ) : (
+                    t("Ninguna carpeta conectada", "No folder connected")
+                  )}
                 </span>
+                <p className="small muted">
+                  {connected
+                    ? t(
+                        "Cuando subes una foto o video a esa carpeta (también desde el celular con la app de Google Drive), aparece aquí. La app la revisa sola una vez al día.",
+                        "When you upload a photo or video to that folder (also from your phone with the Google Drive app), it shows up here. The app checks it on its own once a day.",
+                      )
+                    : t(
+                        "No hay una carpeta de Drive conectada. Puedes conectar una, o usar el link de subida para que tus técnicos manden fotos.",
+                        "No Drive folder is connected. You can connect one, or use the upload link so your technicians send photos.",
+                      )}
+                </p>
+                <div className={s.stats}>
+                  <span>
+                    <strong>{photos}</strong> {photos === 1 ? t("foto", "photo") : t("fotos", "photos")}
+                  </span>
+                  <span>
+                    <strong>{counts.videos}</strong> {counts.videos === 1 ? t("video", "video") : t("videos", "videos")}
+                  </span>
+                  <span>
+                    <strong>{counts.listas}</strong> {t("listas para usar", "ready to use")}
+                  </span>
+                  {b.driveSyncedAt && <span>{t(`Revisada ${fmtWhen(b.driveSyncedAt, "es")}`, `Checked ${fmtWhen(b.driveSyncedAt, "en")}`)}</span>}
+                </div>
+                {b.driveError && <p className="note error">{b.driveError}</p>}
+              </div>
+              <div className={s.sourceActions}>
                 {connected ? (
                   <>
-                    {t("Carpeta de Google Drive", "Google Drive folder")}
-                    {b.driveFolderName ? `: «${b.driveFolderName}»` : ""}
+                    <ReviewNow businessId={id} />
+                    <Link className="btn link" href={conexiones}>
+                      {t("Cambiar carpeta", "Change folder")}
+                    </Link>
                   </>
                 ) : (
-                  t("Ninguna carpeta conectada", "No folder connected")
-                )}
-              </span>
-              <p className="small muted">
-                {connected
-                  ? t(
-                      "Cuando subes una foto o video a esa carpeta (también desde el celular con la app de Google Drive), aparece aquí. La app la revisa sola una vez al día.",
-                      "When you upload a photo or video to that folder (also from your phone with the Google Drive app), it shows up here. The app checks it on its own once a day.",
-                    )
-                  : t(
-                      "Estas fotos vienen de la carpeta que tenías conectada. Conecta una carpeta para que lleguen fotos nuevas.",
-                      "These photos come from the folder you had connected. Connect a folder so new photos keep coming in.",
-                    )}
-              </p>
-              <div className={s.stats}>
-                <span>
-                  <strong>{photos}</strong> {photos === 1 ? t("foto", "photo") : t("fotos", "photos")}
-                </span>
-                <span>
-                  <strong>{counts.videos}</strong> {counts.videos === 1 ? t("video", "video") : t("videos", "videos")}
-                </span>
-                <span>
-                  <strong>{counts.listas}</strong> {t("listas para usar", "ready to use")}
-                </span>
-                {b.driveSyncedAt && <span>{t(`Revisada ${fmtWhen(b.driveSyncedAt, "es")}`, `Checked ${fmtWhen(b.driveSyncedAt, "en")}`)}</span>}
-              </div>
-              {b.driveError && <p className="note error">{b.driveError}</p>}
-            </div>
-            <div className={s.sourceActions}>
-              {connected ? (
-                <>
-                  <ReviewNow businessId={id} />
-                  <Link className="btn link" href={conexiones}>
-                    {t("Cambiar carpeta", "Change folder")}
+                  <Link className="btn on" href={conexiones}>
+                    {t("Conectar mi carpeta de Drive", "Connect my Drive folder")}
                   </Link>
-                </>
-              ) : (
-                <Link className="btn on" href={conexiones}>
-                  {t("Conectar mi carpeta de Drive", "Connect my Drive folder")}
-                </Link>
-              )}
-            </div>
-          </section>
+                )}
+              </div>
+            </section>
+            {uploadCard}
+          </div>
 
           <nav className={`tabs ${s.filters}`} aria-label={t("Filtrar fotos", "Filter photos")}>
             {LIBRARY_FILTERS.map((f) => (

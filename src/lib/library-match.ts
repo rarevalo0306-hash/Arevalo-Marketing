@@ -173,7 +173,10 @@ export type LibraryCard = {
   choice: string;
   usedCount: number;
   lastUsedAt: string | null;
+  /** Subcarpeta de Drive, o la nota del técnico si se subió con el link. */
   folderPath: string;
+  /** De dónde vino: la carpeta de Drive o el link de subida. */
+  source: "drive" | "upload";
   canUse: boolean;
   needsReview: boolean;
 };

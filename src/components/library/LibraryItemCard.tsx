@@ -63,6 +63,10 @@ export function LibraryItemCard({ c, businessId, lang }: { c: LibraryCard; busin
             ))}
           </div>
         )}
+        <p className={s.origin}>
+          <strong>{c.source === "upload" ? t("Subida por link", "Uploaded by link") : t("De Drive", "From Drive")}</strong>
+          {c.folderPath ? ` · ${c.source === "upload" ? `«${c.folderPath}»` : c.folderPath}` : ""}
+        </p>
         {c.status === "ready" && (
           <div className={s.meta}>
             <span>

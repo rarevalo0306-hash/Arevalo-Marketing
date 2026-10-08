@@ -4,6 +4,8 @@ import { connectBrevo, deleteConnection, saveConnection, testConnection } from "
 import { disconnectGscFromConnections } from "@/app/actions-connections";
 import { ConnectionCard } from "@/components/ConnectionCard";
 import { PageHead } from "@/components/PageHead";
+import { UploadLinkCard } from "@/components/library/UploadLinkCard";
+import { appOrigin } from "@/lib/app-origin";
 import { brevoDomains, brevoEnvKey } from "@/lib/brevo";
 import { CHANNEL_IDS, CHANNELS, channelName, type ChannelGroup } from "@/lib/channels";
 import { decryptJson } from "@/lib/crypto";
@@ -15,6 +17,8 @@ import { connectionsNeedingReconnect } from "@/lib/connection-health";
 import { GSC_CHANNEL } from "@/lib/seo/gsc";
 import { serviceAccountEmail } from "@/lib/google-sa";
 import { libraryCounts } from "@/lib/library-sync";
+import { r2Enabled } from "@/lib/r2";
+import { uploadStats } from "@/lib/upload";
 import { businessTzLabel, fmtWhen } from "@/lib/time";
 import { DriveCard } from "./DriveCard";
 import { GscCard } from "./GscCard";
@@ -36,11 +40,13 @@ export default async function ConexionesPage({
   const { lang, t } = await getT();
   const metaUrl = metaEnabled() ? `/api/meta/start?b=${id}` : null;
   const googleUrl = googleEnabled() ? `/api/google/start?b=${id}` : null;
-  const [b, gsc, health, library] = await Promise.all([
+  const [b, gsc, health, library, uploads, origin] = await Promise.all([
     db.business.findUniqueOrThrow({ where: { id }, include: { connections: { where: { channel: { in: CHANNEL_IDS } } } } }),
     db.connection.findUnique({ where: { businessId_channel: { businessId: id, channel: GSC_CHANNEL } }, select: { label: true } }),
     connectionsNeedingReconnect(id),
     libraryCounts(id),
+    uploadStats(id),
+    appOrigin(),
   ]);
   // Canales cuya última publicación falló por permisos o clave vencida (y no se han vuelto a conectar).
   const broken = new Set(Object.keys(health).filter((ch) => CHANNEL_IDS.includes(ch as (typeof CHANNEL_IDS)[number])));
@@ -178,6 +184,13 @@ export default async function ConexionesPage({
                         <span className="sr-only">{b.driveFolderId ? t(" (conectada)", " (connected)") : t(" (no conectada)", " (not connected)")}</span>
                       </a>
                     </li>
+                    <li>
+                      <a href="#c-subir" className={b.uploadToken && r2Enabled() ? s.on : undefined}>
+                        <span className={s.dot} aria-hidden="true" />
+                        {t("Link de subida", "Upload link")}
+                        <span className="sr-only">{b.uploadToken && r2Enabled() ? t(" (activo)", " (active)") : t(" (sin link)", " (no link)")}</span>
+                      </a>
+                    </li>
                   </ul>
                 </div>
               )}
@@ -250,6 +263,16 @@ export default async function ConexionesPage({
                     error={b.driveError}
                     counts={library}
                     aiReady={Boolean(process.env.GEMINI_API_KEY)}
+                  />
+                  <UploadLinkCard
+                    businessId={id}
+                    businessName={b.name}
+                    configured={r2Enabled()}
+                    token={b.uploadToken}
+                    origin={origin}
+                    total={uploads.total}
+                    pending={uploads.pending}
+                    anchor="c-subir"
                   />
                 </div>
               </section>

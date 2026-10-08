@@ -1,5 +1,9 @@
 /* «Tus fotos»: de dónde vienen, filtros y la cuadrícula de fotos y videos. */
 
+/* Arriba: la carpeta de Drive y el link de subida, lado a lado si caben. */
+.sources { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 14px; align-items: start; margin-bottom: 14px; }
+.sources > * { margin-bottom: 0 !important; }
+
 /* Doble clase: gana a .card (que es columna). */
 .source.source { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; margin-bottom: 14px; }
 .sourceText { flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -51,6 +55,8 @@
 .warnings { margin: 0; padding: 8px 10px; list-style: none; border-radius: 10px; background: var(--warn-bg); color: var(--warn-text); border: 1px solid var(--warn-line); font-size: 13px; line-height: 1.4; display: flex; flex-direction: column; gap: 3px; }
 .problem { margin: 0; padding: 8px 10px; border-radius: 10px; background: var(--err-bg); color: var(--err-text); border: 1px solid var(--err-line); font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
 .why { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.4; }
+.origin { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.4; overflow-wrap: anywhere; }
+.origin strong { color: var(--ink-2); font-weight: 700; }
 .actions { margin-top: auto; display: flex; flex-direction: column; gap: 6px; padding-top: 4px; }
 .actions :global(.btn) { width: 100%; justify-content: center; min-height: 38px; font-size: 13.5px; text-align: center; }
 .choiceForm { display: flex; flex-direction: column; gap: 6px; }

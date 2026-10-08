@@ -7,11 +7,14 @@ import { downloadFile, getThumbnail, listMedia, type DriveFile } from "@/lib/dri
 import { serviceAccountEnabled } from "@/lib/google-sa";
 import { bi, BiError, errorText, translator, type T, type UiLang } from "@/lib/i18n";
 import { PRIVACY_FLAGS, type LibraryDescription, type PrivacyFlag } from "@/lib/library-shape";
-import { storeBuffer } from "@/lib/media";
+import { readMedia, storeBuffer } from "@/lib/media";
+import { newKey, publicUrl, putObject, r2Enabled } from "@/lib/r2";
 import { readInput, readStudy } from "@/lib/study-shape";
 
 // Revisar la carpeta de Google Drive de un negocio: traer lo nuevo, marcar lo que ya no está y que la IA (Gemini) mire
 // cada foto o video. Las carpetas grandes se llenan en varias vueltas (unas 25 fotos por vuelta, las más viejas primero).
+// Lo que suben los técnicos con el link de subida (source "upload", guardado en Cloudflare R2) lo mira la misma IA:
+// al subirlo (analyzeUploads, después de responder) y en el publicador automático (runDueUploadAnalysis).
 
 /** Fotos más pesadas no se copian (la IA las mira por la miniatura de Drive). */
 export const PHOTO_MAX_BYTES = 40 * 1024 * 1024;
@@ -169,14 +172,14 @@ type BizContext = {
 
 function analysisSystem(b: BizContext): string {
   const language = b.lang === "en" ? "English" : "Spanish";
-  return `You catalog the real photos and videos that a small business keeps in its own Google Drive folder, so its marketing assistant can pick real photos for social media posts and ads.
+  return `You catalog the real photos and videos of a small business (from its own Google Drive folder, or uploaded from their phones by its technicians), so its marketing assistant can pick real photos for social media posts and ads.
 
 The business: "${b.name}".
 <business_profile>
 ${b.aiProfile.trim().slice(0, 1500) || "(no profile yet)"}
 </business_profile>
 ${b.services.length ? `Its services: ${b.services.join("; ")}.\n` : ""}
-You get several numbered items. Each one has a label (number, photo or video, file name, subfolder) followed by its image. For a video you only see one frame (its preview). Return one entry per item, using the same number in "n".
+You get several numbered items. Each one has a label (number, photo or video, file name, subfolder or the technician's note about the job) followed by its image. For a video you only see one frame (its preview). Return one entry per item, using the same number in "n".
 
 For each item:
 - es / en: what it shows in 1-2 plain, concrete sentences (no marketing language, no guesses about who the people are).
@@ -195,6 +198,8 @@ For each item:
 export async function copyPhoto(
   data: Buffer,
   folder: string,
+  /** Dónde guardar las copias (por defecto, el almacenamiento de siempre). Devuelve la dirección pública. */
+  store: (data: Buffer, folder: string) => Promise<string> = async (d, f) => (await storeBuffer(d, "image/jpeg", f)).url,
 ): Promise<{
   url: string;
   thumbUrl: string;
@@ -233,10 +238,10 @@ export async function copyPhoto(
     .jpeg({ quality: 72 })
     .toBuffer();
   const swap = (meta.orientation ?? 1) >= 5;
-  const [url, thumbUrl] = await Promise.all([storeBuffer(big, "image/jpeg", folder), storeBuffer(thumb, "image/jpeg", folder)]);
+  const [url, thumbUrl] = await Promise.all([store(big, folder), store(thumb, folder)]);
   return {
-    url: url.url,
-    thumbUrl: thumbUrl.url,
+    url,
+    thumbUrl,
     preview,
     width: (swap ? meta.height : meta.width) ?? 0,
     height: (swap ? meta.width : meta.height) ?? 0,
@@ -409,6 +414,234 @@ async function businessContext(businessId: string) {
   return { b, ctx };
 }
 
+// ---------- Lo que suben los técnicos (Cloudflare R2) ----------
+
+/** Copias de lo subido: en R2 si está configurado, si no en el almacenamiento de siempre. */
+async function storeLibraryCopy(data: Buffer, businessId: string): Promise<string> {
+  if (r2Enabled()) return putObject(newKey(businessId, "jpg"), data, "image/jpeg");
+  return (await storeBuffer(data, "image/jpeg", businessId)).url;
+}
+
+/** Vista de 768 px en JPG para la IA. */
+async function toPreview(raw: Buffer): Promise<Buffer> {
+  return sharp(raw, { failOn: "none" })
+    .rotate()
+    .resize({ width: 768, height: 768, fit: "inside", withoutEnlargement: true })
+    .flatten({ background: "#ffffff" })
+    .jpeg({ quality: 72 })
+    .toBuffer();
+}
+
+/** El archivo original subido (dirección pública de R2), como mucho `max` bytes. */
+async function fetchUpload(key: string, max: number): Promise<Buffer> {
+  const res = await fetch(publicUrl(key));
+  if (!res.ok) throw bi(`Cloudflare R2 no la entregó (${res.status}).`, `Cloudflare R2 didn't return it (${res.status}).`);
+  if (Number(res.headers.get("content-length") ?? 0) > max) throw bi("pesa más de 40 MB.", "it's larger than 40 MB.");
+  const data = Buffer.from(await res.arrayBuffer());
+  if (data.length > max) throw bi("pesa más de 40 MB.", "it's larger than 40 MB.");
+  return data;
+}
+
+/** Deja lista la vista para la IA de un archivo subido: la foto se copia (girada, más liviana); el video usa la imagen que sacó el celular. */
+async function prepareUpload(item: LibraryItem, lang: UiLang): Promise<Prepared> {
+  const t = translator(lang);
+  if (item.kind === "video") {
+    if (item.thumbUrl) {
+      try {
+        return { item, preview: await toPreview(await readMedia(item.thumbUrl)), data: {}, error: "" };
+      } catch {
+        // Sigue abajo: sin imagen.
+      }
+    }
+    return {
+      item,
+      preview: null,
+      data: {},
+      error: t(
+        "El celular no pudo sacar una imagen de este video al subirlo, así que la IA no lo pudo mirar. El video sí quedó guardado.",
+        "The phone couldn't take a picture from this video when uploading it, so the AI couldn't look at it. The video was saved.",
+      ),
+    };
+  }
+  if (!r2Enabled())
+    return {
+      item,
+      preview: null,
+      data: {},
+      error: t("Falta configurar Cloudflare R2 en el servidor para leer esta foto.", "Cloudflare R2 isn't set up on the server, so this photo can't be read."),
+    };
+  let data: Buffer;
+  try {
+    data = await fetchUpload(item.externalId, PHOTO_MAX_BYTES);
+  } catch (e) {
+    return { item, preview: null, data: {}, error: t("No se pudo leer la foto subida: ", "Couldn't read the uploaded photo: ") + errorText(e, lang) };
+  }
+  try {
+    const c = await copyPhoto(data, item.businessId, storeLibraryCopy);
+    return { item, preview: c.preview, data: { url: c.url, thumbUrl: c.thumbUrl, width: c.width || item.width, height: c.height || item.height }, error: "" };
+  } catch {
+    return {
+      item,
+      preview: null,
+      data: {},
+      error: isHeic(item)
+        ? t(
+            "Foto HEIC (el formato del iPhone): la app no la pudo abrir, así que la IA no la miró. Para la próxima, en el iPhone: Ajustes → Cámara → Formatos → «Más compatible».",
+            'HEIC photo (the iPhone format): the app couldn\'t open it, so the AI didn\'t look at it. Next time, on the iPhone: Settings → Camera → Formats → "Most Compatible".',
+          )
+        : t(
+            "La app no pudo abrir esta foto (el archivo puede estar dañado o en un formato raro).",
+            "The app couldn't open this photo (the file may be damaged or in an unusual format).",
+          ),
+    };
+  }
+}
+
+// ---------- Turnos: que dos revisiones a la vez no miren el mismo archivo ----------
+
+const BUSY = "busy:";
+/** Si quien lo tomó no terminó en 10 minutos (se cortó), otro lo puede tomar. */
+export const CLAIM_STALE_MS = 10 * 60_000;
+
+/** ¿Lo puede tomar esta revisión? Nadie lo está mirando (o quien lo tomó se cortó hace rato). */
+export function claimable(error: string, now = Date.now()): boolean {
+  if (!error.startsWith(BUSY)) return true;
+  const at = Number(error.slice(BUSY.length));
+  return !Number.isFinite(at) || now - at > CLAIM_STALE_MS;
+}
+
+/** Toma los archivos (marca en `error` mientras se miran). Solo devuelve los que tomó esta revisión. */
+async function claim(items: LibraryItem[]): Promise<LibraryItem[]> {
+  const now = Date.now();
+  const out: LibraryItem[] = [];
+  for (const it of items) {
+    if (!claimable(it.error, now)) continue;
+    // Solo si nadie lo cambió desde que se leyó.
+    const r = await db.libraryItem.updateMany({ where: { id: it.id, status: "new", error: it.error }, data: { error: `${BUSY}${now}` } });
+    if (r.count) out.push({ ...it, error: "" });
+  }
+  return out;
+}
+
+// ---------- Que la IA mire (los dos orígenes) ----------
+
+type ReviewTally = { analyzed: number; errors: number; stopped: "" | "rate" | "time" | "noai" };
+
+/** La IA mira la tanda (de 6 en 6) mientras quede tiempo. Guarda lo que vio en cada archivo. */
+async function reviewItems(
+  batch: LibraryItem[],
+  o: { lang: UiLang; ctx: BizContext; start: number; budget: number; driveFiles?: Map<string, DriveFile> },
+): Promise<ReviewTally> {
+  const t = translator(o.lang);
+  const tally: ReviewTally = { analyzed: 0, errors: 0, stopped: "" };
+  if (!batch.length) return tally;
+  if (!process.env.GEMINI_API_KEY) return { ...tally, stopped: "noai" };
+  const system = analysisSystem(o.ctx);
+
+  for (let i = 0; i < batch.length && !tally.stopped; i += PER_CALL) {
+    if (Date.now() - o.start > o.budget) {
+      tally.stopped = "time";
+      break;
+    }
+    const mine = await claim(batch.slice(i, i + PER_CALL));
+    if (!mine.length) continue;
+    const prepared = await mapLimit(mine, 3, async (item) => {
+      try {
+        return item.source === "upload" ? await prepareUpload(item, o.lang) : await prepare(item, o.driveFiles?.get(item.externalId), o.lang);
+      } catch (e) {
+        return { item, preview: null, data: {}, error: errorText(e, o.lang) } as Prepared;
+      }
+    });
+    const seen = prepared.filter((p) => p.preview);
+    // Drive todavía prepara la vista previa del video: se suelta para la próxima vuelta.
+    for (const p of prepared.filter((x) => !x.preview && x.wait)) await db.libraryItem.update({ where: { id: p.item.id }, data: { error: "" } });
+    // Sin vista para la IA: error en palabras simples.
+    for (const p of prepared.filter((x) => !x.preview && !x.wait)) {
+      await db.libraryItem.update({
+        where: { id: p.item.id },
+        data: {
+          ...p.data,
+          status: "error",
+          error: p.error || t("La IA no pudo mirar este archivo.", "The AI couldn't look at this file."),
+        },
+      });
+      tally.errors++;
+    }
+    if (!seen.length) continue;
+
+    const parts: GeminiPart[] = [];
+    seen.forEach((p, j) => {
+      const it = p.item;
+      const label = [
+        `Item ${j + 1}: ${it.kind}`,
+        `file "${it.name}"`,
+        it.folderPath ? (it.source === "upload" ? `technician's note about the job: "${it.folderPath}"` : `subfolder "${it.folderPath}"`) : "",
+        it.kind === "video" && it.durationSec ? `${Math.round(it.durationSec)} s long (you see one frame)` : "",
+        p.error ? "small preview" : "",
+      ]
+        .filter(Boolean)
+        .join(", ");
+      parts.push({ text: label }, { inlineData: { mimeType: "image/jpeg", data: p.preview!.toString("base64") } });
+    });
+    const ask = () =>
+      askGemini(AnalysisSchema, system, `Describe these ${seen.length} items. Topics and tags in ${o.ctx.lang === "en" ? "English" : "Spanish"}.`, 8192, parts);
+    let raw: unknown;
+    try {
+      try {
+        raw = await ask();
+      } catch (e) {
+        if (!isRateLimit(e)) throw e;
+        // Gemini llegó a su límite: una pausa y un intento más; si sigue, se para y la próxima vuelta continúa.
+        await sleep(Math.min(20_000, Math.max(0, o.budget - (Date.now() - o.start))));
+        raw = await ask();
+      }
+    } catch (e) {
+      if (isRateLimit(e)) {
+        // Se guardan las copias ya hechas y quedan "new" (y libres) para la próxima vuelta.
+        for (const p of seen) await db.libraryItem.update({ where: { id: p.item.id }, data: { ...p.data, error: "" } });
+        tally.stopped = "rate";
+        break;
+      }
+      const msg = errorText(e, o.lang);
+      for (const p of seen) await db.libraryItem.update({ where: { id: p.item.id }, data: { ...p.data, status: "error", error: msg } });
+      tally.errors += seen.length;
+      continue;
+    }
+    const answers = parseAnalysis(raw, seen.length);
+    for (const [j, p] of seen.entries()) {
+      const a = answers.get(j + 1);
+      if (!a) {
+        await db.libraryItem.update({
+          where: { id: p.item.id },
+          data: {
+            ...p.data,
+            status: "error",
+            error: t("La IA no contestó sobre este archivo. Se puede volver a intentar.", "The AI didn't answer about this file. It can be tried again."),
+          },
+        });
+        tally.errors++;
+        continue;
+      }
+      await db.libraryItem.update({
+        where: { id: p.item.id },
+        data: {
+          ...p.data,
+          description: a.description,
+          tags: a.tags,
+          quality: a.quality,
+          usable: a.usable,
+          privacy: a.privacy,
+          status: p.error ? "error" : "ready",
+          error: p.error,
+        },
+      });
+      if (p.error) tally.errors++;
+      else tally.analyzed++;
+    }
+  }
+  return tally;
+}
+
 // ---------- Revisar la carpeta ----------
 
 export type SyncResult = {
@@ -468,8 +701,9 @@ export async function syncLibrary(businessId: string, opts: { lang?: UiLang; lim
   }
 
   // 1) Guardar lo nuevo, marcar lo que ya no está y lo que cambió.
+  // Solo lo que vino de Drive (lo subido con el link no está en la carpeta).
   const known = await db.libraryItem.findMany({
-    where: { businessId },
+    where: { businessId, source: "drive" },
     select: {
       id: true,
       externalId: true,
@@ -529,134 +763,18 @@ export async function syncLibrary(businessId: string, opts: { lang?: UiLang; lim
       })
     ).count;
 
-  // 2) Que la IA mire lo nuevo (por tandas, los más viejos primero).
-  const queued = await db.libraryItem.findMany({
-    where: { businessId, status: "new" },
+  // 2) Que la IA mire lo nuevo (por tandas, los más viejos primero), también lo que subieron los técnicos.
+  const queued = (await db.libraryItem.findMany({ where: { businessId, status: "new" } })).filter((i) => claimable(i.error));
+  const tally = await reviewItems(pickBatch(queued, opts.limit ?? BATCH_LIMIT), {
+    lang,
+    ctx,
+    start,
+    budget,
+    driveFiles: new Map(listed.map((f) => [f.id, f])),
   });
-  const batch = pickBatch(queued, opts.limit ?? BATCH_LIMIT);
-  if (batch.length && !process.env.GEMINI_API_KEY) result.stopped = "noai";
-  const byId = new Map(listed.map((f) => [f.id, f]));
-  const system = analysisSystem(ctx);
-
-  for (let i = 0; i < batch.length && !result.stopped && process.env.GEMINI_API_KEY; i += PER_CALL) {
-    if (Date.now() - start > budget) {
-      result.stopped = "time";
-      break;
-    }
-    const prepared = await mapLimit(batch.slice(i, i + PER_CALL), 3, async (item) => {
-      try {
-        return await prepare(item, byId.get(item.externalId), lang);
-      } catch (e) {
-        return {
-          item,
-          preview: null,
-          data: {},
-          error: errorText(e, lang),
-        } as Prepared;
-      }
-    });
-    const seen = prepared.filter((p) => p.preview);
-    // Sin vista para la IA: error en palabras simples (o se espera, si Drive aún prepara la vista previa del video).
-    for (const p of prepared.filter((x) => !x.preview && !x.wait)) {
-      await db.libraryItem.update({
-        where: { id: p.item.id },
-        data: {
-          ...p.data,
-          status: "error",
-          error: p.error || t("La IA no pudo mirar este archivo.", "The AI couldn't look at this file."),
-        },
-      });
-      result.errors++;
-    }
-    if (!seen.length) continue;
-
-    const parts: GeminiPart[] = [];
-    seen.forEach((p, j) => {
-      const it = p.item;
-      const label = [
-        `Item ${j + 1}: ${it.kind}`,
-        `file "${it.name}"`,
-        it.folderPath ? `subfolder "${it.folderPath}"` : "",
-        it.kind === "video" && it.durationSec ? `${Math.round(it.durationSec)} s long (you see one frame)` : "",
-        p.error ? "small preview" : "",
-      ]
-        .filter(Boolean)
-        .join(", ");
-      parts.push(
-        { text: label },
-        {
-          inlineData: {
-            mimeType: "image/jpeg",
-            data: p.preview!.toString("base64"),
-          },
-        },
-      );
-    });
-    const ask = () =>
-      askGemini(AnalysisSchema, system, `Describe these ${seen.length} items. Topics and tags in ${ctx.lang === "en" ? "English" : "Spanish"}.`, 8192, parts);
-    let raw: unknown;
-    try {
-      try {
-        raw = await ask();
-      } catch (e) {
-        if (!isRateLimit(e)) throw e;
-        // Gemini llegó a su límite: una pausa y un intento más; si sigue, se para y la próxima vuelta continúa.
-        await sleep(Math.min(20_000, Math.max(0, budget - (Date.now() - start))));
-        raw = await ask();
-      }
-    } catch (e) {
-      if (isRateLimit(e)) {
-        // Se guardan las copias ya hechas y quedan "new" para la próxima vuelta.
-        for (const p of seen)
-          if (Object.keys(p.data).length)
-            await db.libraryItem.update({
-              where: { id: p.item.id },
-              data: p.data,
-            });
-        result.stopped = "rate";
-        break;
-      }
-      const msg = errorText(e, lang);
-      for (const p of seen)
-        await db.libraryItem.update({
-          where: { id: p.item.id },
-          data: { ...p.data, status: "error", error: msg },
-        });
-      result.errors += seen.length;
-      continue;
-    }
-    const answers = parseAnalysis(raw, seen.length);
-    for (const [j, p] of seen.entries()) {
-      const a = answers.get(j + 1);
-      if (!a) {
-        await db.libraryItem.update({
-          where: { id: p.item.id },
-          data: {
-            ...p.data,
-            status: "error",
-            error: t("La IA no contestó sobre este archivo. Se puede volver a intentar.", "The AI didn't answer about this file. It can be tried again."),
-          },
-        });
-        result.errors++;
-        continue;
-      }
-      await db.libraryItem.update({
-        where: { id: p.item.id },
-        data: {
-          ...p.data,
-          description: a.description,
-          tags: a.tags,
-          quality: a.quality,
-          usable: a.usable,
-          privacy: a.privacy,
-          status: p.error ? "error" : "ready",
-          error: p.error,
-        },
-      });
-      if (p.error) result.errors++;
-      else result.analyzed++;
-    }
-  }
+  result.analyzed = tally.analyzed;
+  result.errors = tally.errors;
+  result.stopped = tally.stopped;
 
   result.pending = await db.libraryItem.count({
     where: { businessId, status: "new" },
@@ -734,6 +852,77 @@ export async function runDueDriveSync(now = new Date(), budgetMs = 120_000): Pro
       budgetMs: Math.min(budgetMs, 150_000),
     }),
   };
+}
+
+// ---------- Lo que suben los técnicos: que la IA lo mire ----------
+
+export type UploadReviewResult = { analyzed: number; errors: number; pending: number; stopped: "" | "rate" | "time" | "noai" };
+
+/** La IA mira lo que subieron los técnicos y todavía no se revisó (los más viejos primero, hasta `limit`). */
+export async function analyzeUploads(businessId: string, opts: { lang?: UiLang; limit?: number; budgetMs?: number } = {}): Promise<UploadReviewResult> {
+  const start = Date.now();
+  const lang = opts.lang ?? "es";
+  const { ctx } = await businessContext(businessId);
+  const queued = (await db.libraryItem.findMany({ where: { businessId, source: "upload", status: "new" } })).filter((i) => claimable(i.error));
+  const tally = await reviewItems(pickBatch(queued, opts.limit ?? 12), { lang, ctx, start, budget: opts.budgetMs ?? 55_000 });
+  const pending = await db.libraryItem.count({ where: { businessId, source: "upload", status: "new" } });
+  return { ...tally, pending };
+}
+
+/** Revisiones de lo subido que corren en este servidor (una por negocio); `again` = llegó algo más mientras tanto. */
+const uploadRuns = new Map<string, { again: boolean }>();
+
+/**
+ * Después de cada archivo subido (con `after()`): espera unos segundos para juntar los que vienen en la misma tanda y
+ * la IA los mira de a poco. Si ya hay una revisión de ese negocio en este servidor, solo le avisa que llegó otro.
+ */
+export async function kickUploadAnalysis(businessId: string, opts: { delayMs?: number; budgetMs?: number } = {}): Promise<void> {
+  const running = uploadRuns.get(businessId);
+  if (running) {
+    running.again = true;
+    return;
+  }
+  const state = { again: false };
+  uploadRuns.set(businessId, state);
+  try {
+    await sleep(opts.delayMs ?? 4000);
+    const start = Date.now();
+    const budget = opts.budgetMs ?? 120_000;
+    for (;;) {
+      state.again = false;
+      const left = budget - (Date.now() - start);
+      if (left < 15_000) break;
+      const r = await analyzeUploads(businessId, { limit: 12, budgetMs: left - 10_000 });
+      if (r.stopped) break;
+      // Sigue si llegó algo más o si quedaron por revisar (y esta vuelta sí pudo avanzar).
+      if (!state.again && !(r.pending > 0 && r.analyzed + r.errors > 0)) break;
+    }
+  } finally {
+    uploadRuns.delete(businessId);
+  }
+}
+
+/** Para el publicador automático: el negocio cuyo archivo subido lleva más tiempo esperando (y que nadie esté mirando). */
+export function pickUploadBusiness(rows: { businessId: string; error: string; createdAt: Date }[], now = new Date()): string | null {
+  const waiting = rows
+    // Lo recién subido lo está mirando la revisión de después de subir: se deja 2 minutos.
+    .filter((r) => claimable(r.error, now.getTime()) && now.getTime() - time(r.createdAt) > 2 * 60_000)
+    .sort((a, b) => time(a.createdAt) - time(b.createdAt));
+  return waiting[0]?.businessId ?? null;
+}
+
+/** Como mucho UN negocio por llamada: la IA mira lo subido con el link que quedó sin revisar. */
+export async function runDueUploadAnalysis(now = new Date(), budgetMs = 120_000): Promise<{ businessId: string; result: UploadReviewResult } | null> {
+  if (!process.env.GEMINI_API_KEY || !r2Enabled() || budgetMs < 20_000) return null;
+  const rows = await db.libraryItem.findMany({
+    where: { source: "upload", status: "new" },
+    select: { businessId: true, error: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
+    take: 500,
+  });
+  const businessId = pickUploadBusiness(rows, now);
+  if (!businessId) return null;
+  return { businessId, result: await analyzeUploads(businessId, { lang: "es", limit: 30, budgetMs: Math.min(budgetMs, 150_000) }) };
 }
 
 /** Cuántos hay de cada cosa, para la tarjeta de Conexiones. */

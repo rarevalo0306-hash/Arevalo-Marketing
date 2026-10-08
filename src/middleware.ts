@@ -11,7 +11,8 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  // Públicos: login, el publicador automático (tiene su propia clave), los archivos para las redes, recursos de Next
-  // y lo necesario para instalar la app (manifiesto e íconos).
-  matcher: ["/((?!login|api/cron|media/|_next/|favicon.ico|manifest.webmanifest|icons/|icon|apple-icon).*)"],
+  // Públicos: login, el publicador automático (tiene su propia clave), los archivos para las redes, recursos de Next,
+  // lo necesario para instalar la app (manifiesto e íconos) y el link de subida de los técnicos (/subir/<link> y
+  // /api/subir/<link>/…, que revisan su propio link).
+  matcher: ["/((?!login|api/cron|api/subir/|subir/|media/|_next/|favicon.ico|manifest.webmanifest|icons/|icon|apple-icon).*)"],
 };
