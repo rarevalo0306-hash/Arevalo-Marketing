@@ -1,13 +1,15 @@
 "use client";
 
-// Paso "Foto o video (opcional)" de Nueva publicación: subir desde el celular o la computadora, crear con IA,
-// o (en "Más opciones") usar un enlace. Separado del compositor para poder cambiar los tamaños y diseños aparte.
+// Paso "Foto o video (opcional)" de Nueva publicación: subir desde el celular o la computadora, elegir de «Tus fotos»
+// (la carpeta de Drive del negocio), crear con IA, o (en "Más opciones") usar un enlace. Separado del compositor para poder cambiar los tamaños y diseños aparte.
 // Todo el estado vive en Composer.tsx; aquí solo se dibuja.
 import { useRef, useState } from "react";
 import { useT } from "@/components/I18n";
 import type { MediaType } from "@/lib/channels";
 import s from "./Composer.module.css";
 import { VideoProgress } from "@/components/VideoProgress";
+import { LibraryPicker } from "@/components/library/LibraryPicker";
+import type { LibraryCard } from "@/lib/library-match";
 
 export type MediaStepProps = {
   mediaType: MediaType;
@@ -23,6 +25,15 @@ export type MediaStepProps = {
   uploadError: string;
   /** Quita la foto o el video. */
   clear: () => void;
+  /** «Tus fotos»: las fotos y videos reales del negocio (carpeta de Drive). */
+  library: null | {
+    load: () => Promise<LibraryCard[]>;
+    /** Pone el archivo como foto o video de la publicación. Devuelve un error en palabras simples, o "". */
+    pick: (c: LibraryCard) => Promise<string>;
+    manageHref: string;
+    /** No se pudo poner el archivo elegido. */
+    error: string;
+  };
   ai: null | {
     video: boolean;
     imageIdea: string;
@@ -59,6 +70,7 @@ export function MediaStep(p: MediaStepProps) {
   const { t } = useT();
   const fileRef = useRef<HTMLInputElement>(null);
   const [aiOpen, setAiOpen] = useState(false);
+  const [libOpen, setLibOpen] = useState(false);
   const has = p.mediaType !== "none" && !!p.mediaSrc;
   const showAi = !!p.ai && (aiOpen || !!p.ai.imageIdea.trim() || !!p.ai.busy);
 
@@ -90,6 +102,12 @@ export function MediaStep(p: MediaStepProps) {
           <span className={s.mbTitle}><span aria-hidden="true">⤒</span> {has ? t("Cambiar foto o video", "Change photo or video") : t("Subir foto o video", "Upload a photo or video")}</span>
           <small>{t("Desde tu celular o computadora", "From your phone or computer")}</small>
         </label>
+        {p.library && (
+          <button type="button" className={libOpen ? `btn ${s.mediaBtn} ${s.mediaBtnOn}` : `btn ${s.mediaBtn}`} aria-haspopup="dialog" aria-expanded={libOpen} onClick={() => setLibOpen(true)}>
+            <span className={s.mbTitle}><span aria-hidden="true">▦</span> {t("Tus fotos", "Your photos")}</span>
+            <small>{t("Fotos reales de tu carpeta de Drive", "Real photos from your Drive folder")}</small>
+          </button>
+        )}
         {p.ai && (
           <button type="button" className={showAi ? `btn ${s.mediaBtn} ${s.mediaBtnOn}` : `btn ${s.mediaBtn}`} aria-expanded={showAi} onClick={() => setAiOpen((v) => !v)}>
             <span className={s.mbTitle}><span aria-hidden="true">✦</span> {t("Crear con IA", "Create with AI")}</span>
@@ -106,6 +124,19 @@ export function MediaStep(p: MediaStepProps) {
         accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm"
         onChange={(e) => p.onFile(e.target.files?.[0])}
       />
+      {p.library && libOpen && (
+        <LibraryPicker
+          onClose={() => setLibOpen(false)}
+          load={p.library.load}
+          manageHref={p.library.manageHref}
+          onPick={async (c) => {
+            // El archivo elegido antes (sin Supabase va con el formulario) ya no vale.
+            if (fileRef.current) fileRef.current.value = "";
+            return p.library!.pick(c);
+          }}
+        />
+      )}
+      {p.library?.error && <p className="note error" role="alert">{p.library.error}</p>}
       {p.uploading && <p className="small muted" role="status">{t("Subiendo archivo…", "Uploading file…")}</p>}
       {p.uploadError && <p className="note error" role="alert">{p.uploadError}</p>}
 

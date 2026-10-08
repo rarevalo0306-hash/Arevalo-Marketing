@@ -1,0 +1,116 @@
+/* «Link de subida para tus técnicos» (en «Tus fotos» y en Conexiones). */
+
+.card.card {
+  min-width: 0;
+}
+
+/* El título es largo: el estado pasa a su propia línea, debajo del título. */
+.head {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+.title {
+  flex: 1 1 180px;
+  min-width: min(100%, 180px);
+}
+
+.head > :global(.pill) {
+  margin-left: 56px;
+}
+
+.logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  background: var(--brand-soft);
+  color: var(--brand-2);
+}
+
+.text {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.linkBox {
+  min-width: 0;
+}
+
+.link {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 13.5px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.wa.wa {
+  background: #1f8f4e;
+  border-color: #1f8f4e;
+  color: #fff;
+}
+
+.wa.wa:hover {
+  background: #187a41;
+  border-color: #187a41;
+  color: #fff;
+}
+
+.meta {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.manage {
+  justify-content: flex-start;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.code {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.vars {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.vars code {
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+/* Noche: el azul de los enlaces es muy oscuro sobre fondo oscuro. */
+:global(html[data-theme="noche"]) .logo,
+:global(html[data-theme="noche"]) .card :global(.btn.link) {
+  color: #8db8ff;
+}

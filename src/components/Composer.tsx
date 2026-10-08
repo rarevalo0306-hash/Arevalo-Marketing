@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { AiWriteResult, MediaResult, VideoCheck, VideoStart } from "@/app/actions";
 import type { MoreIdeasResult } from "@/app/actions-ideas";
+import type { LibraryMediaResult } from "@/app/actions-library";
 import type { AiPostOut } from "@/lib/ai";
 import type { VideoJob } from "@/lib/fal";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -13,6 +14,7 @@ import { IdeaList } from "@/components/IdeaList";
 import s from "./Composer.module.css";
 import { joinBilingual } from "@/lib/bilingual";
 import type { ContentIdea, IdeasBasis } from "@/lib/content-ideas";
+import type { LibraryCard } from "@/lib/library-match";
 import { errorText, intlLocale } from "@/lib/i18n";
 import {
   CHANNELS,
@@ -61,12 +63,26 @@ type Props = {
   moreIdeas?: (() => Promise<MoreIdeasResult>) | null;
   /** El negocio atiende en español e inglés: Facebook e Instagram salen en los dos idiomas (se puede apagar). */
   bilingual?: boolean;
+  /** «Tus fotos»: fotos y videos reales del negocio (su carpeta de Drive). */
+  library?: {
+    list: () => Promise<LibraryCard[]>;
+    /** La dirección del archivo para la publicación (los videos se traen de Drive en ese momento). */
+    media: (itemId: string) => Promise<LibraryMediaResult>;
+    /** Modo mágico: la foto real que va con el texto, o null (entonces la IA crea una). */
+    photoFor: (text: string, keywords: string[]) => Promise<{ id: string; url: string } | null>;
+    manageHref: string;
+  } | null;
+  /** Foto o video ya elegido al abrir (desde «Tus fotos» → «Crear publicación con esta foto»). */
+  initialMedia?: { url: string; type: "photo" | "video" } | { error: string } | null;
 };
+
+/** Las copias locales (/media/…) necesitan la dirección completa para publicarse y diseñarse. */
+const absUrl = (u: string) => (u.startsWith("/") && typeof window !== "undefined" ? window.location.origin + u : u);
 
 /** Pasos del modo mágico: [español, inglés]. */
 const MAGIC_STEPS = [
   ["Escribiendo para cada red", "Writing for each network"],
-  ["Creando la foto", "Creating the photo"],
+  ["Eligiendo la foto", "Choosing the photo"],
   ["Poniendo tu marca", "Adding your brand"],
   ["Listo para revisar", "Ready to review"],
 ] as const;
@@ -110,6 +126,8 @@ export function Composer({
   ideasBasis = "season",
   moreIdeas = null,
   bilingual = false,
+  library = null,
+  initialMedia = null,
 }: Props) {
   const { lang: uiLang, t } = useT();
   const [text, setText] = useState("");
@@ -151,6 +169,12 @@ export function Composer({
   const [shape, setShape] = useState("square");
   const [template, setTemplate] = useState(-1);
   const [steps, setSteps] = useState<string[]>([]);
+  const [libError, setLibError] = useState("");
+  // Lo último elegido como foto (el modo mágico lo lee después de esperar a la IA).
+  const mediaLinkRef = useRef("");
+  const fileUrlRef = useRef("");
+  mediaLinkRef.current = mediaLink;
+  fileUrlRef.current = fileUrl;
   // Con IA, primero se ve solo el paso de la idea. El resto aparece al elegir un camino.
   const [started, setStarted] = useState(false);
   // Volver a abrir el paso de la idea después de empezar (para cambiarla o usar la IA otra vez).
@@ -265,9 +289,34 @@ export function Composer({
     setMagicStep(0);
     const p = await runAi(theIdea);
     if (!p) return setMagicStep(-1);
-    if (aiMedia && p.imageIdea.trim()) {
+    // Si ya elegiste una foto de «Tus fotos», se queda esa.
+    const hasMedia = !!(mediaLinkRef.current || fileUrlRef.current);
+    if (!hasMedia && (aiMedia || library) && p.imageIdea.trim()) {
       setMagicStep(1);
-      await runMedia("photo", p.imageIdea, p.imageHeadline, () => setMagicStep(2), p.imageSteps ?? []);
+      // Primero una foto real de «Tus fotos» que vaya con el tema; si no hay, la IA crea una.
+      const real = library ? await library.photoFor([p.imageHeadline, p.imageIdea, p.seoTitle, p.google].join("\n"), [p.imageHeadline]).catch(() => null) : null;
+      if (real) {
+        const url = absUrl(real.url);
+        setFileUrl("");
+        setMediaType("photo");
+        setMediaLink(url);
+        setBasePhoto(url);
+        if (aiMedia?.autoBrand && p.imageHeadline.trim()) {
+          setMagicStep(2);
+          setMediaBusy(t("Diseñando con tu marca…", "Designing with your brand…"));
+          try {
+            const d = await aiMedia.design(url, p.imageHeadline, shape, template, p.imageSteps ?? []);
+            if (d.ok) setMediaLink(d.url);
+            else setMediaError(d.error);
+          } catch (e) {
+            setMediaError(errorText(e, uiLang));
+          } finally {
+            setMediaBusy("");
+          }
+        }
+      } else if (aiMedia) {
+        await runMedia("photo", p.imageIdea, p.imageHeadline, () => setMagicStep(2), p.imageSteps ?? []);
+      }
     }
     setMagicStep(3);
   }
@@ -322,6 +371,34 @@ export function Composer({
     // Solo una vez, al abrir la página desde el Inicio.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Foto o video que llega elegido desde «Tus fotos».
+  useEffect(() => {
+    if (!initialMedia) return;
+    if ("error" in initialMedia) return setLibError(initialMedia.error);
+    const url = absUrl(initialMedia.url);
+    setMediaType(initialMedia.type);
+    setMediaLink(url);
+    if (initialMedia.type === "photo") setBasePhoto(url);
+    // Solo al abrir.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Elegir de «Tus fotos»: la foto o el video pasa a ser el de la publicación. */
+  async function pickFromLibrary(c: LibraryCard): Promise<string> {
+    if (!library) return "";
+    setMediaError("");
+    setUploadError("");
+    setLibError("");
+    const r = await library.media(c.id);
+    if (!r.ok) return r.error;
+    const url = absUrl(r.url);
+    setFileUrl("");
+    setMediaType(r.type);
+    setMediaLink(url);
+    setBasePhoto(r.type === "photo" ? url : "");
+    return "";
+  }
 
   async function onFile(f: File | undefined) {
     setFileUrl(f ? URL.createObjectURL(f) : "");
@@ -420,6 +497,13 @@ export function Composer({
         <section className={busy ? `ai-box glow busy ${s.start}` : `ai-box glow ${s.start}`} aria-labelledby="h-idea">
           <StepHead n={N.idea} id="h-idea" title={t("¿Sobre qué publicamos?", "What should we post about?")} sub={t("Elige una idea o escribe la tuya. Si no eliges nada, la IA usa la mejor idea de hoy.", "Pick an idea or write your own. If you don't pick anything, AI uses today's best idea.")} />
 
+          {initialMedia && "url" in initialMedia && mediaLink && (
+            <p className="note ok">
+              {initialMedia.type === "video"
+                ? t("Tu video de «Tus fotos» ya está puesto en esta publicación. Ahora elige de qué se trata.", "Your video from «Your photos» is already in this post. Now choose what it's about.")
+                : t("Tu foto de «Tus fotos» ya está puesta en esta publicación. Ahora elige de qué se trata.", "Your photo from «Your photos» is already in this post. Now choose what it's about.")}
+            </p>
+          )}
           {ideas.length > 0 && (
             <IdeaList ideas={ideas} basis={ideasBasis} variant="box" selected={pickedId} onPick={pick} more={moreIdeas} disabled={busy} seoHref={`/b/${businessId}/seo`} />
           )}
@@ -551,6 +635,7 @@ export function Composer({
               uploading={uploading}
               uploadError={uploadError}
               clear={clearMedia}
+              library={library ? { load: library.list, pick: pickFromLibrary, manageHref: library.manageHref, error: libError } : null}
               ai={
                 aiMedia
                   ? {

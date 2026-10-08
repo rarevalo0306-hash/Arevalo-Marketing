@@ -1,0 +1,158 @@
+/* El título es largo: el estado pasa a su propia línea, debajo del título. */
+.head {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+.title {
+  flex: 1 1 180px;
+  min-width: min(100%, 180px);
+}
+
+.head > :global(.pill) {
+  margin-left: 56px;
+}
+
+.logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  background: var(--brand-soft);
+  color: var(--brand-2);
+}
+
+.steps {
+  gap: 10px;
+}
+
+.email {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.emailText {
+  flex: 1 1 200px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.formRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.formRow :global(.field) {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.phone {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.phone::before {
+  content: "📱 ";
+}
+
+.open {
+  align-self: flex-start;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--brand-2);
+  overflow-wrap: anywhere;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 110px), 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.stats > div {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.stats dt {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.stats dd {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.stats > .warn {
+  border-color: var(--warn-line);
+  background: var(--warn-bg);
+}
+
+.stats > .warn dt,
+.stats > .warn dd {
+  color: var(--warn-text);
+}
+
+.meta {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.errText {
+  margin: 0;
+}
+
+.syncRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Noche: el azul de los enlaces es muy oscuro sobre fondo oscuro. */
+:global(html[data-theme="noche"]) .open,
+:global(html[data-theme="noche"]) .logo,
+:global(html[data-theme="noche"]) .syncRow :global(.btn.outline) {
+  color: #8db8ff;
+}
+
+:global(html[data-theme="noche"]) .syncRow :global(.btn.outline) {
+  border-color: #5d95f0;
+}

@@ -1,0 +1,351 @@
+/* Página pública del link de subida (técnicos, desde el celular). --biz es el color del negocio y --biz-ink el texto encima. */
+
+.page {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: max(20px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 100dvh;
+  color: var(--ink);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.logo {
+  width: 64px;
+  height: 64px;
+  flex: none;
+  object-fit: contain;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid var(--line);
+  padding: 6px;
+}
+
+.initial {
+  width: 64px;
+  height: 64px;
+  flex: none;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: var(--biz, var(--brand-2));
+  color: var(--biz-ink, #fff);
+  font-size: 30px;
+  font-weight: 800;
+}
+
+.headText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.biz {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.headText h1 {
+  margin: 0;
+  font-size: 23px;
+  line-height: 1.2;
+  color: var(--ink);
+}
+
+.lead {
+  margin: 0;
+  font-size: 15.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.noteBox {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.noteLabel {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.optional {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.noteBox :global(.field) {
+  min-height: 50px;
+  font-size: 16px; /* 16 px: el iPhone no hace zoom al escribir */
+}
+
+.hiddenInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.big {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 76px;
+  padding: 14px 18px;
+  border-radius: 16px;
+  background: var(--biz, var(--brand-2));
+  color: var(--biz-ink, #fff);
+  font-size: 20px;
+  font-weight: 800;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.big:active {
+  transform: translateY(1px);
+}
+
+.big:focus-within {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.bigIcon {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.camera {
+  position: relative;
+  justify-content: center;
+  min-height: 54px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.camera:focus-within {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* En la computadora no hay cámara para «tomar ahora». */
+@media (hover: hover) and (pointer: fine) {
+  .camera {
+    display: none;
+  }
+}
+
+.hiddenPicker {
+  display: none;
+}
+
+.limits {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  min-width: 0;
+}
+
+.rowDone {
+  border-color: var(--ok-line);
+}
+
+.rowBad {
+  border-color: var(--err-line);
+  background: var(--err-bg);
+}
+
+.thumb {
+  width: 56px;
+  height: 56px;
+  flex: none;
+  border-radius: 10px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 20px;
+}
+
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.rowText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sub {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.rowDone .state {
+  color: var(--ok-text);
+  font-weight: 700;
+}
+
+.rowBad .sub,
+.rowBad .state {
+  color: var(--err-text);
+}
+
+.bar {
+  display: block;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.bar > span {
+  display: block;
+  height: 100%;
+  background: var(--biz, var(--brand-2));
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+
+.retry {
+  flex: none;
+  min-height: 44px;
+}
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  border-radius: 14px;
+  background: var(--ok-bg);
+  border: 1px solid var(--ok-line);
+  color: var(--ok-text);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.summaryWarn {
+  background: var(--warn-bg);
+  border-color: var(--warn-line);
+  color: var(--warn-text);
+}
+
+.summaryTitle {
+  font-size: 19px;
+  font-weight: 800;
+}
+
+.summaryActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.summaryActions :global(.btn) {
+  min-height: 50px;
+  font-size: 16px;
+  flex: 1 1 200px;
+  justify-content: center;
+}
+
+.more.more {
+  background: var(--biz, var(--brand-2));
+  border-color: var(--biz, var(--brand-2));
+  color: var(--biz-ink, #fff);
+  font-weight: 800;
+}
+
+/* Link que ya no sirve. Doble clase: gana a .card. */
+.gone.gone {
+  margin-top: 12vh;
+  align-items: center;
+  text-align: center;
+  padding: 32px 20px;
+  gap: 10px;
+}
+
+.gone h1 {
+  margin: 0;
+  font-size: 22px;
+  color: var(--ink);
+}
+
+.gone p {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.goneIcon {
+  font-size: 40px;
+  line-height: 1;
+}

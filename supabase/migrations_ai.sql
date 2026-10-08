@@ -61,3 +61,43 @@ ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "seoRankDays" INTEGER NOT NULL D
 ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "lists" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
 -- 2026-10-07: imágenes de la marca (logos sacados del manual y kit creado por la app: perfil, portadas, favicon…).
 ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "brandAssets" JSONB;
+-- 2026-10-07: carpeta de Google Drive por negocio y biblioteca de fotos y videos reales (lo que vio la IA en cada uno).
+ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "driveFolderId" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "driveFolderName" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "driveSyncedAt" TIMESTAMP(3);
+ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "driveError" TEXT NOT NULL DEFAULT '';
+CREATE TABLE IF NOT EXISTS "LibraryItem" (
+  "id" TEXT NOT NULL,
+  "businessId" TEXT NOT NULL,
+  "source" TEXT NOT NULL DEFAULT 'drive',
+  "externalId" TEXT NOT NULL,
+  "name" TEXT NOT NULL DEFAULT '',
+  "folderPath" TEXT NOT NULL DEFAULT '',
+  "mimeType" TEXT NOT NULL DEFAULT '',
+  "kind" TEXT NOT NULL DEFAULT 'photo',
+  "url" TEXT NOT NULL DEFAULT '',
+  "thumbUrl" TEXT NOT NULL DEFAULT '',
+  "width" INTEGER NOT NULL DEFAULT 0,
+  "height" INTEGER NOT NULL DEFAULT 0,
+  "durationSec" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "sizeBytes" INTEGER NOT NULL DEFAULT 0,
+  "takenAt" TIMESTAMP(3),
+  "modifiedAt" TIMESTAMP(3),
+  "description" JSONB,
+  "tags" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  "quality" INTEGER NOT NULL DEFAULT 0,
+  "usable" BOOLEAN NOT NULL DEFAULT true,
+  "privacy" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  "status" TEXT NOT NULL DEFAULT 'new',
+  "error" TEXT NOT NULL DEFAULT '',
+  "choice" TEXT NOT NULL DEFAULT '',
+  "usedCount" INTEGER NOT NULL DEFAULT 0,
+  "lastUsedAt" TIMESTAMP(3),
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "LibraryItem_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "LibraryItem_businessId_fkey" FOREIGN KEY ("businessId") REFERENCES "Business"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "LibraryItem_businessId_externalId_key" ON "LibraryItem"("businessId", "externalId");
+CREATE INDEX IF NOT EXISTS "LibraryItem_businessId_status_idx" ON "LibraryItem"("businessId", "status");
+-- 2026-10-08: link de subida para técnicos (las fotos y videos van a Cloudflare R2).
+ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "uploadToken" TEXT NOT NULL DEFAULT '';
