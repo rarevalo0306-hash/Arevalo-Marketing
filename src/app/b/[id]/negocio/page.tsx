@@ -37,9 +37,9 @@ export default async function NegocioPage({ params }: { params: Promise<{ id: st
     <>
       <PageHead
         business={b}
-        prefix={t("Ajustes de", "Settings for")}
-        title={t("Ajustes del negocio", "Business settings")}
-        subtitle={t("Los datos de tu negocio, lo que sabe la IA y un resumen de tu marca.", "Your business details, what the AI knows, and a summary of your brand.")}
+        prefix={t("Negocio:", "Business:")}
+        title={t("Datos del negocio", "Business details")}
+        subtitle={t("Los datos de tu negocio y de su dueño o representante, lo que sabe la IA y un resumen de tu marca.", "Your business and its owner or representative, what the AI knows, and a summary of your brand.")}
       />
 
       <nav className={s.jump} aria-label={t("Secciones", "Sections")}>
@@ -57,6 +57,13 @@ export default async function NegocioPage({ params }: { params: Promise<{ id: st
         <div className={s.fields}>
           <div className="stack"><label className="lbl" htmlFor="name">{t("Nombre", "Name")}</label><input id="name" name="name" className="field" defaultValue={b.name} required /></div>
           <div className="stack"><label className="lbl" htmlFor="website">{t("Sitio web", "Website")}</label><input id="website" name="website" type="url" className="field" defaultValue={b.website} placeholder="https://" /></div>
+        </div>
+        <h3 className={s.sub}>{t("Dueño o representante", "Owner or representative")}</h3>
+        <p className="small muted">{t("A quién le llegan los reportes y con quién habla la app.", "Who gets the reports and who the app talks to.")}</p>
+        <div className={s.fields}>
+          <div className="stack"><label className="lbl" htmlFor="ownerName">{t("Nombre", "Name")}</label><input id="ownerName" name="ownerName" className="field" defaultValue={b.ownerName} maxLength={120} autoComplete="name" /></div>
+          <div className="stack"><label className="lbl" htmlFor="ownerEmail">{t("Correo", "Email")}</label><input id="ownerEmail" name="ownerEmail" type="email" className="field" defaultValue={b.ownerEmail} maxLength={200} autoComplete="email" /></div>
+          <div className="stack"><label className="lbl" htmlFor="ownerPhone">{t("Teléfono", "Phone")}</label><input id="ownerPhone" name="ownerPhone" type="tel" className="field" defaultValue={b.ownerPhone} maxLength={40} autoComplete="tel" /></div>
         </div>
         <div><button className="btn on" type="submit">{t("Guardar", "Save")}</button></div>
       </form>

@@ -101,3 +101,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "LibraryItem_businessId_externalId_key" ON "Li
 CREATE INDEX IF NOT EXISTS "LibraryItem_businessId_status_idx" ON "LibraryItem"("businessId", "status");
 -- 2026-10-08: link de subida para técnicos (las fotos y videos van a Cloudflare R2).
 ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "uploadToken" TEXT NOT NULL DEFAULT '';
+-- 2026-10-08: dueño o representante del negocio (nombre, correo y teléfono).
+ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "ownerName" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "ownerEmail" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "ownerPhone" TEXT NOT NULL DEFAULT '';

@@ -15,6 +15,7 @@ import { DESIGN_SHAPES, type Brand, type DesignShape } from "@/lib/design";
 import { BUILTIN_TEMPLATES, FONTS, hexOr, pickTemplate, StoredTemplate } from "@/lib/design-shapes";
 import { photoContextFor, photoMetaFor, storeDesign } from "@/lib/media-formats";
 import { createImage, IMAGE_PROVIDERS, imagesEnabled } from "@/lib/imagegen";
+import { ownerFields } from "@/lib/owner";
 import { pickLibraryPhotos } from "@/lib/library";
 import { createSignedUpload, isOwnFile, saveUpload, storeRemote } from "@/lib/media";
 import { GOOGLE_COOKIE, saveGoogleLocation, type GoogleLocation } from "@/lib/google-oauth";
@@ -78,7 +79,9 @@ export async function updateBusiness(id: string, f: FormData) {
   const name = str(f, "name");
   if (!name) throw new Error(t("Escribe el nombre del negocio", "Enter the business name"));
   const color = HEX.test(str(f, "color")) ? str(f, "color") : undefined;
-  await db.business.update({ where: { id }, data: { name, website: str(f, "website"), ...(color && { color }) } });
+  const owner = ownerFields(f);
+  if (owner.ownerEmail === null) throw new Error(t("El correo del dueño no es válido.", "The owner's email isn't valid."));
+  await db.business.update({ where: { id }, data: { name, website: str(f, "website"), ...owner, ownerEmail: owner.ownerEmail, ...(color && { color }) } });
   revalidatePath(`/b/${id}`, "layout");
 }
 

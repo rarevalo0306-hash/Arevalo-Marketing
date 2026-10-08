@@ -22,6 +22,7 @@ import {
   readStudy,
   StudyInput,
 } from "@/lib/study-shape";
+import { ownerFields } from "@/lib/owner";
 import { readWebsite } from "@/lib/study-web";
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
@@ -277,6 +278,8 @@ export async function createBusinessFromWeb(f: FormData) {
   if (!name) throw new Error(t("Escribe el nombre del negocio", "Enter the business name"));
   const color = HEX.test(str(f, "color")) ? str(f, "color") : "#126BBC";
   const website = websiteUrl(str(f, "website")).slice(0, 300);
-  const b = await db.business.create({ data: { name, color, website } });
+  const owner = ownerFields(f);
+  if (owner.ownerEmail === null) throw new Error(t("El correo del dueño no es válido.", "The owner's email isn't valid."));
+  const b = await db.business.create({ data: { name, color, website, ...owner, ownerEmail: owner.ownerEmail } });
   redirect(website ? `/b/${b.id}/estudio?leer=1` : `/b/${b.id}/estudio`);
 }
