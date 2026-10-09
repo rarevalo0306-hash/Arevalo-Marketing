@@ -5,7 +5,7 @@
 import { revalidatePath } from "next/cache";
 import sharp from "sharp";
 import { saveBrandLogo } from "@/app/actions-brand";
-import { saveCustomTemplate } from "@/app/actions-media";
+import { saveDesignMaster, startBookConvert } from "@/app/actions-design-ai";
 import { acceptedBookAssets, addBrandAssets, type BrandAsset, type BrandAssetStatus, bookProposals, newAssetId, removeBrandAsset, setBrandAssetStatus } from "@/lib/brand-assets";
 import { loadBrandAssets, updateBrandAssets } from "@/lib/brand-assets-db";
 import {
@@ -16,6 +16,9 @@ import {
   findOnPage,
   imageHash,
   isLogoKind,
+  isSocialAsset,
+  isSocialPiece,
+  itemPriority,
   type KnownCrop,
   MAX_BATCH_BYTES,
   MAX_BATCH_PAGES,
@@ -151,7 +154,8 @@ export async function readBookPages(businessId: string, f: FormData): Promise<Bo
   const room = Math.max(0, MAX_BOOK_PROPOSALS - proposed);
   const chosen = found
     .filter((x) => add.includes(x.id))
-    .sort((a, b) => b.item.confidence - a.item.confidence)
+    // Las plantillas de redes primero (lo que más le sirve al dueño), después logos, después el resto.
+    .sort((a, b) => itemPriority(b.item) - itemPriority(a.item))
     .slice(0, room);
 
   const now = new Date().toISOString();
@@ -169,6 +173,8 @@ export async function readBookPages(businessId: string, f: FormData): Promise<Bo
       label: x.item.label,
       ...(x.item.note ? { note: x.item.note } : {}),
       page: x.page,
+      // La pieza (post, historia, tarjeta…) va en `format`; `group` dice si es de redes sociales.
+      ...(x.item.kind === "template" ? { format: x.item.piece ?? "other", group: isSocialPiece(x.item.piece) ? "social" : "print" } : {}),
       ...(x.crop.transparent ? { transparent: true } : {}),
       createdAt: now,
     });
@@ -279,37 +285,14 @@ export async function applyBookAsset(businessId: string, assetId: string, use: "
   }
 
   if (use !== "template") return { ok: false, message: t("Opción no válida.", "Invalid option.") };
+  // Las plantillas son solo para redes sociales: tarjetas, papelería o letreros quedan como referencia.
+  if (!isSocialAsset(a)) return { ok: false, message: t("Solo las piezas para redes sociales se convierten en plantillas. Esta queda como referencia de tu marca.", "Only social media pieces can become templates. This one stays as a reference for your brand.") };
+  // Sin pagar: se tapa el texto de ejemplo y se usan las cajas que ve la IA en la pieza (para limpiarla con IA de
+  // edición y ajustar las cajas, está «Convertir en plantilla» en la pantalla).
   try {
-    let data = await readMedia(a.url);
-    const meta = await sharp(data).metadata();
-    const w = meta.width ?? 0;
-    const h = meta.height ?? 0;
-    // Las plantillas necesitan al menos 400 px por lado: si es un poco más chica, se agranda.
-    const need = 400 / Math.min(w || 1, h || 1);
-    if (need > 2.5) return { ok: false, message: t("Esa imagen es muy pequeña para usarla como plantilla.", "That image is too small to use as a template.") };
-    if (need > 1) data = await sharp(data).resize(Math.ceil(w * need), Math.ceil(h * need), { kernel: "lanczos3" }).jpeg({ quality: 90 }).toBuffer();
-    // Letras claras si la parte de abajo (donde va el titular) es oscura; oscuras si es clara.
-    const m2 = await sharp(data).metadata();
-    const bottom = await sharp(data)
-      .extract({ left: 0, top: Math.floor((m2.height ?? 1) * 0.66), width: m2.width ?? 1, height: Math.max(1, Math.floor((m2.height ?? 1) * 0.34)) })
-      .flatten({ background: "#ffffff" })
-      .stats();
-    const [r, g, bl] = bottom.channels.map((c) => c.mean);
-    const ink = 0.299 * r + 0.587 * g + 0.114 * bl < 140 ? "claro" : "oscuro";
-    const fd = new FormData();
-    const type = need > 1 ? "image/jpeg" : a.url.endsWith(".png") ? "image/png" : "image/jpeg";
-    // Ya guardada en Supabase y del tamaño justo: se usa la misma (sin copia). Si no, va como archivo.
-    if (need <= 1 && isOwnFile(a.url, businessId)) fd.set("imageUrl", a.url);
-    else fd.set("file", new File([new Uint8Array(data)], type === "image/png" ? "plantilla.png" : "plantilla.jpg", { type }));
-    fd.set("mode", "fondo");
-    fd.set("photo", "arriba");
-    fd.set("text", "abajo");
-    fd.set("ink", ink);
-    fd.set("name", (lang === "en" ? a.label.en : a.label.es).slice(0, 40));
-    const r2 = await saveCustomTemplate(businessId, null, fd);
-    if (r2?.ok && a.status !== "accepted") await updateBrandAssets(businessId, (c) => setBrandAssetStatus(c, assetId, "accepted"));
-    refresh(businessId);
-    return r2 ?? { ok: false, message: t("No se pudo guardar la plantilla.", "Couldn't save the template.") };
+    const r = await startBookConvert(businessId, assetId, "none");
+    if (!r.ok || !r.id) return { ok: false, message: r.message };
+    return await saveDesignMaster(businessId, r.id);
   } catch (e) {
     return { ok: false, message: t(`No se pudo usar como plantilla: ${errorText(e, lang)}`, `Couldn't use it as a template: ${errorText(e, lang)}`) };
   }

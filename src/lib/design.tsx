@@ -831,7 +831,7 @@ async function renderCustom(d: DesignInput, spec: CustomSpec): Promise<Buffer> {
   const overPhoto = Boolean(c.photoBox && box && tb && overlapRatio(tb, box) > 0.3);
   // Letras claras sobre la foto: degradado debajo, calculado con la foto, para que se lean (contraste 4.5).
   let shade: React.ReactNode = null;
-  if (photo && tr && fit && c.ink === "claro" && (!box || c.mode === "marco" || overPhoto)) {
+  if (photo && tr && fit && c.ink === "claro" && (!box || (c.mode === "marco" && !c.photoBox) || overPhoto)) {
     const va = vAlign(tb!);
     const textTop = va === "flex-start" ? tr.top : va === "flex-end" ? tr.top + tr.height - fit.height : tr.top + (tr.height - fit.height) / 2;
     const a = scrimAlpha(grayOf(photoLum(photo, { x: tr.left, y: textTop, w: tr.width, h: fit.height }, 0.94)), deep, 4.6, 0.25);

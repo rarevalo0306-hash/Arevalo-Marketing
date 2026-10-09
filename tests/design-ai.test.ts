@@ -107,12 +107,12 @@ describe("pedidos", () => {
     const ideo = falRequest(model("ideogram-fal"), { brief, shape: "square" });
     expect(ideo.input).toMatchObject({ rendering_speed: "QUALITY", style: "DESIGN", expand_prompt: false, image_size: "square_hd" });
     expect((ideo.input.color_palette as { members: { rgb: unknown }[] }).members[0].rgb).toEqual({ r: 187, g: 17, b: 17 });
-    const nano = falRequest(model("nano-banana-pro"), { brief, shape: "story", styleRefUrl: "https://x/a.png" });
+    const nano = falRequest(model("nano-banana-pro"), { brief, shape: "story", styleRefUrls: ["https://x/a.png"] });
     expect(nano.endpoint).toBe("fal-ai/nano-banana-pro/edit");
     expect(nano.input).toMatchObject({ aspect_ratio: "9:16", image_urls: ["https://x/a.png"] });
     const gpt = falRequest(model("gpt-image-2"), { brief, shape: "portrait" });
     expect(gpt.input.image_size).toEqual({ width: 1024, height: 1280 });
-    const rec = falRequest(model("recraft-v4-pro"), { brief, shape: "square", styleRefUrl: "https://x/a.png" });
+    const rec = falRequest(model("recraft-v4-pro"), { brief, shape: "square", styleRefUrls: ["https://x/a.png"] });
     expect(String(rec.input.prompt).length).toBeLessThanOrEqual(1000);
     expect(rec.input.colors).toHaveLength(3);
     expect(rec.input).not.toHaveProperty("image_urls");
@@ -195,9 +195,9 @@ describe("cajas del diseño", () => {
     // El logo nunca pisa la foto ni el titular (si no hay rincón libre, el titular le hace lugar).
     for (const shape of ["square", "portrait", "story"] as const) {
       const r = resolveAreas({ ai: null, pixel: null, shape });
-      expect(overlap(r.logoBox, r.photoBox)).toBeLessThan(0.001);
-      expect(overlap(r.logoBox, r.textBox)).toBeLessThan(0.001);
-      expect(r.logoBox.h).toBeGreaterThan(0.04);
+      expect(overlap(r.logoBox!, r.photoBox)).toBeLessThan(0.001);
+      expect(overlap(r.logoBox!, r.textBox)).toBeLessThan(0.001);
+      expect(r.logoBox!.h).toBeGreaterThan(0.04);
     }
   });
   it("usa lo que vio la IA; si el titular pisa la foto, lo mueve", () => {

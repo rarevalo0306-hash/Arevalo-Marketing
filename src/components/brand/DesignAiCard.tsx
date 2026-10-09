@@ -35,8 +35,9 @@ export function DesignAiCard({ c, preview, previewDone, shapeLabel, parentName, 
   return (
     <article className={s.card}>
       <div className={s.cardHead}>
-        <strong>{c.modelName}</strong>
-        <span className="small muted">{shapeLabel} · US${c.usd.toFixed(2)}</span>
+        <strong>{c.source === "book" ? t(`Del manual · ${c.bookLabel ?? ""}`, `From brand book · ${c.bookLabel ?? ""}`) : c.modelName}</strong>
+        <span className="small muted">{shapeLabel} · {c.usd ? `US$${c.usd.toFixed(2)}` : t("gratis", "free")}{c.source === "book" && c.modelName ? ` · ${c.modelName}` : ""}</span>
+        {!!c.bookRefs && <span className="small muted">{t("Con el estilo de tu manual", "In your brand book's style")}</span>}
         {parentName && <span className="small muted">{t("Para:", "For:")} {parentName}</span>}
       </div>
       <div className={s.shot} style={{ aspectRatio: ratio }}>

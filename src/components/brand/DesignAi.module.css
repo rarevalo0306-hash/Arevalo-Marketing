@@ -79,3 +79,12 @@
 .moreThumb { width: 120px; max-width: 40%; height: auto; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); }
 .more > div { flex: 1 1 220px; }
 .wrapText { overflow-wrap: anywhere; color: var(--ink); }
+
+/* Convertir una pieza del manual */
+.convert { display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--line-strong); border-radius: var(--r-md, 12px); background: var(--surface-2); min-width: 0; }
+.convertCols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+@media (min-width: 720px) { .convertCols { grid-template-columns: 220px minmax(0, 1fr); } }
+.convertThumb { width: 100%; max-width: 220px; height: auto; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); }
+.bookStyle { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bookThumbs { display: flex; gap: 6px; }
+.bookThumbs img { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); }

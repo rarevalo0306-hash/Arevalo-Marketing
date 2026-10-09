@@ -47,8 +47,8 @@ export default async function MarcaPage({ params }: { params: Promise<{ id: stri
   const { id } = await params;
   const { lang, t } = await getT();
   const b = await db.business.findUniqueOrThrow({ where: { id }, include: { templates: { orderBy: { createdAt: "asc" } } } });
-  const own = b.templates.map((x) => ({ key: x.id, name: x.name, layout: (x.spec as { layout?: (typeof LAYOUTS)[number] }).layout, own: true, master: (x.spec as { custom?: { source?: string } }).custom?.source === "ai-master" }));
-  const shown = own.length ? own : BUILTIN_TEMPLATES.map((x, i) => ({ key: `builtin-${i}`, name: builtinTemplateName(x.name, lang), layout: x.layout, own: false, master: false }));
+  const own = b.templates.map((x) => ({ key: x.id, name: x.name, layout: (x.spec as { layout?: (typeof LAYOUTS)[number] }).layout, own: true, master: (x.spec as { custom?: { source?: string } }).custom?.source ?? "" }));
+  const shown = own.length ? own : BUILTIN_TEMPLATES.map((x, i) => ({ key: `builtin-${i}`, name: builtinTemplateName(x.name, lang), layout: x.layout, own: false, master: "" }));
   const assets = readBrandAssets(b.brandAssets);
   // Al usar una propuesta de identidad cambian colores y letras en el servidor: el formulario se vuelve a pintar con ellos.
   const appliedAt = readBrandIdentity(b.brandIdentity).appliedAt;
@@ -108,7 +108,7 @@ export default async function MarcaPage({ params }: { params: Promise<{ id: stri
               <figcaption>
                 <span className="stack" style={{ gap: 0 }}>
                   <strong>{x.name}</strong>
-                  <span className="small muted">{x.master ? t("Diseño maestro con IA · se usa primero", "AI master design · used first") : x.layout ? LAYOUT_LABEL[lang][x.layout] : ""}{x.own ? "" : t(" · de fábrica", " · built-in")}</span>
+                  <span className="small muted">{x.master === "ai-master" ? t("Diseño maestro con IA · se usa primero", "AI master design · used first") : x.master === "book" ? t("De tu manual · se usa primero", "From your brand book · used first") : x.layout ? LAYOUT_LABEL[lang][x.layout] : ""}{x.own ? "" : t(" · de fábrica", " · built-in")}</span>
                 </span>
                 {x.own && (
                   <form action={deleteTemplate.bind(null, id, x.key)}>

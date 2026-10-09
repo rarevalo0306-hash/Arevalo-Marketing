@@ -73,6 +73,11 @@ export type DesignModel = {
   replaces?: string;
   /** Marcado al abrir «Comparar modelos». */
   defaultOn: boolean;
+  /**
+   * Editar una imagen (para «Convertir en plantilla» una pieza del manual: quitar el texto de ejemplo y poner la caja
+   * gris donde iba la foto, sin cambiar nada más). Precio por imagen.
+   */
+  edit?: { endpoint: string; usd: number; approx?: boolean; name?: string };
   good: { es: string; en: string };
 };
 
@@ -93,6 +98,8 @@ export const DESIGN_MODELS: DesignModel[] = [
     etaSec: 25,
     replaces: "ideogram-fal",
     defaultOn: true,
+    // Ideogram 4.5 «Precise Edit»: copia exacto lo que no se pide cambiar (calidad media ~US$0.06, precio de terceros).
+    edit: { endpoint: "v2/image/precise-edit/ideogram-4-5", usd: 0.06, approx: true, name: "Ideogram 4.5 Precise Edit" },
     good: { es: "Diseño gráfico y colores exactos de tu marca", en: "Graphic design and your exact brand colors" },
   },
   {
@@ -124,6 +131,7 @@ export const DESIGN_MODELS: DesignModel[] = [
     styleRef: true,
     etaSec: 40,
     defaultOn: true,
+    edit: { endpoint: "fal-ai/nano-banana-pro/edit", usd: 0.15 },
     good: { es: "Composición muy cuidada", en: "Very polished composition" },
   },
   {
@@ -141,6 +149,7 @@ export const DESIGN_MODELS: DesignModel[] = [
     styleRef: true,
     etaSec: 60,
     defaultOn: true,
+    edit: { endpoint: "fal-ai/gpt-image-2/image-to-image", usd: 0.22, approx: true },
     good: { es: "Sigue muy bien las instrucciones", en: "Follows instructions very closely" },
   },
   {
@@ -206,6 +215,15 @@ export function designModels(env: Env = process.env): DesignModel[] {
 }
 
 export const designModel = (id: string, env: Env = process.env) => designModels(env).find((m) => m.id === id) ?? null;
+
+/** Orden para editar piezas del manual: el que mejor respeta todo lo demás primero. */
+const EDIT_ORDER = ["ideogram", "nano-banana-pro", "gpt-image-2"];
+/** Los modelos que pueden editar una imagen, con las claves del servidor, el mejor primero. */
+export function editModels(env: Env = process.env): (DesignModel & { edit: NonNullable<DesignModel["edit"]> })[] {
+  return designModels(env)
+    .filter((m): m is DesignModel & { edit: NonNullable<DesignModel["edit"]> } => Boolean(m.edit))
+    .sort((a, b) => EDIT_ORDER.indexOf(a.id) - EDIT_ORDER.indexOf(b.id));
+}
 
 /** Tope de gasto por cada vez que se pide crear diseños (US$). DESIGN_AI_MAX_USD, por defecto 1.00. */
 export function maxUsd(env: Env = process.env): number {
@@ -288,16 +306,19 @@ const NEGATIVE =
  * El pedido del director de arte: la marca (qué hace, colores, letras, personalidad), la forma, y la instrucción de
  * diseño (caja gris vacía para la foto, zona limpia para el titular, rincón para el logo, nada de letras).
  */
-export function masterPrompt(b: MasterBrief, shape: MasterShape, opts: { styleRef?: boolean; compact?: boolean } = {}): { prompt: string; negative: string } {
+export function masterPrompt(b: MasterBrief, shape: MasterShape, opts: { styleRef?: boolean | "book"; compact?: boolean } = {}): { prompt: string; negative: string } {
   const s = SHAPE_TEXT[shape];
   const colors = [b.color, b.color2, b.color3].map((c) => hexOr(c, "")).filter(Boolean);
   const named = colors.map((c, i) => `${["primary", "secondary", "accent"][i]} ${c.toUpperCase()}${colorName(c) ? ` (${colorName(c)})` : ""}`);
   const about = b.about.replace(/\s+/g, " ").trim().slice(0, opts.compact ? 160 : 420);
   const mood = (b.personality ?? []).filter(Boolean).slice(0, 5).join(", ");
   const photoMood = (b.photoStyle ?? "").replace(/\s+/g, " ").trim().slice(0, 240);
-  const ref = opts.styleRef
-    ? "Use the reference image as the style guide: the same design system, colors, shapes, decoration and finish, re-composed for this new canvas shape. "
-    : "";
+  const ref =
+    opts.styleRef === "book"
+      ? "The reference images are this brand's own social media templates from its brand book: follow their visual style exactly (colors, shapes, decoration, footer band, finish), but create a new clean layout following the instructions below, without copying their text, photos or logo. "
+      : opts.styleRef
+        ? "Use the reference image as the style guide: the same design system, colors, shapes, decoration and finish, re-composed for this new canvas shape. "
+        : "";
   if (opts.compact) {
     return {
       prompt: `${ref}Flat graphic-design master template for a ${s.label} for "${b.name}"${about ? `, ${about}` : ""}. Brand colors ${named.join(", ")}. ${s.layout} Photo area is a flat solid light gray (${PLACEHOLDER}) rectangle, completely empty. Headline area completely empty. Decorate only around them with subtle shapes, lines and corner accents in the brand colors; premium, modern, generous margins. Absolutely no text, letters, numbers, logos or people.`.slice(0, 1000),
@@ -340,12 +361,21 @@ const RECRAFT_SIZE: Record<MasterShape, unknown> = { square: "square_hd", portra
 const COLON: Record<MasterShape, string> = { square: "1:1", portrait: "4:5", story: "9:16" };
 const IDEO_RATIO: Record<MasterShape, string> = { square: "1x1", portrait: "4x5", story: "9x16" };
 
-export type MasterAsk = { brief: MasterBrief; shape: MasterShape; /** Diseño aceptado para copiar su estilo (URL https o data:). */ styleRefUrl?: string };
+export type MasterAsk = {
+  brief: MasterBrief;
+  shape: MasterShape;
+  /** Imágenes de referencia de estilo (URL https o data:): el maestro aceptado, o 1-2 plantillas del manual. */
+  styleRefUrls?: string[];
+  /** De dónde son las referencias (cambia lo que se le pide). */
+  refKind?: "master" | "book";
+};
+const refsOf = (m: DesignModel, ask: MasterAsk) => (m.styleRef ? (ask.styleRefUrls ?? []).filter(Boolean).slice(0, 2) : []);
 
 /** El modelo de fal.ai y lo que se le manda. */
 export function falRequest(m: DesignModel, ask: MasterAsk): { endpoint: string; input: Record<string, unknown> } {
-  const ref = m.styleRef ? ask.styleRefUrl : undefined;
-  const { prompt, negative } = masterPrompt(ask.brief, ask.shape, { styleRef: Boolean(ref), compact: Boolean(m.maxPrompt && m.maxPrompt < 1500) });
+  const refs = refsOf(m, ask);
+  const ref = refs.length > 0;
+  const { prompt, negative } = masterPrompt(ask.brief, ask.shape, { styleRef: ref ? (ask.refKind === "book" ? "book" : true) : false, compact: Boolean(m.maxPrompt && m.maxPrompt < 1500) });
   const pal = paletteOf(ask.brief);
   if (m.endpoint.startsWith("fal-ai/ideogram")) {
     return {
@@ -357,7 +387,7 @@ export function falRequest(m: DesignModel, ask: MasterAsk): { endpoint: string; 
         expand_prompt: false,
         image_size: FAL_SIZE[ask.shape],
         num_images: 1,
-        ...(ref ? { image_urls: [ref] } : { style: "DESIGN" }),
+        ...(ref ? { image_urls: refs } : { style: "DESIGN" }),
         ...(pal.length ? { color_palette: { members: pal.map((p) => ({ rgb: rgbOf(p.hex), color_weight: p.weight })) } } : {}),
       },
     };
@@ -365,13 +395,13 @@ export function falRequest(m: DesignModel, ask: MasterAsk): { endpoint: string; 
   if (m.endpoint.startsWith("fal-ai/nano-banana")) {
     return {
       endpoint: ref && m.refEndpoint ? m.refEndpoint : m.endpoint,
-      input: { prompt, aspect_ratio: COLON[ask.shape], resolution: "2K", num_images: 1, output_format: "png", ...(ref ? { image_urls: [ref] } : {}) },
+      input: { prompt, aspect_ratio: COLON[ask.shape], resolution: "2K", num_images: 1, output_format: "png", ...(ref ? { image_urls: refs } : {}) },
     };
   }
   if (m.endpoint.startsWith("fal-ai/gpt-image")) {
     return {
       endpoint: ref && m.refEndpoint ? m.refEndpoint : m.endpoint,
-      input: { prompt, image_size: GPT_SIZE[ask.shape], quality: "high", background: "opaque", num_images: 1, output_format: "png", ...(ref ? { image_urls: [ref] } : {}) },
+      input: { prompt, image_size: GPT_SIZE[ask.shape], quality: "high", background: "opaque", num_images: 1, output_format: "png", ...(ref ? { image_urls: refs } : {}) },
     };
   }
   // Recraft
@@ -382,10 +412,14 @@ export function falRequest(m: DesignModel, ask: MasterAsk): { endpoint: string; 
 }
 
 const IDEOGRAM_API = "https://api.ideogram.ai/";
+export type RefImage = { data: Buffer; type: string };
+const extOf = (type: string) => (type.includes("png") ? "png" : type.includes("webp") ? "webp" : "jpg");
 
 /** El pedido a la API de Ideogram (JSON; multipart si lleva la imagen de referencia de estilo). */
-export function ideogramRequest(m: DesignModel, ask: MasterAsk, key: string, ref?: { data: Buffer; type: string }): { url: string; init: RequestInit } {
-  const { prompt, negative } = masterPrompt(ask.brief, ask.shape, { styleRef: Boolean(ref) });
+export function ideogramRequest(m: DesignModel, ask: MasterAsk, key: string, refIn?: RefImage | RefImage[]): { url: string; init: RequestInit } {
+  const refs = (Array.isArray(refIn) ? refIn : refIn ? [refIn] : []).slice(0, 2);
+  const ref = refs[0];
+  const { prompt, negative } = masterPrompt(ask.brief, ask.shape, { styleRef: ref ? (ask.refKind === "book" ? "book" : true) : false });
   const pal = paletteOf(ask.brief);
   const fields: Record<string, string | boolean | number | object> = {
     prompt,
@@ -402,8 +436,7 @@ export function ideogramRequest(m: DesignModel, ask: MasterAsk, key: string, ref
   if (!ref) return { url, init: { method: "POST", headers: { "Api-Key": key, "Content-Type": "application/json" }, body: JSON.stringify(fields) } };
   const form = new FormData();
   for (const [k, v] of Object.entries(fields)) form.set(k, typeof v === "object" ? JSON.stringify(v) : String(v));
-  const ext = ref.type.includes("png") ? "png" : ref.type.includes("webp") ? "webp" : "jpg";
-  form.append("style_reference_images", new Blob([new Uint8Array(ref.data)], { type: ref.type }), `style.${ext}`);
+  refs.forEach((r, i) => form.append("style_reference_images", new Blob([new Uint8Array(r.data)], { type: r.type }), `style-${i + 1}.${extOf(r.type)}`));
   return { url, init: { method: "POST", headers: { "Api-Key": key }, body: form } };
 }
 
@@ -429,7 +462,7 @@ function firstImage(data: IdeoImage[] | undefined): string | null {
 }
 
 /** Empieza a crear el diseño (no espera: se consulta con pollMaster). */
-export async function submitMaster(m: DesignModel, ask: MasterAsk, opts: { env?: Env; ref?: { data: Buffer; type: string } } = {}): Promise<MasterJob> {
+export async function submitMaster(m: DesignModel, ask: MasterAsk, opts: { env?: Env; ref?: RefImage | RefImage[] } = {}): Promise<MasterJob> {
   const env = opts.env ?? process.env;
   if (!env[m.env]?.trim()) throw bi(`Falta la clave ${m.env} en la configuración del servidor (Vercel).`, `The ${m.env} key is missing from the server settings (Vercel).`);
   if (m.provider === "ideogram") {
@@ -444,6 +477,61 @@ export async function submitMaster(m: DesignModel, ask: MasterAsk, opts: { env?:
     return { kind: "ideogram", id: out.generation_id };
   }
   const { endpoint, input } = falRequest(m, ask);
+  return { kind: "fal", ...(await falSubmit(endpoint, input)) };
+}
+
+// ---------- Convertir una pieza del manual en plantilla (editar la imagen) ----------
+
+/**
+ * Lo que se le pide al modelo de edición: el MISMO diseño sin el texto de ejemplo y con una caja gris lisa donde iba
+ * la foto. El logo, el pie con el eslogan, el botón y la decoración se quedan exactamente igual.
+ */
+export const CLEAN_PROMPT = [
+  "Edit this social media post design. Keep EVERYTHING exactly the same (layout, size, colors, shapes, decoration, logo, footer band with its tagline, the call-to-action button and its text, icons) except two things:",
+  `1. Replace every photograph in it with ONE flat, solid light gray (${PLACEHOLDER}) area of exactly the same position, size and shape (same rounded corners or diagonal cut). Nothing inside it: no texture, no gradient, no people, no objects.`,
+  "2. Remove all the example text that belongs to this specific post (headline, subheadline, body text, checklist or list items and their check marks, quotes, testimonial names, star ratings, play buttons) and fill those areas with the background exactly as it would look without the text.",
+  "Do not add anything new. Do not change the logo. The result must look like the original designer's empty template, ready for a new photo and a new headline.",
+].join("\n");
+
+const FAL_EDIT_EXTRA: Record<string, Record<string, unknown>> = {
+  "fal-ai/nano-banana-pro/edit": { aspect_ratio: "auto", resolution: "2K", output_format: "png" },
+  "fal-ai/gpt-image-2/image-to-image": { image_size: "auto", quality: "high", output_format: "png" },
+};
+
+/** El pedido de edición a fal.ai (la imagen va por dirección: https o data:). */
+export function falEditRequest(m: DesignModel, imageUrl: string): { endpoint: string; input: Record<string, unknown> } {
+  if (!m.edit || m.provider !== "fal") throw bi("Ese modelo no edita imágenes.", "That model doesn't edit images.");
+  return { endpoint: m.edit.endpoint, input: { prompt: CLEAN_PROMPT, image_urls: [imageUrl], num_images: 1, ...(FAL_EDIT_EXTRA[m.edit.endpoint] ?? {}) } };
+}
+
+/** El pedido a Ideogram 4.5 «Precise Edit» (multipart con la imagen; en segundo plano). */
+export function ideogramEditRequest(m: DesignModel, image: RefImage, key: string): { url: string; init: RequestInit } {
+  if (!m.edit || m.provider !== "ideogram") throw bi("Ese modelo no edita imágenes.", "That model doesn't edit images.");
+  const form = new FormData();
+  form.set("prompt", CLEAN_PROMPT);
+  form.set("quality", "medium");
+  form.set("num_images", "1");
+  form.set("async", "true");
+  form.append("image", new Blob([new Uint8Array(image.data)], { type: image.type }), `pieza.${extOf(image.type)}`);
+  return { url: `${IDEOGRAM_API}${m.edit.endpoint}`, init: { method: "POST", headers: { "Api-Key": key }, body: form } };
+}
+
+/** Empieza la edición (no espera: se consulta con pollMaster, igual que un diseño nuevo). */
+export async function submitEdit(m: DesignModel, image: RefImage & { url: string }, env: Env = process.env): Promise<MasterJob> {
+  if (!m.edit) throw bi("Ese modelo no edita imágenes.", "That model doesn't edit images.");
+  if (!env[m.env]?.trim()) throw bi(`Falta la clave ${m.env} en la configuración del servidor (Vercel).`, `The ${m.env} key is missing from the server settings (Vercel).`);
+  if (m.provider === "ideogram") {
+    const { url, init } = ideogramEditRequest(m, image, env.IDEOGRAM_API_KEY!.trim());
+    const res = await fetch(url, init);
+    const body = await res.text();
+    if (!res.ok) throw ideogramError(res.status, body);
+    const out = JSON.parse(body) as { generation_id?: string; data?: IdeoImage[] };
+    const ready = firstImage(out.data);
+    if (ready) return { kind: "ready", url: ready };
+    if (!out.generation_id || !/^[A-Za-z0-9_-]+={0,2}$/.test(out.generation_id)) throw bi("Ideogram no devolvió el trabajo. Intenta de nuevo.", "Ideogram didn't return the job. Please try again.");
+    return { kind: "ideogram", id: out.generation_id };
+  }
+  const { endpoint, input } = falEditRequest(m, image.url);
   return { kind: "fal", ...(await falSubmit(endpoint, input)) };
 }
 
@@ -622,7 +710,8 @@ export function fallbackLogoBox(photo: Box, text: Box, shape: MasterShape): Box 
 export type Areas = {
   photoBox: Box;
   textBox: Box;
-  logoBox: Box;
+  /** null = el diseño ya trae el logo (pieza del manual): la app no pone otro. */
+  logoBox: Box | null;
   photoRadius: number;
   textAlign: "izquierda" | "centro";
   /** De dónde salieron las cajas. */
@@ -678,4 +767,87 @@ export function inkFor(bg: string, brand: string): "claro" | "oscuro" | "marca" 
   const c = hexOr(brand, "#126BBC");
   if (contrast(c, b) >= 4.5 && contrast("#ffffff", b) < 3) return "marca";
   return contrast("#ffffff", b) >= contrast("#111827", b) ? "claro" : "oscuro";
+}
+
+// ---------- Piezas del manual: dónde estaban la foto y el texto de ejemplo ----------
+
+/** Lo que se le pregunta a Gemini al mirar la pieza ORIGINAL del manual (con su foto y su texto de ejemplo). */
+export const BookDetectSchema = z.object({
+  photos: z.array(BoxSchema).describe("Every sample photograph area in this post (empty list if none)"),
+  headline: BoxSchema.describe("The main headline text block (the biggest text)"),
+  headlineColor: z.string().describe("Color of the headline letters as #RRGGBB"),
+  texts: z
+    .array(BoxSchema)
+    .describe(
+      "Every block of example text specific to this post that must be replaced: headline, subheadline, body text, checklist items, quotes, testimonial names, prices, star ratings. NOT the logo, NOT the brand tagline in the footer, NOT the call-to-action button",
+    ),
+  hasLogo: z.boolean().describe("Whether the post already shows the brand logo"),
+  textAlign: z.enum(["left", "center"]).describe("Alignment of the headline"),
+});
+export type BookDetected = z.infer<typeof BookDetectSchema>;
+export const BOOK_DETECT_USER =
+  "This is one finished social media post from a brand book, with a sample photo and sample text. Locate the photo area(s), the headline, every block of example text, and say whether the logo is shown.";
+
+/** El color de las letras del titular del diseñador → el color de la app más parecido. */
+export function inkFromColor(hex: string | undefined, brand: string): "claro" | "oscuro" | "marca" | null {
+  const c = hexOr(hex?.trim(), "");
+  if (!c) return null;
+  if (contrast(c, "#ffffff") < 1.5) return "claro";
+  const b = hexOr(brand, "#126BBC");
+  const dist = (x: string, y: string) => [1, 3, 5].reduce((a, i) => a + Math.abs(parseInt(x.slice(i, i + 2), 16) - parseInt(y.slice(i, i + 2), 16)), 0);
+  if (dist(c, b) < 120) return "marca";
+  return contrast(c, "#111827") < 2 ? "oscuro" : contrast(c, "#ffffff") >= 4.5 ? "oscuro" : "claro";
+}
+
+/** Las partes con texto de ejemplo que hay que tapar (sin pisar la foto), un poco más grandes. */
+export function textPatches(d: Partial<BookDetected> | null): Box[] {
+  const photos = (d?.photos ?? []).map((p) => cleanBox(p, 0.05)).filter((b): b is Box => Boolean(b));
+  const list = [d?.headline, ...(d?.texts ?? [])].map((t) => cleanBox(t, 0.012)).filter((b): b is Box => Boolean(b));
+  const out: Box[] = [];
+  for (const b of list) {
+    if (photos.some((p) => overlap(b, p) / (b.w * b.h) > 0.5)) continue;
+    const e = cleanBox({ x: b.x - 0.01, y: b.y - 0.008, w: b.w + 0.02, h: b.h + 0.016 }, 0.012);
+    if (e && !out.some((o) => iou(o, e) > 0.8)) out.push(e);
+  }
+  return out.slice(0, 12);
+}
+
+/**
+ * Las cajas de una pieza del manual: la foto sale del diseño limpio (caja gris) o, si no, de la foto original; el
+ * titular va donde el diseñador lo puso (en el original); el logo del diseñador se queda (no se agrega otro).
+ */
+export function resolveBookAreas(input: { book: Partial<BookDetected> | null; cleaned: Areas | null; shape: MasterShape }): Areas {
+  const { book, cleaned, shape } = input;
+  const photos = (book?.photos ?? []).map((p) => cleanBox(p, 0.1)).filter((b): b is Box => Boolean(b)).sort((a, b) => b.w * b.h - a.w * a.h);
+  const photo = cleaned && cleaned.by !== "default" ? cleaned.photoBox : (photos[0] ?? cleaned?.photoBox ?? defaultPhotoBox(shape));
+  const head = cleanBox(book?.headline, 0.05);
+  let text: Box | null = null;
+  if (head && overlap(head, photo) / (head.w * head.h) < 0.5) {
+    // Un poco más alto que el titular de ejemplo (el nuevo puede tener una línea más).
+    text = cleanBox({ x: head.x - 0.01, y: head.y - 0.01, w: head.w + 0.02, h: Math.min(head.h * 1.35 + 0.02, 1 - head.y) }, 0.04);
+  }
+  const hasLogo = book?.hasLogo !== false;
+  const textBox = text ?? cleaned?.textBox ?? fallbackTextBox(photo, shape);
+  return {
+    photoBox: photo,
+    textBox,
+    logoBox: hasLogo ? null : (cleaned?.logoBox ?? fallbackLogoBox(photo, textBox, shape)),
+    photoRadius: cleaned?.photoRadius ?? 0,
+    textAlign: book?.textAlign === "center" ? "centro" : "izquierda",
+    by: book ? "ai" : (cleaned?.by ?? "default"),
+    needsAdjust: !text,
+    textInImage: cleaned?.textInImage ?? [],
+  };
+}
+
+/** La forma de redes más cercana a una pieza (y si está tan cerca que conviene estirarla justo a esa forma). */
+export function nearestShape(w: number, h: number): { shape: MasterShape; exact: { w: number; h: number } | null } {
+  const r = w / Math.max(1, h);
+  // Cuadrado primero (es lo más común en los manuales; una página aplastada lo deja en ~0.89), después 4:5 y 9:16.
+  if (Math.abs(r - 1) <= 0.13) return { shape: "square", exact: { w: 1080, h: 1080 } };
+  if (Math.abs(r - 0.8) / 0.8 <= 0.07) return { shape: "portrait", exact: { w: 1080, h: 1350 } };
+  if (Math.abs(r - 0.5625) / 0.5625 <= 0.1) return { shape: "story", exact: { w: 1080, h: 1920 } };
+  const opts: [MasterShape, number][] = [["square", 1], ["portrait", 0.8], ["story", 0.5625]];
+  const [shape] = opts.reduce((best, o) => (Math.abs(Math.log(r / o[1])) < Math.abs(Math.log(r / best[1])) ? o : best));
+  return { shape, exact: null };
 }

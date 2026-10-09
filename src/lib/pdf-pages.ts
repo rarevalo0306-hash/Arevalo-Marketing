@@ -2,7 +2,7 @@
 // mandarlas al servidor de a poco (Vercel corta en 4.5 MB por petición). pdf.js se carga solo cuando se usa.
 // `splitBatches` es pura (se prueba en Node); lo demás necesita el navegador.
 
-export const BOOK_MAX_PAGES = 40;
+export const BOOK_MAX_PAGES = 60;
 /** Lado largo de cada página (px) y calidad JPEG. */
 export const PAGE_LONG_SIDE = 1600;
 export const IMAGE_LONG_SIDE = 2000;

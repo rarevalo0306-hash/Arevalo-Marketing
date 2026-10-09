@@ -24,7 +24,9 @@ export function DesignAiPanel(p: {
   sample: Sample;
   hasFal: boolean;
   hasIdeogram: boolean;
-  start: (input: { models: string[]; shapes: string[]; parentId?: string }) => Promise<StartResult>;
+  /** Plantillas de redes del manual (para mandarlas como estilo). */
+  bookPieces?: { url: string; label: string }[];
+  start: (input: { models: string[]; shapes: string[]; parentId?: string; bookStyle?: boolean }) => Promise<StartResult>;
   check: (id: string) => Promise<CheckResult>;
   preview: (id: string, adjust?: AdjustState) => Promise<PreviewResult>;
   save: (id: string, adjust?: AdjustState) => Promise<SaveResult>;
@@ -43,6 +45,8 @@ export function DesignAiPanel(p: {
   const [adjusting, setAdjusting] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [busyId, setBusyId] = useState("");
+  const pieces = p.bookPieces ?? [];
+  const [bookStyle, setBookStyle] = useState(pieces.length > 0);
 
   const chosen = ordered.filter((m) => picked.includes(m.id));
   const count = chosen.length * shapes.length;
@@ -95,7 +99,7 @@ export function DesignAiPanel(p: {
     return arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v];
   }
 
-  function run(input: { models: string[]; shapes: string[]; parentId?: string }) {
+  function run(input: { models: string[]; shapes: string[]; parentId?: string; bookStyle?: boolean }) {
     setMsg(null);
     startTransition(async () => {
       const r = await p.start(input);
@@ -193,6 +197,21 @@ export function DesignAiPanel(p: {
               })}
             </div>
           </fieldset>
+          {pieces.length > 0 && (
+            <label className={`check ${s.bookStyle}`}>
+              <input type="checkbox" checked={bookStyle} onChange={(e) => setBookStyle(e.target.checked)} />
+              <span className="stack" style={{ gap: 2, flex: 1, minWidth: 0 }}>
+                <strong className="small">{t("Seguir el estilo de mi manual", "Follow my brand book's style")}</strong>
+                <span className="small muted">{t("Mandamos 1 o 2 de las plantillas de tu manual como referencia a los modelos que la aceptan.", "We send 1 or 2 of your brand book templates as a reference to the models that accept it.")}</span>
+              </span>
+              <span className={s.bookThumbs} aria-hidden>
+                {pieces.slice(0, 2).map((x) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img key={x.url} src={x.url} alt="" />
+                ))}
+              </span>
+            </label>
+          )}
           <div className={s.costRow}>
             <p className={s.cost} aria-live="polite">
               {count
@@ -207,7 +226,7 @@ export function DesignAiPanel(p: {
               <div className={s.confirm} role="group" aria-label={t("Confirmar el gasto", "Confirm the cost")}>
                 <span className="small">{t(`Se cobrarán ~${money(total)} a tu cuenta de la IA de diseño. ¿Seguimos?`, `About ${money(total)} will be charged to your design AI account. Continue?`)}</span>
                 <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                  <button type="button" className="btn on" onClick={() => run({ models: chosen.map((m) => m.id), shapes })}>{t("Sí, crear", "Yes, create")}</button>
+                  <button type="button" className="btn on" onClick={() => run({ models: chosen.map((m) => m.id), shapes, bookStyle })}>{t("Sí, crear", "Yes, create")}</button>
                   <button type="button" className="btn" onClick={() => setConfirm(false)}>{t("Cancelar", "Cancel")}</button>
                 </div>
               </div>

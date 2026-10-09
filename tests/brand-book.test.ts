@@ -49,11 +49,11 @@ describe("manual de marca: leer la respuesta de la IA", () => {
     expect(out[0]).toMatchObject({ kind: "isotype", confidence: 0.8 });
   });
 
-  it("pone un nombre si falta y deja como mucho 8 por página, las más seguras primero", () => {
-    const many = Array.from({ length: 12 }, (_, i) => item({ kind: "icon", label: { es: "", en: "" }, confidence: 0.4 + i * 0.05 }));
+  it("pone un nombre si falta y deja como mucho 16 por página, las más seguras primero", () => {
+    const many = Array.from({ length: 20 }, (_, i) => item({ kind: "icon", label: { es: "", en: "" }, confidence: 0.4 + i * 0.03 }));
     const out = parseBookReply({ items: many });
-    expect(out).toHaveLength(8);
-    expect(out[0].confidence).toBeGreaterThan(out[7].confidence);
+    expect(out).toHaveLength(16);
+    expect(out[0].confidence).toBeGreaterThan(out[15].confidence);
     expect(out[0].label).toEqual({ es: "Ícono", en: "Icon" });
   });
 

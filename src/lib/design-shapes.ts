@@ -89,6 +89,8 @@ export const CustomVariant = z.object({
   photoRadius: z.number().min(0).max(0.5).optional(),
   textAlign: z.enum(["izquierda", "centro"]).optional(),
   ink: z.enum(INKS),
+  /** marco: la imagen tiene el hueco de la foto transparente (lo que la tapa queda encima de la foto). */
+  mode: z.enum(["marco", "fondo"]).optional(),
 });
 export type CustomVariant = z.infer<typeof CustomVariant>;
 export const CustomSpec = z.object({
@@ -112,11 +114,13 @@ export const CustomSpec = z.object({
   /** Esquinas redondeadas de la foto (fracción del lado corto; 0.5 = círculo). */
   photoRadius: z.number().min(0).max(0.5).optional(),
   textAlign: z.enum(["izquierda", "centro"]).optional(),
-  /** De dónde salió: "ai-master" = diseño maestro creado con una IA de diseño. */
-  source: z.enum(["ai-master"]).optional(),
+  /** De dónde salió: "ai-master" = diseño maestro creado con una IA de diseño; "book" = plantilla de redes del manual de marca. */
+  source: z.enum(["ai-master", "book"]).optional(),
   /** Modelo de IA que lo creó (id de la tabla de design-ai.ts) y lo que se le pidió. */
   model: z.string().max(80).optional(),
   prompt: z.string().max(6000).optional(),
+  /** Si salió del manual: el id de la imagen del manual (para marcarla como «Ya es una plantilla»). */
+  bookAsset: z.string().max(40).optional(),
   /** Los diseños maestros se usan primero en automático (false = solo si el dueño lo elige). */
   preferred: z.boolean().optional(),
   /** El mismo estilo en otras formas: se usa la de la forma que pide la red. */
@@ -144,7 +148,7 @@ export function textBox(c: Pick<CustomSpec, "photo" | "text">): Box | null {
 export function customFor(c: CustomSpec, shape?: string): CustomSpec {
   const v = shape && c.variants ? c.variants[shape as MasterShape] : undefined;
   if (!v) return c;
-  return { ...c, ...v, textBox: v.textBox, logoBox: v.logoBox, photoRadius: v.photoRadius, textAlign: v.textAlign, mode: "fondo", photo: c.photo === "ninguna" ? "arriba" : c.photo, variants: undefined };
+  return { ...c, ...v, textBox: v.textBox, logoBox: v.logoBox, photoRadius: v.photoRadius, textAlign: v.textAlign, mode: v.mode ?? "fondo", photo: c.photo === "ninguna" ? "arriba" : c.photo, variants: undefined };
 }
 
 /**
@@ -157,7 +161,11 @@ export function customBoxes(c: CustomSpec): { photo: Box | null; text: Box | nul
   return { photo, text: c.textBox ?? textBox(c), logo: c.logoBox ?? null };
 }
 
-export const isMaster = (t: TemplateSpec): boolean => (t as StoredTemplate).custom?.source === "ai-master";
+/** Diseños maestros (de la IA de diseño o del manual de marca): se usan primero en automático. */
+export const isMaster = (t: TemplateSpec): boolean => {
+  const src = (t as StoredTemplate).custom?.source;
+  return src === "ai-master" || src === "book";
+};
 
 export const StoredTemplate = TemplateSpec.extend({ custom: CustomSpec.optional() });
 export type StoredTemplate = z.infer<typeof StoredTemplate>;
