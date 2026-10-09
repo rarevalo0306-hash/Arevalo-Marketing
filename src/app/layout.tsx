@@ -6,10 +6,10 @@ import "./globals.css";
 export async function generateMetadata(): Promise<Metadata> {
   const lang = await uiLang();
   return {
-    title: "Nehora",
+    title: "Matya",
     description: lang === "en" ? "Publish once and it goes out on all your channels." : "Publica una vez y sale en todos tus canales.",
     // Al instalarla en el iPhone abre a pantalla completa, como una app.
-    appleWebApp: { capable: true, title: "Nehora", statusBarStyle: "default" },
+    appleWebApp: { capable: true, title: "Matya", statusBarStyle: "default" },
   };
 }
 

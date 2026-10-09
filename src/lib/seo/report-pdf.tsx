@@ -1216,7 +1216,7 @@ export function ReportDocument({ data: d, opts }: { data: ReportData; opts: PdfO
   const empty = isEmptyReport(d);
   const title = c.t(`Reporte de SEO y marketing — ${d.business.name} — ${periodLabel(d.period, lang, tz)}`, `SEO & marketing report — ${d.business.name} — ${periodLabel(d.period, lang, tz)}`);
   return (
-    <Document title={title} author={opts.whiteLabel ? d.business.name : "Nehora"} subject={c.t("Reporte de SEO y marketing", "SEO & marketing report")} creator={opts.whiteLabel ? d.business.name : "Nehora"} producer={opts.whiteLabel ? d.business.name : "Nehora"} language={lang}>
+    <Document title={title} author={opts.whiteLabel ? d.business.name : "Matya"} subject={c.t("Reporte de SEO y marketing", "SEO & marketing report")} creator={opts.whiteLabel ? d.business.name : "Matya"} producer={opts.whiteLabel ? d.business.name : "Matya"} language={lang}>
       <Page size="A4" style={{ paddingTop: 40, paddingBottom: 54, paddingHorizontal: 40, fontFamily: BODY, fontSize: 9.5, color: INK, backgroundColor: "#ffffff" }}>
         <Cover d={d} c={c} logo={opts.logo} summaryDate={prepared} />
         {empty ? (
@@ -1240,7 +1240,7 @@ export function ReportDocument({ data: d, opts }: { data: ReportData; opts: PdfO
           </>
         )}
         <View fixed style={{ position: "absolute", bottom: 22, left: 40, right: 40, flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderTopWidth: 0.5, borderColor: LINE, paddingTop: 6 }}>
-          <Text style={{ fontSize: 7.5, color: MUTED }}>{opts.whiteLabel ? trunc(d.business.name, 60) : c.t("Preparado con Nehora", "Prepared with Nehora")}</Text>
+          <Text style={{ fontSize: 7.5, color: MUTED }}>{opts.whiteLabel ? trunc(d.business.name, 60) : c.t("Preparado con Matya", "Prepared with Matya")}</Text>
           <Text style={{ fontSize: 7.5, color: MUTED }} render={({ pageNumber, totalPages }) => c.t(`Página ${pageNumber} de ${totalPages}`, `Page ${pageNumber} of ${totalPages}`)} />
         </View>
       </Page>

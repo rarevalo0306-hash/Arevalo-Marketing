@@ -271,7 +271,7 @@ ${blocks.map((b) => blockHtml(b, color)).join("\n")}
 </table></td></tr>
 <tr><td align="center" style="padding:4px 24px 20px 24px;"><a href="${escapeHtml(seoUrl)}" style="${FONT}display:inline-block;background:${color};color:${fg};text-decoration:none;font-weight:bold;font-size:15px;padding:12px 22px;border-radius:6px;">${escapeHtml(t("Ver todo en la app", "See everything in the app"))}</a></td></tr>
 <tr><td style="${FONT}padding:14px 24px 20px 24px;border-top:1px solid #e5e7eb;font-size:12px;line-height:1.5;color:#6b7280;">
-${escapeHtml(t(`Este email lo manda Nehora para ${business.name}.`, `This email is sent by Nehora for ${business.name}.`))}
+${escapeHtml(t(`Este email lo manda Matya para ${business.name}.`, `This email is sent by Matya for ${business.name}.`))}
 <a href="${escapeHtml(seoUrl)}" style="color:#6b7280;">${escapeHtml(seoUrl)}</a><br>${escapeHtml(offText)}
 </td></tr>
 </table></td></tr></table></body></html>`;

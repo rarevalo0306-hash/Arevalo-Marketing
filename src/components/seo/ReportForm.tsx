@@ -77,7 +77,7 @@ export function ReportForm({ businessId, send, saveMonthly, recipients, monthly,
           <input type="hidden" name="marca" value="0" />
           <input type="checkbox" name="marca" value="1" checked={mark} onChange={(e) => setMark(e.target.checked)} />
           <span>
-            <strong>{t("Mostrar «Preparado con Nehora»", "Show \"Prepared with Nehora\"")}</strong>
+            <strong>{t("Mostrar «Preparado con Matya»", "Show \"Prepared with Matya\"")}</strong>
             <span className="small muted" style={{ display: "block" }}>
               {t("Sin marcar, el pie de cada página lleva solo el nombre de tu negocio.", "Unchecked, each page footer shows only your business name.")}
             </span>
