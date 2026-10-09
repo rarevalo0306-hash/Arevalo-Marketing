@@ -32,7 +32,7 @@ export const google: Publisher = {
     // Google acepta una sola foto por novedad: la primera (en carruseles e historias también).
     const photo = mediaOf(input).find((m) => m.type === "photo");
     if (photo) body.media = [{ mediaFormat: "PHOTO", sourceUrl: photo.url }];
-    const post = await fetchJson<{ searchUrl?: string }>(
+    const post = await fetchJson<{ searchUrl?: string; name?: string }>(
       `https://mybusiness.googleapis.com/v4/accounts/${account}/locations/${location}/localPosts`,
       {
         method: "POST",
@@ -41,7 +41,7 @@ export const google: Publisher = {
       },
     );
     const n = mediaOf(input).filter((m) => m.type === "photo").length;
-    return { url: post.searchUrl, detail: n > 1 ? "Publicado en tu Perfil de Negocio de Google (con la primera foto: Google acepta una por novedad)" : "Publicado en tu Perfil de Negocio de Google" };
+    return { url: post.searchUrl, ...(post.name ? { id: post.name } : {}), detail: n > 1 ? "Publicado en tu Perfil de Negocio de Google (con la primera foto: Google acepta una por novedad)" : "Publicado en tu Perfil de Negocio de Google" };
   },
   async test(creds) {
     required(creds, ["accountId", "locationId"]);

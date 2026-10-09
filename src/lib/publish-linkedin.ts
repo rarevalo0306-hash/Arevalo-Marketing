@@ -166,6 +166,7 @@ async function publish(input: PublishInput, creds: Creds) {
   const id = res.headers.get("x-restli-id") ?? "";
   return {
     url: id ? `https://www.linkedin.com/feed/update/${id}/` : undefined,
+    ...(id ? { id } : {}),
     detail: Array.isArray(media)
       ? `Publicado en LinkedIn con ${media.length} fotos`
       : media?.id.startsWith("urn:li:video:")

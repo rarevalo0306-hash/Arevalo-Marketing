@@ -26,7 +26,12 @@ export type PublishInput = {
 
 export type PublishMedia = { url: string; type: "photo" | "video"; alt?: string };
 
-export type PublishResult = { url?: string; detail: string };
+export type PublishResult = {
+  url?: string;
+  detail: string;
+  /** Id de la publicación en la red (se guarda en PostTarget.externalId para leer sus resultados). Opcional. */
+  id?: string;
+};
 
 export type Publisher = {
   publish(input: PublishInput, creds: Creds): Promise<PublishResult>;

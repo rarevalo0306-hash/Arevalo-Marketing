@@ -79,6 +79,7 @@ export async function publishPost(postId: string): Promise<void> {
       let status = "failed";
       let detail = "";
       let externalUrl = "";
+      let externalId = "";
       if (!def) {
         detail = "Canal desconocido";
       } else if (!conn) {
@@ -104,6 +105,7 @@ export async function publishPost(postId: string): Promise<void> {
             detail = res.detail;
             if (input.kind === "story" && !(STORY_CHANNELS as readonly string[]).includes(channel) && STORY_AS_POST[channel]) detail += ` (${STORY_AS_POST[channel]})`;
             externalUrl = res.url ?? "";
+            externalId = (res.id ?? "").slice(0, 300);
           } catch (e) {
             detail = (e as Error).message || "Error desconocido";
           }
@@ -111,7 +113,7 @@ export async function publishPost(postId: string): Promise<void> {
       }
       await db.postTarget.update({
         where: { id: target.id },
-        data: { status, detail: detail.slice(0, 1000), externalUrl, sentAt: status === "sent" ? new Date() : null },
+        data: { status, detail: detail.slice(0, 1000), externalUrl, externalId, sentAt: status === "sent" ? new Date() : null },
       });
     }
   } finally {
