@@ -21,6 +21,7 @@ import {
   rankTasks,
   schemaTasks,
   setupTasks,
+  toxicTasks,
   type RuleCtx,
   type Saved,
 } from "@/lib/action-plan-rules";
@@ -37,7 +38,7 @@ import { latestReports, saveReport, type SeoKind } from "@/lib/seo/reports";
 export type PlanRefresh = { added: number; open: number; gone: number };
 
 /** Los reportes que alimentan el plan: si alguno es más nuevo que el último plan, el plan se vuelve a armar. */
-export const PLAN_INPUT_KINDS: SeoKind[] = ["audit", "onpage", "decay", "cannibal", "gsc", "rank", "keywords", "gap", "backlinks", "outreach", "gbp", "reviews", "maprank", "ai", "ga4"];
+export const PLAN_INPUT_KINDS: SeoKind[] = ["audit", "onpage", "decay", "cannibal", "gsc", "rank", "keywords", "gap", "backlinks", "outreach", "gbp", "reviews", "maprank", "ai", "ga4", "toxic"];
 /** Resúmenes del plan que se guardan (kind "plan"). */
 export const PLAN_KEEP = 30;
 /** Mapas de calor que se leen (el último de cada búsqueda). */
@@ -69,7 +70,7 @@ export async function buildPlanDrafts(businessId: string, now = new Date()): Pro
   if (!b) return null;
   const zones = readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName);
   const per = Math.max(1, zones.length);
-  const [audit, onpage, decay, cannibal, gsc, rank, keywords, gap, backlinks, outreach, gbp, reviews, maps, ai, gscConn, questions, ga4, ga4Conn, dirs] = await Promise.all([
+  const [audit, onpage, decay, cannibal, gsc, rank, keywords, gap, backlinks, outreach, gbp, reviews, maps, ai, gscConn, questions, ga4, ga4Conn, dirs, toxic] = await Promise.all([
     latestReports(businessId, "audit"),
     latestReports(businessId, "onpage"),
     latestReports(businessId, "decay"),
@@ -78,7 +79,8 @@ export async function buildPlanDrafts(businessId: string, now = new Date()): Pro
     latestReports(businessId, "rank", 3 * per),
     latestReports(businessId, "keywords", 3 * per),
     latestReports(businessId, "gap"),
-    latestReports(businessId, "backlinks"),
+    // Las dos últimas: el aviso de enlaces dañinos compara la nueva con la anterior.
+    latestReports(businessId, "backlinks", 2),
     latestReports(businessId, "outreach"),
     latestReports(businessId, "gbp"),
     latestReports(businessId, "reviews"),
@@ -94,6 +96,8 @@ export async function buildPlanDrafts(businessId: string, now = new Date()): Pro
       console.error("[plan] directories", e);
       return null;
     }),
+    // Enlaces dañinos (/enlaces): revisiones guardadas y los sitios protegidos por el dueño.
+    latestReports(businessId, "toxic", 30),
   ]);
   const ctx: RuleCtx = {
     businessId,
@@ -118,6 +122,7 @@ export async function buildPlanDrafts(businessId: string, now = new Date()): Pro
     cannibalTasks(savedOf(cannibal[0]), ctx),
     questionTasks(questions, ctx),
     backlinksTasks(savedOf(backlinks[0]), savedOf(outreach[0]), ctx),
+    toxicTasks({ toxic: all(toxic), backlinks: all(backlinks) }, ctx),
     aiTasks(savedOf(ai[0]), ctx),
     dirs ? directoryTasks({ ...dirs, now }, ctx) : [],
   );
@@ -139,6 +144,7 @@ export async function buildPlanDrafts(businessId: string, now = new Date()): Pro
   stamp("maprank", maps);
   stamp("ai", ai);
   stamp("ga4", ga4);
+  stamp("toxic", toxic);
   return { drafts, sources };
 }
 

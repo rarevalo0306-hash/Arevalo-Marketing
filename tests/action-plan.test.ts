@@ -24,6 +24,7 @@ import {
   schemaTasks,
   setupTasks,
   sourceLine,
+  toxicTasks,
   type RuleCtx,
   type Saved,
 } from "@/lib/action-plan-rules";
@@ -717,5 +718,49 @@ describe("estados del plan", () => {
     const ch = planChanges([{ id: "top", key: sorted[0].key, status: "done" }], drafts, 3);
     expect(ch.open).toBe(3);
     expect(ch.update.find((u) => u.id === "top")!.status).toBe("done");
+  });
+});
+
+describe("enlaces dañinos nuevos (toxic)", () => {
+  const audit = (domains: { domain: string; spamScore: number; firstSeen?: string }[], at: string) => ({
+    version: 1,
+    type: "audit",
+    source: "dataforseo",
+    domain: "fameseg.com",
+    createdAt: at,
+    total: domains.length,
+    newThisMonth: null,
+    items: domains.map((d) => ({ ...d, anchors: [], footer: false })),
+    cost: 0.1,
+    notes: [],
+  });
+  const before = audit([{ domain: "viejo-spam.xyz", spamScore: 90 }], "2026-09-01T12:00:00.000Z");
+  const fresh = Array.from({ length: 40 }, (_, i) => ({ domain: `casino-${i}.xyz`, spamScore: 90, firstSeen: "2026-10-05T00:00:00.000Z" }));
+  const after = audit([{ domain: "viejo-spam.xyz", spamScore: 90 }, ...fresh, { domain: "fameseg.com", spamScore: 99 }], "2026-10-08T12:00:00.000Z");
+
+  it("«Llegaron 40 enlaces nuevos de sitios dañinos»: manda a /enlaces sin decir que hay que desautorizar", () => {
+    const list = toxicTasks({ toxic: [{ data: after, createdAt: after.createdAt }, { data: before, createdAt: before.createdAt }], backlinks: [] }, ctx);
+    expect(list).toHaveLength(1);
+    const t = list[0];
+    expect(t.key).toBe("toxic:new");
+    expect(t.title.es).toBe("Llegaron 40 enlaces nuevos de sitios dañinos");
+    expect(t.title.en).toBe("40 new links from harmful sites arrived");
+    expect(t.href).toBe(`/b/${ID}/enlaces`);
+    expect(t.area).toBe("enlaces");
+    expect(t.impact).toBe(2); // 40 de golpe: parece un ataque
+    expect(t.detail!.es).toContain("¿Necesito desautorizar?");
+    expect(t.detail!.es).toContain(sourceLine("toxic", after.createdAt).es);
+  });
+  it("pocos o ninguno nuevo → sin tarea; sin revisiones → sin tarea", () => {
+    const few = audit([{ domain: "viejo-spam.xyz", spamScore: 90 }, ...fresh.slice(0, 3)], "2026-10-08T12:00:00.000Z");
+    expect(toxicTasks({ toxic: [{ data: few, createdAt: few.createdAt }, { data: before, createdAt: before.createdAt }], backlinks: [] }, ctx)).toEqual([]);
+    expect(toxicTasks({ toxic: [], backlinks: [] }, ctx)).toEqual([]);
+  });
+  it("los sitios que el dueño protegió no cuentan", () => {
+    // Se guardan hasta 30 sitios protegidos: 38 nuevos − 30 protegidos = 8, menos que el mínimo para avisar.
+    const settings = { version: 1, type: "settings", createdAt: AT, ownSites: fresh.slice(0, 30).map((f) => f.domain) };
+    const after38 = audit([{ domain: "viejo-spam.xyz", spamScore: 90 }, ...fresh.slice(0, 38)], "2026-10-08T12:00:00.000Z");
+    const list = toxicTasks({ toxic: [{ data: settings, createdAt: AT }, { data: after38, createdAt: after38.createdAt }, { data: before, createdAt: before.createdAt }], backlinks: [] }, ctx);
+    expect(list).toEqual([]);
   });
 });
