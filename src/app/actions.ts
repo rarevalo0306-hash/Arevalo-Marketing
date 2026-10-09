@@ -54,7 +54,8 @@ async function business(id: string) {
 
 export async function login(_: string | null, f: FormData): Promise<string | null> {
   const { t } = await getT();
-  const expected = process.env.APP_PASSWORD;
+  // Sin espacios ni saltos de línea de más (pasa al pegar la contraseña en Vercel).
+  const expected = process.env.APP_PASSWORD?.trim();
   if (!expected) return t("Falta APP_PASSWORD en el archivo .env del servidor.", "APP_PASSWORD is missing from the server's .env file.");
   if (!safeEqual(str(f, "password"), expected)) return t("Contraseña incorrecta.", "Wrong password.");
   (await cookies()).set(SESSION_COOKIE, await sessionToken(), {
