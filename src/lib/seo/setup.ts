@@ -240,7 +240,7 @@ async function websiteText(website: string): Promise<string> {
   if (!/^https?:\/\//i.test(website) && !website.includes(".")) return "";
   try {
     const url = /^https?:\/\//i.test(website) ? website : `https://${website}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000), headers: { "User-Agent": "Mozilla/5.0 (compatible; ArevaloMarketing/1.0)" } });
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000), headers: { "User-Agent": "Mozilla/5.0 (compatible; Nehora/1.0)" } });
     if (!res.ok) return "";
     return htmlToText(await res.text(), 4000);
   } catch {
