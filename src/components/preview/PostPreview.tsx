@@ -8,6 +8,7 @@ import { useT } from "@/components/I18n";
 import { channelName, type ChannelId } from "@/lib/channels";
 import { channelOfView, countFor, isNetworkView, NETWORKS, previewNotes, viewsFor, type PreviewView } from "@/lib/preview";
 import { NetworkPreview, type PreviewBrand, type PreviewMediaInfo } from "./NetworkPreview";
+import { StoryPreview } from "./StoryPreview";
 import s from "./preview.module.css";
 
 export type { PreviewBrand, PreviewMediaInfo };
@@ -22,6 +23,8 @@ export type PostPreviewProps = {
   mediaFor: (channel: ChannelId) => PreviewMediaInfo;
   /** Agrega la vista de historia de Instagram para fotos (cuando se publiquen historias). */
   stories?: boolean;
+  /** Qué se publica: post normal, carrusel (las fotos en `mediaFor().items`) o historia (9:16 en Instagram y Facebook). */
+  mode?: "post" | "carousel" | "story";
   /** Pestaña elegida (si el que la usa quiere controlarla). */
   active?: PreviewView | null;
   onActive?: (view: PreviewView) => void;
@@ -38,7 +41,9 @@ const VIEW_NAME: Record<string, { es: string; en: string }> = {
 export function PostPreview(p: PostPreviewProps) {
   const { lang, t } = useT();
   const mediaType = p.channels.length ? p.mediaFor(p.channels[0]).type : "none";
-  const views = viewsFor(p.channels, mediaType, { stories: p.stories });
+  const story = p.mode === "story";
+  // Historia: Instagram se ve como historia (no como post del feed); Facebook también (en su pestaña).
+  const views = story ? p.channels.map((c): PreviewView => (c === "instagram" ? "instagram-story" : c)) : viewsFor(p.channels, mediaType, { stories: p.stories });
   const [own, setOwn] = useState<PreviewView | null>(null);
   const wanted = p.active !== undefined ? p.active : own;
   const view = views.find((v) => v === wanted) ?? views[0];
@@ -63,7 +68,9 @@ export function PostPreview(p: PostPreviewProps) {
     const notes = previewNotes(p.textFor(c), NETWORKS[v], p.mediaFor(c).type);
     return notes.some((n) => n.level === "error") ? "error" : notes.some((n) => n.level === "warn") ? "warn" : "ok";
   };
-  const nameOf = (v: PreviewView) => VIEW_NAME[v]?.[lang] ?? (isNetworkView(v) ? NETWORKS[v].name[lang] : channelName(v, lang));
+  const storyView = (v: PreviewView) => story && (v === "instagram-story" || v === "facebook");
+  const nameOf = (v: PreviewView) =>
+    storyView(v) ? (v === "facebook" ? t("Facebook · Historia", "Facebook · Story") : t("Instagram · Historia", "Instagram · Story")) : VIEW_NAME[v]?.[lang] ?? (isNetworkView(v) ? NETWORKS[v].name[lang] : channelName(v, lang));
   const idx = views.indexOf(view);
   const step = (d: number) => pick(views[(idx + d + views.length) % views.length]);
   const channel = channelOfView(view);
@@ -109,7 +116,9 @@ export function PostPreview(p: PostPreviewProps) {
           if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) step(dx < 0 ? 1 : -1);
         }}
       >
-        {isNetworkView(view) ? (
+        {storyView(view) ? (
+          <StoryPreview key={view} network={view === "facebook" ? "facebook" : "instagram"} brand={p.brand} media={p.mediaFor(channel)} />
+        ) : isNetworkView(view) ? (
           <NetworkPreview key={view} kind={view} brand={p.brand} text={text} media={p.mediaFor(channel)} count={countFor(text, NETWORKS[view])} />
         ) : (
           p.renderOther?.(channel)
@@ -122,6 +131,21 @@ export function PostPreview(p: PostPreviewProps) {
           </div>
         )}
       </div>
+      {storyView(view) && (
+        <p className={`note info ${s.noteItem}`}>
+          {t(
+            "En las historias no se ve el texto del post: si quieres decir algo, ponlo en la foto (elige «Diseño» o usa el diseño con tu marca en tamaño Historia).",
+            "Stories don't show the post text: if you want to say something, put it on the photo (choose «Design» or use the brand design in Story size).",
+          )}
+        </p>
+      )}
+      {!story && p.mode === "carousel" && (channel === "google" || channel === "x") && (
+        <p className={`note info ${s.noteItem}`}>
+          {channel === "google"
+            ? t("Google acepta una sola foto por novedad: se publica la primera.", "Google takes one photo per update: the first one is posted.")
+            : t("X muestra hasta 4 fotos: se publican las primeras 4.", "X shows up to 4 photos: the first 4 are posted.")}
+        </p>
+      )}
       {notes.length > 0 && (
         <ul className={s.notes}>
           {notes.map((n) => (

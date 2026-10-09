@@ -36,13 +36,14 @@ export default async function ConexionesPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ meta?: string; google?: string; place?: string; msg?: string; page?: string; ig?: string }>;
+  searchParams: Promise<{ meta?: string; google?: string; place?: string; msg?: string; page?: string; ig?: string; youtube?: string; chan?: string }>;
 }) {
   const { id } = await params;
   const q = await searchParams;
   const { lang, t } = await getT();
   const metaUrl = metaEnabled() ? `/api/meta/start?b=${id}` : null;
   const googleUrl = googleEnabled() ? `/api/google/start?b=${id}` : null;
+  const youtubeUrl = googleEnabled() ? `/api/youtube/start?b=${id}` : null;
   const [b, gsc, ga4, health, library, uploads, origin] = await Promise.all([
     db.business.findUniqueOrThrow({ where: { id }, include: { connections: { where: { channel: { in: CHANNEL_IDS } } } } }),
     db.connection.findUnique({ where: { businessId_channel: { businessId: id, channel: GSC_CHANNEL } }, select: { label: true } }),
@@ -99,6 +100,8 @@ export default async function ConexionesPage({
       {q.google === "ok" && <p className="note ok" role="status">{t(`Listo: Google quedó conectado con el perfil "${q.place}".`, `Done: Google is now connected to the profile "${q.place}".`)}</p>}
       {q.google === "error" && <p className="note error" role="alert">{q.msg || t("No se pudo conectar con Google.", "Couldn't connect to Google.")}</p>}
       {q.meta === "error" && <p className="note error" role="alert">{q.msg || t("No se pudo conectar con Facebook.", "Couldn't connect to Facebook.")}</p>}
+      {q.youtube === "ok" && <p className="note ok" role="status">{t(`Listo: YouTube quedó conectado con el canal "${q.chan}".`, `Done: YouTube is now connected to the channel "${q.chan}".`)}</p>}
+      {q.youtube === "error" && <p className="note error" role="alert">{q.msg || t("No se pudo conectar con YouTube.", "Couldn't connect to YouTube.")}</p>}
       <div className={`card ${s.summary}`}>
         <div className={s.summaryTop}>
           <div className={s.count}>{t(`${connected} de ${CHANNELS.length}`, `${connected} of ${CHANNELS.length}`)}</div>
@@ -238,8 +241,8 @@ export default async function ConexionesPage({
                       save={saveConnection.bind(null, id, c.id)}
                       remove={deleteConnection.bind(null, id, c.id)}
                       test={testConnection.bind(null, id, c.id)}
-                      oauthUrl={c.id === "facebook" || c.id === "instagram" ? metaUrl : c.id === "google" ? googleUrl : null}
-                      oauthName={c.id === "google" ? "Google" : "Facebook"}
+                      oauthUrl={c.id === "facebook" || c.id === "instagram" ? metaUrl : c.id === "google" ? googleUrl : c.id === "youtube" ? youtubeUrl : null}
+                      oauthName={c.id === "google" || c.id === "youtube" ? "Google" : "Facebook"}
                       brevo={c.id === "email" ? brevo : null}
                       needsReconnect={broken.has(c.id)}
                       account={label && !/^\d+$/.test(label) ? label : undefined}

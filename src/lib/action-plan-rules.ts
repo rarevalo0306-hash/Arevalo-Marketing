@@ -8,6 +8,7 @@
 // - Lo que no tiene que ver con lo que vende el negocio no entra (vocabulario de gap.ts: isRelevantKeyword).
 // - Si un reporte falta o tiene un formato viejo, la regla no devuelve nada (sin errores).
 import { taskScore, type Bi, type TaskArea, type TaskDraft } from "@/lib/action-plan-shape";
+import { effectiveStatus, napIssueText, type NapIssue } from "@/lib/directories";
 import { GA4_BUSY_PAGE, hasKeyEventsSetUp, isLowEngagementPage, organicShare, readGa4Report } from "@/lib/ga4-shape";
 import { translator } from "@/lib/i18n";
 import * as auditModule from "@/lib/seo/audit";
@@ -27,6 +28,7 @@ import type { QuestionsData } from "@/lib/seo/questions";
 import { readRankReport, siteDomain } from "@/lib/seo/rank";
 import { readVisibilityReport } from "@/lib/seo/visibility";
 import { norm } from "@/lib/seo/writer";
+import { REVIEW_SHARE_DAYS } from "@/lib/reviews-request";
 import { fmtDate } from "@/lib/time";
 
 /** Tareas abiertas como máximo: las de menor puntaje quedan fuera. */
@@ -72,6 +74,7 @@ const SOURCE_TEXT = {
   maprank: bi("el mapa de Google Maps", "the Google Maps heatmap"),
   ai: bi("la revisión de las IAs", "the AI check"),
   business: bi("los datos de tu negocio", "your business details"),
+  directories: bi("tu lista de directorios", "your directory checklist"),
 } as const;
 export type SourceName = keyof typeof SOURCE_TEXT;
 
@@ -1257,6 +1260,144 @@ export function setupTasks(input: SetupInput, ctx: RuleCtx): TaskDraft[] {
     out.push(mk("zones", bi("Elige las zonas donde trabajas", "Pick the areas you serve"), bi("Google muestra resultados distintos en cada ciudad: dinos dónde están tus clientes.", "Google shows different results in each city: tell us where your customers are."), 2));
   if (!input.study)
     out.push(mk("study", bi("Haz el estudio de tu negocio", "Run your business study"), bi("La IA lee tu página y aprende qué vendes y a quién, para que el plan no sugiera nada que no tenga que ver contigo.", "The AI reads your website and learns what you sell and to whom, so the plan never suggests anything unrelated."), 2));
+  return out;
+}
+
+// ---------- 15. Directorios y reseñas ----------
+
+/** Cuántos de los directorios más importantes se piden en el plan (los demás quedan en la pantalla). */
+export const DIR_TOP = 3;
+
+export type DirectoryPlanInput = {
+  /** Los directorios del negocio, del más importante al menos (directoriesFor en directories.ts). */
+  dirs: { id: string; name: string; priority: 1 | 2 | 3; kind: "listing" | "check"; why?: Bi }[];
+  listings: { directory: string; status: string; napOk?: boolean | null }[];
+  /** Ya hay Perfil de Google guardado o lugar elegido en el mapa (cuenta como «ya estoy» en Google). */
+  googleKnown: boolean;
+  /** Diferencias de nombre, dirección o teléfono (napIssues en directories.ts). */
+  issues: NapIssue[];
+  /** Cuándo se guardó el Perfil de Google con el que se compararon. */
+  napAt: Date | string | null;
+  /** Hay link de reseñas (se sabe el place_id). */
+  reviewLink: boolean;
+  /** La última vez que se compartió el link (envío o copia). */
+  lastShared: Date | string | null;
+  now: Date;
+};
+
+/** Los 3 directorios más importantes donde no estás, los que tienen datos mal, NAP distinto y el link de reseñas sin compartir. */
+export function directoryTasks(input: DirectoryPlanInput, ctx: RuleCtx): TaskDraft[] {
+  const page = (hash: string) => `/b/${ctx.businessId}/directorios#${hash}`;
+  const out: TaskDraft[] = [];
+  const top = input.dirs.filter((d) => d.kind === "listing").slice(0, DIR_TOP);
+  for (const d of top) {
+    if (effectiveStatus(d.id, input.listings, { googleKnown: input.googleKnown }) !== "todo") continue;
+    const google = d.id === "google";
+    out.push(
+      task({
+        key: `dir:${d.id}`,
+        source: "local",
+        area: "maps",
+        title: google ? bi("Crea o reclama tu Perfil de Google", "Create or claim your Google Business Profile") : bi(`Regístrate en ${d.name}`, `Get listed on ${d.name}`),
+        detail: detailOf(
+          [
+            d.why,
+            bi(
+              "En «Directorios y reseñas» tienes el botón para buscar si ya estás, el de registrarte y tus datos listos para copiar y pegar iguales.",
+              "In “Directories & reviews” you'll find a button to check if you're already there, one to sign up, and your details ready to copy and paste exactly the same.",
+            ),
+          ],
+          "directories",
+          input.now,
+        ),
+        impact: d.priority >= 3 ? 3 : 2,
+        effort: google ? 2 : 1,
+        href: page(`dir-${d.id}`),
+      }),
+    );
+  }
+  for (const l of input.listings) {
+    const d = input.dirs.find((x) => x.id === l.directory);
+    if (!d) continue;
+    const fix = l.status === "needs-fix" || ((l.status === "listed" || l.status === "claimed") && l.napOk === false);
+    if (!fix) continue;
+    out.push(
+      task({
+        key: `dir-fix:${d.id}`,
+        source: "local",
+        area: "maps",
+        title: bi(`Corrige tus datos en ${d.name}`, `Fix your details on ${d.name}`),
+        detail: detailOf(
+          [
+            bi(
+              "Marcaste que tu ficha tiene datos distintos. Google confía más en un negocio cuando el nombre, la dirección y el teléfono son iguales en todos lados: cópialos de la tarjeta «Tus datos oficiales».",
+              "You marked that this listing has different details. Google trusts a business more when the name, address and phone match everywhere: copy them from the “Your official details” card.",
+            ),
+          ],
+          "directories",
+          input.now,
+        ),
+        impact: d.priority >= 3 ? 3 : 2,
+        effort: 1,
+        href: page(`dir-${d.id}`),
+      }),
+    );
+  }
+  if (input.issues.length) {
+    const lines = input.issues.slice(0, 3).map(napIssueText);
+    const more = input.issues.length - lines.length;
+    out.push(
+      task({
+        key: "nap:mismatch",
+        source: "local",
+        area: "maps",
+        title: bi("Pon el mismo nombre, dirección y teléfono en todos lados", "Use the same name, address and phone everywhere"),
+        detail: detailOf(
+          [
+            bi(
+              "Si Google ve datos distintos de tu negocio en distintos sitios, confía menos en ti y te muestra menos en el mapa.",
+              "When Google sees different details for your business on different sites, it trusts you less and shows you less on the map.",
+            ),
+            { es: lines.map((l) => `• ${l.es}`).join("\n") + (more > 0 ? `\n• Y ${more} más.` : ""), en: lines.map((l) => `• ${l.en}`).join("\n") + (more > 0 ? `\n• And ${more} more.` : "") },
+          ],
+          input.napAt ? "gbp" : "business",
+          input.napAt ?? input.now,
+        ),
+        impact: 3,
+        effort: 1,
+        href: page("datos"),
+      }),
+    );
+  }
+  if (input.reviewLink) {
+    const last = input.lastShared ? new Date(input.lastShared) : null;
+    const days = last ? Math.floor((input.now.getTime() - last.getTime()) / 86_400_000) : null;
+    if (days === null || days > REVIEW_SHARE_DAYS)
+      out.push(
+        task({
+          key: "reviews:share-link",
+          source: "reviews",
+          area: "maps",
+          title: bi("Pide reseñas: comparte tu link de Google", "Ask for reviews: share your Google link"),
+          detail: detailOf(
+            [
+              days === null
+                ? bi("Todavía no has compartido tu link de reseñas desde la app.", "You haven't shared your review link from the app yet.")
+                : bi(`Hace ${days} días que no compartes tu link de reseñas.`, `It's been ${days} days since you last shared your review link.`),
+              bi(
+                "Las reseñas nuevas ayudan mucho a salir en el mapa. Mándalo por email o SMS a clientes que te dieron permiso, o imprime la tarjeta con el código QR. Nunca ofrezcas nada a cambio: Google lo prohíbe.",
+                "New reviews help a lot to show up on the map. Send it by email or SMS to customers who gave you permission, or print the card with the QR code. Never offer anything in return: Google forbids it.",
+              ),
+            ],
+            "business",
+            input.now,
+          ),
+          impact: 2,
+          effort: 1,
+          href: page("resenas"),
+        }),
+      );
+  }
   return out;
 }
 

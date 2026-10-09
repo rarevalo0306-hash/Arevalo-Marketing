@@ -174,3 +174,42 @@ export async function videoResult(job: VideoJob): Promise<{ done: false } | { do
   if (!out.video?.url) throw bi("fal.ai terminó pero no devolvió el video. Intenta de nuevo.", "fal.ai finished but didn't return the video. Please try again.");
   return { done: true, url: out.video.url };
 }
+
+// ---------- Videos con tus fotos reales (sección «Videos») ----------
+// FFmpeg compose de fal.ai une los cuadros que dibuja la app (fotos con movimiento y texto, cierre con la marca) y
+// los clips reales en un MP4; la música la crea CassetteAI (instrumental, uso comercial permitido en fal.ai).
+// Precios oficiales (octubre 2026): compose US$0.0002 por segundo de video; música US$0.02 por minuto.
+
+export const FAL_COMPOSE_MODEL = "fal-ai/ffmpeg-api/compose";
+export const FAL_MUSIC_MODEL = process.env.FAL_MUSIC_MODEL || "cassetteai/music-generator";
+/** Tipo de pista para los cuadros de las fotos: "video" (como el video-starter-kit de fal) o "image". */
+export const composeFrameTrack = (): "video" | "image" => (process.env.FAL_COMPOSE_FRAME_TRACK === "image" ? "image" : "video");
+
+export type FalJob = { statusUrl: string; responseUrl: string };
+
+/** Manda un trabajo a la cola de fal.ai (no espera el resultado). */
+export async function falSubmit(model: string, input: unknown): Promise<FalJob> {
+  const out = await fal<{ status_url: string; response_url: string }>(QUEUE + model, { method: "POST", body: JSON.stringify(input) });
+  if (!isFalQueueUrl(out.status_url) || !isFalQueueUrl(out.response_url)) throw bi("fal.ai no devolvió el trabajo. Intenta de nuevo.", "fal.ai didn't return the job. Please try again.");
+  return { statusUrl: out.status_url, responseUrl: out.response_url };
+}
+
+/** ¿Ya terminó? Devuelve la respuesta del modelo cuando está lista. */
+export async function falPoll<T>(job: FalJob): Promise<{ done: false } | { done: true; out: T }> {
+  if (!isFalQueueUrl(job.statusUrl) || !isFalQueueUrl(job.responseUrl)) throw bi("Dirección de trabajo no válida.", "Invalid job address.");
+  const st = await fal<{ status: string }>(job.statusUrl);
+  if (st.status !== "COMPLETED") return { done: false };
+  return { done: true, out: await fal<T>(job.responseUrl) };
+}
+
+/** Empieza la música de fondo (segundos enteros, instrumental). */
+export function startMusic(prompt: string, seconds: number): Promise<FalJob> {
+  return falSubmit(FAL_MUSIC_MODEL, { prompt: prompt.slice(0, 400), duration: Math.max(10, Math.min(180, Math.ceil(seconds))) });
+}
+/** La dirección del audio cuando la música está lista. */
+export const musicUrlOf = (out: { audio_file?: { url?: string }; audio?: { url?: string } }) => out.audio_file?.url ?? out.audio?.url ?? "";
+
+/** Empieza a unir las pistas en un MP4. */
+export function startCompose(tracks: unknown[]): Promise<FalJob> {
+  return falSubmit(FAL_COMPOSE_MODEL, { tracks });
+}

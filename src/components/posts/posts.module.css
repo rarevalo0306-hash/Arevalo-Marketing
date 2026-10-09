@@ -1,0 +1,82 @@
+/* «Posts (fotos y diseños)»: el tipo de publicación, el carrusel, el texto alternativo y los hashtags.
+   Colores del tema (Claro, Noche, Vidrio) con las variables de siempre. */
+
+/* ---------- ¿Qué vas a publicar? ---------- */
+.types { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.typesHead { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.typesTitle { margin: 0; font-family: var(--display); font-weight: 800; font-size: 18px; color: var(--ink); }
+.typeGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+@media (min-width: 760px) { .typeGrid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.type {
+  position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0;
+  padding: 12px 14px; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--surface);
+  color: var(--ink); text-align: left; cursor: pointer; font: inherit;
+}
+.type:hover { background: var(--surface-hover); }
+.type:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.typeOn { border-color: var(--brand); background: var(--brand-soft); box-shadow: 0 0 0 2px var(--brand); }
+.typeOn:hover { background: var(--brand-soft); }
+.typeIcon { display: block; width: 30px; height: 30px; color: var(--brand); }
+.typeName { font-weight: 800; font-size: 15px; line-height: 1.2; }
+.typeSub { font-size: 12.5px; line-height: 1.35; color: var(--muted); }
+.videoLink {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 10px 14px; border-radius: var(--r-md);
+  border: 1px dashed var(--line-strong); background: var(--surface-2); color: var(--ink); font-size: 14px;
+}
+.videoLink a { font-weight: 700; }
+
+/* ---------- Carrusel ---------- */
+.carousel { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.slides { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.slide {
+  display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; align-items: start;
+  padding: 10px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--surface-2);
+}
+.slideImg { position: relative; width: 64px; height: 64px; border-radius: 8px; overflow: hidden; background: var(--surface); }
+.slideImg img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.slideNum {
+  position: absolute; left: 4px; top: 4px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
+  background: rgba(0, 0, 0, 0.66); color: #fff; font-size: 11.5px; font-weight: 700; display: grid; place-items: center;
+}
+.slideBody { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.slideBody textarea { min-height: 54px; font-size: 14px; }
+.slideBtns { display: flex; flex-wrap: wrap; gap: 6px; }
+.slideBtns :global(.btn) { min-height: 34px; padding: 4px 10px; font-size: 13px; }
+.count { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.countBad { color: var(--err-text); }
+.addRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 8px; }
+.addRow :global(.btn) { justify-content: center; white-space: normal; text-align: center; }
+.linkRow { display: flex; gap: 8px; min-width: 0; }
+.linkRow input { flex: 1; min-width: 0; }
+
+/* ---------- Texto alternativo ---------- */
+.alt { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.altHead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; }
+.altLbl { font-weight: 700; font-size: 14px; color: var(--ink); }
+.alt textarea { min-height: 60px; font-size: 14px; }
+.altHelp { margin: 0; font-size: 12.5px; line-height: 1.4; color: var(--muted); }
+
+/* ---------- Palabras clave y hashtags ---------- */
+.kw { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--surface-2); min-width: 0; }
+.kwHead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 13.5px; color: var(--muted); }
+.kwHead strong { color: var(--ink); }
+.kwPill { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; background: var(--brand-soft); color: var(--ink); font-size: 13px; font-weight: 600; border: 1px solid var(--line); }
+.netRow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.netName { flex: 0 0 auto; min-width: 82px; font-size: 13px; font-weight: 700; color: var(--ink); }
+.tag {
+  display: inline-flex; align-items: center; gap: 2px; max-width: 100%; padding: 2px 4px 2px 10px; border-radius: 999px;
+  border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); font-size: 13px; font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.tagX {
+  display: grid; place-items: center; width: 26px; height: 26px; border: 0; border-radius: 50%; background: none;
+  color: var(--muted); font-size: 16px; line-height: 1; cursor: pointer;
+}
+.tagX:hover { background: var(--surface-hover); color: var(--ink); }
+.tagX:focus-visible { outline: 2px solid var(--brand); }
+.tagAdd { width: 120px; min-height: 30px; padding: 3px 10px; font-size: 13px; border-radius: 999px; }
+.tagNone { font-size: 12.5px; color: var(--muted); }
+
+/* ---------- Consejo de Google ---------- */
+.hint { display: flex; flex-direction: column; gap: 8px; }
+.hint :global(.btn) { align-self: flex-start; }

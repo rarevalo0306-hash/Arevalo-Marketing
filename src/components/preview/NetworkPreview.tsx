@@ -3,8 +3,9 @@
 // Cómo se ve una publicación en una red (Instagram, Facebook, LinkedIn, Google, X, TikTok): el nombre y el logo de
 // la cuenta, la foto con el recorte de esa red, el texto cortado donde la red pone «… más», los hashtags y los
 // enlaces con su color. Reutilizable: recibe la marca, el texto y la foto; no sabe nada del compositor.
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useT } from "@/components/I18n";
+import { DESIGN_SHAPES } from "@/lib/design-shapes";
 import { mediaFrame, NETWORKS, pieces, truncateForPreview, type NetworkSpec, type PreviewKind } from "@/lib/preview";
 import s from "./preview.module.css";
 
@@ -27,7 +28,12 @@ export type PreviewMediaInfo = {
   design?: boolean;
   /** La foto puede tener letras (entonces no se recorta: se centra). */
   hasText?: boolean;
+  /** Carrusel: todas las fotos en orden (la primera es `url`), con la exacta de esta red si se puede pedir. */
+  items?: { url: string; exactUrl?: string; alt?: string }[];
 };
+
+/** Cuántas fotos de un carrusel muestra cada red (Google: solo la primera). */
+const CAROUSEL_SHOWN: Partial<Record<PreviewKind, number>> = { instagram: 10, facebook: 10, linkedin: 20, x: 4 };
 
 const handleOf = (b: PreviewBrand) => b.handle?.replace(/^@/, "") || b.name.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "");
 
@@ -127,6 +133,65 @@ function MediaBox({ media, spec, rounded }: { media: PreviewMediaInfo; spec: Net
   );
 }
 
+/** Carrusel: las fotos una al lado de la otra; se pasan con el dedo (sin cambiar de red), con flechas y puntos. */
+function Carousel({ media, spec, rounded, max }: { media: PreviewMediaInfo; spec: NetworkSpec; rounded?: boolean; max: number }) {
+  const { t } = useT();
+  const items = (media.items ?? []).slice(0, max);
+  const [i, setI] = useState(0);
+  const track = useRef<HTMLDivElement>(null);
+  const f = spec.format;
+  const ratio = f ? DESIGN_SHAPES[f.shape].w / DESIGN_SHAPES[f.shape].h : 1;
+  const go = (n: number) => {
+    const el = track.current;
+    if (!el) return;
+    const k = Math.max(0, Math.min(items.length - 1, n));
+    el.scrollTo({ left: k * el.clientWidth, behavior: "smooth" });
+    setI(k);
+  };
+  const stop = (e: React.TouchEvent) => e.stopPropagation();
+  return (
+    <div className={rounded ? `${s.car} ${s.carRound}` : s.car} onTouchStart={stop} onTouchEnd={stop} role="group" aria-roledescription={t("carrusel", "carousel")} aria-label={t(`Carrusel de ${items.length} fotos`, `Carousel of ${items.length} photos`)}>
+      <div
+        ref={track}
+        className={s.carTrack}
+        style={{ aspectRatio: String(ratio) }}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          const n = Math.round(el.scrollLeft / Math.max(1, el.clientWidth));
+          if (n !== i) setI(n);
+        }}
+      >
+        {items.map((it, n) => (
+          <div key={`${it.url}-${n}`} className={s.carSlide} aria-hidden={n !== i}>
+            {/* eslint-disable-next-line @next/next/no-img-element -- foto del carrusel (la exacta de esta red si se puede) */}
+            <img
+              src={it.exactUrl ?? it.url}
+              alt={it.alt || t(`Foto ${n + 1} del carrusel`, `Carousel photo ${n + 1}`)}
+              loading={n > 1 ? "lazy" : undefined}
+              onError={(e) => {
+                if (it.exactUrl && e.currentTarget.src !== new URL(it.url, window.location.href).href) e.currentTarget.src = it.url;
+              }}
+            />
+          </div>
+        ))}
+      </div>
+      <span className={s.carCount}>{i + 1}/{items.length}</span>
+      {i > 0 && <button type="button" className={`${s.carNav} ${s.carPrev}`} onClick={() => go(i - 1)} aria-label={t("Foto anterior", "Previous photo")}>‹</button>}
+      {i < items.length - 1 && <button type="button" className={`${s.carNav} ${s.carNext}`} onClick={() => go(i + 1)} aria-label={t("Foto siguiente", "Next photo")}>›</button>}
+      <div className={s.dots} aria-hidden="true">
+        {items.map((_, n) => <span key={n} className={n === i ? `${s.dotC} ${s.dotCOn}` : s.dotC} />)}
+      </div>
+    </div>
+  );
+}
+
+/** La foto (o el carrusel) de la publicación en esta red. */
+function PostMedia({ kind, media, spec, rounded }: { kind: PreviewKind; media: PreviewMediaInfo; spec: NetworkSpec; rounded?: boolean }) {
+  const max = CAROUSEL_SHOWN[kind] ?? 1;
+  if (media.type === "photo" && (media.items?.length ?? 0) > 1 && max > 1) return <Carousel key={(media.items ?? []).map((x) => x.url).join("|")} media={media} spec={spec} rounded={rounded} max={max} />;
+  return <MediaBox key={`${media.url}|${media.exactUrl ?? ""}`} media={media} spec={spec} rounded={rounded} />;
+}
+
 const Icon = ({ d, label }: { d: string; label?: string }) => (
   <svg viewBox="0 0 24 24" className={s.icon} aria-hidden={label ? undefined : true} role={label ? "img" : undefined} aria-label={label}>
     <path d={d} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
@@ -175,7 +240,7 @@ export function NetworkPreview({ kind, brand, text, media, count }: NetworkPrevi
           <strong className={s.name}>{handle}</strong>
           <Icon d={ICONS.dots} />
         </header>
-        <MediaBox key={`${media.url}|${media.exactUrl ?? ""}`} media={media} spec={spec} />
+        <PostMedia kind={kind} media={media} spec={spec} />
         {media.type === "none" && <div className={s.noMedia}>{t("Instagram necesita una foto o un video", "Instagram needs a photo or a video")}</div>}
         <div className={s.igActions}><Icon d={ICONS.heart} /><Icon d={ICONS.comment} /><Icon d={ICONS.send} /><span className={s.grow} /><Icon d={ICONS.save} /></div>
         <div className={s.body}>
@@ -216,7 +281,7 @@ export function NetworkPreview({ kind, brand, text, media, count }: NetworkPrevi
           <Icon d={ICONS.dots} />
         </header>
         <div className={s.body}><PostText text={text} spec={spec} /></div>
-        <MediaBox key={`${media.url}|${media.exactUrl ?? ""}`} media={media} spec={spec} />
+        <PostMedia kind={kind} media={media} spec={spec} />
         <div className={s.fbBar}><span><Icon d={ICONS.like} /> {t("Me gusta", "Like")}</span><span><Icon d={ICONS.comment} /> {t("Comentar", "Comment")}</span><span><Icon d={ICONS.share} /> {t("Compartir", "Share")}</span></div>
         <div className={s.foot}>{counterEl}</div>
       </article>
@@ -231,7 +296,7 @@ export function NetworkPreview({ kind, brand, text, media, count }: NetworkPrevi
           <div className={s.who}><strong className={s.name}>{brand.name}</strong><span className={s.sub}>{t("Página de empresa", "Company page")} · {t("Ahora", "Now")} · <Icon d={ICONS.globe} /></span></div>
         </header>
         <div className={s.body}><PostText text={text} spec={spec} /></div>
-        <MediaBox key={`${media.url}|${media.exactUrl ?? ""}`} media={media} spec={spec} />
+        <PostMedia kind={kind} media={media} spec={spec} />
         <div className={s.fbBar}><span><Icon d={ICONS.like} /> {t("Recomendar", "Like")}</span><span><Icon d={ICONS.comment} /> {t("Comentar", "Comment")}</span><span><Icon d={ICONS.repost} /> {t("Compartir", "Repost")}</span><span><Icon d={ICONS.send} /> {t("Enviar", "Send")}</span></div>
         <div className={s.foot}>{counterEl}</div>
       </article>
@@ -263,7 +328,7 @@ export function NetworkPreview({ kind, brand, text, media, count }: NetworkPrevi
         <div className={s.xMain}>
           <div className={s.xWho}><strong className={s.name}>{brand.name}</strong><span className={s.sub}>@{handle} · {t("ahora", "now")}</span></div>
           <PostText text={text} spec={spec} />
-          <MediaBox key={`${media.url}|${media.exactUrl ?? ""}`} media={media} spec={spec} rounded />
+          <PostMedia kind={kind} media={media} spec={spec} rounded />
           <div className={s.xBar}><Icon d={ICONS.comment} /><Icon d={ICONS.repost} /><Icon d={ICONS.heart} /><Icon d={ICONS.views} /><Icon d={ICONS.share} /></div>
         </div>
       </div>

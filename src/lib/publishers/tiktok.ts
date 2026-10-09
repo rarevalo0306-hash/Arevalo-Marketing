@@ -3,6 +3,9 @@ import type { Creds, Publisher } from "./types";
 
 const API = "https://open.tiktokapis.com/v2";
 
+/** La app publica en TikTok solo videos (el modo foto de TikTok todavía no está conectado). */
+export const TIKTOK_NO_PHOTOS = "TikTok necesita un video: desde la app todavía no se publican fotos ni carruseles en TikTok, así que se saltó. Para TikTok usa la sección Videos.";
+
 async function accessToken(creds: Creds): Promise<string> {
   required(creds, ["clientKey", "clientSecret", "refreshToken"]);
   const t = await fetchJson<{ access_token: string }>(`${API}/oauth/token/`, {
@@ -30,7 +33,7 @@ async function creatorInfo(token: string): Promise<CreatorInfo["data"]> {
 
 export const tiktok: Publisher = {
   async publish(input, creds) {
-    if (input.mediaType !== "video" || !input.mediaUrl) throw new PublishError("TikTok necesita un video.");
+    if (input.mediaType !== "video" || !input.mediaUrl) throw new PublishError(TIKTOK_NO_PHOTOS);
     const token = await accessToken(creds);
     const info = await creatorInfo(token);
     const options = info.privacy_level_options ?? [];

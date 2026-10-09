@@ -2,7 +2,7 @@
 // o en la página de una empresa (w_organization_social, requiere que LinkedIn apruebe la app).
 // El token se genera a mano en el portal de desarrolladores y dura 60 días.
 import { PublishError, required } from "@/lib/publishers/http";
-import type { Creds, PublishInput, Publisher } from "@/lib/publishers/types";
+import { mediaOf, type Creds, type PublishInput, type Publisher } from "@/lib/publishers/types";
 
 const API = "https://api.linkedin.com";
 /** Versión de la API de LinkedIn (AAAAMM). LinkedIn mantiene cada versión un año; actualizarla de vez en cuando. */
@@ -117,14 +117,26 @@ async function uploadVideo(token: string, owner: string, mediaUrl: string): Prom
   return value.video;
 }
 
-/** El cuerpo de la publicación para /rest/posts. */
-export function linkedinPostBody(author: string, text: string, media?: { id: string; title?: string }) {
+/** Una foto o video ya subido a LinkedIn (urn:li:image:… o urn:li:video:…), con su texto alternativo. */
+export type LinkedinMedia = { id: string; title?: string; altText?: string };
+
+/**
+ * El cuerpo de la publicación para /rest/posts: una foto o video (content.media) o, con 2 a 20 fotos,
+ * varias fotos (content.multiImage.images).
+ */
+export function linkedinPostBody(author: string, text: string, media?: LinkedinMedia | LinkedinMedia[]) {
+  const list = Array.isArray(media) ? media : media ? [media] : [];
+  const content = list.length >= 2
+    ? { multiImage: { images: list.slice(0, 20).map((m) => ({ id: m.id, ...(m.altText ? { altText: m.altText } : {}) })) } }
+    : list.length === 1
+      ? { media: list[0] }
+      : null;
   return {
     author,
     commentary: escapeLinkedinText(text),
     visibility: "PUBLIC",
     distribution: { feedDistribution: "MAIN_FEED", targetEntities: [], thirdPartyDistributionChannels: [] },
-    ...(media ? { content: { media } } : {}),
+    ...(content ? { content } : {}),
     lifecycleState: "PUBLISHED",
     isReshareDisabledByAuthor: false,
   };
@@ -134,9 +146,18 @@ async function publish(input: PublishInput, creds: Creds) {
   required(creds, ["accessToken"]);
   const token = creds.accessToken.trim();
   const author = await linkedinAuthor(creds);
-  let media: { id: string; title?: string } | undefined;
-  if (input.mediaUrl && input.mediaType === "photo") media = { id: await uploadImage(token, author, input.mediaUrl) };
-  if (input.mediaUrl && input.mediaType === "video") media = { id: await uploadVideo(token, author, input.mediaUrl), title: input.businessName };
+  const files = mediaOf(input);
+  const photos = files.filter((m) => m.type === "photo");
+  let media: LinkedinMedia | LinkedinMedia[] | undefined;
+  if (input.kind === "carousel" && photos.length >= 2) {
+    // Varias fotos (MultiImage): de 2 a 20, cada una con su texto alternativo.
+    media = [];
+    for (const p of photos.slice(0, 20)) media.push({ id: await uploadImage(token, author, p.url), ...(p.alt ? { altText: p.alt } : {}) });
+  } else if (files[0]?.type === "photo") {
+    media = { id: await uploadImage(token, author, files[0].url), ...(files[0].alt ? { altText: files[0].alt } : {}) };
+  } else if (files[0]?.type === "video") {
+    media = { id: await uploadVideo(token, author, files[0].url), title: input.businessName };
+  }
   const res = await linkedinFetch(`${API}/rest/posts`, {
     method: "POST",
     headers: headers(token),
@@ -145,7 +166,11 @@ async function publish(input: PublishInput, creds: Creds) {
   const id = res.headers.get("x-restli-id") ?? "";
   return {
     url: id ? `https://www.linkedin.com/feed/update/${id}/` : undefined,
-    detail: media?.id.startsWith("urn:li:video:") ? "Publicado en LinkedIn (el video tarda unos minutos en procesarse)" : "Publicado en LinkedIn",
+    detail: Array.isArray(media)
+      ? `Publicado en LinkedIn con ${media.length} fotos`
+      : media?.id.startsWith("urn:li:video:")
+        ? "Publicado en LinkedIn (el video tarda unos minutos en procesarse)"
+        : "Publicado en LinkedIn",
   };
 }
 

@@ -23,7 +23,11 @@ export const MEDIA_CONTENT_TYPES: Record<string, string> = Object.fromEntries(
   Object.entries(TYPES).map(([type, ext]) => [ext, type]),
 );
 
-export const SAFE_MEDIA_NAME = /^[a-f0-9]{24}\.(jpg|png|webp|gif|mp4|mov|webm)$/;
+/**
+ * Nombres que se sirven desde /media/…: 24 letras hex ("a1b2….jpg") o, para las fotos que se publican, un nombre
+ * con palabras clave para Google ("portones-enrollables-managua-a1b2c3d4e5f6.jpg": palabras + 12 hex).
+ */
+export const SAFE_MEDIA_NAME = /^(?:[a-f0-9]{24}|[a-z0-9]{1,30}(?:-[a-z0-9]{1,30}){0,9}-[a-f0-9]{12})\.(jpg|png|webp|gif|mp4|mov|webm)$/;
 
 function supabase() {
   const url = process.env.SUPABASE_URL?.replace(/\/+$/, "");
@@ -142,6 +146,17 @@ export function publicMediaUrl(stored: string): string {
 
 // ---------- Copias por canal y datos del diseño ----------
 
+/**
+ * Nombre con palabras clave (SEO) para una foto que se publica: "portones-enrollables-managua-a1b2c3d4e5f6.jpg".
+ * `slug` ya viene limpio (seoSlug en src/lib/post-keywords.ts); `hex` fija el nombre (si no, uno al azar).
+ * Sin palabras, el nombre de siempre (24 hex).
+ */
+export function seoMediaName(slug: string, ext: "jpg" | "png" | "webp", hex?: string): string {
+  const clean = slug.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").split("-").filter(Boolean).slice(0, 9).map((w) => w.slice(0, 30)).join("-").slice(0, 60).replace(/-$/, "");
+  const id = (hex && /^[a-f0-9]{12,}$/.test(hex) ? hex : randomBytes(12).toString("hex"));
+  return clean ? `${clean}-${id.slice(0, 12)}.${ext}` : `${id.slice(0, 24).padEnd(24, "0")}.${ext}`;
+}
+
 /** Nombre fijo (24 letras hex + extensión) para una copia, así no se vuelve a crear si ya existe. */
 export const fixedMediaName = (hex24: string, ext: "jpg" | "png") => `${hex24.slice(0, 24)}.${ext}`;
 
@@ -174,8 +189,8 @@ export async function readMedia(stored: string): Promise<Buffer> {
  * a dibujar el diseño en el tamaño de cada red. Solo para archivos de tu almacenamiento.
  */
 function sidecarPlace(stored: string): { local: string } | { url: string; objectPath: string } | null {
-  const local = /^\/media\/([a-f0-9]{24})\.(jpg|png|webp)$/.exec(stored);
-  if (local) return { local: path.join(UPLOAD_DIR, `${local[1]}.json`) };
+  const local = /^\/media\/([^/]+)\.(jpg|png|webp)$/.exec(stored);
+  if (local && SAFE_MEDIA_NAME.test(`${local[1]}.${local[2]}`)) return { local: path.join(UPLOAD_DIR, `${local[1]}.json`) };
   const sb = supabase();
   const prefix = sb ? `${sb.url}/storage/v1/object/public/${BUCKET}/` : "";
   if (!sb || !stored.startsWith(prefix) || stored.includes("..")) return null;

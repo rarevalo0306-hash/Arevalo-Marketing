@@ -134,3 +134,67 @@ ALTER TABLE "LibraryItem" ADD COLUMN IF NOT EXISTS "enhancedUrl" TEXT NOT NULL D
 ALTER TABLE "LibraryItem" ADD COLUMN IF NOT EXISTS "enhanceInfo" JSONB;
 ALTER TABLE "LibraryItem" ADD COLUMN IF NOT EXISTS "enhancedAt" TIMESTAMP(3);
 ALTER TABLE "LibraryItem" ADD COLUMN IF NOT EXISTS "useEnhanced" BOOLEAN NOT NULL DEFAULT true;
+
+-- 2026-10-08: fase 4 (publicar y distribuir): campañas, registro de la IA, directorios y tipos de publicación.
+ALTER TABLE "Post" ADD COLUMN IF NOT EXISTS "kind" TEXT NOT NULL DEFAULT 'post';
+ALTER TABLE "Post" ADD COLUMN IF NOT EXISTS "media" JSONB;
+ALTER TABLE "Post" ADD COLUMN IF NOT EXISTS "altText" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "Post" ADD COLUMN IF NOT EXISTS "campaignId" TEXT;
+CREATE TABLE IF NOT EXISTS "Campaign" (
+  "id" TEXT NOT NULL,
+  "businessId" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "goal" TEXT NOT NULL DEFAULT '',
+  "mode" TEXT NOT NULL DEFAULT 'approval',
+  "status" TEXT NOT NULL DEFAULT 'draft',
+  "startsAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "endsAt" TIMESTAMP(3),
+  "channels" TEXT[] DEFAULT ARRAY[]::TEXT[],
+  "perWeek" INTEGER NOT NULL DEFAULT 3,
+  "keywords" TEXT[] DEFAULT ARRAY[]::TEXT[],
+  "rules" JSONB,
+  "budgetCents" INTEGER NOT NULL DEFAULT 0,
+  "spentCents" INTEGER NOT NULL DEFAULT 0,
+  "ads" JSONB,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "Campaign_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "Campaign_businessId_fkey" FOREIGN KEY ("businessId") REFERENCES "Business"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+CREATE INDEX IF NOT EXISTS "Campaign_businessId_status_idx" ON "Campaign"("businessId", "status");
+CREATE TABLE IF NOT EXISTS "AiAction" (
+  "id" TEXT NOT NULL,
+  "businessId" TEXT NOT NULL,
+  "campaignId" TEXT,
+  "kind" TEXT NOT NULL,
+  "summary" JSONB NOT NULL,
+  "detail" JSONB,
+  "actor" TEXT NOT NULL DEFAULT 'auto',
+  "costCents" INTEGER NOT NULL DEFAULT 0,
+  "postId" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "AiAction_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "AiAction_businessId_fkey" FOREIGN KEY ("businessId") REFERENCES "Business"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "AiAction_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign"("id") ON DELETE SET NULL ON UPDATE CASCADE
+);
+CREATE INDEX IF NOT EXISTS "AiAction_businessId_createdAt_idx" ON "AiAction"("businessId", "createdAt");
+CREATE INDEX IF NOT EXISTS "AiAction_campaignId_createdAt_idx" ON "AiAction"("campaignId", "createdAt");
+CREATE TABLE IF NOT EXISTS "DirectoryListing" (
+  "id" TEXT NOT NULL,
+  "businessId" TEXT NOT NULL,
+  "directory" TEXT NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'todo',
+  "url" TEXT NOT NULL DEFAULT '',
+  "notes" TEXT NOT NULL DEFAULT '',
+  "napOk" BOOLEAN,
+  "checkedAt" TIMESTAMP(3),
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "DirectoryListing_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "DirectoryListing_businessId_fkey" FOREIGN KEY ("businessId") REFERENCES "Business"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "DirectoryListing_businessId_directory_key" ON "DirectoryListing"("businessId", "directory");
+CREATE INDEX IF NOT EXISTS "Post_campaignId_idx" ON "Post"("campaignId");
+DO $$ BEGIN
+  ALTER TABLE "Post" ADD CONSTRAINT "Post_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;

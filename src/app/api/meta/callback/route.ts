@@ -1,9 +1,10 @@
 import { cookies } from "next/headers";
+import { saveAdsConnection } from "@/lib/ads";
 import { encryptJson } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
-import { exchangeCode, listPages, META_COOKIE, readState, saveMetaPage } from "@/lib/meta-oauth";
+import { exchangeCode, listPages, META_COOKIE, metaStatePurpose, readState, saveMetaPage } from "@/lib/meta-oauth";
 
 export const dynamic = "force-dynamic";
 
@@ -16,9 +17,12 @@ function back(businessId: string, params: Record<string, string>, path = "conexi
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const { lang, t } = await getT();
-  const businessId = readState(url.searchParams.get("state") ?? "");
-  if (!businessId || !(await db.business.findUnique({ where: { id: businessId }, select: { id: true } })))
+  const state = readState(url.searchParams.get("state") ?? "");
+  const { purpose, businessId } = metaStatePurpose(state ?? "");
+  if (!state || !businessId || !(await db.business.findUnique({ where: { id: businessId }, select: { id: true } })))
     return new Response(t("El enlace de conexión venció o no es válido. Vuelve a intentarlo desde Conexiones.", "The connection link expired or isn't valid. Try again from Connections."), { status: 400 });
+
+  if (purpose === "ads") return adsCallback(url, businessId);
 
   if (url.searchParams.get("error"))
     return back(businessId, { meta: "error", msg: t("Cancelaste la conexión con Facebook.", "You canceled the Facebook connection.") });
@@ -43,5 +47,19 @@ export async function GET(req: Request) {
     return back(businessId, {}, "conexiones/meta");
   } catch (e) {
     return back(businessId, { meta: "error", msg: t(`Facebook respondió: ${errorText(e, lang)}`, `Facebook responded: ${errorText(e, lang)}`).slice(0, 300) });
+  }
+}
+
+/** «Conectar anuncios»: guarda el permiso de anuncios y la cuenta de anuncios; vuelve a Anuncios pagados. */
+async function adsCallback(url: URL, businessId: string) {
+  const { lang, t } = await getT();
+  if (url.searchParams.get("error"))
+    return back(businessId, { ads: "error", msg: t("Cancelaste la conexión de anuncios.", "You canceled the ads connection.") }, "anuncios");
+  try {
+    const userToken = await exchangeCode(url.searchParams.get("code") ?? "");
+    const r = await saveAdsConnection(businessId, userToken);
+    return back(businessId, { ads: r.chosen ? "ok" : "choose" }, "anuncios");
+  } catch (e) {
+    return back(businessId, { ads: "error", msg: t(`Facebook respondió: ${errorText(e, lang)}`, `Facebook responded: ${errorText(e, lang)}`).slice(0, 300) }, "anuncios");
   }
 }

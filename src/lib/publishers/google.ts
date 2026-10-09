@@ -1,5 +1,5 @@
 import { fetchJson, form, required } from "./http";
-import type { Creds, Publisher } from "./types";
+import { mediaOf, type Creds, type Publisher } from "./types";
 
 /** Un access token nuevo a partir de las credenciales guardadas de la conexión de Google (refresh token). */
 export async function googleAccessToken(creds: Creds): Promise<string> {
@@ -29,7 +29,9 @@ export const google: Publisher = {
       summary: input.text.slice(0, 1500),
       topicType: "STANDARD",
     };
-    if (input.mediaType === "photo" && input.mediaUrl) body.media = [{ mediaFormat: "PHOTO", sourceUrl: input.mediaUrl }];
+    // Google acepta una sola foto por novedad: la primera (en carruseles e historias también).
+    const photo = mediaOf(input).find((m) => m.type === "photo");
+    if (photo) body.media = [{ mediaFormat: "PHOTO", sourceUrl: photo.url }];
     const post = await fetchJson<{ searchUrl?: string }>(
       `https://mybusiness.googleapis.com/v4/accounts/${account}/locations/${location}/localPosts`,
       {
@@ -38,7 +40,8 @@ export const google: Publisher = {
         body: JSON.stringify(body),
       },
     );
-    return { url: post.searchUrl, detail: "Publicado en tu Perfil de Negocio de Google" };
+    const n = mediaOf(input).filter((m) => m.type === "photo").length;
+    return { url: post.searchUrl, detail: n > 1 ? "Publicado en tu Perfil de Negocio de Google (con la primera foto: Google acepta una por novedad)" : "Publicado en tu Perfil de Negocio de Google" };
   },
   async test(creds) {
     required(creds, ["accountId", "locationId"]);

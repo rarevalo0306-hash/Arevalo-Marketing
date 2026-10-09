@@ -12,11 +12,15 @@ export const GOOGLE_SCOPE = "https://www.googleapis.com/auth/business.manage";
 export const GSC_SCOPE = "https://www.googleapis.com/auth/webmasters.readonly";
 /** Google Analytics 4 ("Visitas a tu página"): solo lectura, se pide aparte. */
 export const GA4_SCOPE = "https://www.googleapis.com/auth/analytics.readonly";
+/** YouTube ("Subir videos a tu canal"): solo permiso para subir videos, se pide aparte. */
+export const YOUTUBE_SCOPE = "https://www.googleapis.com/auth/youtube.upload";
+/** Para leer el nombre del canal al conectar (solo lectura). */
+export const YOUTUBE_READ_SCOPE = "https://www.googleapis.com/auth/youtube.readonly";
 
-/** Para qué se pide el permiso de Google: publicar en el Perfil de Negocio, leer Search Console o leer Analytics. */
-export type GooglePurpose = "profile" | "gsc" | "ga4";
+/** Para qué se pide el permiso de Google: publicar en el Perfil de Negocio, leer Search Console, leer Analytics o subir a YouTube. */
+export type GooglePurpose = "profile" | "gsc" | "ga4" | "youtube";
 
-const PURPOSE_SCOPE: Record<GooglePurpose, string> = { profile: GOOGLE_SCOPE, gsc: GSC_SCOPE, ga4: GA4_SCOPE };
+const PURPOSE_SCOPE: Record<GooglePurpose, string> = { profile: GOOGLE_SCOPE, gsc: GSC_SCOPE, ga4: GA4_SCOPE, youtube: `${YOUTUBE_SCOPE} ${YOUTUBE_READ_SCOPE}` };
 
 export const googleEnabled = () => Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 
@@ -43,6 +47,7 @@ export function googleAuthUrl(businessId: string, purpose: GooglePurpose = "prof
 export function googleStatePurpose(value: string): { purpose: GooglePurpose; businessId: string } {
   if (value.startsWith("gsc:")) return { purpose: "gsc", businessId: value.slice(4) };
   if (value.startsWith("ga4:")) return { purpose: "ga4", businessId: value.slice(4) };
+  if (value.startsWith("youtube:")) return { purpose: "youtube", businessId: value.slice(8) };
   return { purpose: "profile", businessId: value };
 }
 
@@ -118,5 +123,33 @@ export async function saveGoogleLocation(businessId: string, refreshToken: strin
     where: { businessId_channel: { businessId, channel: "google" } },
     create: { businessId, channel: "google", secret, label: loc.title },
     update: { secret, label: loc.title },
+  });
+}
+
+// ---------- YouTube ----------
+
+export type YoutubeChannel = { id: string; title: string };
+
+/** El canal de YouTube de la cuenta que dio permiso (null si la cuenta no tiene canal). */
+export async function youtubeChannel(accessToken: string): Promise<YoutubeChannel | null> {
+  const r = await fetchJson<{ items?: { id: string; snippet?: { title?: string } }[] }>("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const ch = r.items?.[0];
+  return ch ? { id: ch.id, title: ch.snippet?.title?.trim() || ch.id } : null;
+}
+
+/** Guarda la conexión de YouTube con las mismas credenciales que usa el publicador de YouTube. */
+export async function saveYoutubeChannel(businessId: string, refreshToken: string, channel: YoutubeChannel) {
+  const secret = encryptJson({
+    clientId: process.env.GOOGLE_CLIENT_ID!,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    refreshToken,
+    channelId: channel.id,
+  });
+  await db.connection.upsert({
+    where: { businessId_channel: { businessId, channel: "youtube" } },
+    create: { businessId, channel: "youtube", secret, label: channel.title },
+    update: { secret, label: channel.title },
   });
 }

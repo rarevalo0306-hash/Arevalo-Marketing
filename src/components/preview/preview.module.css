@@ -129,3 +129,62 @@
 .storyCount { position: absolute; top: 10px; right: 12px; }
 .storyCount .count { color: #fff; background: rgba(0, 0, 0, 0.5); padding: 2px 8px; border-radius: 999px; }
 .storyCount .countOver { background: #c62828; }
+
+/* ---------- Carrusel: se desliza con el dedo (sin cambiar de red), puntos abajo y contador ---------- */
+.car { position: relative; width: 100%; background: #f0f2f5; }
+.carRound { width: calc(100% - 24px); margin: 4px 12px 10px; border-radius: 14px; overflow: hidden; border: 1px solid var(--pv-line); }
+.xMain .carRound { width: 100%; margin: 8px 0 4px; }
+.carTrack {
+  display: flex; width: 100%; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none;
+  -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain;
+}
+.carTrack::-webkit-scrollbar { display: none; }
+.carSlide { position: relative; flex: 0 0 100%; scroll-snap-align: center; scroll-snap-stop: always; }
+.carSlide img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.carCount {
+  position: absolute; top: 10px; right: 10px; padding: 3px 9px; border-radius: 999px; background: rgba(0, 0, 0, 0.62);
+  color: #fff; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.carNav {
+  position: absolute; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; border-radius: 50%; border: 0;
+  display: grid; place-items: center; background: rgba(255, 255, 255, 0.9); color: #0f1419; font-size: 18px; line-height: 1;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25); cursor: pointer;
+}
+.carNav:focus-visible { outline: 2px solid var(--pv-link); }
+.carPrev { left: 8px; }
+.carNext { right: 8px; }
+.dots { display: flex; justify-content: center; gap: 5px; padding: 8px 0 2px; }
+.dotC { width: 6px; height: 6px; border-radius: 50%; background: #c4c9d0; }
+.dotCOn { background: #1d9bf0; }
+.ig .dotCOn { background: #0095f6; }
+
+/* ---------- Historia (Instagram y Facebook): 9:16 con las zonas que tapan los botones ---------- */
+.st {
+  position: relative; width: 100%; max-width: 300px; aspect-ratio: 9 / 16; overflow: hidden; border-radius: 16px;
+  background: #000; color: #fff; border: 1px solid #000; box-shadow: 0 6px 20px rgba(16, 24, 40, 0.18);
+  font: 400 13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+.stMedia { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.stBlur { filter: blur(18px) brightness(0.7); transform: scale(1.15); }
+.stEmpty { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; text-align: center; color: #ddd; }
+.stBars { position: absolute; top: 8px; left: 8px; right: 8px; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.45); }
+.stBars span { display: block; width: 35%; height: 100%; border-radius: 2px; background: #fff; }
+.stHead { position: absolute; top: 18px; left: 10px; right: 10px; display: flex; align-items: center; gap: 8px; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
+.stHead .avatar { width: 30px; height: 30px; font-size: 12px; }
+.stHead strong { font-size: 13px; }
+.stTime { opacity: 0.85; }
+.stFoot { position: absolute; left: 10px; right: 10px; bottom: 12px; display: flex; align-items: center; gap: 10px; }
+.stReply { flex: 1; min-width: 0; padding: 8px 14px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.75); font-size: 12.5px; color: rgba(255, 255, 255, 0.9); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stFoot .icon { width: 22px; height: 22px; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5)); }
+/* Zonas seguras: arriba (~14%: nombre y barras) y abajo (~20%: responder). */
+.safeZone { position: absolute; left: 0; right: 0; border: 1.5px dashed rgba(255, 214, 10, 0.95); background: rgba(255, 214, 10, 0.12); pointer-events: none; }
+.safeZoneTop { top: 0; height: 14%; border-top: 0; }
+.safeZoneBottom { bottom: 0; height: 20%; border-bottom: 0; }
+.safeLabel {
+  position: absolute; left: 50%; transform: translateX(-50%); padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+  background: rgba(0, 0, 0, 0.72); color: #ffd60a; font-size: 11px; font-weight: 700;
+}
+.safeZoneTop .safeLabel { bottom: 4px; }
+.safeZoneBottom .safeLabel { top: 4px; }
+.stTools { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; max-width: 300px; }
+.stTools label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink); cursor: pointer; }

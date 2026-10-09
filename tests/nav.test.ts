@@ -25,7 +25,7 @@ describe("menú por herramientas", () => {
     }
     expect(itemHref(ID, item("seo-palabras"))).toBe("/b/biz1/seo?tab=google#palabras");
     expect(itemHref(ID, item("seo-enlaces"))).toBe("/b/biz1/seo?tab=competencia#enlaces");
-    expect(itemHref(ID, item("anuncios"))).toBe("");
+    expect(itemHref(ID, item("anuncios"))).toBe("/b/biz1/anuncios");
   });
 
   it("la pestaña de SEO: ?tab= válido, ?mapa= abre Local, si no Resumen", () => {

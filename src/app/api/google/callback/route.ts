@@ -3,7 +3,7 @@ import { encryptJson } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import { listGa4Properties, readGa4Connection, refreshGa4, writeGa4Connection } from "@/lib/ga4";
 import { autoPick, explainGa4Error } from "@/lib/ga4-shape";
-import { GOOGLE_COOKIE, googleExchange, googleStatePurpose, listLocations, saveGoogleLocation } from "@/lib/google-oauth";
+import { GOOGLE_COOKIE, googleExchange, googleStatePurpose, listLocations, saveGoogleLocation, saveYoutubeChannel, youtubeChannel } from "@/lib/google-oauth";
 import { errorText, type T, type UiLang } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { readState } from "@/lib/meta-oauth";
@@ -111,6 +111,27 @@ async function analytics(url: URL, businessId: string, lang: UiLang, t: T) {
   }
 }
 
+/** "Conectar YouTube": guarda el permiso para subir videos al canal de la cuenta. */
+async function youtube(url: URL, businessId: string, lang: UiLang, t: T) {
+  const go = (params: Record<string, string>) => back(businessId, params);
+  if (url.searchParams.get("error"))
+    return go({ youtube: "error", msg: t("No se dio el permiso para subir videos a YouTube (o cancelaste). Vuelve a intentarlo y acepta el permiso.", "Permission to upload videos to YouTube wasn't granted (or you canceled). Try again and accept the permission.") });
+  try {
+    const { refreshToken, accessToken } = await googleExchange(url.searchParams.get("code") ?? "");
+    const channel = await youtubeChannel(accessToken);
+    if (!channel)
+      return go({ youtube: "error", msg: t("Esa cuenta de Google no tiene canal de YouTube. Créalo gratis en youtube.com y vuelve a conectar.", "That Google account doesn't have a YouTube channel. Create one for free at youtube.com and connect again.") });
+    await saveYoutubeChannel(businessId, refreshToken, channel);
+    return go({ youtube: "ok", chan: channel.title });
+  } catch (e) {
+    const msg = errorText(e, lang);
+    const why = /has not been used|is disabled|SERVICE_DISABLED/i.test(msg)
+      ? t("Falta activar la «YouTube Data API v3» en Google Cloud (el mismo proyecto de la app).", "The \"YouTube Data API v3\" needs to be turned on in Google Cloud (the app's same project).")
+      : t(`Google respondió: ${msg}`, `Google responded: ${msg}`);
+    return go({ youtube: "error", msg: why.slice(0, 400) });
+  }
+}
+
 // Google devuelve a la persona aquí después de iniciar sesión y dar permiso.
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -121,6 +142,7 @@ export async function GET(req: Request) {
 
   if (purpose === "gsc") return searchConsole(url, businessId, lang, t);
   if (purpose === "ga4") return analytics(url, businessId, lang, t);
+  if (purpose === "youtube") return youtube(url, businessId, lang, t);
 
   if (url.searchParams.get("error")) return back(businessId, { google: "error", msg: t("Cancelaste la conexión con Google.", "You canceled the Google connection.") });
 

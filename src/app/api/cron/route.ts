@@ -1,4 +1,6 @@
 import { after } from "next/server";
+import { syncAds } from "@/lib/ads";
+import { runCampaigns } from "@/lib/campaign-engine";
 import { getT } from "@/lib/i18n-server";
 import { runDueDriveSync, runDueUploadAnalysis } from "@/lib/library-sync";
 import { publishDue } from "@/lib/publish";
@@ -23,6 +25,20 @@ export async function GET(req: Request) {
   const published = await publishDue();
   // Posiciones en Google: como mucho UN negocio por llamada, después de responder (no retrasa ni rompe lo de publicar).
   after(async () => {
+    // Campañas: termina las vencidas y prepara las publicaciones de los próximos días (pocas por llamada, con candado).
+    try {
+      const camp = await runCampaigns(new Date(), 100_000);
+      if (camp.campaigns || camp.ended) console.log("[campañas]", JSON.stringify(camp));
+    } catch (e) {
+      console.error("[campañas] error:", e instanceof Error ? e.message : e);
+    }
+    // Anuncios pagados: pausa en Meta los de campañas paradas, en pausa o terminadas (así PARAR llega a los anuncios).
+    try {
+      const ads = await syncAds(new Date());
+      if (ads.campaigns) console.log("[anuncios]", JSON.stringify(ads));
+    } catch (e) {
+      console.error("[anuncios] error:", e instanceof Error ? e.message : e);
+    }
     try {
       const rank = await runDueRankChecks();
       if (rank) console.log("[posiciones] revisión automática:", JSON.stringify(rank));
