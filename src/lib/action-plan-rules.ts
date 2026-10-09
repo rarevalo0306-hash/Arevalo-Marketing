@@ -1014,8 +1014,8 @@ export function backlinksTasks(saved: Saved | null, outreach: Saved | null, ctx:
               `The links pointing to you have a spam level of ${spam} out of 100. Google almost always ignores those links on its own: don't do anything drastic.`,
             ),
             bi(
-              "Solo si Google te manda un aviso de «acción manual» en Search Console, arma con alguien que sepa la lista para desautorizarlos (disavow). Desautorizar enlaces buenos te hace daño, y esta app nunca lo hace sola.",
-              "Only if Google sends you a “manual action” notice in Search Console, build the disavow list with someone who knows how. Disavowing good links hurts you, and this app never does it on its own.",
+              "Abre «Enlaces dañinos» y responde las dos preguntas: solo si Google te manda un aviso de «acción manual» hace falta desautorizarlos (disavow). Desautorizar enlaces buenos te hace daño, y esta app nunca lo hace sola.",
+              "Open “Toxic links” and answer the two questions: you only need to disavow if Google sends you a “manual action” notice. Disavowing good links hurts you, and this app never does it on its own.",
             ),
           ],
           "backlinks",
@@ -1023,7 +1023,7 @@ export function backlinksTasks(saved: Saved | null, outreach: Saved | null, ctx:
         ),
         impact: spam >= 60 ? 2 : 1,
         effort: 2,
-        href: seo(ctx, "competencia", "enlaces"),
+        href: `/b/${ctx.businessId}/enlaces`,
       }),
     );
   return out;

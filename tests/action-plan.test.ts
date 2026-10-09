@@ -507,6 +507,7 @@ describe("enlaces", () => {
     expect(spam.impact).toBe(1);
     expect(spam.detail!.es).toContain("acción manual");
     expect(spam.detail!.es).toContain("nunca lo hace sola");
+    expect(spam.href).toBe(`/b/${ID}/enlaces`);
   });
   it("si ya hay borrador de contacto, lo dice", () => {
     const outreach = { data: { version: 1, drafts: { "paginasamarillas.com.ni": { domain: "paginasamarillas.com.ni", hint: "directory", type: "signup", lang: "es", steps: [], createdAt: AT } } }, createdAt: AT };

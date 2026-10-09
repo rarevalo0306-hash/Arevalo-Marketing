@@ -33,7 +33,7 @@ import { readCampaignAds } from "@/lib/ads-shape";
 import { readZones } from "@/lib/seo/dataforseo";
 import { readReviewsReport } from "@/lib/seo/gbp";
 import { readRankReport } from "@/lib/seo/rank";
-import { BUSINESS_TZ } from "@/lib/time";
+import { businessTz } from "@/lib/business-tz";
 import {
   adsSummary,
   buckets,
@@ -92,7 +92,7 @@ export type ResultsSummary = {
 };
 
 /** Zona horaria del negocio ("" = la de la app). */
-export const businessTzOf = (b: { timezone?: string | null }) => (b.timezone || "").trim() || BUSINESS_TZ;
+export const businessTzOf = businessTz;
 
 type RawMetric = { fetchedAt: Date; raw: unknown } & MetricValues;
 
