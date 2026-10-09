@@ -198,3 +198,47 @@ CREATE INDEX IF NOT EXISTS "Post_campaignId_idx" ON "Post"("campaignId");
 DO $$ BEGIN
   ALTER TABLE "Post" ADD CONSTRAINT "Post_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- 2026-10-09: fase 5 (resultados): reporte diario, resultados de cada publicación y propuestas de la IA.
+ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "timezone" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "reportDaily" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "reportEmail" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "PostTarget" ADD COLUMN IF NOT EXISTS "externalId" TEXT NOT NULL DEFAULT '';
+CREATE TABLE IF NOT EXISTS "PostMetric" (
+  "id" TEXT NOT NULL,
+  "postTargetId" TEXT NOT NULL,
+  "businessId" TEXT NOT NULL,
+  "channel" TEXT NOT NULL,
+  "fetchedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "impressions" INTEGER NOT NULL DEFAULT 0,
+  "reach" INTEGER NOT NULL DEFAULT 0,
+  "likes" INTEGER NOT NULL DEFAULT 0,
+  "comments" INTEGER NOT NULL DEFAULT 0,
+  "shares" INTEGER NOT NULL DEFAULT 0,
+  "saves" INTEGER NOT NULL DEFAULT 0,
+  "clicks" INTEGER NOT NULL DEFAULT 0,
+  "videoViews" INTEGER NOT NULL DEFAULT 0,
+  "raw" JSONB,
+  CONSTRAINT "PostMetric_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "PostMetric_postTargetId_fkey" FOREIGN KEY ("postTargetId") REFERENCES "PostTarget"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+CREATE INDEX IF NOT EXISTS "PostMetric_postTargetId_fetchedAt_idx" ON "PostMetric"("postTargetId", "fetchedAt");
+CREATE INDEX IF NOT EXISTS "PostMetric_businessId_fetchedAt_idx" ON "PostMetric"("businessId", "fetchedAt");
+CREATE TABLE IF NOT EXISTS "AiProposal" (
+  "id" TEXT NOT NULL,
+  "businessId" TEXT NOT NULL,
+  "campaignId" TEXT,
+  "kind" TEXT NOT NULL,
+  "title" JSONB NOT NULL,
+  "detail" JSONB,
+  "impact" INTEGER NOT NULL DEFAULT 2,
+  "status" TEXT NOT NULL DEFAULT 'proposed',
+  "action" JSONB,
+  "evidence" JSONB,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "decidedAt" TIMESTAMP(3),
+  "appliedAt" TIMESTAMP(3),
+  CONSTRAINT "AiProposal_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "AiProposal_businessId_fkey" FOREIGN KEY ("businessId") REFERENCES "Business"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+CREATE INDEX IF NOT EXISTS "AiProposal_businessId_status_idx" ON "AiProposal"("businessId", "status");

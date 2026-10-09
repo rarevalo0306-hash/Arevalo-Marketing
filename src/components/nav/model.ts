@@ -102,7 +102,12 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: "reportes",
     label: ["Resultados", "Results"],
     items: [
-      { key: "seo-reportes", label: ["Reportes y avisos", "Reports & alerts"], path: "seo", tab: "reportes", also: ["seo/reporte"] },
+      { key: "resultados", label: ["Resumen de resultados", "Results overview"], path: "resultados" },
+      { key: "reportes", label: ["Reporte diario y por fechas", "Daily & date-range report"], path: "reportes" },
+      { key: "propuestas", label: ["Propuestas de la IA", "AI proposals"], path: "propuestas" },
+      { key: "registro", label: ["Lo que hizo la IA", "What the AI did"], path: "registro" },
+      { key: "enlaces-daninos", label: ["Enlaces dañinos", "Toxic links"], path: "enlaces" },
+      { key: "seo-reportes", label: ["Reporte SEO mensual y avisos", "Monthly SEO report & alerts"], path: "seo", tab: "reportes", also: ["seo/reporte"] },
     ],
   },
 ];
