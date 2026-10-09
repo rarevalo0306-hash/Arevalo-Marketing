@@ -169,6 +169,8 @@ export type CampaignRules = {
   /** Porcentaje de cada tipo de publicación. */
   contentMix: ContentMix;
   languages: ("es" | "en")[];
+  /** «La IA puede aplicar sola las propuestas de bajo riesgo (horarios, formatos)». Solo cuenta en campañas 100% IA. */
+  autoApplyProposals?: boolean;
 };
 
 export const LIMITS = {
@@ -270,6 +272,7 @@ export function readRules(json: unknown, defaults: { email?: string; lang?: stri
     stopOnErrors: int(r.stopOnErrors, LIMITS.stopOnErrors, d.stopOnErrors),
     contentMix,
     languages: langs.length ? langs : d.languages,
+    ...(r.autoApplyProposals === true ? { autoApplyProposals: true } : {}),
   };
 }
 
