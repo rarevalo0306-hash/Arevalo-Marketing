@@ -49,6 +49,8 @@
   background-size: 16px 16px;
   border-bottom: 1px solid var(--line);
 }
+/* Los posts de redes se ven más grandes (se tiene que poder leer el diseño). */
+.thumbTall { height: 200px; padding: 8px; }
 .thumbDark {
   background-color: #1b2333;
   background-image: conic-gradient(#2a3446 25%, transparent 0 50%, #2a3446 0 75%, transparent 0);

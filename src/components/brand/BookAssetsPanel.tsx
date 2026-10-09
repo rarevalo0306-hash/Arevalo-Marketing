@@ -4,8 +4,11 @@
 // ejemplos de piezas, fotos). El dueño acepta o rechaza cada una; las aceptadas se pueden usar como logo o plantilla.
 import { useEffect, useState, useTransition } from "react";
 import { acceptAllBookAssets, applyBookAsset, decideBookAsset } from "@/app/actions-brand-book";
+import { useRouter } from "next/navigation";
+import { type ConvertActions, DesignAiBookConvert } from "@/components/brand/DesignAiBookConvert";
 import { useT } from "@/components/I18n";
 import type { BrandAsset, BrandAssetKind, BrandAssetStatus } from "@/lib/brand-assets";
+import { isSocialAsset } from "@/lib/design-ai-pieces";
 import { intlLocale } from "@/lib/i18n";
 import s from "./BookAssets.module.css";
 import { bookRunBusy, bookRunText, clearBookRun, resumeBookRun, setBookRunEnabled, useBookRun } from "./BookRun";
@@ -24,15 +27,22 @@ type Props = {
   logoLightUrl: string;
   /** Imágenes que ya son plantillas del negocio. */
   templateUrls: string[];
+  /** Piezas del manual que ya se convirtieron en plantilla. */
+  convertedIds?: string[];
+  /** «Convertir en plantilla» las piezas de redes (null si no hay piezas). */
+  convert?: ConvertActions | null;
 };
 
-type Group = { id: string; kinds: BrandAssetKind[]; es: string; en: string };
+type Group = { id: string; kinds: BrandAssetKind[]; es: string; en: string; social?: boolean };
+// Las plantillas de redes sociales van primero (es lo que más le sirve al dueño). Las demás piezas (tarjetas, papelería,
+// letreros) quedan solo como referencia: las plantillas de la app son solo para redes sociales.
 const GROUPS: Group[] = [
+  { id: "redes", kinds: ["template"], social: true, es: "Plantillas de tu manual (redes sociales)", en: "Templates from your brand book (social media)" },
   { id: "logos", kinds: ["logo", "logo-light", "logo-dark"], es: "Logos", en: "Logos" },
   { id: "simbolo", kinds: ["isotype"], es: "Símbolo", en: "Symbol" },
   { id: "patrones", kinds: ["pattern"], es: "Patrones y fondos", en: "Patterns and backgrounds" },
   { id: "iconos", kinds: ["icon"], es: "Íconos", en: "Icons" },
-  { id: "piezas", kinds: ["template"], es: "Ejemplos de piezas", en: "Example pieces" },
+  { id: "piezas", kinds: ["template"], social: false, es: "Otras piezas (solo referencia de estilo)", en: "Other pieces (style reference only)" },
   { id: "fotos", kinds: ["photo"], es: "Fotos", en: "Photos" },
 ];
 
@@ -83,7 +93,7 @@ function RunStatus({ businessId }: { businessId: string }) {
   );
 }
 
-function AssetCard({ a, businessId, logoUrl, logoLightUrl, isTemplate, onMessage }: { a: BrandAsset; businessId: string; logoUrl: string; logoLightUrl: string; isTemplate: boolean; onMessage: (m: { ok: boolean; text: string }) => void }) {
+function AssetCard({ a, businessId, logoUrl, logoLightUrl, isTemplate, onMessage, onConvert }: { a: BrandAsset; businessId: string; logoUrl: string; logoLightUrl: string; isTemplate: boolean; onMessage: (m: { ok: boolean; text: string }) => void; onConvert?: () => void }) {
   const { lang, t } = useT();
   const [pending, start] = useTransition();
   const [doing, setDoing] = useState("");
@@ -107,7 +117,7 @@ function AssetCard({ a, businessId, logoUrl, logoLightUrl, isTemplate, onMessage
 
   return (
     <li className={`${s.item} ${a.status === "accepted" ? s.accepted : ""} ${a.status === "rejected" ? s.rejected : ""}`} aria-busy={pending}>
-      <div className={`${s.thumb} ${a.kind === "logo-light" ? s.thumbDark : ""}`}>
+      <div className={`${s.thumb} ${a.kind === "logo-light" ? s.thumbDark : ""} ${onConvert ? s.thumbTall : ""}`}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={a.url} alt={label} loading="lazy" />
       </div>
@@ -129,6 +139,11 @@ function AssetCard({ a, businessId, logoUrl, logoLightUrl, isTemplate, onMessage
           )}
         </div>
         <div className={s.actions}>
+          {onConvert && a.status !== "rejected" && !isTemplate && (
+            <button type="button" className="btn on" disabled={pending} onClick={onConvert}>
+              ✦ {t("Convertir en plantilla", "Turn into a template")}
+            </button>
+          )}
           {a.status === "proposed" && (
             <>
               <button type="button" className={`btn ${s.yes}`} disabled={pending} onClick={() => decide("accepted")} aria-label={t(`Aceptar ${label}`, `Accept ${label}`)}>
@@ -151,11 +166,6 @@ function AssetCard({ a, businessId, logoUrl, logoLightUrl, isTemplate, onMessage
                   {busyText("light", t("Usar para fondos oscuros", "Use on dark backgrounds"))}
                 </button>
               )}
-              {a.kind === "template" && !isTemplate && (
-                <button type="button" className="btn" disabled={pending} onClick={() => go("template", () => applyBookAsset(businessId, a.id, "template"))}>
-                  {busyText("template", t("Usar como plantilla", "Use as template"))}
-                </button>
-              )}
               <button type="button" className={`btn link ${s.remove}`} disabled={pending} onClick={() => decide("rejected")} aria-label={t(`Quitar ${label}`, `Remove ${label}`)}>
                 {busyText("rejected", t("Quitar", "Remove"))}
               </button>
@@ -172,8 +182,10 @@ function AssetCard({ a, businessId, logoUrl, logoLightUrl, isTemplate, onMessage
   );
 }
 
-export function BookAssetsPanel({ businessId, canRead, readAt, pages, items, logoUrl, logoLightUrl, templateUrls }: Props) {
+export function BookAssetsPanel({ businessId, canRead, readAt, pages, items, logoUrl, logoLightUrl, templateUrls, convertedIds = [], convert = null }: Props) {
   const { lang, t } = useT();
+  const router = useRouter();
+  const [converting, setConverting] = useState<string | null>(null);
   const run = useBookRun();
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [allPending, startAll] = useTransition();
@@ -184,9 +196,20 @@ export function BookAssetsPanel({ businessId, canRead, readAt, pages, items, log
   const rejected = items.filter((a) => a.status === "rejected");
   const proposed = items.filter((a) => a.status === "proposed");
   const tpl = new Set(templateUrls);
+  const done = new Set(convertedIds);
   const card = (a: BrandAsset) => (
-    <AssetCard key={a.id} a={a} businessId={businessId} logoUrl={logoUrl} logoLightUrl={logoLightUrl} isTemplate={tpl.has(a.url)} onMessage={setMessage} />
+    <AssetCard
+      key={a.id}
+      a={a}
+      businessId={businessId}
+      logoUrl={logoUrl}
+      logoLightUrl={logoLightUrl}
+      isTemplate={tpl.has(a.url) || done.has(a.id)}
+      onMessage={setMessage}
+      onConvert={convert && isSocialAsset(a) ? () => setConverting(a.id) : undefined}
+    />
   );
+  const convertingAsset = items.find((a) => a.id === converting);
   const cost = t("Cuesta unos centavos por manual.", "It costs a few cents per brand book.");
 
   // Sin imágenes todavía: no se muestra nada (el manual se elige y se lee arriba, en «Crea tu marca»).
@@ -248,14 +271,28 @@ export function BookAssetsPanel({ businessId, canRead, readAt, pages, items, log
       <div className={s.groups}>
       {GROUPS.map((g) => {
         const list = visible
-          .filter((a) => g.kinds.includes(a.kind))
+          .filter((a) => g.kinds.includes(a.kind) && (g.social === undefined || isSocialAsset(a) === g.social))
           .sort((x, y) => (x.status === y.status ? (x.page ?? 0) - (y.page ?? 0) : x.status === "proposed" ? -1 : 1));
         if (!list.length) return null;
         return (
-          <div key={g.id} className={`${s.group} ${list.length > 2 ? s.wide : ""}`}>
+          <div key={g.id} className={`${s.group} ${list.length > 2 || g.social ? s.wide : ""}`}>
             <h3 className={s.groupTitle}>
               {lang === "en" ? g.en : g.es} <span className="muted">({list.length})</span>
             </h3>
+            {g.social && <p className="small muted" style={{ margin: 0 }}>{t("Los posts que hizo tu diseñador. Conviértelos en plantillas: la IA quita el texto de ejemplo y cada post pone ahí su foto y su titular.", "The posts your designer made. Turn them into templates: the AI removes the example text and each post puts its own photo and headline there.")}</p>}
+            {g.social && convertingAsset && convert && (
+              <DesignAiBookConvert
+                key={convertingAsset.id}
+                asset={{ id: convertingAsset.id, url: convertingAsset.url, label: lang === "en" ? convertingAsset.label.en : convertingAsset.label.es }}
+                actions={convert}
+                onDone={(text) => {
+                  setConverting(null);
+                  setMessage({ ok: true, text });
+                  router.refresh();
+                }}
+                onClose={() => setConverting(null)}
+              />
+            )}
             <ul className={s.grid}>{list.map(card)}</ul>
           </div>
         );

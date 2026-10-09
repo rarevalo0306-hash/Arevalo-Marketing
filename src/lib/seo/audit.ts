@@ -28,7 +28,7 @@ export { CATEGORY_LABEL, ISSUE_IDS, ISSUE_META, ISSUE_SEVERITY, ISSUE_TEXT, isIs
 export type { IssueCategory, IssueId, Severity };
 export { LEGACY_ISSUE_IDS, NEW_ISSUE_IDS, ISSUE_CATEGORIES, type IssueUnit } from "@/lib/seo/audit-ids";
 
-export const AUDIT_UA = "Mozilla/5.0 (compatible; ArevaloMarketingBot/1.0)";
+export const AUDIT_UA = "Mozilla/5.0 (compatible; NehoraBot/1.0)";
 /** Páginas que se leen como máximo. */
 export const MAX_PAGES = 60;
 const MAX_ATTEMPTS = 120; // incluye respuestas que no son HTML

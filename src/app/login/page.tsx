@@ -7,7 +7,7 @@ export default function LoginPage() {
       <div className="card">
         <div className="row">
           <span className="mono solid" style={{ background: "var(--brand)" }}>A</span>
-          <h1 style={{ fontSize: 22 }}>Arevalo Marketing</h1>
+          <h1 style={{ fontSize: 22 }}>Nehora</h1>
         </div>
         <LoginForm />
         <LangPicker />
