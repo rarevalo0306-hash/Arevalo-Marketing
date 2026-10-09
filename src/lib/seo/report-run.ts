@@ -24,7 +24,7 @@ export type ReportOptions = {
   lang: UiLang;
   /** Resumen escrito por la IA (unos centavos). Si falla, sale el resumen sin IA. */
   ai: boolean;
-  /** Sin "Preparado con Nehora". */
+  /** Sin "Preparado con Matya". */
   whiteLabel: boolean;
   now?: Date;
 };
