@@ -27,8 +27,8 @@ import {
   mix,
   needsPhoto,
   rgba,
-  PHOTO_BOXES,
-  textBox,
+  customBoxes,
+  customFor,
   type Box,
   type CustomSpec,
   type DesignShape,
@@ -792,8 +792,10 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
  * Dibuja una plantilla propia: la imagen del dueño, la foto y el titular. Se dibuja con la forma de la
  * imagen subida; si la red pide otra forma, se centra sobre un fondo desenfocado (sin cortar el diseño).
  */
-async function renderCustom(d: DesignInput, c: CustomSpec): Promise<Buffer> {
+async function renderCustom(d: DesignInput, spec: CustomSpec): Promise<Buffer> {
   const target = DESIGN_SHAPES[d.shape ?? "square"];
+  // Diseños maestros: la variante de la forma que pide la red (si existe). Las plantillas subidas no cambian.
+  const c = customFor(spec, d.shape);
   const F = await loadFonts(d.brand, false);
   const c1 = hexOr(d.brand.color, "#126BBC");
   const deep = mix(c1, "#050a14", 0.8);
@@ -801,45 +803,86 @@ async function renderCustom(d: DesignInput, c: CustomSpec): Promise<Buffer> {
   const W = ratio >= 1 ? 1200 : Math.round(1200 * ratio);
   const H = ratio >= 1 ? Math.round(1200 / ratio) : 1200;
   const u = Math.min(W, H) / 1080;
-  const box = c.mode === "fondo" && c.photo !== "completa" && c.photo !== "ninguna" ? PHOTO_BOXES[c.photo] : null;
+  const boxes = customBoxes(c);
+  const box = boxes.photo;
+  /** Cajas exactas (diseño maestro): el titular se centra en su caja y puede ir centrado. */
+  const exactText = Boolean(c.textBox);
   const px = (b: Box) => ({ left: Math.round(b.x * W), top: Math.round(b.y * H), width: Math.round(b.w * W), height: Math.round(b.h * H) });
   const pb = box ? px(box) : { left: 0, top: 0, width: W, height: H };
-  const [art, photo] = await Promise.all([
+  const [art, photo, logos] = await Promise.all([
     loadImage(c.imageUrl, 1600),
     c.photo !== "ninguna" && d.photoUrl ? coverPhoto(d.photoUrl, pb.left, pb.top, pb.width, pb.height, d.focus) : Promise.resolve(null),
+    boxes.logo && d.brand.logoUrl ? Promise.all([loadLogo(d.brand.logoUrl), d.brand.logoLightUrl ? loadLogo(d.brand.logoLightUrl) : null]) : Promise.resolve(null),
   ]);
   if (c.photo !== "ninguna" && !photo) throw new Error(`La plantilla "${d.template.name}" necesita una foto.`);
   const headline = d.headline.trim().replace(/\s+/g, " ").slice(0, 180);
   const color = c.ink === "claro" ? "#ffffff" : c.ink === "oscuro" ? "#111827" : c1;
-  const tb = textBox(c);
+  const tb = boxes.text;
   // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
-  const Pic = ({ src, b, radius = 0, fit = "cover" }: { src: string; b: { left: number; top: number; width: number; height: number }; radius?: number; fit?: "cover" | "fill" }) => <img src={src} width={b.width} height={b.height} style={{ position: "absolute", ...b, objectFit: fit, borderRadius: radius }} />;
+  const Pic = ({ src, b, radius = 0, fit = "cover" }: { src: string; b: { left: number; top: number; width: number; height: number }; radius?: number; fit?: "cover" | "fill" | "contain" }) => <img src={src} width={b.width} height={b.height} style={{ position: "absolute", ...b, objectFit: fit, borderRadius: radius }} />;
   const full = { left: 0, top: 0, width: W, height: H };
   const tr = tb ? px(tb) : null;
   // El titular cabe siempre en su caja (antes podía salirse por abajo).
-  const fit = tr ? fitText({ text: headline, maxW: tr.width, maxH: tr.height, max: Math.round(92 * u), min: Math.round(34 * u), maxLines: 4, lineHeight: F.headLH, measure: F.measureHead }) : null;
+  const fit = tr
+    ? fitText({ text: headline, maxW: tr.width, maxH: tr.height, max: Math.round((exactText ? 104 : 92) * u), min: Math.round(34 * u), maxLines: exactText && tr.height > tr.width * 0.6 ? 5 : 4, lineHeight: F.headLH, measure: F.measureHead })
+    : null;
+  /** Arriba, al centro o abajo dentro de la caja: con caja exacta, siempre al centro. */
+  const vAlign = (b: Box) => (exactText ? "center" : b.y < 0.2 ? "flex-start" : b.y > 0.5 ? "flex-end" : "center");
+  const overPhoto = Boolean(c.photoBox && box && tb && overlapRatio(tb, box) > 0.3);
   // Letras claras sobre la foto: degradado debajo, calculado con la foto, para que se lean (contraste 4.5).
   let shade: React.ReactNode = null;
-  if (photo && tr && fit && c.ink === "claro" && (!box || c.mode === "marco")) {
-    const textTop = tb!.y < 0.2 ? tr.top : tb!.y > 0.5 ? tr.top + tr.height - fit.height : tr.top + (tr.height - fit.height) / 2;
+  if (photo && tr && fit && c.ink === "claro" && (!box || c.mode === "marco" || overPhoto)) {
+    const va = vAlign(tb!);
+    const textTop = va === "flex-start" ? tr.top : va === "flex-end" ? tr.top + tr.height - fit.height : tr.top + (tr.height - fit.height) / 2;
     const a = scrimAlpha(grayOf(photoLum(photo, { x: tr.left, y: textTop, w: tr.width, h: fit.height }, 0.94)), deep, 4.6, 0.25);
     const feather = H * 0.2;
-    const y0 = Math.max(0, textTop - feather);
-    const y1 = Math.min(H, textTop + fit.height + feather);
+    const y0 = Math.max(overPhoto ? pb.top : 0, textTop - feather);
+    const y1 = Math.min(overPhoto ? pb.top + pb.height : H, textTop + fit.height + feather);
     const p0 = (((textTop - y0) / (y1 - y0)) * 100).toFixed(1);
     const p1 = (((textTop + fit.height - y0) / (y1 - y0)) * 100).toFixed(1);
-    shade = <div style={{ position: "absolute", display: "flex", left: 0, width: W, top: y0, height: y1 - y0, backgroundImage: `linear-gradient(to bottom, ${rgba(deep, 0)} 0%, ${rgba(deep, a)} ${p0}%, ${rgba(deep, a)} ${p1}%, ${rgba(deep, 0)} 100%)` }} />;
+    const sx = overPhoto ? { left: pb.left, width: pb.width } : { left: 0, width: W };
+    shade = <div style={{ position: "absolute", display: "flex", ...sx, top: y0, height: y1 - y0, backgroundImage: `linear-gradient(to bottom, ${rgba(deep, 0)} 0%, ${rgba(deep, a)} ${p0}%, ${rgba(deep, a)} ${p1}%, ${rgba(deep, 0)} 100%)` }} />;
   }
+  // El logo real del negocio en su caja (diseños maestros): el que mejor se lee sobre esa parte del diseño.
+  let logoView: React.ReactNode = null;
+  if (boxes.logo && logos) {
+    const lb = px(boxes.logo);
+    const under = await regionColor(art.buf, boxes.logo);
+    const [main, light] = logos;
+    const readable = [main, light].find((l) => l && (l.tone === "opaque" || contrast(l.tone, under) >= 3));
+    const pick = readable ?? main ?? light;
+    if (pick) {
+      // Si ningún logo se lee sobre esa parte del diseño, va sobre una placa (blanca, u oscura si el logo es claro).
+      const plate = readable ? null : contrast(pick.tone, "#ffffff") < 2.2 ? deep : "#ffffff";
+      const pad = plate ? Math.round(Math.min(lb.height * 0.18, 14 * u)) : 0;
+      const scale = Math.min((lb.width - pad * 2) / pick.w, (lb.height - pad * 2) / pick.h);
+      const lw = Math.round(pick.w * scale);
+      const lh = Math.round(pick.h * scale);
+      const ow = lw + pad * 2;
+      const oh = lh + pad * 2;
+      const left = boxes.logo.x + boxes.logo.w / 2 > 0.55 ? lb.left + lb.width - ow : boxes.logo.x + boxes.logo.w / 2 > 0.45 ? lb.left + Math.round((lb.width - ow) / 2) : lb.left;
+      const top = lb.top + Math.round((lb.height - oh) / 2);
+      logoView = (
+        <>
+          {plate && <div style={{ position: "absolute", display: "flex", left, top, width: ow, height: oh, background: plate, borderRadius: Math.round(oh * 0.22) }} />}
+          <Pic src={pick.uri} b={{ left: left + pad, top: top + pad, width: lw, height: lh }} fit="contain" />
+        </>
+      );
+    }
+  }
+  const radius = c.photoRadius !== undefined ? Math.round(c.photoRadius * Math.min(pb.width, pb.height)) : box ? Math.round(24 * u) : 0;
+  const center = c.textAlign === "centro";
   const img = new ImageResponse(
     (
       <div style={{ width: W, height: H, display: "flex", position: "relative", background: "#ffffff", fontFamily: F.head }}>
         {c.mode === "fondo" && <Pic src={art.uri} b={full} fit="fill" />}
-        {photo && <Pic src={photo.uri} b={pb} radius={box ? Math.round(24 * u) : 0} />}
+        {photo && <Pic src={photo.uri} b={pb} radius={radius} />}
         {shade}
         {c.mode === "marco" && <Pic src={art.uri} b={full} fit="fill" />}
+        {logoView}
         {tr && fit && fit.lines.length > 0 && (
-          <div style={{ position: "absolute", display: "flex", ...tr, alignItems: tb!.y < 0.2 ? "flex-start" : tb!.y > 0.5 ? "flex-end" : "center" }}>
-            <div style={{ display: "flex", flexDirection: "column", width: tr.width, fontSize: fit.size, fontWeight: F.bold, lineHeight: F.headLH, color, letterSpacing: fit.size * headTracking(false), textShadow: c.ink === "claro" ? "0 2px 14px rgba(0,0,0,0.35)" : "none" }}>
+          <div style={{ position: "absolute", display: "flex", ...tr, alignItems: vAlign(tb!) }}>
+            <div style={{ display: "flex", flexDirection: "column", width: tr.width, ...(center ? { alignItems: "center", textAlign: "center" } : {}), fontSize: fit.size, fontWeight: F.bold, lineHeight: F.headLH, color, letterSpacing: fit.size * headTracking(false), textShadow: c.ink === "claro" ? "0 2px 14px rgba(0,0,0,0.35)" : "none" }}>
               {fit.lines.map((l, i) => (
                 <div key={i} style={{ display: "flex", whiteSpace: "pre" }}>{l}</div>
               ))}
@@ -852,6 +895,35 @@ async function renderCustom(d: DesignInput, c: CustomSpec): Promise<Buffer> {
   );
   const png = Buffer.from(await img.arrayBuffer());
   return fitToShape(png, target.w, target.h);
+}
+
+/** Qué parte de la caja `a` queda encima de la caja `b` (0-1). */
+function overlapRatio(a: Box, b: Box): number {
+  const w = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
+  const h = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+  return (w * h) / Math.max(1e-6, a.w * a.h);
+}
+
+/** Color medio de una parte de una imagen (para elegir el logo que se lee ahí). */
+async function regionColor(buf: Buffer, b: Box): Promise<string> {
+  try {
+    const meta = await sharp(buf).metadata();
+    const iw = meta.width ?? 1;
+    const ih = meta.height ?? 1;
+    const left = Math.max(0, Math.min(iw - 1, Math.round(b.x * iw)));
+    const top = Math.max(0, Math.min(ih - 1, Math.round(b.y * ih)));
+    const width = Math.max(1, Math.min(iw - left, Math.round(b.w * iw)));
+    const height = Math.max(1, Math.min(ih - top, Math.round(b.h * ih)));
+    // stats() mira la imagen entera: primero se recorta de verdad y luego se promedia.
+    const { data, info } = await sharp(buf).extract({ left, top, width, height }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    const sum = [0, 0, 0];
+    for (let i = 0; i < info.width * info.height; i++) for (let k = 0; k < 3; k++) sum[k] += data[i * info.channels + k];
+    const n = Math.max(1, info.width * info.height);
+    const hex = (v: number) => Math.round(v / n).toString(16).padStart(2, "0");
+    return `#${hex(sum[0])}${hex(sum[1])}${hex(sum[2])}`;
+  } catch {
+    return "#ffffff";
+  }
 }
 
 /**

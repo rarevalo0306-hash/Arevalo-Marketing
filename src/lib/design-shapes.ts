@@ -70,6 +70,27 @@ export type TemplateSpec = z.infer<typeof TemplateSpec>;
  */
 export const PHOTO_SPOTS = ["completa", "arriba", "abajo", "izquierda", "derecha", "centro", "ninguna"] as const;
 export const TEXT_SPOTS = ["arriba", "centro", "abajo", "ninguno"] as const;
+export const INKS = ["claro", "oscuro", "marca"] as const;
+/** Una caja exacta en fracciones del lienzo (0-1 desde arriba a la izquierda). */
+export const UnitBox = z
+  .object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), w: z.number().min(0.02).max(1), h: z.number().min(0.02).max(1) })
+  .refine((b) => b.x + b.w <= 1.001 && b.y + b.h <= 1.001, "La caja se sale del lienzo");
+/** Las formas que puede tener un diseño maestro con IA (una variante por forma). */
+export const MASTER_SHAPES = ["square", "portrait", "story"] as const;
+export type MasterShape = (typeof MASTER_SHAPES)[number];
+/** La misma plantilla maestra en otra forma (por ejemplo la historia 9:16 del mismo estilo). */
+export const CustomVariant = z.object({
+  imageUrl: z.string().max(2000),
+  w: z.number().int().min(100).max(10000),
+  h: z.number().int().min(100).max(10000),
+  photoBox: UnitBox,
+  textBox: UnitBox.optional(),
+  logoBox: UnitBox.optional(),
+  photoRadius: z.number().min(0).max(0.5).optional(),
+  textAlign: z.enum(["izquierda", "centro"]).optional(),
+  ink: z.enum(INKS),
+});
+export type CustomVariant = z.infer<typeof CustomVariant>;
 export const CustomSpec = z.object({
   imageUrl: z.string().max(2000),
   /** Tamaño original de la imagen subida (para respetar su forma). */
@@ -80,7 +101,26 @@ export const CustomSpec = z.object({
   photo: z.enum(PHOTO_SPOTS),
   text: z.enum(TEXT_SPOTS),
   /** Color de las letras del titular. */
-  ink: z.enum(["claro", "oscuro", "marca"]),
+  ink: z.enum(INKS),
+  // ---- Opcional (diseños maestros con IA). Sin estos campos la plantilla se dibuja exactamente como antes. ----
+  /** Caja exacta de la foto (gana sobre `photo`). */
+  photoBox: UnitBox.optional(),
+  /** Caja exacta del titular (gana sobre `text`). */
+  textBox: UnitBox.optional(),
+  /** Dónde va el logo real del negocio (lo dibuja la app; la IA nunca dibuja logos). */
+  logoBox: UnitBox.optional(),
+  /** Esquinas redondeadas de la foto (fracción del lado corto; 0.5 = círculo). */
+  photoRadius: z.number().min(0).max(0.5).optional(),
+  textAlign: z.enum(["izquierda", "centro"]).optional(),
+  /** De dónde salió: "ai-master" = diseño maestro creado con una IA de diseño. */
+  source: z.enum(["ai-master"]).optional(),
+  /** Modelo de IA que lo creó (id de la tabla de design-ai.ts) y lo que se le pidió. */
+  model: z.string().max(80).optional(),
+  prompt: z.string().max(6000).optional(),
+  /** Los diseños maestros se usan primero en automático (false = solo si el dueño lo elige). */
+  preferred: z.boolean().optional(),
+  /** El mismo estilo en otras formas: se usa la de la forma que pide la red. */
+  variants: z.partialRecord(z.enum(MASTER_SHAPES), CustomVariant).optional(),
 });
 export type CustomSpec = z.infer<typeof CustomSpec>;
 export type Box = { x: number; y: number; w: number; h: number };
@@ -99,6 +139,25 @@ export function textBox(c: Pick<CustomSpec, "photo" | "text">): Box | null {
   if (c.photo === "derecha") return { x: 0.06, y: c.text === "arriba" ? 0.08 : c.text === "centro" ? 0.3 : 0.54, w: 0.4, h: 0.38 };
   return { x: 0.07, y: c.text === "arriba" ? 0.07 : c.text === "centro" ? 0.36 : 0.6, w: 0.86, h: 0.25 };
 }
+
+/** La plantilla propia para una forma: si tiene una variante de esa forma (diseños maestros), se usa esa. */
+export function customFor(c: CustomSpec, shape?: string): CustomSpec {
+  const v = shape && c.variants ? c.variants[shape as MasterShape] : undefined;
+  if (!v) return c;
+  return { ...c, ...v, textBox: v.textBox, logoBox: v.logoBox, photoRadius: v.photoRadius, textAlign: v.textAlign, mode: "fondo", photo: c.photo === "ninguna" ? "arriba" : c.photo, variants: undefined };
+}
+
+/**
+ * Dónde van la foto, el titular y el logo en una plantilla propia (en fracciones del lienzo). Con cajas exactas
+ * (diseños maestros) se usan esas; si no, las posiciones de siempre (PHOTO_BOXES y textBox), sin ningún cambio.
+ * `photo` null = la foto ocupa todo el lienzo (o no hay foto si c.photo es "ninguna").
+ */
+export function customBoxes(c: CustomSpec): { photo: Box | null; text: Box | null; logo: Box | null } {
+  const photo = c.photoBox ?? (c.mode === "fondo" && c.photo !== "completa" && c.photo !== "ninguna" ? PHOTO_BOXES[c.photo] : null);
+  return { photo, text: c.textBox ?? textBox(c), logo: c.logoBox ?? null };
+}
+
+export const isMaster = (t: TemplateSpec): boolean => (t as StoredTemplate).custom?.source === "ai-master";
 
 export const StoredTemplate = TemplateSpec.extend({ custom: CustomSpec.optional() });
 export type StoredTemplate = z.infer<typeof StoredTemplate>;
@@ -150,7 +209,8 @@ export const needsPhoto = (t: TemplateSpec) => !["color-solido", "lista"].includ
 
 /**
  * Elige la plantilla para un post. Con una elegida, la usa (si es de pasos pero no hay pasos, o
- * necesita foto y no hay, busca otra). En automático: lista si hay 2+ pasos, color si es pregunta
+ * necesita foto y no hay, busca otra). En automático: lista si hay 2+ pasos; si hay foto y el negocio
+ * tiene diseños maestros con IA, rota entre ellos (son su diseño principal); color si es pregunta
  * o no hay foto, y si no rota entre las de foto.
  */
 export function pickTemplate<T extends TemplateSpec>(list: T[], chosen: number, opts: { headline: string; steps?: string[]; hasPhoto: boolean; seed?: number }): T | TemplateSpec {
@@ -162,6 +222,8 @@ export function pickTemplate<T extends TemplateSpec>(list: T[], chosen: number, 
   const find = (pred: (t: TemplateSpec) => boolean) => all.filter((t) => pred(t) && ok(t));
   const lists = find((t) => t.layout === "lista");
   if (steps >= 2 && lists.length) return lists[0];
+  const masters = find((t) => isMaster(t) && (t as StoredTemplate).custom?.preferred !== false);
+  if (opts.hasPhoto && masters.length) return masters[(opts.seed ?? 0) % masters.length];
   const solids = find((t) => t.layout === "color-solido");
   if ((/\?\s*$/.test(opts.headline.trim()) || !opts.hasPhoto) && solids.length) return solids[(opts.seed ?? 0) % solids.length];
   const photos = find((t) => needsPhoto(t));
