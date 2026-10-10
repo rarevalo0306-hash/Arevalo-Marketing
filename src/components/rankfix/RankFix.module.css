@@ -1,0 +1,81 @@
+/* «✨ Que la IA mejore mis posiciones»: el botón, el plan con su costo, el avance y la revisión antes de publicar. */
+.box {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  color: var(--ink);
+  min-width: 0;
+}
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.top > button { flex: 0 1 auto; max-width: 100%; white-space: normal; text-align: left; }
+.hint { flex: 1 1 240px; min-width: 0; font-size: 13.5px; line-height: 1.45; color: var(--muted); }
+.title { margin: 0; font-size: 16px; line-height: 1.35; color: var(--ink); }
+
+.gate { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; }
+.gate a { font-weight: 700; }
+
+/* Las búsquedas */
+.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 4px 12px;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  min-width: 0;
+}
+.rowJob { grid-template-columns: auto minmax(0, 1fr); }
+.off { background: var(--surface-2); }
+.off .kw, .off .what { color: var(--muted); }
+.pick { padding-top: 2px; }
+.pick input { width: 18px; height: 18px; margin: 0; }
+.dash { display: inline-block; width: 18px; text-align: center; color: var(--muted); font-weight: 700; }
+.body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.row :global(.pill) { white-space: normal; text-align: left; max-width: 100%; }
+.kw { font-size: 14.5px; color: var(--ink); overflow-wrap: anywhere; }
+.what { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.later { font-weight: 600; color: var(--muted); }
+.why { font-size: 13.5px; line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; }
+.why a { font-weight: 700; }
+.url { display: block; margin-top: 2px; font: 600 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--muted); overflow-wrap: anywhere; }
+.cost { font-size: 13.5px; font-weight: 700; color: var(--ink); white-space: nowrap; text-align: right; padding-top: 1px; }
+.articleTitle { font-size: 14px; line-height: 1.4; color: var(--ink); overflow-wrap: anywhere; }
+.links { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; font-size: 13.5px; }
+.links a { font-weight: 700; }
+.links :global(.btn.link) { min-height: 32px; padding: 0; font-size: 13.5px; text-align: left; justify-content: flex-start; }
+.remove { color: var(--err-text) !important; }
+.thumb { width: 64px; height: 48px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-2); }
+.thumbEmpty { width: 64px; height: 48px; display: grid; place-items: center; border-radius: 8px; border: 1px dashed var(--line-strong); background: var(--surface-2); font-size: 20px; }
+
+/* El costo */
+.totals { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--surface); }
+.line { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 13.5px; line-height: 1.45; color: var(--ink); }
+.line > span { min-width: 0; color: var(--muted); }
+.line > strong { white-space: nowrap; }
+.total { padding-top: 8px; border-top: 1px solid var(--line); font-size: 15.5px; }
+.total > span { color: var(--ink); font-weight: 700; }
+.left { margin: 0; font-size: 13px; color: var(--muted); }
+.promise { margin: 0; font-size: 14px; line-height: 1.45; color: var(--ink); }
+
+.posts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.posts > a { max-width: 100%; height: auto; min-height: 40px; padding-block: 8px; white-space: normal; text-align: left; line-height: 1.35; }
+
+:global(html[data-theme="noche"]) .why a,
+:global(html[data-theme="noche"]) .links a,
+:global(html[data-theme="noche"]) .gate a,
+:global(html[data-theme="noche"]) .links :global(.btn.link):not(.remove) { color: #8db8ff; }
+:global(html[data-theme="noche"]) .remove { color: #ff9b9b !important; }
+
+@media (max-width: 560px) {
+  .row { grid-template-columns: auto minmax(0, 1fr); }
+  .cost { grid-column: 2; text-align: left; padding-top: 0; }
+  .thumb, .thumbEmpty { width: 52px; height: 40px; }
+}

@@ -93,7 +93,7 @@ const imageCents = (pref: string) => (imagesEnabled() ? aiImageCents(pickImage(p
 /** El lugar del negocio en palabras («Miami, Florida»), para la foto y la traducción. */
 const placeOf = (b: Parameters<typeof photoContextFor>[0]) => photoContextFor(b).place ?? "";
 
-const LIB_SELECT = {
+export const LIB_SELECT = {
   id: true,
   kind: true,
   url: true,
