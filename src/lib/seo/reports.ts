@@ -36,7 +36,9 @@ export type SeoKind =
   | "toxic"
   | "proposals"
   // Arreglos de la página web hechos por Matya (src/lib/webfix*.ts): cada propuesta con su PR en GitHub y su estado.
-  | "webfix";
+  | "webfix"
+  // «Que la IA mejore mis posiciones» (src/lib/rankfix*.ts): el plan por búsqueda, lo preparado y lo publicado.
+  | "rankfix";
 
 export async function saveReport(businessId: string, kind: SeoKind, data: Prisma.InputJsonValue) {
   return db.seoReport.create({ data: { businessId, kind, data } });
