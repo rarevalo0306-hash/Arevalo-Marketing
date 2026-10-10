@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { runRankCheck } from "@/app/actions-seo-rank";
+import { RankFixSection } from "@/components/rankfix/RankFixSection";
 import { AiPromptButton } from "@/components/seo/AiPromptButton";
 import { HowToRead } from "@/components/seo/HowToRead";
 import { capClass, Fold } from "@/components/seo/Fold";
@@ -413,6 +414,9 @@ export async function RankPanel({ businessId }: { businessId: string }) {
               </div>
             </div>
           )}
+
+          {/* «✨ Que la IA mejore mis posiciones»: un solo botón para toda la sección (plan gratis → autorizar → publicar). */}
+          <RankFixSection businessId={businessId} report={report} />
 
           <ShowMore
             hidden={keywords.length - ROWS_SHOWN}
