@@ -1,11 +1,15 @@
 import Link from "next/link";
+import { approveSiteArticle, newSitePhoto, pickSitePhoto, prepareSiteArticle } from "@/app/actions-seo-site";
 import { deleteArticle, improveArticle } from "@/app/actions-seo-writer";
 import { CopyButton, DeleteArticleButton, ImproveButton } from "@/components/seo/ArticleTools";
+import { SitePublish, type SitePublishProps } from "@/components/seo/SitePublish";
 import { TEXT_PROVIDERS } from "@/lib/ai";
 import { intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { zoneLabel } from "@/lib/seo/dataforseo";
 import { costText } from "@/lib/seo/keywords";
+import { approveCostCents, approveLabel, draftVersion, readArticleSite, usd } from "@/lib/seo/site-article";
+import { siteConnection, sitePhotoCents } from "@/lib/seo/site-article-run";
 import { type ArticleReport, articleHtml, articleMarkdown, markdownText, markdownToHtml, scoreTone, stripH1, targetUsage } from "@/lib/seo/writer";
 import { BUSINESS_TZ } from "@/lib/time";
 
@@ -23,6 +27,74 @@ export function ScoreDial({ score, size = 96 }: { score: number; size?: number }
     >
       <span style={{ fontSize: Math.round(size * 0.3) }}>{score}</span>
     </span>
+  );
+}
+
+/** Una fecha AAAA-MM-DD (la que muestra la web) escrita en español y en inglés. */
+function siteDate(day: string): { es: string; en: string } {
+  const d = new Date(`${day}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return { es: day, en: day };
+  const f = (l: string) => new Intl.DateTimeFormat(l, { dateStyle: "long", timeZone: "UTC" }).format(d);
+  return { es: f("es"), en: f("en-US") };
+}
+
+/** «Publicar en mi web»: solo si la web del negocio está conectada (canal «Sitio web»). */
+async function SiteCard({ businessId, id, report }: { businessId: string; id: string; report: ArticleReport }) {
+  const conn = await siteConnection(businessId);
+  if (!conn) return null;
+  const { t } = await getT();
+  const site = readArticleSite(report.site);
+  const version = draftVersion(report);
+  const photoCents = await sitePhotoCents(businessId);
+  const pr = site.prepared;
+  const fresh = !!pr && pr.draftAt === version && !(site.published && pr.mode === "new");
+  const state: SitePublishProps["state"] = fresh ? "prepared" : site.published ? (site.published.draftAt === version ? "published" : "changed") : pr ? "stale" : "ready";
+  const today = siteDate(new Date().toLocaleDateString("en-CA", { timeZone: BUSINESS_TZ }));
+  const approveCents = pr ? approveCostCents(pr.photo, photoCents) : 0;
+  const pub = site.published;
+  const at = (iso: string) => {
+    const d = new Date(iso);
+    const f = (l: string) => new Intl.DateTimeFormat(l, { dateStyle: "long", timeZone: BUSINESS_TZ }).format(d);
+    return { es: f("es"), en: f("en-US") };
+  };
+  const idea = (
+    pub
+      ? t(
+          `Escribe una publicación para promocionar el artículo "${report.draft.title}" que ya está en mi página: ${pub.url}\n\n${report.draft.socialPost}`,
+          `Write a post promoting the article "${report.draft.title}" that is now on my website: ${pub.url}\n\n${report.draft.socialPost}`,
+        )
+      : report.draft.socialPost
+  ).slice(0, 2000);
+  return (
+    <SitePublish
+      state={state}
+      prepare={prepareSiteArticle.bind(null, businessId, id)}
+      pick={pickSitePhoto.bind(null, businessId, id)}
+      regen={newSitePhoto.bind(null, businessId, id)}
+      approve={approveSiteArticle.bind(null, businessId, id)}
+      photoCents={photoCents}
+      photoCost={usd(photoCents)}
+      approveCents={approveCents}
+      approveLabel={approveLabel(approveCents, pr?.mode === "update")}
+      prepared={
+        pr && fresh
+          ? {
+              mode: pr.mode,
+              es: pr.es,
+              en: pr.en,
+              urlEs: pr.urlEs,
+              urlEn: pr.urlEn,
+              photo: pr.photo,
+              photoWhy: pr.photoWhy,
+              options: pr.options,
+              date: pr.mode === "update" && pub ? { es: `Actualizado ${today.es}`, en: `Updated ${today.en}` } : { es: `Publicado ${today.es}`, en: `Published ${today.en}` },
+              sourceLang: report.language,
+            }
+          : undefined
+      }
+      published={pub ? { url: pub.url, urlEn: pub.urlEn, date: siteDate(pub.date), ...(pub.updatedDate ? { updated: siteDate(pub.updatedDate) } : {}), at: at(pub.at) } : undefined}
+      postHref={`/b/${businessId}/publicar?${new URLSearchParams({ idea, magic: "1" })}`}
+    />
   );
 }
 
@@ -84,6 +156,8 @@ export async function ArticleView({ businessId, id, report }: { businessId: stri
         </div>
         {failing.length > 0 && <ImproveButton action={improveArticle.bind(null, businessId, id)} failing={failing.length} />}
       </section>
+
+      <SiteCard businessId={businessId} id={id} report={report} />
 
       <section className="card">
         <div className="stack" style={{ gap: 4 }}>

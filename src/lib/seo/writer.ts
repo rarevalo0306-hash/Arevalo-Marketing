@@ -115,6 +115,8 @@ export type ArticleReport = {
   improvedAt?: string;
   /** El puntaje antes de "Mejorar con IA". */
   previousScore?: number;
+  /** «Publicar en mi web»: la vista previa y lo publicado (forma: ArticleSite, se lee con readArticleSite en site-article.ts). */
+  site?: unknown;
 };
 
 // ---------- Texto ----------
@@ -1005,6 +1007,7 @@ export function readArticleReport(json: unknown): ArticleReport | null {
     createdAt: created && !Number.isNaN(Date.parse(created)) ? created : new Date(0).toISOString(),
     ...(improved && !Number.isNaN(Date.parse(improved)) ? { improvedAt: improved } : {}),
     ...(num(o.previousScore) !== null ? { previousScore: num(o.previousScore) as number } : {}),
+    ...(o.site && typeof o.site === "object" ? { site: o.site } : {}),
   };
 }
 
