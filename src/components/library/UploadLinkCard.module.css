@@ -25,7 +25,7 @@
   justify-content: center;
   flex: none;
   background: var(--brand-soft);
-  color: var(--brand-2);
+  color: var(--link);
 }
 
 .text {
@@ -112,5 +112,5 @@
 /* Noche: el azul de los enlaces es muy oscuro sobre fondo oscuro. */
 :global(html[data-theme="noche"]) .logo,
 :global(html[data-theme="noche"]) .card :global(.btn.link) {
-  color: #8db8ff;
+  color: var(--link);
 }

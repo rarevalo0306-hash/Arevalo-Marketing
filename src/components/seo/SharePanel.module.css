@@ -18,7 +18,7 @@
 }
 .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .big { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.big strong { font: 800 30px/1.1 var(--display); color: var(--ink); }
+.big strong { font: 600 30px/1.1 var(--display); color: var(--ink); }
 .verdict { margin: 0; font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
 .basis { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.4; overflow-wrap: anywhere; }
 .empty { margin: 0; font-size: 14px; line-height: 1.45; color: var(--muted); }
@@ -43,7 +43,7 @@
 .dot { width: 10px; height: 10px; border-radius: 3px; }
 .name { min-width: 0; overflow-wrap: anywhere; }
 .val { font-variant-numeric: tabular-nums; font-weight: 600; }
-.you .name, .you .val { font-weight: 800; }
+.you .name, .you .val { font-weight: 700; }
 
 /* Lista de barras (el mapa: cada negocio con su propia barra, no suman 100 %). */
 .bars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }

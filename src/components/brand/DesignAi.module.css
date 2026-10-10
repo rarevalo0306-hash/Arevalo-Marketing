@@ -3,11 +3,11 @@
 .wrap { display: flex; flex-direction: column; gap: 16px; padding: 16px; border: 1px solid var(--line-strong); border-radius: var(--r-md, 12px); background: var(--surface-2); min-width: 0; }
 .head { display: flex; flex-direction: column; gap: 4px; }
 .title { margin: 0; font-size: 17px; line-height: 1.3; color: var(--ink); }
-.spark { color: var(--brand-2, var(--brand)); }
+.spark { color: var(--link); }
 
 .step { display: flex; flex-direction: column; gap: 12px; padding-top: 14px; border-top: 1px solid var(--line); min-width: 0; }
 .stepTitle { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 15px; color: var(--ink); }
-.num { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--brand-soft); color: var(--ink); font-size: 13px; font-weight: 800; flex-shrink: 0; }
+.num { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--brand-soft); color: var(--ink); font-size: 13px; font-weight: 700; flex-shrink: 0; }
 
 .group { display: flex; flex-direction: column; gap: 8px; border: 0; margin: 0; padding: 0; min-width: 0; }
 .group legend { padding: 0; margin-bottom: 6px; }
@@ -22,7 +22,7 @@
 .models { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: 10px; }
 .model { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid var(--line-strong); border-radius: var(--r-md, 12px); background: var(--surface); color: var(--ink); cursor: pointer; min-width: 0; }
 .model:hover { background: var(--surface-hover); }
-.model input { width: 18px; height: 18px; margin: 2px 0 0; flex-shrink: 0; accent-color: var(--brand-2, var(--brand)); }
+.model input { width: 18px; height: 18px; margin: 2px 0 0; flex-shrink: 0; accent-color: var(--link); }
 .model:has(input:disabled) { opacity: 0.6; cursor: not-allowed; }
 .modelBody { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
 .modelBody > :global(.pill) { align-self: flex-start; margin-top: 4px; }
@@ -51,7 +51,7 @@
 .cardBody > button:first-child { align-self: flex-start; }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
-.howto summary { cursor: pointer; font-size: 14px; font-weight: 700; color: var(--brand-2, var(--brand)); display: inline-flex; align-items: center; gap: 6px; min-height: 32px; }
+.howto summary { cursor: pointer; font-size: 14px; font-weight: 700; color: var(--link); display: inline-flex; align-items: center; gap: 6px; min-height: 32px; }
 .howto summary::before { content: "▸"; color: var(--muted); }
 .howto[open] summary::before { content: "▾"; }
 .howto ol { margin: 6px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; color: var(--ink); }
@@ -67,11 +67,11 @@
 .zonePhoto { background-size: cover; background-position: center; }
 .zoneText { padding: 0 1cqw; overflow: hidden; }
 .zoneLogo { background-size: contain; background-repeat: no-repeat; background-position: center; justify-content: center; color: #111827; background-color: rgba(255, 255, 255, 0.35); }
-.headline { font-weight: 800; font-size: 6.2cqw; line-height: 1.1; letter-spacing: -0.01em; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.25); }
+.headline { font-weight: 700; font-size: 6.2cqw; line-height: 1.1; letter-spacing: -0.01em; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.25); }
 .handle { position: absolute; right: -9px; bottom: -9px; width: 22px; height: 22px; border-radius: 50%; background: #f59e0b; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4); cursor: nwse-resize; touch-action: none; }
 .sliders { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
 .slider { display: flex; flex-direction: column; gap: 4px; min-width: 0; color: var(--ink); }
-.slider input { width: 100%; accent-color: var(--brand-2, var(--brand)); }
+.slider input { width: 100%; accent-color: var(--link); }
 .real { width: 100%; max-width: 360px; border-radius: 8px; border: 1px solid var(--line); }
 
 /* Paso 2 */

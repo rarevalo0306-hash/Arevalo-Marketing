@@ -1,16 +1,17 @@
-.root { display: flex; flex-direction: column; gap: 18px; }
+.root { display: flex; flex-direction: column; gap: 24px; }
 
 /* Barra compacta: el menú de la izquierda también lleva a cada pestaña; en el celular es la forma rápida de cambiar. */
 .bar {
-  display: flex; flex-wrap: wrap; gap: 2px; padding: 4px; border-radius: var(--r-md);
-  background: var(--surface); border: 1px solid var(--line); scroll-margin-top: 80px;
+  display: flex; flex-wrap: wrap; gap: 2px; padding: 3px; border-radius: 12px; align-self: flex-start; max-width: 100%;
+  background: var(--seg-bg, rgba(118, 118, 128, 0.12)); border: 0; scroll-margin-top: 80px;
 }
 .tab {
-  min-height: 34px; padding: 0 12px; border-radius: 10px; border: 0; background: none; cursor: pointer;
-  font: inherit; font-size: 13.5px; font-weight: 700; color: var(--muted); white-space: nowrap;
+  min-height: 34px; padding: 0 14px; border-radius: 9px; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: 14px; font-weight: 500; letter-spacing: -0.01em; color: var(--ink); white-space: nowrap;
 }
-.tab:hover { background: var(--surface-2); color: var(--ink); }
-.on, .on:hover { background: var(--brand-soft); color: var(--brand); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.tab:hover { background: rgba(0, 0, 0, 0.03); color: var(--ink); }
+.on, .on:hover { background: var(--seg-on, #ffffff); color: var(--ink); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.04); }
+:global(html[data-theme="noche"]) .tab:hover { background: rgba(255, 255, 255, 0.05); }
 
 /* En el celular las pestañas se deslizan de lado en una sola fila */
 @media (max-width: 640px) {

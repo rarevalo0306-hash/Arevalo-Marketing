@@ -34,5 +34,5 @@
 .bar > span { display: block; height: 100%; border-radius: 999px; background: var(--brand-2); }
 .mainBar > span { background: var(--teal); }
 .fix { margin: 0; font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
-.more > summary { cursor: pointer; font-weight: 700; color: var(--brand-2); min-height: 32px; display: inline-flex; align-items: center; }
+.more > summary { cursor: pointer; font-weight: 700; color: var(--link); min-height: 32px; display: inline-flex; align-items: center; }
 .more[open] > summary { margin-bottom: 10px; }

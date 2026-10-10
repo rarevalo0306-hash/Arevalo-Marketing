@@ -13,7 +13,7 @@
 .stepBtn:disabled { cursor: default; }
 .stepNum {
   flex-shrink: 0; width: 28px; height: 28px; border-radius: var(--r-md); display: grid; place-items: center;
-  font-weight: 800; font-size: 14px; background: var(--surface-2); color: var(--muted);
+  font-weight: 700; font-size: 14px; background: var(--surface-2); color: var(--muted);
 }
 .stepLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .now .stepBtn { border-color: var(--brand); color: var(--ink); }
@@ -47,7 +47,7 @@
 }
 .rank {
   flex-shrink: 0; width: 30px; height: 30px; border-radius: 15px; display: grid; place-items: center;
-  background: var(--brand); color: #fff; font-weight: 800; font-size: 14px;
+  background: var(--brand); color: #fff; font-weight: 700; font-size: 14px;
 }
 .chosenText { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; overflow-wrap: anywhere; }
 .prio { font-size: 11.5px; font-weight: 700; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
@@ -59,7 +59,7 @@
   width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--surface);
   color: var(--ink); font-size: 13px; cursor: pointer; display: grid; place-items: center; padding: 0;
 }
-.iconBtn:hover:not(:disabled) { border-color: var(--brand); color: var(--brand); }
+.iconBtn:hover:not(:disabled) { border-color: var(--brand); color: var(--link); }
 .iconBtn:disabled { opacity: 0.35; cursor: default; }
 @media (max-width: 480px) {
   .chosenItem { flex-wrap: wrap; }

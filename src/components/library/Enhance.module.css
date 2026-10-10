@@ -5,13 +5,13 @@
 .allText { flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .allText h2 { margin: 0; font-size: 16px; display: flex; align-items: center; gap: 8px; color: var(--ink); }
 .allText p { margin: 0; line-height: 1.5; font-size: 14px; color: var(--muted); overflow-wrap: anywhere; }
-.allIcon { flex-shrink: 0; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand-2); }
-:global(html[data-theme="noche"]) .allIcon { color: #9cc3ff; }
+.allIcon { flex-shrink: 0; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--brand-soft); color: var(--link); }
+:global(html[data-theme="noche"]) .allIcon { color: var(--link); }
 .allActions { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; flex: 0 1 auto; }
 .allActions :global(.btn) { max-width: 100%; white-space: normal; text-align: center; }
 .how { font-size: 13.5px; color: var(--muted); }
-.how summary { cursor: pointer; font-weight: 700; color: var(--brand-2); width: fit-content; }
-:global(html[data-theme="noche"]) .how summary { color: #8fb6ff; }
+.how summary { cursor: pointer; font-weight: 700; color: var(--link); width: fit-content; }
+:global(html[data-theme="noche"]) .how summary { color: var(--link); }
 .how ul { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; line-height: 1.45; }
 
 .progress { width: min(100%, 360px); display: flex; flex-direction: column; gap: 6px; }
@@ -57,7 +57,7 @@
 .frame img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; }
 .after { will-change: clip-path; }
 .line { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25); pointer-events: none; }
-.knob { position: absolute; top: 50%; left: 50%; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; background: #fff; color: #111c2e; display: grid; place-items: center; font-size: 15px; font-weight: 800; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); }
+.knob { position: absolute; top: 50%; left: 50%; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; background: #fff; color: #111c2e; display: grid; place-items: center; font-size: 15px; font-weight: 700; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); }
 .tag { position: absolute; top: 8px; padding: 2px 9px; border-radius: 999px; background: rgba(0, 0, 0, 0.62); color: #fff; font-size: 12px; font-weight: 700; pointer-events: none; }
 .tagBefore { left: 8px; }
 .tagAfter { right: 8px; }
@@ -76,7 +76,7 @@
 :global(html[data-theme="noche"]) .chosen.chosen { background: #2f7de0; border-color: #2f7de0; }
 .redo { display: flex; flex-direction: column; gap: 6px; }
 .redo :global(.btn) { width: 100%; justify-content: center; }
-.pending { margin: 0; display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; color: var(--brand-2); }
-:global(html[data-theme="noche"]) .pending { color: #6aa8ff; }
+.pending { margin: 0; display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; color: var(--link); }
+:global(html[data-theme="noche"]) .pending { color: var(--link); }
 .note { margin: 0; }
 .open { width: 100%; }

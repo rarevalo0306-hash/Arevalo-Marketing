@@ -5,7 +5,7 @@
 
 .rank {
   width: 28px; height: 28px; border-radius: var(--r-md); display: inline-grid; place-items: center; flex-shrink: 0;
-  background: var(--brand); color: #fff; font-weight: 800; font-size: 14px;
+  background: var(--brand); color: #fff; font-weight: 700; font-size: 14px;
 }
 
 /* ---------- Leyenda ---------- */
@@ -27,7 +27,7 @@
 .kwTop { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .kwText { font-size: 16px; overflow-wrap: anywhere; }
 .kwLang { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
-.best { font-size: 12px; font-weight: 800; color: var(--warn-text); }
+.best { font-size: 12px; font-weight: 700; color: var(--warn-text); }
 .facts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .kwBtn { flex-shrink: 0; white-space: nowrap; }
 @media (max-width: 700px) {

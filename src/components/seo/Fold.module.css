@@ -40,7 +40,7 @@
   min-height: 28px;
   font-size: 13px;
   font-weight: 700;
-  color: var(--brand-2);
+  color: var(--link);
 }
 .inline > summary::after { content: "▸"; font-size: 11px; transition: transform 0.15s ease; }
 .inline[open] > summary::after { transform: rotate(90deg); }

@@ -35,7 +35,7 @@
 .tile.you { background: var(--surface-hover); }
 .tileHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
 .domain { font-weight: 700; overflow-wrap: anywhere; min-width: 0; }
-.big { font: 800 28px/1.1 var(--display); letter-spacing: -0.6px; }
+.big { font: 600 28px/1.1 var(--display); letter-spacing: -0.6px; }
 .big small { font-size: 14px; font-weight: 600; color: var(--muted); letter-spacing: 0; }
 .facts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--muted); }
 .facts strong { color: var(--ink); font-weight: 700; }

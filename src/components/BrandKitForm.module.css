@@ -55,9 +55,9 @@
 .steps li { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.45; }
 .dot {
   flex: none; width: 24px; height: 24px; border-radius: 999px; display: grid; place-items: center;
-  font-size: 13px; font-weight: 800; background: var(--surface-2); color: var(--muted); border: 1px solid var(--line);
+  font-size: 13px; font-weight: 700; background: var(--surface-2); color: var(--muted); border: 1px solid var(--line);
 }
-.run .dot { background: var(--brand-soft); color: var(--brand); border-color: var(--brand); }
+.run .dot { background: var(--brand-soft); color: var(--link); border-color: var(--brand); }
 .ok .dot { background: var(--teal-text); color: #fff; border-color: transparent; }
 .err .dot { background: var(--err-text); color: #fff; border-color: transparent; }
 .wait .dot { font-size: 12px; }

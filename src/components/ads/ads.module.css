@@ -5,7 +5,7 @@
 
 .stopBtn {
   min-height: 52px; padding: 0 22px; border-radius: var(--r-md); border: 2px solid var(--err-line); background: var(--err-bg); color: var(--err-text);
-  font: 800 16px var(--body); cursor: pointer; width: 100%; white-space: normal;
+  font: 600 16px var(--body); cursor: pointer; width: 100%; white-space: normal;
 }
 .stopBtn:hover:not(:disabled) { border-color: var(--err-text); }
 .stopBtn:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -36,7 +36,7 @@
 
 .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 8px; }
 .fact { padding: 10px 12px; border-radius: var(--r); background: var(--surface-2); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.fact b { font: 800 20px/1.15 var(--display); color: var(--ink); font-variant-numeric: tabular-nums; }
+.fact b { font: 600 20px/1.15 var(--display); color: var(--ink); font-variant-numeric: tabular-nums; }
 .fact span { font-size: 12.5px; color: var(--muted); }
 
 .meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13.5px; color: var(--muted); }
@@ -47,7 +47,7 @@
 .confirm dt { color: var(--muted); font-weight: 600; }
 .confirm dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
 @media (max-width: 480px) { .confirm dl { grid-template-columns: minmax(0, 1fr); } .confirm dd { margin-bottom: 6px; } }
-.maxSpend { font: 800 22px var(--display); color: var(--ink); }
+.maxSpend { font: 600 22px var(--display); color: var(--ink); }
 
 .proposals { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 14px; }
 .proposal { border: 1px solid var(--line); border-radius: var(--r-md); padding: 16px; display: flex; flex-direction: column; gap: 10px; background: var(--surface); min-width: 0; }
@@ -57,7 +57,7 @@
 .formGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 12px; }
 .formGrid label { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 
-.howto summary { cursor: pointer; font-weight: 700; color: var(--brand-2); }
+.howto summary { cursor: pointer; font-weight: 700; color: var(--link); }
 .howto[open] summary { margin-bottom: 8px; }
 .howto ol, .howto ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
 

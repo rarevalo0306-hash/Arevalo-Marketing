@@ -2,8 +2,8 @@
 
 .card { border-color: var(--line-strong); }
 .kicker {
-  align-self: flex-start; font-size: 12px; font-weight: 800; letter-spacing: 0.02em; text-transform: uppercase;
-  color: var(--brand); background: var(--brand-soft); padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line-strong);
+  align-self: flex-start; font-size: 12px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase;
+  color: var(--link); background: var(--brand-soft); padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line-strong);
 }
 .h3 { margin: 0; font-size: 16px; }
 
@@ -21,7 +21,7 @@
 
 .btns { display: flex; align-items: center; gap: 6px; flex: none; }
 .yes, .no, .undo {
-  min-height: 38px; padding: 0 12px; border-radius: 10px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+  min-height: 38px; padding: 0 12px; border-radius: var(--pill); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
   border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); white-space: nowrap;
 }
 .yes:hover { border-color: var(--teal-text); color: var(--teal-text); }
@@ -31,7 +31,7 @@
 .okMark { font-size: 13px; font-weight: 700; color: var(--teal-text); white-space: nowrap; }
 .noMark { font-size: 13px; font-weight: 700; color: var(--muted); white-space: nowrap; }
 
-.more summary { cursor: pointer; color: var(--brand); font-weight: 700; font-size: 14px; }
+.more summary { cursor: pointer; color: var(--link); font-weight: 700; font-size: 14px; }
 
 .langs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 8px; }
 .freqs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr)); gap: 8px; }
@@ -47,7 +47,7 @@
 .addRow { display: flex; gap: 8px; }
 .addRow input { flex: 1; min-width: 0; }
 .measure { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.again { align-self: flex-start; border: 0; background: none; padding: 0; font: inherit; font-size: 13px; color: var(--brand); cursor: pointer; font-weight: 600; }
+.again { align-self: flex-start; border: 0; background: none; padding: 0; font: inherit; font-size: 13px; color: var(--link); cursor: pointer; font-weight: 600; }
 .again:disabled { opacity: 0.6; cursor: default; }
 
 .actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-top: 4px; border-top: 1px solid var(--line); padding-top: 14px; }

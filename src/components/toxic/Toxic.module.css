@@ -3,7 +3,7 @@
 .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
 .tile { display: flex; flex-direction: column; gap: 2px; padding: 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--ink); text-decoration: none; min-width: 0; }
 a.tile:hover { border-color: var(--line-strong); background: var(--surface-hover); color: var(--ink); }
-.tileNum { font-size: 22px; font-weight: 800; line-height: 1.15; color: var(--ink); }
+.tileNum { font-size: 22px; font-weight: 700; line-height: 1.15; color: var(--ink); }
 .tileLabel { font-size: 12px; color: var(--muted); line-height: 1.3; overflow-wrap: anywhere; }
 .bad { color: var(--err-text); }
 .warn { color: var(--warn-text); }
@@ -25,8 +25,8 @@ a.tile:hover { border-color: var(--line-strong); background: var(--surface-hover
 .resultNothing { border-color: var(--ok-line); background: var(--ok-bg); }
 .resultWatch { border-color: var(--warn-line); background: var(--warn-bg); }
 .resultPrepare { border-color: var(--err-line); background: var(--err-bg); }
-.resultTag { font-size: 11px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
-.resultTitle { font-size: 18px; font-weight: 800; line-height: 1.25; }
+.resultTag { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.resultTitle { font-size: 18px; font-weight: 700; line-height: 1.25; }
 .resultNothing .resultTitle { color: var(--ok-text); }
 .resultWatch .resultTitle { color: var(--warn-text); }
 .resultPrepare .resultTitle { color: var(--err-text); }
@@ -60,12 +60,12 @@ a.tile:hover { border-color: var(--line-strong); background: var(--surface-hover
 .meta b { color: var(--ink-2); font-weight: 700; }
 .reasons { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; font-size: 13px; line-height: 1.45; color: var(--ink-2); }
 .reasons li { display: flex; gap: 6px; }
-.reasons li::before { content: "•"; flex-shrink: 0; font-weight: 800; }
+.reasons li::before { content: "•"; flex-shrink: 0; font-weight: 700; }
 .rBad::before { color: var(--err-text); }
 .rGood::before { color: var(--ok-text); }
 .rInfo::before { color: var(--info-text); }
 .anchor { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
-.more > summary { cursor: pointer; font-weight: 700; color: var(--brand-2); padding: 4px 0; font-size: 14px; }
+.more > summary { cursor: pointer; font-weight: 700; color: var(--link); padding: 4px 0; font-size: 14px; }
 .more[open] > summary { margin-bottom: 6px; }
 .lvlAlto { background: var(--err-bg); color: var(--err-text); }
 .lvlMedio { background: var(--warn-bg); color: var(--warn-text); }
@@ -77,7 +77,7 @@ a.tile:hover { border-color: var(--line-strong); background: var(--surface-hover
 /* Archivo para Google */
 .fileBox { display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: var(--r-lg); border: 1px solid var(--line); background: var(--surface-2); }
 .steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--ink); line-height: 1.5; }
-.steps li::marker { font-weight: 800; color: var(--brand-2); }
+.steps li::marker { font-weight: 700; color: var(--link); }
 .preview { margin: 0; max-height: 180px; overflow: auto; padding: 10px 12px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .actions > * { flex: 1 1 200px; }
@@ -103,4 +103,4 @@ a.tile:hover { border-color: var(--line-strong); background: var(--surface-hover
 
 /* Noche: el azul de los enlaces se aclara (como .btn.link en globals.css) para que se lea sobre fondo oscuro. */
 :global(html[data-theme="noche"]) .more > summary,
-:global(html[data-theme="noche"]) .steps li::marker { color: #6aa8ff; }
+:global(html[data-theme="noche"]) .steps li::marker { color: var(--link); }

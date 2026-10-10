@@ -37,7 +37,7 @@
 }
 .missingText { flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; }
 .missingText a { font-weight: 700; white-space: nowrap; }
-.level { flex: 0 0 auto; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; border-radius: 999px; padding: 2px 8px; }
+.level { flex: 0 0 auto; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; border-radius: 999px; padding: 2px 8px; }
 .required { background: var(--err-bg); color: var(--err-text); }
 .recommended { background: var(--warn-bg); color: var(--warn-text); }
 .optional { background: var(--surface-2); color: var(--muted); }

@@ -126,7 +126,7 @@
 
 .fontSample {
   font-size: 44px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -152,7 +152,7 @@
   background: var(--err-bg);
   color: var(--err-text);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   flex-shrink: 0;
 }
 
@@ -160,12 +160,12 @@
   margin-top: auto;
   font-size: 14px;
   font-weight: 700;
-  color: var(--brand-2);
+  color: var(--link);
 }
 
 :global(html[data-theme="noche"]) .edit,
 :global(html[data-theme="noche"]) .book span:last-child {
-  color: #8db8ff;
+  color: var(--link);
 }
 
 .thumbs {

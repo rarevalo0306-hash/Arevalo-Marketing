@@ -8,7 +8,7 @@
   gap: 6px;
   cursor: pointer;
   font-weight: 700;
-  color: var(--brand-2);
+  color: var(--link);
   min-height: 32px;
 }
 .help > summary::before {
@@ -19,9 +19,9 @@
   height: 18px;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   background: var(--brand-soft);
-  color: var(--brand-2);
+  color: var(--link);
 }
 .help[open] > summary { margin-bottom: 6px; }
 .helpBody {
@@ -65,8 +65,8 @@
 .glossary dd strong { color: var(--ink); font-weight: 700; }
 .example { color: var(--ink); }
 .good, .bad { padding-left: 2px; }
-.good > span:first-child { color: var(--teal-text); font-weight: 800; }
-.bad > span:first-child { color: var(--err-text); font-weight: 800; }
+.good > span:first-child { color: var(--teal-text); font-weight: 700; }
+.bad > span:first-child { color: var(--err-text); font-weight: 700; }
 @media (min-width: 720px) { .glossary { grid-template-columns: 1fr 1fr; column-gap: 24px; } }
 .steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; line-height: 1.45; }
 

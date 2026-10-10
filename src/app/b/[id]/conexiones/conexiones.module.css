@@ -57,7 +57,7 @@
 }
 
 :global(html[data-theme="noche"]) .tip a {
-  color: #8db8ff;
+  color: var(--link);
 }
 
 .grid {
