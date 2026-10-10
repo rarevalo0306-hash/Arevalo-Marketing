@@ -2,7 +2,7 @@ import Link from "next/link";
 import { runSiteAudit } from "@/app/actions-seo-audit";
 import { AiPromptButton } from "@/components/seo/AiPromptButton";
 import { AuditButton } from "@/components/seo/AuditButton";
-import { AuditIssues, shortUrl } from "@/components/seo/AuditIssues";
+import { AuditIssues, issueUrls, shortUrl } from "@/components/seo/AuditIssues";
 import styles from "@/components/seo/AuditPanel.module.css";
 import { Fold } from "@/components/seo/Fold";
 import { HowToRead } from "@/components/seo/HowToRead";
@@ -17,6 +17,8 @@ import { auditPrompt } from "@/lib/seo/prompts";
 import { latestReports } from "@/lib/seo/reports";
 import { AUDIT_WEIGHT } from "@/lib/seo/verdict";
 import { BUSINESS_TZ } from "@/lib/time";
+import { SITE_CHANNEL } from "@/lib/webfix-shape";
+import webfix from "@/components/webfix/WebFix.module.css";
 
 /** Cuántas revisiones se leen para el historial de la nota. */
 const HISTORY = 8;
@@ -71,6 +73,8 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
 
   const action = runSiteAudit.bind(null, businessId);
   const ctx = report?.issues.length ? await loadPromptContext(businessId) : null;
+  // «Arréglalo por mí» necesita la web conectada (Conexiones → Sitio web); si no, un enlace pequeño para conectarla.
+  const siteConnected = report?.issues.length ? Boolean(await db.connection.findUnique({ where: { businessId_channel: { businessId, channel: SITE_CHANNEL } }, select: { id: true } })) : true;
   const counts = (s: Severity) => report?.issues.filter((i) => i.severity === s).length ?? 0;
   const ps = report?.pagespeed;
   const home = report?.site.home || website;
@@ -277,6 +281,12 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
 
           <div className="stack" style={{ gap: 10 }}>
             <span className="lbl">{t("Qué arreglar", "What to fix")}</span>
+            {!siteConnected && (
+              <p className={webfix.connect}>
+                {t("¿Tu web está en GitHub? Matya puede arreglarla por ti: ", "Is your website on GitHub? Matya can fix it for you: ")}
+                <Link href={`/b/${businessId}/conexiones#c-seo`}>{t("Conectar tu web", "Connect your website")}</Link>
+              </p>
+            )}
             {report.issues.length === 0 ? (
               <p className="note ok">{t("¡No encontramos problemas! Tu página está en muy buena forma.", "We didn't find any problems! Your website is in great shape.")}</p>
             ) : (
@@ -344,6 +354,7 @@ export async function AuditPanel({ businessId }: { businessId: string }) {
             <AiPromptButton
               text={auditPrompt(ctx, report, lang)}
               hint={t("Todos los problemas juntos, con cada página y cómo arreglarlo, listo para pegar.", "All the problems together, with each page and how to fix it, ready to paste.")}
+              fix={{ kind: "audit", title: t("Todos los problemas de la auditoría", "All the audit problems"), issueIds: report.issues.map((i) => i.id), urls: issueUrls(report.issues) }}
             />
           )}
         </>

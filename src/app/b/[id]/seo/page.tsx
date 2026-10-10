@@ -27,12 +27,15 @@ import { seoTabFrom } from "@/components/nav/model";
 import { WriterCard } from "@/components/seo/WriterCard";
 import { DiagnosisBanner } from "@/components/diagnosis/DiagnosisBanner";
 import { ActionPlanSection } from "@/components/plan/ActionPlanSection";
+import { WebFixProvider } from "@/components/webfix/WebFixContext";
+import { WebFixReview } from "@/components/webfix/WebFixReview";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
 import { dataForSeoEnabled, readTrackedKeywords, readZones } from "@/lib/seo/dataforseo";
 import { KEYWORDS_CALL_COST } from "@/lib/seo/keywords";
 import { RANK_COST_PER_KEYWORD } from "@/lib/seo/rank";
 import { setupState } from "@/lib/seo/setup";
+import { loadWebFixState } from "@/lib/webfix";
 
 // La auditoría recorre el sitio y la visibilidad en IA hace varias búsquedas: puede tardar.
 export const maxDuration = 300;
@@ -52,6 +55,8 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
   const needsSetup =
     setupShown && (readTrackedKeywords(b.seoKeywords).length === 0 || readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName).length === 0);
   const saved = needsSetup ? (await setupState(id)).proposal : null;
+  // «Arréglalo por mí»: si la web está conectada y el último arreglo (lo comparten los botones y el panel de revisión).
+  const webfix = await loadWebFixState(id);
   // Las mismas pestañas y el mismo orden que el menú (SEO_TAB_IDS); ?mapa= abre «Local».
   const initial = seoTabFrom(tab, mapa);
   const tabs: SeoTab[] = [
@@ -108,6 +113,7 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
       content: (
         <>
           <AuditPanel businessId={id} />
+          <WebFixReview />
           <OnPagePanel businessId={id} />
           <DecayPanel businessId={id} />
           <CannibalPanel businessId={id} />
@@ -168,7 +174,9 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
           "How people find you on Google and in AI assistants (ChatGPT, Gemini, Claude): your website's health, whether AIs recommend you, and your real Google searches.",
         )}
       />
-      <SeoTabs tabs={tabs} initial={initial} />
+      <WebFixProvider businessId={id} connected={webfix.connected} repo={webfix.repo} fileBudget={webfix.fileBudget} aiReady={webfix.aiReady} initialJob={webfix.job}>
+        <SeoTabs tabs={tabs} initial={initial} />
+      </WebFixProvider>
     </>
   );
 }

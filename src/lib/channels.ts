@@ -128,7 +128,8 @@ export const CHANNELS: ChannelDef[] = [
     gain: "Publica artículos en tu página web para que más gente te encuentre en Google.",
     steps: [
       "Tu sitio web debe estar en GitHub, publicarse con Vercel y estar preparado para recibir artículos (pídele ayuda a quien hizo tu web).",
-      "En github.com → Settings → Developer settings, crea un token fine-grained con permiso Contents: escritura para ese repositorio.",
+      "En github.com → tu foto → Settings → Developer settings → Personal access tokens → Fine-grained tokens, crea un token solo para el repositorio de tu web, con vencimiento de 1 año y estos permisos: Contents: Read and write, Pull requests: Read and write, Commit statuses: Read, Checks: Read (si aparece) y Metadata: Read.",
+      "Pull requests, Commit statuses y Checks son para «Arréglalo por mí» (Matya arregla tu web y tú apruebas cada cambio). Si ya tenías el token, edítalo en GitHub y agrégale esos permisos: sigue siendo el mismo y no hay que volver a pegarlo.",
       "Escribe el repositorio, la rama que publica Vercel (casi siempre main) y la dirección de tu sitio.",
       "Pega el token y presiona «Guardar y probar».",
     ],
@@ -136,7 +137,7 @@ export const CHANNELS: ChannelDef[] = [
       { key: "repo", label: "Repositorio en GitHub", placeholder: "rarevalo0306-hash/RicardoPA-Web" },
       { key: "branch", label: "Rama que publica Vercel", placeholder: "main" },
       { key: "siteUrl", label: "Dirección del sitio", placeholder: "https://ricardopa.com" },
-      { key: "githubToken", label: "Token de GitHub (fine-grained, permiso Contents: escritura)", secret: true },
+      { key: "githubToken", label: "Token de GitHub (fine-grained: Contents y Pull requests de escritura)", secret: true },
     ],
   },
   {
@@ -416,7 +417,8 @@ const CHANNELS_EN: Record<ChannelId, ChannelTextEn> = {
     gain: "Publish articles on your website so more people find you on Google.",
     steps: [
       "Your website must be on GitHub, published with Vercel and set up to receive articles (ask whoever built your site for help).",
-      "On github.com → Settings → Developer settings, create a fine-grained token with Contents: write permission for that repository.",
+      "On github.com → your photo → Settings → Developer settings → Personal access tokens → Fine-grained tokens, create a token for your website's repository only, expiring in 1 year, with these permissions: Contents: Read and write, Pull requests: Read and write, Commit statuses: Read, Checks: Read (if offered) and Metadata: Read.",
+      "Pull requests, Commit statuses and Checks are for \"Fix it for me\" (Matya fixes your website and you approve every change). If you already had the token, edit it on GitHub and add those permissions: it stays the same and you don't need to paste it again.",
       "Enter the repository, the branch Vercel publishes (almost always main) and your website address.",
       "Paste the token and click \"Save and test\".",
     ],
@@ -424,7 +426,7 @@ const CHANNELS_EN: Record<ChannelId, ChannelTextEn> = {
       repo: { label: "GitHub repository" },
       branch: { label: "Branch that Vercel publishes" },
       siteUrl: { label: "Website address" },
-      githubToken: { label: "GitHub token (fine-grained, Contents: write permission)" },
+      githubToken: { label: "GitHub token (fine-grained: Contents and Pull requests write)" },
     },
   },
   email: {

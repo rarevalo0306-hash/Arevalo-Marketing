@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { suggestTopic } from "@/app/actions-seo-site";
 import { deleteArticle, writeArticle } from "@/app/actions-seo-writer";
 import { PageHead } from "@/components/PageHead";
 import { DeleteArticleButton } from "@/components/seo/ArticleTools";
@@ -87,6 +88,7 @@ export default async function EscribirPage({
               defaultLanguage={b.seoLanguage === "en" ? "en" : "es"}
               zone={zoneLabel(zones[0].name) || zones[0].name}
               serpCost={WRITER_SERP_COST}
+              suggest={suggestTopic.bind(null, id)}
             />
           )}
         </section>
