@@ -1,8 +1,11 @@
 import { after } from "next/server";
 import { syncAds } from "@/lib/ads";
 import { runCampaigns } from "@/lib/campaign-engine";
+import { runDailyReports } from "@/lib/daily-report";
 import { getT } from "@/lib/i18n-server";
 import { runDueDriveSync, runDueUploadAnalysis } from "@/lib/library-sync";
+import { syncPostMetrics } from "@/lib/post-metrics";
+import { runProposals } from "@/lib/proposals";
 import { publishDue } from "@/lib/publish";
 import { runWeeklyReports } from "@/lib/seo/alerts";
 import { runDueRankChecks } from "@/lib/seo/rank";
@@ -58,6 +61,28 @@ export async function GET(req: Request) {
       if (monthly?.ok) console.log("[reporte-mensual] enviado:", monthly.businessId, `${monthly.ms} ms`);
     } catch (e) {
       console.error("[reporte-mensual] error:", e instanceof Error ? e.message : e);
+    }
+    // Resultados de las publicaciones (alcance, me gusta, comentarios…): lee las que tocan y las guarda en PostMetric.
+    try {
+      const metrics = await syncPostMetrics(new Date());
+      if (metrics.due || metrics.errors) console.log("[resultados]", JSON.stringify(metrics));
+    } catch (e) {
+      console.error("[resultados] error:", e instanceof Error ? e.message : e);
+    }
+    // Propuestas de la IA para mejorar (el dueño las acepta o rechaza): pocos negocios por llamada.
+    try {
+      const props = await runProposals(new Date());
+      if (props.businesses || props.expired || props.errors) console.log("[propuestas]", JSON.stringify(props));
+    } catch (e) {
+      console.error("[propuestas] error:", e instanceof Error ? e.message : e);
+    }
+    // Reporte diario por email: cierra a la medianoche de cada negocio. Como mucho 5 negocios por llamada y solo
+    // mientras no se pasen los primeros 120 s (el resto sigue en la próxima llamada); nunca manda dos veces el mismo día.
+    try {
+      const daily = await runDailyReports(new Date(), { max: 5, budgetMs: Math.max(10_000, 120_000 - (Date.now() - started)) });
+      if (daily.checked) console.log("[reporte-diario]", JSON.stringify(daily));
+    } catch (e) {
+      console.error("[reporte-diario] error:", e instanceof Error ? e.message : e);
     }
     // Carpeta de fotos de Google Drive: como mucho UN negocio por llamada (cada 24 h, o antes si quedaron fotos por revisar).
     try {

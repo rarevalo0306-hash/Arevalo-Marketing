@@ -17,6 +17,11 @@ model Business {
   ownerName   String       @default("")
   ownerEmail  String       @default("")
   ownerPhone  String       @default("")
+  /// Zona horaria del negocio (IANA, ej. "America/Managua"). "" = la de la app (BUSINESS_TZ). El reporte diario cierra a su medianoche.
+  timezone    String       @default("")
+  /// Reporte diario por email (cierra a la medianoche del negocio). A quién: reportEmail, o ownerEmail si está vacío.
+  reportDaily Boolean      @default(true)
+  reportEmail String       @default("")
   /// Lo que la IA debe saber del negocio: servicios, zona, teléfono, tono, lo que nunca debe decir.
   aiProfile     String     @default("")
   /// Si es true, lo que planea la IA se programa solo; si es false, queda como borrador para aprobar.
@@ -87,6 +92,7 @@ model Business {
   campaigns   Campaign[]
   aiActions   AiAction[]
   listings    DirectoryListing[]
+  proposals   AiProposal[]
   connections Connection[]
   contacts    Contact[]
   posts       Post[]
@@ -269,9 +275,64 @@ model PostTarget {
   externalUrl String    @default("")
   detail      String    @default("")
   sentAt      DateTime?
+  /// Id de la publicación en la red (para leer sus resultados: alcance, me gusta, comentarios…).
+  externalId  String    @default("")
   post        Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  metrics     PostMetric[]
 
   @@index([postId])
+}
+
+/// Resultados de una publicación en una red, leídos cada cierto tiempo (el último es el actual).
+model PostMetric {
+  id           String     @id @default(cuid())
+  postTargetId String
+  target       PostTarget @relation(fields: [postTargetId], references: [id], onDelete: Cascade)
+  businessId   String
+  channel      String
+  fetchedAt    DateTime   @default(now())
+  impressions  Int        @default(0)
+  reach        Int        @default(0)
+  likes        Int        @default(0)
+  comments     Int        @default(0)
+  shares       Int        @default(0)
+  saves        Int        @default(0)
+  clicks       Int        @default(0)
+  videoViews   Int        @default(0)
+  /// Lo que devolvió la red, por si sirve después.
+  raw          Json?
+
+  @@index([postTargetId, fetchedAt])
+  @@index([businessId, fetchedAt])
+}
+
+/// Propuestas de la IA para mejorar (horarios, formatos, temas, presupuesto de anuncios, palabras clave…).
+/// El dueño las acepta o las rechaza; las aceptadas se aplican (y quedan en el registro AiAction).
+/// Forma de `action`: src/lib/proposals-shape.ts.
+model AiProposal {
+  id         String    @id @default(cuid())
+  businessId String
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  campaignId String?
+  /// timing | format | topic | channel | ads-budget | ads-pause | keyword | content | other
+  kind       String
+  /// { es, en }
+  title      Json
+  /// { es, en }: por qué (con los datos) y qué cambia
+  detail     Json?
+  /// 3 alto · 2 medio · 1 bajo
+  impact     Int       @default(2)
+  /// proposed | accepted | rejected | applied | expired
+  status     String    @default("proposed")
+  /// Qué cambio se aplica si se acepta (null = solo un consejo).
+  action     Json?
+  /// Datos en que se basa (para mostrar «por qué»).
+  evidence   Json?
+  createdAt  DateTime  @default(now())
+  decidedAt  DateTime?
+  appliedAt  DateTime?
+
+  @@index([businessId, status])
 }
 
 /// Fotos y videos reales del negocio (de su carpeta de Google Drive), con lo que la IA vio en cada uno.

@@ -66,7 +66,7 @@ export const facebook: Publisher = {
     if (kind === "story" && media[0]?.type === "photo") {
       try {
         const r = await facebookPhotoStory(pageId, accessToken, media[0]);
-        return { url: r.post_id ? `https://www.facebook.com/${r.post_id}` : undefined, detail: "Historia publicada en Facebook" };
+        return { url: r.post_id ? `https://www.facebook.com/${r.post_id}` : undefined, detail: "Historia publicada en Facebook", ...(r.post_id ? { id: r.post_id } : {}) };
       } catch (e) {
         // Si Facebook no deja publicar la historia (permisos o tipo de página), se publica como post normal.
         note = ` (Facebook no aceptó la historia: ${(e as Error).message}; se publicó como post)`;
@@ -96,7 +96,7 @@ export const facebook: Publisher = {
       });
     }
     const id = res.post_id ?? res.id;
-    return { url: id ? `https://www.facebook.com/${id}` : undefined, detail: `Publicado en Facebook${note}` };
+    return { url: id ? `https://www.facebook.com/${id}` : undefined, detail: `Publicado en Facebook${note}`, ...(id ? { id } : {}) };
   },
   async test(creds) {
     required(creds, ["pageId", "accessToken"]);
@@ -176,7 +176,7 @@ export const instagram: Publisher = {
     const kind = input.kind ?? "post";
     const n = mediaOf(input).filter((m) => m.type === "photo").length;
     const detail = kind === "story" ? "Historia publicada en Instagram" : kind === "carousel" && n >= 2 ? `Carrusel de ${Math.min(10, n)} fotos publicado en Instagram` : "Publicado en Instagram";
-    return { url, detail };
+    return { url, detail, id: media.id };
   },
   async test(creds) {
     required(creds, ["igUserId", "accessToken"]);

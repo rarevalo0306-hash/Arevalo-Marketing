@@ -30,7 +30,11 @@ export type SeoKind =
   | "diagnosis"
   | "plan"
   // Visitas reales de la página web (Google Analytics 4): src/lib/ga4.ts.
-  | "ga4";
+  | "ga4"
+  // Fase 5 (resultados): reporte diario enviado, revisión de enlaces dañinos y la corrida de propuestas de la IA.
+  | "daily"
+  | "toxic"
+  | "proposals";
 
 export async function saveReport(businessId: string, kind: SeoKind, data: Prisma.InputJsonValue) {
   return db.seoReport.create({ data: { businessId, kind, data } });

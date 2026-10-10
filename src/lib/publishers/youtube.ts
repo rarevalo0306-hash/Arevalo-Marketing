@@ -106,6 +106,7 @@ export const youtube: Publisher = {
     return {
       url: shorts ? `https://www.youtube.com/shorts/${video.id}` : `https://youtu.be/${video.id}`,
       detail: `Subido a YouTube${shorts ? " como Short" : ""}; YouTube lo procesa en unos minutos. Id ${video.id}`,
+      id: video.id,
     };
   },
   async test(creds) {

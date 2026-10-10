@@ -51,6 +51,8 @@ export const tiktok: Publisher = {
     return {
       url: info.creator_username ? `https://www.tiktok.com/@${info.creator_username}` : undefined,
       detail: `Enviado a TikTok, se procesa en unos minutos${note}. Id ${r.data.publish_id}`,
+      // TikTok devuelve el id del envío (publish_id), no el del video: el del video llega después, al procesarse.
+      ...(r.data.publish_id ? { id: r.data.publish_id } : {}),
     };
   },
   async test(creds) {

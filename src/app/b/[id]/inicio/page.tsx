@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { DashSearch, MAX_Q, SearchResult } from "@/components/dashboard/DashSearch";
 import s from "@/components/dashboard/Dashboard.module.css";
 import { HealthStrip, HealthStripSkeleton } from "@/components/dashboard/HealthStrip";
+import { ProposalsNudge } from "@/components/proposals/ProposalsNudge";
 import { QuickPostCard, RecentPosts } from "@/components/dashboard/SocialRow";
 import { TodayList, TodayListSkeleton } from "@/components/dashboard/TodayList";
 import { ToolkitGrid, ToolkitGridSkeleton } from "@/components/dashboard/ToolkitGrid";
@@ -61,6 +62,10 @@ export default async function InicioPage({ params, searchParams }: { params: Pro
 
       <Suspense fallback={<HealthStripSkeleton />}>
         <HealthStrip businessId={id} />
+      </Suspense>
+
+      <Suspense fallback={null}>
+        <ProposalsNudge businessId={id} />
       </Suspense>
 
       <div className={s.main}>

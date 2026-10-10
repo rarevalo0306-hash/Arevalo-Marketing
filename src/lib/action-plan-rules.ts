@@ -29,6 +29,7 @@ import { readRankReport, siteDomain } from "@/lib/seo/rank";
 import { readVisibilityReport } from "@/lib/seo/visibility";
 import { norm } from "@/lib/seo/writer";
 import { REVIEW_SHARE_DAYS } from "@/lib/reviews-request";
+import { readSettings, toxicAlert } from "@/lib/toxic-links";
 import { fmtDate } from "@/lib/time";
 
 /** Tareas abiertas como máximo: las de menor puntaje quedan fuera. */
@@ -69,6 +70,7 @@ const SOURCE_TEXT = {
   ga4: bi("Google Analytics (visitas a tu página)", "Google Analytics (website visits)"),
   gap: bi("la comparación con tu competencia", "the competitor comparison"),
   backlinks: bi("la revisión de enlaces", "the backlinks check"),
+  toxic: bi("la revisión de enlaces dañinos", "the toxic links check"),
   gbp: bi("tu Perfil de Google", "your Google profile"),
   reviews: bi("tus reseñas de Google", "your Google reviews"),
   maprank: bi("el mapa de Google Maps", "the Google Maps heatmap"),
@@ -1012,8 +1014,8 @@ export function backlinksTasks(saved: Saved | null, outreach: Saved | null, ctx:
               `The links pointing to you have a spam level of ${spam} out of 100. Google almost always ignores those links on its own: don't do anything drastic.`,
             ),
             bi(
-              "Solo si Google te manda un aviso de «acción manual» en Search Console, arma con alguien que sepa la lista para desautorizarlos (disavow). Desautorizar enlaces buenos te hace daño, y esta app nunca lo hace sola.",
-              "Only if Google sends you a “manual action” notice in Search Console, build the disavow list with someone who knows how. Disavowing good links hurts you, and this app never does it on its own.",
+              "Abre «Enlaces dañinos» y responde las dos preguntas: solo si Google te manda un aviso de «acción manual» hace falta desautorizarlos (disavow). Desautorizar enlaces buenos te hace daño, y esta app nunca lo hace sola.",
+              "Open “Toxic links” and answer the two questions: you only need to disavow if Google sends you a “manual action” notice. Disavowing good links hurts you, and this app never does it on its own.",
             ),
           ],
           "backlinks",
@@ -1021,10 +1023,54 @@ export function backlinksTasks(saved: Saved | null, outreach: Saved | null, ctx:
         ),
         impact: spam >= 60 ? 2 : 1,
         effort: 2,
-        href: seo(ctx, "competencia", "enlaces"),
+        href: `/b/${ctx.businessId}/enlaces`,
       }),
     );
   return out;
+}
+
+// ---------- 10b. Enlaces nuevos de sitios dañinos (toxic + backlinks) ----------
+
+/**
+ * Aviso cuando llegan muchos enlaces nuevos de sitios dañinos desde la revisión anterior (src/lib/toxic-links.ts:
+ * toxicAlert compara las dos últimas revisiones de «Enlaces dañinos» y las dos últimas revisiones de enlaces). La
+ * tarea manda a /enlaces a responder las dos preguntas; nunca dice que hay que desautorizar.
+ */
+export function toxicTasks(input: { toxic: Saved[]; backlinks: Saved[] }, ctx: RuleCtx): TaskDraft[] {
+  const settings = input.toxic.map((s) => readSettings(s.data)).find(Boolean);
+  const alert = toxicAlert({ toxic: input.toxic, backlinks: input.backlinks, ctx: { site: ctx.website, ownSites: settings?.ownSites ?? [], name: ctx.name, vocab: ctx.vocab } });
+  if (!alert) return [];
+  const n = alert.count;
+  return [
+    task({
+      key: "toxic:new",
+      source: "links",
+      area: "enlaces",
+      title: bi(`Llegaron ${n} enlaces nuevos de sitios dañinos`, `${n} new links from harmful sites arrived`),
+      detail: detailOf(
+        [
+          {
+            es: `Desde la revisión anterior te enlazan ${plural(n, "sitio nuevo", "sitios nuevos")} con pinta de spam (por ejemplo ${quoteList(alert.domains).es}).`,
+            en: `Since the previous check, ${plural(n, "new spam-looking site links", "new spam-looking sites link")} to you (for example ${quoteList(alert.domains).en}).`,
+          },
+          alert.attack
+            ? bi(
+                "Son muchos más de lo normal: puede ser un ataque. Aun así, no subas nada a Google sin antes responder las dos preguntas de «¿Necesito desautorizar?».",
+                "That's far more than usual: it may be an attack. Even so, don't upload anything to Google before answering the two questions in “Do I need to disavow?”.",
+              )
+            : bi(
+                "Casi siempre Google los ignora solo: no hagas nada drástico. Abre «Enlaces dañinos» y responde las dos preguntas para saber si hace falta algo.",
+                "Google almost always ignores them on its own: don't do anything drastic. Open “Toxic links” and answer the two questions to find out whether anything is needed.",
+              ),
+        ],
+        alert.source,
+        alert.at,
+      ),
+      impact: alert.attack ? 2 : 1,
+      effort: 1,
+      href: `/b/${ctx.businessId}/enlaces`,
+    }),
+  ];
 }
 
 // ---------- 11. Tu Perfil de Google y reseñas (gbp + reviews) ----------

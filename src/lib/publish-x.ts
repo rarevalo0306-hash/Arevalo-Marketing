@@ -157,7 +157,7 @@ async function publish(input: PublishInput, rawCreds: Creds) {
   );
   const extra = files.filter((m) => m.type === "photo").length - X_MAX_PHOTOS;
   const detail = ids.length > 1 ? `Publicado en X con ${ids.length} fotos${extra > 0 ? ` (X acepta hasta ${X_MAX_PHOTOS}; las otras ${extra} no se enviaron)` : ""}` : "Publicado en X";
-  return { url: `https://x.com/i/web/status/${r.data.id}`, detail };
+  return { url: `https://x.com/i/web/status/${r.data.id}`, detail, id: r.data.id };
 }
 
 export const x: Publisher = {

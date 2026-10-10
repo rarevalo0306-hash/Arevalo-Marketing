@@ -647,3 +647,99 @@ export async function runBacklinksReport(input: { website: string; competitors: 
     createdAt: now.toISOString(),
   };
 }
+
+// ---------- Enlaces dañinos (/b/<id>/enlaces) ----------
+// Solo traen las respuestas; las lee src/lib/toxic-links.ts (parseToxicFetch, parseBulkSpam). Mismos precios de arriba.
+// - backlinks/referring_domains/live: los sitios que te enlazan, del más spam al menos (spam, fuerza, pie de página).
+// - backlinks/backlinks/live con mode "one_per_domain": un enlace de ejemplo por sitio (texto, página, idioma,
+//   cuántos enlaces externos tiene esa página), mismo orden.
+// - backlinks/referring_domains/live con filtro first_seen ≥ hace 30 días: cuántos sitios nuevos llegaron este mes.
+// - backlinks/bulk_spam_score/live: el nivel de spam de hasta 1000 dominios (para una lista importada de Semrush…).
+// Docs: docs.dataforseo.com/v3/backlinks/{referring_domains,backlinks,bulk_spam_score}/live (revisado el 9 oct 2026).
+
+/** Sitios que se leen como máximo en una revisión de enlaces dañinos (los de más spam primero). */
+export const TOXIC_REFERRING_LIMIT = 500;
+/** Sitios nuevos del mes que se leen (el total sale igual en total_count). */
+export const TOXIC_RECENT_LIMIT = 100;
+/** Dominios por llamada de bulk_spam_score (máximo de DataForSEO). */
+export const BULK_SPAM_MAX = 1000;
+
+/** Costo máximo de una revisión de enlaces dañinos: 3 llamadas y hasta 2×límite + 100 filas (~US$0.11 con 500). */
+export function toxicFetchCostEstimate(limit = TOXIC_REFERRING_LIMIT): number {
+  const n = Math.max(1, Math.min(1000, Math.round(limit)));
+  return Math.ceil((3 * BACKLINKS_TASK_COST + (2 * n + TOXIC_RECENT_LIMIT) * BACKLINKS_ROW_COST) * 1000) / 1000;
+}
+
+/** Costo de revisar el spam de una lista: una llamada por cada 1000 dominios y una fila por dominio. */
+export function bulkSpamCostEstimate(domains: number): number {
+  const n = Math.max(0, Math.round(domains));
+  if (!n) return 0;
+  const calls = Math.ceil(n / BULK_SPAM_MAX);
+  return Math.ceil((calls * BACKLINKS_TASK_COST + n * BACKLINKS_ROW_COST) * 1000) / 1000;
+}
+
+/** "2026-09-09 00:00:00 +00:00": el formato de fechas de los filtros de DataForSEO. */
+const dfsFilterDate = (d: Date) => `${d.toISOString().slice(0, 10)} 00:00:00 +00:00`;
+
+export type ToxicRaw = {
+  domain: string;
+  referring: unknown[];
+  backlinks: unknown[];
+  recent: unknown[];
+  cost: number;
+  notes: BiText[];
+};
+
+/**
+ * Trae los sitios que enlazan al negocio para la revisión de enlaces dañinos. Primero la lista de sitios (si la cuenta
+ * no tiene acceso, se detiene ahí sin gastar más); después, a la vez, los enlaces de ejemplo y los nuevos del mes.
+ */
+export async function fetchToxicLinkData(input: { website: string; limit?: number; now?: Date }): Promise<ToxicRaw> {
+  const self = normalizeDomain(input.website);
+  if (!self) throw bi("La dirección de tu página web no parece válida. Revísala en Ajustes del negocio.", "Your website address doesn't look valid. Check it in Business settings.");
+  const limit = Math.max(1, Math.min(1000, Math.round(input.limit ?? TOXIC_REFERRING_LIMIT)));
+  const now = input.now ?? new Date();
+  const notes: BiText[] = [];
+  const first = await live<unknown>("/backlinks/referring_domains/live", {
+    target: self,
+    limit,
+    order_by: ["backlinks_spam_score,desc", "backlinks,desc"],
+    internal_list_limit: 10,
+  });
+  let cost = first.cost;
+  const [links, recent] = await Promise.allSettled([
+    live<unknown>("/backlinks/backlinks/live", { target: self, mode: "one_per_domain", limit, order_by: ["backlink_spam_score,desc"] }),
+    live<unknown>("/backlinks/referring_domains/live", {
+      target: self,
+      limit: TOXIC_RECENT_LIMIT,
+      filters: ["first_seen", ">=", dfsFilterDate(new Date(now.getTime() - 30 * 86400_000))],
+      order_by: ["first_seen,desc"],
+      internal_list_limit: 1,
+    }),
+  ]);
+  if (links.status === "fulfilled") cost += links.value.cost;
+  else notes.push({ es: "No se pudieron leer los textos de los enlaces; la revisión usa solo el nivel de spam.", en: "Couldn't read the link texts; the check uses only the spam level." });
+  if (recent.status === "fulfilled") cost += recent.value.cost;
+  else notes.push({ es: "No se pudo contar cuántos sitios nuevos llegaron este mes.", en: "Couldn't count how many new sites arrived this month." });
+  return {
+    domain: self,
+    referring: first.result,
+    backlinks: links.status === "fulfilled" ? links.value.result : [],
+    recent: recent.status === "fulfilled" ? recent.value.result : [],
+    cost: Math.round(cost * 10000) / 10000,
+    notes,
+  };
+}
+
+/** El nivel de spam (0–100) de una lista de dominios, de 1000 en 1000. Devuelve las respuestas y lo que costó. */
+export async function fetchBulkSpamScores(domains: string[]): Promise<{ results: unknown[][]; cost: number }> {
+  const list = [...new Set(domains.map((d) => normalizeDomain(d)).filter((d): d is string => !!d))];
+  const results: unknown[][] = [];
+  let cost = 0;
+  for (let i = 0; i < list.length; i += BULK_SPAM_MAX) {
+    const r = await live<unknown>("/backlinks/bulk_spam_score/live", { targets: list.slice(i, i + BULK_SPAM_MAX) });
+    results.push(r.result);
+    cost += r.cost;
+  }
+  return { results, cost: Math.round(cost * 10000) / 10000 };
+}
