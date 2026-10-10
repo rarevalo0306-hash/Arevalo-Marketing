@@ -34,7 +34,9 @@ export type SeoKind =
   // Fase 5 (resultados): reporte diario enviado, revisión de enlaces dañinos y la corrida de propuestas de la IA.
   | "daily"
   | "toxic"
-  | "proposals";
+  | "proposals"
+  // Arreglos de la página web hechos por Matya (src/lib/webfix*.ts): cada propuesta con su PR en GitHub y su estado.
+  | "webfix";
 
 export async function saveReport(businessId: string, kind: SeoKind, data: Prisma.InputJsonValue) {
   return db.seoReport.create({ data: { businessId, kind, data } });
