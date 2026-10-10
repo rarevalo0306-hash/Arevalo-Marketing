@@ -35,7 +35,7 @@
   border-radius: 12px;
   background: var(--surface-2);
 }
-.numValue { font: 800 20px/1.15 var(--display); letter-spacing: -0.4px; color: var(--ink); }
+.numValue { font: 600 20px/1.15 var(--display); letter-spacing: -0.4px; color: var(--ink); }
 .numValue small { font-size: 13px; font-weight: 700; color: var(--muted); }
 .numLabel { font-size: 12.5px; color: var(--muted); line-height: 1.3; }
 

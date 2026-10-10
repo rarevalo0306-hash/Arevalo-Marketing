@@ -9,7 +9,7 @@
   text-decoration: none; white-space: nowrap;
 }
 .preset:hover { border-color: var(--line-strong); background: var(--surface-hover); color: var(--ink); }
-.presetOn { background: var(--brand-soft); border-color: var(--brand-2); color: var(--brand); }
+.presetOn { background: var(--brand-soft); border-color: var(--brand-2); color: var(--link); }
 
 .custom > summary { cursor: pointer; display: inline-flex; }
 .customForm { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-top: 10px; }
@@ -34,13 +34,13 @@
 .section { gap: 12px; }
 .sectionHead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 12px; }
 .sectionHead h2 { font-size: var(--fs-card); }
-.sectionLink { font-size: 14px; font-weight: 700; color: var(--brand-2); text-decoration: none; }
+.sectionLink { font-size: 14px; font-weight: 700; color: var(--link); text-decoration: none; }
 .sectionLink:hover { text-decoration: underline; }
 
 .stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); gap: 10px; }
 .stat { border: 1px solid var(--line); border-radius: var(--r-md); padding: 10px 12px; background: var(--surface-2); min-width: 0; }
 .statLabel { font-size: 12px; font-weight: 700; color: var(--muted); overflow-wrap: anywhere; }
-.statValue { font: 800 22px/1.2 var(--display); color: var(--ink); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.statValue { font: 600 22px/1.2 var(--display); color: var(--ink); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .statSub { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 .good { color: var(--ok-text); }
 .bad { color: var(--err-text); }
@@ -54,7 +54,7 @@
 .itemBody { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .itemText { font-size: 14.5px; color: var(--ink); line-height: 1.45; overflow-wrap: anywhere; }
 .itemMeta { font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
-.itemLink { font-weight: 700; color: var(--brand-2); margin-left: 6px; white-space: nowrap; }
+.itemLink { font-weight: 700; color: var(--link); margin-left: 6px; white-space: nowrap; }
 
 .tableWrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r); }
 .table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
@@ -63,7 +63,7 @@
 .table td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--line); color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .table td:first-child { white-space: normal; min-width: 160px; overflow-wrap: anywhere; }
 .table tr:last-child td { border-bottom: 0; }
-.table a { color: var(--brand-2); }
+.table a { color: var(--link); }
 /* En el celular cada fila es una tarjetita: el nombre arriba y los números con su etiqueta (sin moverse de lado). */
 @media (max-width: 560px) {
   .tableWrap { overflow-x: visible; }

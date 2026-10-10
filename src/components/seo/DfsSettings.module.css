@@ -8,7 +8,7 @@
 .stepHead { display: flex; gap: 12px; align-items: flex-start; }
 .num {
   flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
-  background: var(--brand-soft); color: var(--brand); font-weight: 800; font-size: 14px;
+  background: var(--brand-soft); color: var(--link); font-weight: 700; font-size: 14px;
   box-shadow: inset 0 0 0 1px var(--line-strong);
 }
 .stepHead h3 { margin: 2px 0 2px; font-size: 16px; line-height: 1.3; }
@@ -34,7 +34,7 @@
 .cascade { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 10px; }
 .level { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .level select { width: 100%; min-width: 0; }
-.searchBox summary { cursor: pointer; color: var(--brand); font-weight: 600; }
+.searchBox summary { cursor: pointer; color: var(--link); font-weight: 600; }
 .results { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 
 /* Tarjetas para escoger (idioma, frecuencia) */
@@ -73,10 +73,10 @@
 .sugText strong { overflow-wrap: anywhere; }
 .sugBtns { display: flex; gap: 6px; flex: none; }
 .yes, .no {
-  min-height: 38px; padding: 0 12px; border-radius: 10px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+  min-height: 38px; padding: 0 12px; border-radius: var(--pill); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
   border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--ink); white-space: nowrap;
 }
-.yes:hover { border-color: var(--brand); color: var(--brand); }
+.yes:hover { border-color: var(--brand); color: var(--link); }
 .no { color: var(--muted); }
 .no:hover { color: var(--ink); }
 

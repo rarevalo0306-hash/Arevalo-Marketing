@@ -13,7 +13,7 @@ export async function Sidebar({ activeId }: { activeId?: string }) {
   const { t } = await getT();
   return (
     <nav className="sidebar" aria-label={t("Menú principal", "Main menu")}>
-      <Link href="/" className="brandmark"><span className="logo">M</span>Matya</Link>
+      <Link href="/" className="brandmark">Matya</Link>
 
       <MobileBizMenu businesses={businesses.map((b) => ({ id: b.id, name: b.name, color: b.color }))} activeId={activeId}>
         <div className="mbiz-label">{t("Idioma", "Language")}</div>

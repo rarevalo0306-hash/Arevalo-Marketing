@@ -39,7 +39,7 @@
   background: var(--biz, var(--brand-2));
   color: var(--biz-ink, #fff);
   font-size: 30px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .headText {
@@ -119,7 +119,7 @@
   background: var(--biz, var(--brand-2));
   color: var(--biz-ink, #fff);
   font-size: 20px;
-  font-weight: 800;
+  font-weight: 700;
   text-align: center;
   cursor: pointer;
   box-shadow: var(--shadow-md);
@@ -299,7 +299,7 @@
 
 .summaryTitle {
   font-size: 19px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .summaryActions {
@@ -320,7 +320,7 @@
   background: var(--biz, var(--brand-2));
   border-color: var(--biz, var(--brand-2));
   color: var(--biz-ink, #fff);
-  font-weight: 800;
+  font-weight: 700;
 }
 
 /* Link que ya no sirve. Doble clase: gana a .card. */

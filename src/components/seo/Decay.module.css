@@ -18,7 +18,7 @@
 .head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
 .url { font-weight: 700; overflow-wrap: anywhere; word-break: break-word; min-width: 0; }
 .clicks { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; line-height: 1.35; }
-.big { font-size: 18px; font-weight: 800; white-space: nowrap; }
+.big { font-size: 18px; font-weight: 700; white-space: nowrap; }
 .nums { font-size: 13px; line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; }
 .why { margin: 0; font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
 .todo { display: flex; flex-direction: column; gap: 4px; font-size: 14px; line-height: 1.45; }
