@@ -19,7 +19,7 @@
   justify-content: center;
   flex: none;
   background: var(--brand-soft);
-  color: var(--brand-2);
+  color: var(--link);
 }
 
 .steps {
@@ -83,7 +83,7 @@
   align-self: flex-start;
   font-size: 14px;
   font-weight: 700;
-  color: var(--brand-2);
+  color: var(--link);
   overflow-wrap: anywhere;
 }
 
@@ -150,9 +150,9 @@
 :global(html[data-theme="noche"]) .open,
 :global(html[data-theme="noche"]) .logo,
 :global(html[data-theme="noche"]) .syncRow :global(.btn.outline) {
-  color: #8db8ff;
+  color: var(--link);
 }
 
 :global(html[data-theme="noche"]) .syncRow :global(.btn.outline) {
-  border-color: #5d95f0;
+  border-color: var(--primary);
 }

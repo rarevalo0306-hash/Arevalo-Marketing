@@ -37,7 +37,7 @@
 .path { margin: 6px 0 4px; font: 600 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--muted); overflow-wrap: anywhere; }
 
 .diffBox > summary,
-.help > summary { cursor: pointer; font-size: 13.5px; font-weight: 700; color: var(--brand-2); }
+.help > summary { cursor: pointer; font-size: 13.5px; font-weight: 700; color: var(--link); }
 .diffBox > summary::before,
 .help > summary::before { content: "▸ "; }
 .diffBox[open] > summary::before,
@@ -66,7 +66,7 @@
 
 :global(html[data-theme="noche"]) .diffBox > summary,
 :global(html[data-theme="noche"]) .help > summary,
-:global(html[data-theme="noche"]) .waiting a { color: #8db8ff; }
+:global(html[data-theme="noche"]) .waiting a { color: var(--link); }
 
 /* «Conectar tu web» en la auditoría */
 .connect { margin: 0; font-size: 13px; color: var(--muted); }

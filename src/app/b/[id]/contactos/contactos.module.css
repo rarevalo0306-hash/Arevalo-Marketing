@@ -290,7 +290,7 @@
 }
 
 :global(html[data-theme="noche"]) .edit {
-  color: #8db8ff;
+  color: var(--link);
 }
 
 /* Todas las listas a la vista (en varias filas si hace falta), sin tener que deslizar. */

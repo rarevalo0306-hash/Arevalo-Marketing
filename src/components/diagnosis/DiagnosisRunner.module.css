@@ -1,7 +1,7 @@
 /* Diagnóstico guiado: avance arriba y los 10 pasos. Colores con variables para Claro, Noche y Vidrio. */
 .hero { gap: 12px; scroll-margin-top: 16px; }
 .progressHead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.kicker { font-size: 13px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: var(--brand-2); }
+.kicker { font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--link); }
 .bar { height: 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; }
 .bar span { display: block; height: 100%; border-radius: 999px; background: var(--brand-2); transition: width 0.4s ease; min-width: 0; }
 .heroTitle { font-size: 20px; line-height: 1.25; margin: 0; overflow-wrap: anywhere; }
@@ -9,7 +9,7 @@
 .redo { margin: 0; }
 .costBox { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--surface-2); }
 .costBox p { margin: 0; }
-.detail summary { cursor: pointer; font-size: 14px; font-weight: 700; color: var(--brand-2); }
+.detail summary { cursor: pointer; font-size: 14px; font-weight: 700; color: var(--link); }
 .detail ul { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .detail li { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; color: var(--ink); }
 .detail li span:last-child { font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -21,7 +21,7 @@
 }
 .step.now { border-color: var(--brand-2); box-shadow: 0 0 0 3px var(--brand-ring); }
 .num {
-  width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 14px;
+  width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 14px;
   border: 2px solid var(--line-strong); color: var(--muted); background: var(--surface); flex-shrink: 0;
 }
 .done .num { border-color: transparent; background: var(--ok-bg); color: var(--ok-text); }

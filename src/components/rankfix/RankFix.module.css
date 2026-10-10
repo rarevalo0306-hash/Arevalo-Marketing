@@ -71,7 +71,7 @@
 :global(html[data-theme="noche"]) .why a,
 :global(html[data-theme="noche"]) .links a,
 :global(html[data-theme="noche"]) .gate a,
-:global(html[data-theme="noche"]) .links :global(.btn.link):not(.remove) { color: #8db8ff; }
+:global(html[data-theme="noche"]) .links :global(.btn.link):not(.remove) { color: var(--link); }
 :global(html[data-theme="noche"]) .remove { color: #ff9b9b !important; }
 
 @media (max-width: 560px) {

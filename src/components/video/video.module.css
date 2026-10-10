@@ -19,7 +19,7 @@
 .legend { font-weight: 700; font-size: 14px; color: var(--ink); margin-bottom: 8px; padding: 0; }
 .formats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 8px; }
 .formatChip { align-items: center; }
-.shapeV, .shapeH { flex: 0 0 auto; border: 2px solid currentColor; border-radius: 4px; color: var(--brand-2); }
+.shapeV, .shapeH { flex: 0 0 auto; border: 2px solid currentColor; border-radius: 4px; color: var(--link); }
 .shapeV { width: 18px; height: 32px; }
 .shapeH { width: 32px; height: 18px; }
 .ideaList { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 8px; }
@@ -29,7 +29,7 @@
 }
 .idea:hover { border-color: var(--line-strong); background: var(--surface-hover); }
 .ideaOn { border-color: var(--brand-2); box-shadow: 0 0 0 2px var(--brand-ring); background: var(--surface-hover); }
-.ideaFrom { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--brand-2); }
+.ideaFrom { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--link); }
 .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .pickGrid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; max-height: 420px; overflow-y: auto; }
 .pick { position: relative; display: block; width: 100%; aspect-ratio: 1; padding: 0; border: 2px solid transparent; border-radius: var(--r-md); overflow: hidden; background: var(--surface-2); cursor: pointer; }
@@ -38,7 +38,7 @@
 .pickOn { border-color: var(--brand-2); box-shadow: 0 0 0 2px var(--brand-ring); }
 .pickNo { display: grid; place-items: center; width: 100%; height: 100%; color: var(--muted); font-size: 22px; }
 .pickBadge { position: absolute; left: 4px; bottom: 4px; font-size: 11px; font-weight: 700; color: #fff; background: rgba(0, 0, 0, 0.62); border-radius: 6px; padding: 1px 6px; }
-.pickNum { position: absolute; right: 4px; top: 4px; width: 24px; height: 24px; border-radius: 12px; display: grid; place-items: center; background: var(--brand-2); color: #fff; font-weight: 800; font-size: 13px; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); }
+.pickNum { position: absolute; right: 4px; top: 4px; width: 24px; height: 24px; border-radius: 12px; display: grid; place-items: center; background: var(--brand-2); color: #fff; font-weight: 700; font-size: 13px; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); }
 .writing { align-items: center; text-align: center; padding: 36px 20px; }
 .spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--brand-2); animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -73,7 +73,7 @@
 .capBody { bottom: 24%; }
 .capBodyH { bottom: 9%; justify-content: flex-start; }
 .capHook span, .capBody span, .capBodyH span {
-  display: inline-block; text-align: center; font-weight: 800; line-height: 1.12; padding: 0.35em 0.6em; border-radius: 0.4em;
+  display: inline-block; text-align: center; font-weight: 700; line-height: 1.12; padding: 0.35em 0.6em; border-radius: 0.4em;
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35); overflow-wrap: anywhere; font-family: var(--display);
 }
 .capHook span { font-size: 8.5cqw; }
@@ -85,8 +85,8 @@
 .outroLogo img { max-width: 100%; max-height: 22cqw; object-fit: contain; display: block; }
 .screenH .outroLogo img { max-height: 13cqw; }
 .outroPlate { background: #fff; padding: 2.4cqw; border-radius: 2.4cqw; }
-.outroName { font-size: 7cqw; font-weight: 800; }
-.outroLine { font-size: 7.4cqw; font-weight: 800; line-height: 1.15; font-family: var(--display); }
+.outroName { font-size: 7cqw; font-weight: 700; }
+.outroLine { font-size: 7.4cqw; font-weight: 700; line-height: 1.15; font-family: var(--display); }
 .screenH .outroLine { font-size: 4.4cqw; }
 .outroSmall { font-size: 4.4cqw; font-weight: 600; opacity: 0.95; }
 .screenH .outroSmall { font-size: 2.6cqw; }
@@ -98,7 +98,7 @@
 .sceneOutro { background: var(--surface-2); }
 .sceneThumb { align-self: flex-start; flex: 0 0 56px; width: 56px; aspect-ratio: 9 / 16; border-radius: 8px; overflow: hidden; background: var(--surface-2); }
 .sceneThumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.sceneBrand { width: 100%; height: 100%; display: grid; place-items: center; color: #fff; font-weight: 800; background: var(--brand-2); }
+.sceneBrand { width: 100%; height: 100%; display: grid; place-items: center; color: #fff; font-weight: 700; background: var(--brand-2); }
 .sceneBody { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1; }
 .sceneTop { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
 .sceneTools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }

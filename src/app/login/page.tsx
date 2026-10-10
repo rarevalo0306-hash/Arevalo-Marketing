@@ -5,10 +5,7 @@ export default function LoginPage() {
   return (
     <main className="center-page">
       <div className="card">
-        <div className="row">
-          <span className="mono solid" style={{ background: "var(--brand)" }}>A</span>
-          <h1 style={{ fontSize: 22 }}>Matya</h1>
-        </div>
+        <h1 className="login-name">Matya</h1>
         <LoginForm />
         <LangPicker />
       </div>

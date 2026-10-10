@@ -14,7 +14,7 @@
 @media (min-width: 900px) { .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; box-shadow: var(--shadow); min-width: 0; }
 .statLabel { display: block; font-size: 12.5px; color: var(--muted); font-weight: 700; }
-.statValue { display: block; margin-top: 2px; font-size: 22px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
+.statValue { display: block; margin-top: 2px; font-size: 22px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
 .statHint { display: block; font-size: 12px; color: var(--muted); }
 
 .days { list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; }
@@ -38,6 +38,6 @@
 .actorAuto { background: var(--violet-soft); color: var(--violet-text); border-color: transparent; }
 .actorApproved { background: var(--ok-bg); color: var(--ok-text); border-color: transparent; }
 .actorOwner { background: var(--neutral-bg); color: var(--neutral-text); border-color: transparent; }
-.cost { font-size: 12.5px; font-weight: 800; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.cost { font-size: 12.5px; font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 
 .more { margin: 12px 0 0; font-size: 13px; color: var(--muted); }

@@ -156,8 +156,8 @@
 /* Noche: el azul de los enlaces es muy oscuro sobre fondo oscuro. */
 :global(html[data-theme="noche"]) .manual,
 :global(html[data-theme="noche"]) .card :global(.btn.outline) {
-  color: #8db8ff;
-  border-color: #5d95f0;
+  color: var(--link);
+  border-color: var(--primary);
 }
 
 :global(html[data-theme="noche"]) .manual {

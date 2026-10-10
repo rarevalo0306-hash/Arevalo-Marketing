@@ -71,7 +71,7 @@
 .yes:hover:not(:disabled) { background: var(--teal-soft); color: var(--teal-text); border-color: var(--teal-text); }
 .no { color: var(--muted); }
 
-.rejectedBox > summary { cursor: pointer; color: var(--brand-2); font-weight: 700; font-size: 14px; padding: 4px 0; }
+.rejectedBox > summary { cursor: pointer; color: var(--link); font-weight: 700; font-size: 14px; padding: 4px 0; }
 .rejectedBox[open] > summary { margin-bottom: 10px; }
 
 .footer {

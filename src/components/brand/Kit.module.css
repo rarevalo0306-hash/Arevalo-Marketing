@@ -46,7 +46,7 @@
 .size { font-variant-numeric: tabular-nums; }
 .download { align-self: flex-start; margin-top: auto; }
 
-.howto summary { cursor: pointer; font-size: 14px; font-weight: 700; color: var(--brand-2); display: inline-flex; align-items: center; gap: 6px; min-height: 32px; }
+.howto summary { cursor: pointer; font-size: 14px; font-weight: 700; color: var(--link); display: inline-flex; align-items: center; gap: 6px; min-height: 32px; }
 .howto summary::before { content: "▸"; color: var(--muted); }
 .howto[open] summary::before { content: "▾"; }
 .places { display: flex; flex-direction: column; gap: 10px; padding: 6px 0 2px; }
@@ -67,7 +67,7 @@
 .sigFields .field { width: 100%; }
 
 /* Noche: los azules de la marca se ven muy oscuros sobre fondo oscuro. */
-:global(html[data-theme="noche"]) .howto summary { color: #6aa8ff; }
+:global(html[data-theme="noche"]) .howto summary { color: var(--link); }
 /* Sin los estilos de tabla de la app: la vista previa se ve como en el correo. */
 .sigPaper table { width: auto; font-size: inherit; }
 .sigPaper td { border-bottom: 0; white-space: nowrap; }

@@ -6,11 +6,11 @@
 .stepHeadText { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .num {
   display: grid; place-items: center; flex-shrink: 0; width: 30px; height: 30px; border-radius: 15px;
-  font: 800 14px var(--display); color: #fff; background: linear-gradient(135deg, var(--brand-2), var(--brand));
+  font: 600 14px var(--display); color: #fff; background: linear-gradient(135deg, var(--brand-2), var(--brand));
   box-shadow: 0 4px 12px rgba(18, 107, 188, 0.25);
 }
 .numDone { background: var(--teal); box-shadow: none; }
-.stepTitle { margin: 0; font-family: var(--display); font-weight: 800; font-size: 18px; line-height: 1.3; color: var(--ink); }
+.stepTitle { margin: 0; font-family: var(--display); font-weight: 700; font-size: 18px; line-height: 1.3; color: var(--ink); }
 .stepSub { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--muted); }
 
 /* ---------- 1. La idea ---------- */
@@ -80,7 +80,7 @@
 }
 .mediaBtn small { font-weight: 500; font-size: 12.5px; color: var(--muted); }
 .mbTitle { display: inline-flex; align-items: center; gap: 8px; }
-.mbTitle span[aria-hidden] { font-size: 16px; color: var(--brand-2); }
+.mbTitle span[aria-hidden] { font-size: 16px; color: var(--link); }
 .mediaBtnOn { border-color: var(--brand-2); box-shadow: 0 0 0 3px var(--brand-ring); }
 /* El botón de subir es un <label>: que se vea el foco del teclado. */
 .mediaBtns label:focus-within { box-shadow: 0 0 0 3px var(--brand-ring); }
@@ -97,7 +97,7 @@ textarea.short { min-height: 72px; }
 .designRow select { width: auto; flex: 1 1 210px; min-width: 0; }
 
 .more { border-top: 1px solid var(--line); padding-top: 12px; }
-.more > summary { cursor: pointer; font-size: 14px; font-weight: 700; color: var(--brand-2); display: inline-flex; align-items: center; gap: 6px; min-height: 32px; }
+.more > summary { cursor: pointer; font-size: 14px; font-weight: 700; color: var(--link); display: inline-flex; align-items: center; gap: 6px; min-height: 32px; }
 .more > summary::after { content: "▾"; font-size: 12px; transition: transform 0.15s; }
 .more[open] > summary::after { transform: rotate(180deg); }
 .moreBody { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
