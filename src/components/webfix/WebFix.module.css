@@ -1,0 +1,78 @@
+/* «Arréglalo por mí»: el botón junto a las instrucciones, la confirmación con el costo y el panel de revisión. */
+.fixRow { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.fixTop { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.fixTop > button { flex: 0 1 auto; max-width: 100%; white-space: normal; text-align: left; }
+.hint { flex: 1 1 220px; min-width: 0; font-size: 13px; line-height: 1.4; color: var(--muted); }
+
+.waiting { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--ink); overflow-wrap: anywhere; }
+.waiting a { font-weight: 700; }
+
+.confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  color: var(--ink);
+  min-width: 0;
+}
+.confirmSteps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; line-height: 1.45; }
+.cost { margin: 0; font-size: 14px; }
+
+/* Panel de revisión */
+.summary { margin: 0; font-size: 15px; line-height: 1.5; color: var(--ink); }
+.preview { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--surface-2); min-width: 0; }
+.preview :global(.row) { flex-wrap: wrap; }
+.preview :global(.note) { margin: 0; }
+.badStep { color: var(--err-text); }
+.badStep::before { border-color: var(--err-text) !important; }
+
+.group { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.page { margin: 0; font-size: 14px; font-weight: 700; color: var(--ink); overflow-wrap: anywhere; }
+.changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.changes > li { padding: 10px 12px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--surface); min-width: 0; }
+.why { margin: 0 0 4px; font-size: 14px; line-height: 1.45; color: var(--ink); }
+.path { margin: 6px 0 4px; font: 600 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--muted); overflow-wrap: anywhere; }
+
+.diffBox > summary,
+.help > summary { cursor: pointer; font-size: 13.5px; font-weight: 700; color: var(--brand-2); }
+.diffBox > summary::before,
+.help > summary::before { content: "▸ "; }
+.diffBox[open] > summary::before,
+.help[open] > summary::before { content: "▾ "; }
+
+.diff {
+  margin: 6px 0 0;
+  padding: 10px;
+  max-height: 320px;
+  overflow: auto;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink);
+  font: 500 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.add { display: block; background: color-mix(in srgb, var(--ok-text) 14%, transparent); }
+.del { display: block; background: color-mix(in srgb, var(--err-text) 14%, transparent); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--err-text) 50%, transparent); }
+
+.help { min-width: 0; }
+.helpBody { padding: 8px 0 0; font-size: 14px; line-height: 1.5; color: var(--ink); }
+.helpBody ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+.skipped { margin: 8px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; line-height: 1.45; color: var(--ink); }
+
+:global(html[data-theme="noche"]) .diffBox > summary,
+:global(html[data-theme="noche"]) .help > summary,
+:global(html[data-theme="noche"]) .waiting a { color: #8db8ff; }
+
+/* «Conectar tu web» en la auditoría */
+.connect { margin: 0; font-size: 13px; color: var(--muted); }
+
+/* «Revisar la llave» */
+.checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 14px; line-height: 1.45; }
+.checkOk { color: var(--ink); }
+.checkOk > span { color: var(--teal-text); font-weight: 700; }
+.checkBad { color: var(--err-text); font-weight: 600; }

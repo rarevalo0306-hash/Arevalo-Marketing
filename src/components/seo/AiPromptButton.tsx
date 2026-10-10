@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useT } from "@/components/I18n";
 import styles from "@/components/seo/AiPrompt.module.css";
+import { WebFixButton } from "@/components/webfix/WebFixButton";
 
 /** Copia un texto (con un respaldo para navegadores sin permiso de portapapeles). */
 async function copyText(text: string, fallback: HTMLTextAreaElement | null): Promise<boolean> {
@@ -33,13 +34,18 @@ type Props = {
   label?: string;
   /** Una línea al lado del botón. */
   hint?: string;
+  /**
+   * Para «Arréglalo por mí» (solo en la variante "ai" y si la web está conectada): de dónde viene, qué avisos y qué
+   * direcciones arregla. Sin esto se usa el mismo texto como instrucciones genéricas.
+   */
+  fix?: { kind?: "audit" | "prompt"; title?: string; issueIds?: string[]; urls?: string[] };
 };
 
 /**
  * "Copiar instrucciones para la IA de tu web": abre una vista previa del texto (solo lectura) con un botón para copiarlo.
  * El dueño lo pega en el chat de la IA que maneja su página y ella hace los cambios.
  */
-export function AiPromptButton({ text, variant = "ai", label, hint }: Props) {
+export function AiPromptButton({ text, variant = "ai", label, hint, fix }: Props) {
   const { t } = useT();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState<"" | "ok" | "fail">("");
@@ -70,6 +76,15 @@ export function AiPromptButton({ text, variant = "ai", label, hint }: Props) {
               : t("Esto lo haces tú: la IA de tu web no puede hacerlo.", "This one is for you: your website's AI can't do it."))}
         </span>
       </div>
+      {ai && (
+        <WebFixButton
+          text={text}
+          title={fix?.title ?? label ?? t("Instrucciones para la IA de tu web", "Instructions for your website's AI")}
+          kind={fix?.kind}
+          issueIds={fix?.issueIds}
+          urls={fix?.urls}
+        />
+      )}
       {open && (
         <div className={styles.box}>
           {ai ? (

@@ -21,6 +21,13 @@ export function shortUrl(url: string, home: string): string {
   }
 }
 
+/** Las direcciones afectadas por unos avisos (para que «Arréglalo por mí» lea los archivos de esas páginas). */
+export function issueUrls(issues: Issue[]): string[] {
+  const out = new Set<string>();
+  for (const i of issues) for (const u of [...i.pages, ...(i.items ?? []).map((x) => x.url)]) if (out.size < 60) out.add(u);
+  return [...out];
+}
+
 type Props = { report: AuditReport; compare: AuditCompare | null; ctx: PromptContext | null; lang: UiLang };
 
 /** «Qué arreglar»: los problemas agrupados por gravedad y, dentro, por tema, con cómo arreglarlos y las páginas. */
@@ -131,6 +138,7 @@ export function AuditIssues({ report, compare, ctx, lang }: Props) {
             text={prompt}
             label={t("Prompt para la IA que maneja tu web", "Prompt for the AI that runs your website")}
             hint={t(`Solo ${sevName[sev].toLowerCase()}, con cada página y cómo arreglarlo.`, `Only the ${sevName[sev].toLowerCase()}, with each page and how to fix it.`)}
+            fix={{ kind: "audit", title: sevTitle[sev], issueIds: sevIssues.map((i) => i.id), urls: issueUrls(sevIssues) }}
           />
         )}
       </>
