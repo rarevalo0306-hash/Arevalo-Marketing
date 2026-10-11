@@ -72,7 +72,7 @@
 .small { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.45; overflow-wrap: anywhere; }
 .choose { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .choose :global(.btn) { width: 100%; justify-content: center; min-height: 40px; font-size: 13.5px; text-align: center; white-space: normal; }
-.chosen.chosen { background: var(--brand-2); border-color: var(--brand-2); color: #fff; }
+.chosen.chosen { background: var(--brand-2); border-color: var(--brand-2); color: var(--primary-ink, #0a0a0a); }
 :global(html[data-theme="noche"]) .chosen.chosen { background: #2f7de0; border-color: #2f7de0; }
 .redo { display: flex; flex-direction: column; gap: 6px; }
 .redo :global(.btn) { width: 100%; justify-content: center; }

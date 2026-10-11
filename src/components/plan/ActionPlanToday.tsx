@@ -2,7 +2,7 @@
 // Sin tareas no muestra nada.
 import Link from "next/link";
 import { AREA_LABEL } from "@/lib/action-plan-shape";
-import { ensureFreshPlan, loadPlanTasks } from "@/lib/action-plan";
+import { ensureFreshPlan, loadPlanTasks, type PlanTask } from "@/lib/action-plan";
 import { getT } from "@/lib/i18n-server";
 import s from "./Plan.module.css";
 
@@ -11,6 +11,18 @@ const IMPACT = {
   2: { pill: "warn", es: "Importante", en: "Important" },
   1: { pill: "info", es: "Mejora", en: "Nice to have" },
 } as const;
+
+/** Las 3 tareas abiertas con más puntaje y cuántas hay abiertas (para «Para hoy» en el Inicio). */
+export async function loadPlanToday(businessId: string): Promise<{ top: PlanTask[]; open: number }> {
+  const { lang } = await getT();
+  try {
+    await ensureFreshPlan(businessId);
+    const open = await loadPlanTasks(businessId, lang, { status: "todo" });
+    return { top: open.slice(0, 3), open: open.length };
+  } catch {
+    return { top: [], open: 0 };
+  }
+}
 
 export async function ActionPlanToday({ businessId }: { businessId: string }) {
   const { lang, t } = await getT();

@@ -1,21 +1,30 @@
 import Link from "next/link";
 import { logout } from "@/app/actions";
+import { loadApprovals } from "@/lib/approvals";
+import { approvalTotal } from "@/lib/approvals-shape";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
 import { LangPicker } from "./I18n";
 import { MobileBizMenu } from "./MobileBizMenu";
 import { NavLinks } from "./NavLinks";
+import { BizSwitcher } from "./nav/BizSwitcher";
 import navStyles from "./nav/Nav.module.css";
 import { ThemePicker } from "./ThemePicker";
 
 export async function Sidebar({ activeId }: { activeId?: string }) {
-  const businesses = await db.business.findMany({ orderBy: { createdAt: "asc" } });
+  const [businesses, approvals] = await Promise.all([
+    db.business.findMany({ orderBy: { createdAt: "asc" } }),
+    activeId ? loadApprovals(activeId).catch(() => []) : Promise.resolve([]),
+  ]);
   const { t } = await getT();
+  const list = businesses.map((b) => ({ id: b.id, name: b.name, color: b.color }));
+  // Lo que espera la aprobación del dueño: numerito turquesa en «Inicio».
+  const waiting = approvalTotal(approvals);
   return (
     <nav className="sidebar" aria-label={t("Menú principal", "Main menu")}>
       <Link href="/" className="brandmark">Matya</Link>
 
-      <MobileBizMenu businesses={businesses.map((b) => ({ id: b.id, name: b.name, color: b.color }))} activeId={activeId}>
+      <MobileBizMenu businesses={list} activeId={activeId}>
         <div className="mbiz-label">{t("Idioma", "Language")}</div>
         <LangPicker />
         <div className="mbiz-label">{t("Estilo", "Style")}</div>
@@ -27,31 +36,9 @@ export async function Sidebar({ activeId }: { activeId?: string }) {
         </form>
       </MobileBizMenu>
 
-      <div className="stack desk-only" style={{ gap: 2 }}>
-        <div className="side-label">{t("Mis negocios", "My businesses")}</div>
-        {businesses.map((b) => (
-          <Link
-            key={b.id}
-            href={`/b/${b.id}/inicio`}
-            className={b.id === activeId ? "biz on" : "biz"}
-            aria-current={b.id === activeId ? "true" : undefined}
-          >
-            <span className="dot" style={{ background: b.color }}>{b.name.trim().charAt(0).toUpperCase()}</span>
-            <span style={{ flexGrow: 1 }}>{b.name}</span>
-          </Link>
-        ))}
-        <Link href="/negocios/nuevo" className="biz">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" style={{ margin: "0 3px" }}><path d="M12 5v14M5 12h14" /></svg>
-          {t("Agregar negocio", "Add business")}
-        </Link>
-      </div>
+      <BizSwitcher businesses={list} activeId={activeId} />
 
-      {activeId && (
-        <>
-          <div className="side-sep" />
-          <NavLinks businessId={activeId} />
-        </>
-      )}
+      {activeId && <NavLinks businessId={activeId} badges={waiting ? { inicio: waiting } : undefined} />}
 
       <div className="stack desk-only" style={{ marginTop: "auto", gap: 8 }}>
         <div className="side-label">{t("Idioma", "Language")}</div>

@@ -26,27 +26,42 @@ function readOpen(): Record<string, boolean> {
  * Celular: barra de abajo con 4 accesos y «Más», que abre una hoja con todo el menú.
  * La pestaña de SEO abierta (?tab=) cuenta para marcar «estás aquí».
  */
-export function NavLinks({ businessId }: { businessId: string }) {
+/** Numeritos junto a un enlace (clave del enlace → cuántas cosas esperan), ej. { inicio: 3 }. */
+type Badges = Record<string, number>;
+
+export function NavLinks({ businessId, badges }: { businessId: string; badges?: Badges }) {
   return (
-    <Suspense fallback={<Nav businessId={businessId} tab={null} mapa={null} />}>
-      <NavWithParams businessId={businessId} />
+    <Suspense fallback={<Nav businessId={businessId} tab={null} mapa={null} badges={badges} />}>
+      <NavWithParams businessId={businessId} badges={badges} />
     </Suspense>
   );
 }
 
-function NavWithParams({ businessId }: { businessId: string }) {
+function NavWithParams({ businessId, badges }: { businessId: string; badges?: Badges }) {
   const params = useSearchParams();
-  return <Nav businessId={businessId} tab={params.get("tab")} mapa={params.get("mapa")} />;
+  return <Nav businessId={businessId} tab={params.get("tab")} mapa={params.get("mapa")} badges={badges} />;
 }
 
-function Nav({ businessId, tab, mapa }: { businessId: string; tab: string | null; mapa: string | null }) {
+function Nav({ businessId, tab, mapa, badges }: { businessId: string; tab: string | null; mapa: string | null; badges?: Badges }) {
   const pathname = usePathname();
   const here: NavHere = { pathname, tab, mapa };
   return (
     <>
-      <SideNav businessId={businessId} here={here} />
-      <MobileNav businessId={businessId} here={here} />
+      <SideNav businessId={businessId} here={here} badges={badges} />
+      <MobileNav businessId={businessId} here={here} badges={badges} />
     </>
+  );
+}
+
+/** El numerito turquesa (lo que espera tu aprobación). */
+function Badge({ n }: { n?: number }) {
+  const { t } = useT();
+  if (!n) return null;
+  return (
+    <span className={s.badge}>
+      <span aria-hidden="true">{n > 99 ? "99+" : n}</span>
+      <span className="sr-only">{n === 1 ? t("(1 cosa por aprobar)", "(1 thing to approve)") : t(`(${n} cosas por aprobar)`, `(${n} things to approve)`)}</span>
+    </span>
   );
 }
 
@@ -68,6 +83,7 @@ function ItemLink({
   className,
   icon,
   onPick,
+  badge,
 }: {
   businessId: string;
   item: NavItem;
@@ -75,6 +91,7 @@ function ItemLink({
   className: string;
   icon?: string;
   onPick?: () => void;
+  badge?: number;
 }) {
   const { t } = useT();
   if (item.soon || !item.path) {
@@ -95,13 +112,14 @@ function ItemLink({
       <span className={s.text}>
         <Label item={item} />
       </span>
+      <Badge n={badge} />
     </Link>
   );
 }
 
 // ---------------------------------------------------------------- Computadora
 
-function SideNav({ businessId, here }: { businessId: string; here: NavHere }) {
+function SideNav({ businessId, here, badges }: { businessId: string; here: NavHere; badges?: Badges }) {
   const { t } = useT();
   const [chosen, setChosen] = useState<Record<string, boolean>>({});
   useEffect(() => setChosen(readOpen()), []);
@@ -117,7 +135,7 @@ function SideNav({ businessId, here }: { businessId: string; here: NavHere }) {
       {NAV_GROUPS.map((g) => (
         <div key={g.key} role="listitem">
           {g.items.length === 1 ? (
-            <ItemLink businessId={businessId} item={g.items[0]} here={here} className={s.row} icon={g.icon} />
+            <ItemLink businessId={businessId} item={g.items[0]} here={here} className={s.row} icon={g.icon} badge={badges?.[g.items[0].key]} />
           ) : (
             <SideGroup businessId={businessId} group={g} here={here} open={chosen[g.key] ?? isGroupOn(businessId, g, here)} onToggle={toggle} />
           )}
@@ -180,7 +198,7 @@ function SideGroup({
 
 // ---------------------------------------------------------------- Celular
 
-function MobileNav({ businessId, here }: { businessId: string; here: NavHere }) {
+function MobileNav({ businessId, here, badges }: { businessId: string; here: NavHere; badges?: Badges }) {
   const { lang, t } = useT();
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
@@ -222,7 +240,10 @@ function MobileNav({ businessId, here }: { businessId: string; here: NavHere }) 
           const on = x.on(here, base);
           return (
             <Link key={x.key} href={base + x.path} className={`${s.tab}${on && !open ? ` ${s.on}` : ""}`} aria-current={on ? "page" : undefined}>
-              <NavIcon name={x.icon} />
+              <span className={s.tabIcon}>
+                <NavIcon name={x.icon} />
+                {x.key === "tablero" && <Badge n={badges?.inicio} />}
+              </span>
               <span>{x.label[pick]}</span>
             </Link>
           );
@@ -254,7 +275,7 @@ function MobileNav({ businessId, here }: { businessId: string; here: NavHere }) 
             <div className={s.sheetBody}>
               {NAV_GROUPS.map((g) =>
                 g.items.length === 1 ? (
-                  <ItemLink key={g.key} businessId={businessId} item={g.items[0]} here={here} className={s.srow} icon={g.icon} onPick={() => close()} />
+                  <ItemLink key={g.key} businessId={businessId} item={g.items[0]} here={here} className={s.srow} icon={g.icon} onPick={() => close()} badge={badges?.[g.items[0].key]} />
                 ) : (
                   <section key={g.key} className={s.sgroup} aria-label={g.label[pick]}>
                     <div className={`${s.shead}${isGroupOn(businessId, g, here) ? ` ${s.headOn}` : ""}`}>

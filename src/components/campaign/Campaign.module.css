@@ -11,7 +11,7 @@
 .badges { display: flex; flex-wrap: wrap; gap: 6px; }
 .mode { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; border-radius: 999px; padding: 3px 10px; border: 1px solid var(--line-strong); color: var(--ink); background: var(--surface-2); white-space: nowrap; }
 .mode.approval { border-color: var(--brand-2); color: var(--link); background: var(--brand-soft); }
-.mode.auto { border-color: transparent; color: #fff; background: var(--ai); }
+.mode.auto { border-color: transparent; color: var(--ai-ink, #fff); background: var(--ai); }
 
 .facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; margin: 0; }
 .facts div { min-width: 0; }
@@ -113,7 +113,7 @@
 
 .days { display: flex; flex-wrap: wrap; gap: 6px; }
 .days label { display: inline-flex; align-items: center; justify-content: center; min-width: 46px; min-height: 40px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r); cursor: pointer; font-weight: 700; font-size: 14px; color: var(--ink); background: var(--surface); }
-.days label.on { background: var(--brand-2); border-color: var(--brand-2); color: #fff; }
+.days label.on { background: var(--brand-2); border-color: var(--brand-2); color: var(--primary-ink, #0a0a0a); }
 .days input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
 
 .tags { display: flex; flex-wrap: wrap; gap: 6px; }
