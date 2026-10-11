@@ -3,7 +3,8 @@ import { channelName } from "@/lib/channels";
 import { loadIdeas, loadSeoBits, loadSocialBits } from "@/lib/dashboard";
 import { getT } from "@/lib/i18n-server";
 import { seoHref, topLines } from "@/lib/seo/plain-load";
-import { DashIcon, type DashIconName } from "./DashIcon";
+import { loadPlanToday } from "@/components/plan/ActionPlanToday";
+import type { DashIconName } from "./DashIcon";
 import s from "./Dashboard.module.css";
 
 /** Cuántas tareas se muestran. */
@@ -23,11 +24,11 @@ export function pickTasks(list: Task[], max = MAX_TASKS): Task[] {
 }
 
 /**
- * "Qué hacer hoy": lo más urgente de todas las herramientas en una lista corta (máx. 6), cada cosa con un botón.
+ * Las tareas de hoy: lo más urgente de todas las herramientas en una lista corta (máx. 6), cada cosa con un botón.
  * Junta: lo rojo/amarillo del resumen de SEO, las redes que hay que volver a conectar, lo que no se publicó esta
  * semana, las reseñas sin contestar y la idea de hoy. Sin datos: los primeros pasos para empezar.
  */
-export async function TodayList({ businessId }: { businessId: string }) {
+export async function loadTodayTasks(businessId: string): Promise<Task[] | null> {
   const { lang, t } = await getT();
   const [seo, social, ideas] = await Promise.all([loadSeoBits(businessId), loadSocialBits(businessId), loadIdeas(businessId, lang)]);
   if (!seo) return null;
@@ -119,42 +120,88 @@ export async function TodayList({ businessId }: { businessId: string }) {
       button: t("Crear con IA", "Create with AI"),
     });
 
-  const list = pickTasks(tasks);
+  return pickTasks(tasks);
+}
+
+/** Una fila de «Para hoy»: punto de urgencia, el texto y a dónde ir. */
+type Row = { id: string; kind: Kind; text: string; href: string; go: string };
+
+/** Cuántas filas se ven sin abrir «Ver más». */
+const SHOWN = 5;
+
+/**
+ * «Para hoy» (columna derecha del Inicio): lo más urgente del plan de acción (las 3 tareas abiertas con más puntaje)
+ * y de todas las herramientas (TodayList: redes caídas, reseñas, lo rojo del SEO, primeros pasos y la idea de hoy),
+ * con un punto de color por urgencia. Las 5 primeras a la vista, el resto en «Ver más»; abajo, «Ver todo el plan».
+ */
+export async function TodayList({ businessId }: { businessId: string }) {
+  const { t } = await getT();
+  const [tasks, plan] = await Promise.all([loadTodayTasks(businessId), loadPlanToday(businessId)]);
+  if (!tasks) return null;
+  const IMPACT_KIND: Record<1 | 2 | 3, Kind> = { 3: "bad", 2: "warn", 1: "setup" };
+  const rows: Row[] = [];
+  const seen = new Set<string>();
+  const add = (r: Row) => {
+    const k = r.href.replace(/#.*$/, "");
+    if (seen.has(k) && r.kind !== "idea") return;
+    seen.add(k);
+    rows.push(r);
+  };
+  for (const x of plan.top) add({ id: `plan-${x.id}`, kind: IMPACT_KIND[x.impact], text: x.title, href: x.href, go: t("Ir", "Go") });
+  for (const x of tasks) add({ id: x.id, kind: x.kind, text: x.text, href: x.href, go: x.button });
+  rows.sort((a, b) => ORDER[a.kind] - ORDER[b.kind]);
+  const label: Record<Kind, string> = { bad: t("Urgente", "Urgent"), warn: t("Importante", "Important"), setup: t("Primer paso", "First step"), idea: t("Idea", "Idea") };
+  const item = (x: Row) => (
+    <li key={x.id} className={s.todo}>
+      <span className={`${s.todoDot} ${s[`dot_${x.kind}`]}`} title={label[x.kind]} aria-hidden="true" />
+      <span className={s.todoBody}>
+        <span className="sr-only">{label[x.kind]}: </span>
+        <span className={s.todoText}>{x.text}</span>
+        {x.href && (
+          <Link href={x.href} className={s.todoGo}>
+            {x.go} →
+          </Link>
+        )}
+      </span>
+    </li>
+  );
+  const shown = rows.slice(0, SHOWN);
+  const more = rows.slice(SHOWN);
   return (
-    <section className={`card ${s.today}`} aria-labelledby="dash-today">
+    <section className={s.todayPanel} aria-labelledby="dash-today">
       <div className={s.sectionHead}>
-        <h2 id="dash-today">{t("Qué hacer hoy", "What to do today")}</h2>
+        <h2 id="dash-today">{t("Para hoy", "For today")}</h2>
         <span className={s.sectionHint}>{t("Lo urgente primero", "Urgent first")}</span>
       </div>
-      {list.length === 0 ? (
-        <p className={s.allGood}>{t("Todo al día. Buen trabajo.", "All caught up. Nice work.")}</p>
+      {rows.length === 0 ? (
+        <p className={`${s.todoCard} ${s.allGood}`}>{t("Todo al día. Buen trabajo.", "All caught up. Nice work.")}</p>
       ) : (
-        <ol className={s.tasks}>
-          {list.map((x) => (
-            <li key={x.id} className={`${s.task} ${s[x.kind]}`}>
-              <span className={s.taskIcon} aria-hidden="true">
-                {isIcon(x.icon) ? <DashIcon name={x.icon} size={17} /> : <span>{x.icon}</span>}
-              </span>
-              <span className={s.taskText}>{x.text}</span>
-              <Link href={x.href} className={`btn ${x.kind === "bad" ? "on" : ""} ${s.taskBtn}`}>
-                {x.button} →
-              </Link>
-            </li>
-          ))}
-        </ol>
+        <div className={s.todoCard}>
+          <ol className={s.todos}>{shown.map(item)}</ol>
+          {more.length > 0 && (
+            <details className={s.todoMore}>
+              <summary>{more.length === 1 ? t("Ver 1 más", "See 1 more") : t(`Ver ${more.length} más`, `See ${more.length} more`)}</summary>
+              <ol className={s.todos}>{more.map(item)}</ol>
+            </details>
+          )}
+        </div>
+      )}
+      {plan.open > 0 && (
+        <Link href={`/b/${businessId}/seo?tab=resumen#plan`} className={s.planAll}>
+          {t(`Ver todo el plan (${plan.open})`, `See the whole plan (${plan.open})`)} →
+        </Link>
       )}
     </section>
   );
 }
 
-const ICONS = new Set(["search", "seo", "local", "ia", "comp", "content", "social", "reports", "ads", "alert", "plug", "star", "bulb", "check", "link", "web", "key"]);
-const isIcon = (x: string): x is DashIconName => ICONS.has(x);
-
 export async function TodayListSkeleton() {
   const { t } = await getT();
   return (
-    <section className={`card ${s.today}`} aria-busy="true">
-      <h2>{t("Qué hacer hoy", "What to do today")}</h2>
+    <section className={s.todayPanel} aria-busy="true">
+      <div className={s.sectionHead}>
+        <h2>{t("Para hoy", "For today")}</h2>
+      </div>
       {Array.from({ length: 4 }, (_, i) => (
         <span key={i} className={`${s.skel} ${s.skelLine}`} />
       ))}

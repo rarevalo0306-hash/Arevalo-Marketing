@@ -37,8 +37,8 @@ a.tile:hover { border-color: var(--line-strong); background: var(--surface-hover
 .filters { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: thin; }
 .filter { flex-shrink: 0; min-height: 36px; padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink-2); font: 600 13px var(--body); cursor: pointer; white-space: nowrap; }
 .filter:hover { border-color: var(--line-strong); background: var(--surface-hover); }
-.filterOn { background: var(--brand-2); border-color: var(--brand-2); color: #fff; }
-.filterOn:hover { background: var(--brand); border-color: var(--brand); color: #fff; }
+.filterOn { background: var(--brand-2); border-color: var(--brand-2); color: var(--primary-ink, #0a0a0a); }
+.filterOn:hover { background: var(--primary-hover); border-color: var(--primary-hover); color: var(--primary-ink, #0a0a0a); }
 .searchRow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
 .searchRow > * { min-width: 0; }
 .selBar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--ink-2); }

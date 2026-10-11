@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Figtree } from "next/font/google";
 import { I18nProvider } from "@/components/I18n";
 import { uiLang } from "@/lib/i18n-server";
 import "./globals.css";
@@ -13,15 +14,18 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-/** Estilo guardado (o «Claro») + color de la barra del navegador. Lo usa también ThemePicker (window.__amTheme). */
-const THEME_BOOT = `(function(){var C={claro:"#f5f5f7",noche:"#000000",vidrio:"#f5f5f7"};function a(t){if(!C[t])t="claro";document.documentElement.dataset.theme=t;var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",C[t]);return t}window.__amTheme=a;var t="claro";try{t=localStorage.getItem("am-theme")||"claro"}catch(e){}a(t);document.addEventListener("DOMContentLoaded",function(){a(document.documentElement.dataset.theme)})})()`;
+/** Letras de la app (títulos y texto): Figtree, servida desde el mismo sitio. globals.css la usa con --font-figtree. */
+const figtree = Figtree({ subsets: ["latin", "latin-ext"], weight: ["400", "500", "600", "700", "800"], variable: "--font-figtree", display: "swap" });
 
-export const viewport: Viewport = { themeColor: "#f5f5f7", width: "device-width", initialScale: 1, viewportFit: "cover" };
+/** Estilo guardado (o «Claro») + color de la barra del navegador. Lo usa también ThemePicker (window.__amTheme). */
+const THEME_BOOT = `(function(){var C={claro:"#ffffff",noche:"#000000",vidrio:"#f3f8f7"};function a(t){if(!C[t])t="claro";document.documentElement.dataset.theme=t;var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",C[t]);return t}window.__amTheme=a;var t="claro";try{t=localStorage.getItem("am-theme")||"claro"}catch(e){}a(t);document.addEventListener("DOMContentLoaded",function(){a(document.documentElement.dataset.theme)})})()`;
+
+export const viewport: Viewport = { themeColor: "#ffffff", width: "device-width", initialScale: 1, viewportFit: "cover" };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const lang = await uiLang();
   return (
-    <html lang={lang} data-theme="claro" suppressHydrationWarning>
+    <html lang={lang} data-theme="claro" className={figtree.variable} suppressHydrationWarning>
       <head>
         {/* Aplica el estilo guardado antes de pintar, para que no parpadee. Sin elección guardada: «Claro». */}
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />

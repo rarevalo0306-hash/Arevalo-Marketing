@@ -80,7 +80,7 @@
 /* Tarjeta del Inicio */
 .nudge { display: flex; align-items: center; gap: 12px; margin: 0 0 16px; padding: 12px 14px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); color: var(--ink); text-decoration: none; min-width: 0; }
 .nudge:hover { border-color: var(--line-strong); background: var(--surface-hover); color: var(--ink); }
-.nudgeIcon { display: grid; place-items: center; width: 34px; height: 34px; flex-shrink: 0; border-radius: 10px; background: var(--ai); color: #fff; font-size: 16px; }
+.nudgeIcon { display: grid; place-items: center; width: 34px; height: 34px; flex-shrink: 0; border-radius: 10px; background: var(--ai); color: var(--ai-ink, #fff); font-size: 16px; }
 .nudgeText { display: grid; gap: 2px; min-width: 0; flex: 1; }
 .nudgeText strong { font-size: 15px; }
 .nudgeText span { font-size: 13px; color: var(--muted); }

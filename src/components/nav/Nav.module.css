@@ -5,7 +5,7 @@
 .side { display: flex; flex-direction: column; gap: 2px; }
 
 .row {
-  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; padding: 0 10px 0 12px; border-radius: 9px;
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 38px; padding: 0 10px 0 12px; border-radius: 10px;
   border: 0; background: none; font: inherit; font-weight: 400; font-size: 14px; line-height: 1.25; letter-spacing: -0.01em; text-align: left;
   color: var(--nav-ink); text-decoration: none; cursor: pointer; transition: background 0.15s, color 0.15s;
 }
@@ -22,12 +22,12 @@
 .sub { display: flex; flex-direction: column; gap: 1px; margin: 1px 0 6px 14px; padding-left: 0; }
 .sub[hidden] { display: none; }
 .subrow {
-  display: flex; align-items: center; min-height: 32px; padding: 4px 12px; border-radius: 9px;
-  color: var(--nav-ink); opacity: 0.92; text-decoration: none; font-weight: 400; font-size: 13px; line-height: 1.25; letter-spacing: -0.01em; transition: background 0.15s, color 0.15s;
+  display: flex; align-items: center; min-height: 34px; padding: 4px 12px; border-radius: 10px;
+  color: var(--nav-ink); text-decoration: none; font-weight: 400; font-size: 14px; line-height: 1.25; letter-spacing: -0.01em; transition: background 0.15s, color 0.15s;
 }
 .subrow:hover { background: var(--nav-hover-bg); color: var(--nv-strong); text-decoration: none; }
 
-/* Estás aquí: resaltado azul suave redondeado, texto azul */
+/* Estás aquí: pastilla turquesa suave, texto verde azulado oscuro (turquesa claro en Noche) */
 .on, .on:hover { background: var(--nav-active-bg); color: var(--nav-active-ink); font-weight: 600; opacity: 1; box-shadow: none; }
 .row.on svg { color: var(--nav-active-ink); opacity: 1; }
 
@@ -38,6 +38,30 @@
   flex-shrink: 0; margin-left: auto; padding: 2px 8px; border-radius: 980px; font-size: 11px; font-weight: 600; letter-spacing: 0;
   color: var(--nav-muted); background: var(--nav-hover-bg);
 }
+
+/* Numerito turquesa (lo que espera tu aprobación) */
+.badge {
+  flex-shrink: 0; margin-left: auto; min-width: 22px; padding: 1px 7px; border-radius: 99px; text-align: center;
+  font-size: 12px; font-weight: 700; line-height: 18px; letter-spacing: 0; background: var(--nav-badge-bg); color: var(--nav-badge-ink);
+}
+
+/* Selector de negocio: control blanco redondeado con línea fina; la lista se abre debajo */
+.switcher { display: flex; flex-direction: column; gap: 4px; }
+.switch {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 46px; padding: 8px 12px; border-radius: 12px;
+  border: 1px solid var(--nav-border); background: var(--nav-pill-bg); color: var(--nav-strong);
+  font: inherit; font-size: 14px; font-weight: 600; letter-spacing: -0.01em; text-align: left; cursor: pointer; transition: border-color 0.15s;
+}
+.switch:hover { border-color: var(--line-strong); }
+.switchName { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.switchChev { flex-shrink: 0; color: var(--nav-muted); transition: transform 0.15s; }
+.switchDot {
+  width: 26px; height: 26px; border-radius: 8px; flex-shrink: 0; display: grid; place-items: center;
+  color: #fff; font-size: 12px; font-weight: 700; line-height: 1;
+}
+.switchList { display: flex; flex-direction: column; gap: 2px; padding: 4px 0 2px; }
+.switchList[hidden] { display: none; }
+.switchList .row .switchDot { width: 22px; height: 22px; border-radius: 7px; font-size: 11px; }
 
 /* ---------- Celular: barra de abajo translúcida y hoja «Más» ---------- */
 .bar, .backdrop, .sheet { display: none; }
@@ -60,6 +84,8 @@
   .tab svg { color: inherit; }
   .tab.on { box-shadow: none; }
   .tab.on svg { color: var(--nav-accent); }
+  .tab .tabIcon { position: relative; display: grid; place-items: center; overflow: visible; max-width: none; }
+  .tab .badge { position: absolute; top: -6px; left: 14px; margin: 0; min-width: 18px; padding: 0 5px; font-size: 10.5px; line-height: 16px; overflow: visible; }
 
   .backdrop { display: block; position: fixed; inset: 0; z-index: 31; background: var(--nav-backdrop); }
   .sheet {
