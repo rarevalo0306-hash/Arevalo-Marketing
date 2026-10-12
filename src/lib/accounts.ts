@@ -1,5 +1,5 @@
 // Quién puede entrar y con qué persona queda la sesión. Lo usan la contraseña (/api/auth/login), Google
-// (/api/auth/google/callback) y las invitaciones (src/lib/invitations.ts).
+// (/api/auth/google/callback) y las invitaciones (src/lib/team.ts).
 // - Los dueños de Matya son los correos de LOGIN_EMAILS: entran con APP_PASSWORD (si no tienen contraseña propia) o con
 //   Google, y quedan como Administradores de la organización principal.
 // - Las demás personas entran si son miembros de alguna organización (las invitó un Administrador): con su contraseña

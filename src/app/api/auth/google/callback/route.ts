@@ -23,7 +23,8 @@ export async function GET(req: Request) {
   const jar = await cookies();
   const flow = readLoginFlow(jar.get(GOOGLE_LOGIN_COOKIE)?.value);
   jar.delete({ name: GOOGLE_LOGIN_COOKIE, path: GOOGLE_LOGIN_PATH });
-  const fail = (why: string) => Response.redirect(`${appBase()}/login?google=${why}`, 302);
+  // Si venía de una invitación, vuelve a ella para probar con otra cuenta.
+  const fail = (why: string) => Response.redirect(`${appBase()}/login?google=${why}${flow?.invite ? `&next=${encodeURIComponent(`/invitacion/${flow.invite}`)}` : ""}`, 302);
 
   if (url.searchParams.get("error")) return fail("cancel");
   const code = url.searchParams.get("code") ?? "";

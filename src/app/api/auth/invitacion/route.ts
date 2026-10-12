@@ -17,8 +17,9 @@ export async function POST(req: Request) {
   try {
     const f = await req.formData();
     token = String(f.get("token") ?? "");
-    password = String(f.get("password") ?? "");
-    repeat = String(f.get("password2") ?? "");
+    // Igual que al entrar (/api/auth/login): sin espacios al principio ni al final.
+    password = String(f.get("password") ?? "").trim();
+    repeat = String(f.get("password2") ?? "").trim();
   } catch {
     return NextResponse.redirect(new URL("/login", req.url), 303);
   }

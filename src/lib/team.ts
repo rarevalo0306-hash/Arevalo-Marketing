@@ -137,7 +137,8 @@ export type InvitationView = {
   role: Role;
   businessNames: string[] | null;
   inviterName: string;
-  /** Ya existe una cuenta con ese correo: debe entrar con ella para aceptar (nunca se le pone contraseña desde el enlace). */
+  /** Ya existe una cuenta con ese correo que entra a algo (o es dueño): debe entrar con ella para aceptar. Nunca se le pone
+   *  contraseña desde el enlace. Una cuenta que ya no está en ninguna organización sí puede elegir contraseña nueva. */
   existingUser: boolean;
 };
 
@@ -154,7 +155,7 @@ export async function readInvitation(token: string): Promise<InvitationView | nu
   const [org, inviter, user, businesses] = await Promise.all([
     db.organization.findUnique({ where: { id: inv.organizationId }, select: { name: true } }),
     db.user.findUnique({ where: { id: inv.invitedById }, select: { name: true, email: true } }),
-    db.user.findUnique({ where: { email: inv.email }, select: { id: true } }),
+    db.user.findUnique({ where: { email: inv.email }, select: { id: true, _count: { select: { memberships: true } } } }),
     inv.allBusinesses ? Promise.resolve(null) : db.business.findMany({ where: { id: { in: inv.businessIds }, organizationId: inv.organizationId }, select: { name: true } }),
   ]);
   if (!org) return null;
@@ -164,14 +165,15 @@ export async function readInvitation(token: string): Promise<InvitationView | nu
     role: asRole(inv.role) ?? "viewer",
     businessNames: businesses ? businesses.map((b) => b.name) : null,
     inviterName: inviter?.name || inviter?.email || "",
-    existingUser: Boolean(user),
+    existingUser: Boolean(user && (user._count.memberships > 0 || isOwnerEmail(inv.email))),
   };
 }
 
 /**
  * Acepta la invitación para ese correo (debe ser el de la invitación): crea la persona si no existe (con su contraseña,
  * si la eligió) y le da el papel. El enlace queda usado. Devuelve la persona para abrir su sesión, o null.
- * Con `newPassword` solo funciona si la cuenta no existe: a una cuenta que ya existe nunca se le pone contraseña aquí.
+ * Con `newPassword` solo funciona si la cuenta no existe, o si ya no está en ninguna organización y no es de un dueño
+ * (alguien a quien quitaron y vuelven a invitar): a una cuenta que entra a algo nunca se le pone contraseña aquí.
  */
 export async function acceptInvitation(token: string, rawEmail: string, opts: { name?: string; newPassword?: string } = {}): Promise<{ id: string; sessionVersion: number } | null> {
   const inv = await pendingByToken(token);
@@ -183,9 +185,13 @@ export async function acceptInvitation(token: string, rawEmail: string, opts: { 
     // El enlace sirve una vez: si otro lo usó al mismo tiempo, este no cambia nada.
     const used = await tx.invitation.updateMany({ where: { id: inv.id, acceptedAt: null, canceledAt: null, expiresAt: { gt: new Date() } }, data: { acceptedAt: new Date() } });
     if (used.count !== 1) return null;
-    let user = await tx.user.findUnique({ where: { email }, select: { id: true, name: true, sessionVersion: true } });
-    if (user && passwordHash) throw bi("Ya tienes una cuenta con ese correo: entra con ella para aceptar.", "You already have an account with that email: sign in with it to accept.");
-    user ??= await tx.user.create({ data: { email, name, passwordHash }, select: { id: true, name: true, sessionVersion: true } });
+    let user = await tx.user.findUnique({ where: { email }, select: { id: true, name: true, sessionVersion: true, _count: { select: { memberships: true } } } });
+    if (user && passwordHash) {
+      if (user._count.memberships > 0 || isOwnerEmail(email)) throw bi("Ya tienes una cuenta con ese correo: entra con ella para aceptar.", "You already have an account with that email: sign in with it to accept.");
+      // Cuenta sin ninguna organización (la quitaron antes): elige contraseña nueva y se cierran sus sesiones viejas.
+      user = await tx.user.update({ where: { id: user.id }, data: { passwordHash, sessionVersion: { increment: 1 } }, select: { id: true, name: true, sessionVersion: true, _count: { select: { memberships: true } } } });
+    }
+    user ??= await tx.user.create({ data: { email, name, passwordHash }, select: { id: true, name: true, sessionVersion: true, _count: { select: { memberships: true } } } });
     const access = { role: inv.role, allBusinesses: inv.role === "admin" || inv.allBusinesses };
     const businessIds = access.allBusinesses ? [] : (await tx.business.findMany({ where: { id: { in: inv.businessIds }, organizationId: inv.organizationId }, select: { id: true } })).map((b) => b.id);
     const m = await tx.membership.upsert({

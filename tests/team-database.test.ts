@@ -90,14 +90,32 @@ describe.skipIf(!safe)("team: invitations, roles and passwords on an isolated Po
     expect(await loginUser("ana@ejemplo.com", { owner: false })).toMatchObject({ id: user!.id });
   });
 
-  it("never sets a password on an existing account through an invitation, and the email must match", async () => {
-    await db.user.create({ data: { email: "luis@ejemplo.com", passwordHash: await hashPassword("clave-de-luis-1") } });
+  it("never sets a password on an account that is in use elsewhere, and the email must match", async () => {
+    const luis = await db.user.create({ data: { email: "luis@ejemplo.com", passwordHash: await hashPassword("clave-de-luis-1") } });
+    await db.membership.create({ data: { userId: luis.id, organizationId: OTHER, role: "admin" } });
     const { link } = await invite(ORG, boss, { email: "luis@ejemplo.com", role: "viewer", allBusinesses: true, businessIds: [] }, "es");
     expect((await readInvitation(tokenOf(link)))?.existingUser).toBe(true);
     await expect(acceptInvitation(tokenOf(link), "luis@ejemplo.com", { newPassword: "otra-clave-123" })).rejects.toThrow();
     expect(await checkPassword("luis@ejemplo.com", "clave-de-luis-1")).toBe(true);
     expect(await acceptInvitation(tokenOf(link), "ana@ejemplo.com")).toBeNull();
     expect(await acceptInvitation(tokenOf(link), "LUIS@ejemplo.com")).not.toBeNull();
+  });
+
+  it("someone removed and invited again can choose a new password; an owner's account never", async () => {
+    const { link } = await invite(ORG, boss, { email: "ana@ejemplo.com", role: "viewer", allBusinesses: true, businessIds: [] }, "es");
+    const ana = (await acceptInvitation(tokenOf(link), "ana@ejemplo.com", { newPassword: "clave-de-ana-1" }))!;
+    const m = await db.membership.findFirstOrThrow({ where: { userId: ana.id, organizationId: ORG } });
+    await removeMember(ORG, m.id);
+    const again = await invite(ORG, boss, { email: "ana@ejemplo.com", role: "publisher", allBusinesses: true, businessIds: [] }, "es");
+    expect((await readInvitation(tokenOf(again.link)))?.existingUser).toBe(false);
+    const back = await acceptInvitation(tokenOf(again.link), "ana@ejemplo.com", { newPassword: "clave-nueva-ana" });
+    expect(back?.id).toBe(ana.id);
+    expect(back!.sessionVersion).toBeGreaterThan(ana.sessionVersion);
+    expect(await checkPassword("ana@ejemplo.com", "clave-nueva-ana")).toBe(true);
+    await db.user.create({ data: { email: "owner-it@gmail.com" } });
+    const own = await invite(ORG, boss, { email: "owner-it@gmail.com", role: "viewer", allBusinesses: true, businessIds: [] }, "es");
+    expect((await readInvitation(tokenOf(own.link)))?.existingUser).toBe(true);
+    await expect(acceptInvitation(tokenOf(own.link), "owner-it@gmail.com", { newPassword: "toma-de-cuenta" })).rejects.toThrow();
   });
 
   it("resending makes the old link useless; canceling and expiry too", async () => {

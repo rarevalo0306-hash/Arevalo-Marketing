@@ -3,11 +3,14 @@
 // «Equipo y permisos»: invitar, cambiar el papel o las empresas, quitar acceso y mandar un enlace para una contraseña
 // nueva. Todo lo hace solo el Administrador de esa organización (requireOrgAdmin). La lógica está en src/lib/team.ts.
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { requireOrgAdmin, requireUser } from "@/lib/auth";
 import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
+import { looksLikeToken } from "@/lib/password";
+import { SESSION_COOKIE } from "@/lib/session";
 import { acceptInvitation, adminResetLink, cancelInvite, changeMember, invite, removeMember, resendInvite } from "@/lib/team";
 
 export type TeamResult = { ok: boolean; message: string; link?: string } | null;
@@ -99,6 +102,14 @@ export async function resetLinkAction(organizationId: string, membershipId: stri
   } catch (e) {
     return { ok: false, message: errorText(e, lang) };
   }
+}
+
+/** Sale de la cuenta actual y vuelve a la misma invitación (entró con otra cuenta). */
+export async function signOutForInvitation(token: string): Promise<void> {
+  ensure.text(token);
+  await requireUser();
+  (await cookies()).delete(SESSION_COOKIE);
+  redirect(looksLikeToken(token) ? `/invitacion/${token}` : "/login");
 }
 
 /** Acepta una invitación estando ya dentro: solo si el correo de la sesión es el invitado. */

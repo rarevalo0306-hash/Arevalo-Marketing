@@ -21,6 +21,7 @@ const ACTIONS_WITHOUT_BUSINESS: Record<string, string> = {
   "actions-seo-dfs.ts#seoLocationChildren": "lista de zonas de Google (gratis y guardada), sin datos de ningún negocio; pide sesión",
   "actions-seo-dfs.ts#searchSeoPlaces": "búsqueda de lugares de Google (gratis y guardada), sin datos de ningún negocio; pide sesión",
   "actions-team.ts#acceptInvitationAction": "acepta una invitación para el correo de la sesión (src/lib/team.ts revisa el correo); pide sesión",
+  "actions-team.ts#signOutForInvitation": "solo borra la cookie de la sesión y vuelve a la invitación; pide sesión",
 };
 
 /** Rutas públicas que revisan su propio permiso (src/lib/access.ts). */
