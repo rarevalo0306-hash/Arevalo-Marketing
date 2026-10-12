@@ -7,11 +7,16 @@ export async function middleware(req: NextRequest) {
   const hasSession = Boolean(process.env.APP_PASSWORD) && safeEqual(cookie, await sessionToken());
   const next = gate(req.nextUrl.pathname, req.method, hasSession);
   if (next === "pass") return NextResponse.next();
-  if (next === "deny") return new NextResponse("Unauthorized", { status: 401 });
-  const url = req.nextUrl.clone();
-  url.pathname = "/login";
-  url.search = "";
-  return NextResponse.redirect(url);
+  const login = req.nextUrl.clone();
+  login.pathname = "/login";
+  login.search = "";
+  if (next === "deny") {
+    // Una acción del servidor sin sesión (por ejemplo, venció con la app abierta) no corre: el navegador va a /login.
+    if (req.headers.has("next-action")) return new NextResponse(null, { status: 401, headers: { "x-action-redirect": "/login;replace" } });
+    if (req.method === "POST") return NextResponse.redirect(login, 303);
+    return new NextResponse("Unauthorized", { status: 401 });
+  }
+  return NextResponse.redirect(login);
 }
 
 export const config = {

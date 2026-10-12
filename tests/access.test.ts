@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gate } from "@/lib/access";
+import { fromOtherSite, gate } from "@/lib/access";
 import { config } from "@/middleware";
 
 describe("who can open what without signing in", () => {
@@ -34,6 +34,19 @@ describe("who can open what without signing in", () => {
     expect(gate("/api/subir/tok/firmar", "POST", false)).toBe("pass");
     expect(gate("/api/subir/tok/listo", "POST", false)).toBe("pass");
     expect(gate("/api/auth/login/x", "POST", false)).toBe("deny");
+    expect(gate("/api/subir/x", "POST", false)).toBe("deny");
+    expect(gate("/api/subir/tok/otra", "POST", false)).toBe("deny");
+    expect(gate("/api/subir/tok/firmar/x", "POST", false)).toBe("deny");
+  });
+
+  it("tells a post from another website apart from the login page's own", () => {
+    const h = (o: Record<string, string>) => ({ get: (n: string) => o[n] ?? null });
+    expect(fromOtherSite(h({ origin: "https://app.matya.app", "sec-fetch-site": "same-origin" }), "app.matya.app")).toBe(false);
+    expect(fromOtherSite(h({}), "app.matya.app")).toBe(false);
+    expect(fromOtherSite(h({ origin: "https://evil.example" }), "app.matya.app")).toBe(true);
+    expect(fromOtherSite(h({ origin: "https://matya.app" }), "app.matya.app")).toBe(true);
+    expect(fromOtherSite(h({ origin: "null" }), "app.matya.app")).toBe(true);
+    expect(fromOtherSite(h({ "sec-fetch-site": "cross-site" }), "app.matya.app")).toBe(true);
   });
 
   it("runs the middleware on every route except Next's own files", () => {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { fromOtherSite } from "@/lib/access";
 import { clearLoginAttempts, countLoginAttempt } from "@/lib/login-attempts";
 import { attemptKey, clientIp, missingTable, waitMinutes } from "@/lib/login-limit";
 import { safeEqual, SESSION_COOKIE, sessionCookieOptions, sessionToken } from "@/lib/session";
@@ -11,6 +12,8 @@ export async function POST(req: Request) {
   // Sin espacios ni saltos de línea de más (pasa al pegar la contraseña en Vercel).
   const expected = process.env.APP_PASSWORD?.trim();
   if (!expected) return back({ e: "setup" });
+  // Solo desde la propia página de entrada: otra web no puede gastar los intentos de alguien ni dejarlo bloqueado.
+  if (fromOtherSite(req.headers, new URL(req.url).host)) return new NextResponse(null, { status: 403 });
   let password = "";
   try {
     password = String((await req.formData()).get("password") ?? "").trim();
