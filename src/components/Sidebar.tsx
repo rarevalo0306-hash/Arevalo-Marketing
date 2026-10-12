@@ -13,7 +13,7 @@ import { ThemePicker } from "./ThemePicker";
 
 export async function Sidebar({ activeId }: { activeId?: string }) {
   const [businesses, approvals] = await Promise.all([
-    db.business.findMany({ orderBy: { createdAt: "asc" } }),
+    db.business.findMany({ orderBy: { createdAt: "asc" }, select: { id: true, name: true, color: true } }),
     activeId ? loadApprovals(activeId).catch(() => []) : Promise.resolve([]),
   ]);
   const { t } = await getT();

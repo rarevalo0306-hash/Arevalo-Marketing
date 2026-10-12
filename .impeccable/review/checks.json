@@ -1,0 +1,31 @@
+{
+  "overflow": {
+    "width": 390,
+    "scroll": 390
+  },
+  "errors": [],
+  "panelCount": 1,
+  "unauthorizedStatus": 307,
+  "crossOriginStatus": 403,
+  "workerStatus": 200,
+  "workerDenied": 401,
+  "voice": {
+    "recognized": 1,
+    "spoken": 1,
+    "muted": true,
+    "requestActions": [
+      "message"
+    ],
+    "simulated": true
+  },
+  "checks": [
+    "two industry briefings",
+    "knowledge saved and reloaded",
+    "business separation",
+    "SEO active panel only",
+    "legacy SEO deep link",
+    "mobile layout and saved feedback",
+    "worker uses existing protected route",
+    "simulated voice shares context and mute does not cancel work"
+  ]
+}

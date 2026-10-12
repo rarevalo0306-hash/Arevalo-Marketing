@@ -1,0 +1,863 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-12T09:30:51.986350Z",
+  "title": "Design System: MATYA application",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Primary",
+        "tonalRamp": [
+          "oklch(15.000% 0.12810 184.435)",
+          "oklch(26.429% 0.12810 184.435)",
+          "oklch(37.857% 0.12810 184.435)",
+          "oklch(49.286% 0.12810 184.435)",
+          "oklch(60.714% 0.12810 184.435)",
+          "oklch(72.143% 0.12810 184.435)",
+          "oklch(83.571% 0.12810 184.435)",
+          "oklch(95.000% 0.12810 184.435)"
+        ]
+      },
+      "primary-hover": {
+        "role": "primary",
+        "displayName": "Primary Hover",
+        "tonalRamp": [
+          "oklch(15.000% 0.11918 184.147)",
+          "oklch(26.429% 0.11918 184.147)",
+          "oklch(37.857% 0.11918 184.147)",
+          "oklch(49.286% 0.11918 184.147)",
+          "oklch(60.714% 0.11918 184.147)",
+          "oklch(72.143% 0.11918 184.147)",
+          "oklch(83.571% 0.11918 184.147)",
+          "oklch(95.000% 0.11918 184.147)"
+        ]
+      },
+      "primary-ink": {
+        "role": "neutral",
+        "displayName": "Primary Ink",
+        "tonalRamp": [
+          "oklch(15.000% 0.00000 0.000)",
+          "oklch(26.429% 0.00000 0.000)",
+          "oklch(37.857% 0.00000 0.000)",
+          "oklch(49.286% 0.00000 0.000)",
+          "oklch(60.714% 0.00000 0.000)",
+          "oklch(72.143% 0.00000 0.000)",
+          "oklch(83.571% 0.00000 0.000)",
+          "oklch(95.000% 0.00000 0.000)"
+        ]
+      },
+      "link": {
+        "role": "primary",
+        "displayName": "Link",
+        "tonalRamp": [
+          "oklch(15.000% 0.08256 185.903)",
+          "oklch(26.429% 0.08256 185.903)",
+          "oklch(37.857% 0.08256 185.903)",
+          "oklch(49.286% 0.08256 185.903)",
+          "oklch(60.714% 0.08256 185.903)",
+          "oklch(72.143% 0.08256 185.903)",
+          "oklch(83.571% 0.08256 185.903)",
+          "oklch(95.000% 0.08256 185.903)"
+        ]
+      },
+      "brand-soft": {
+        "role": "primary",
+        "displayName": "Brand Soft",
+        "tonalRamp": [
+          "oklch(15.000% 0.02434 187.328)",
+          "oklch(26.429% 0.02434 187.328)",
+          "oklch(37.857% 0.02434 187.328)",
+          "oklch(49.286% 0.02434 187.328)",
+          "oklch(60.714% 0.02434 187.328)",
+          "oklch(72.143% 0.02434 187.328)",
+          "oklch(83.571% 0.02434 187.328)",
+          "oklch(95.000% 0.02434 187.328)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "tonalRamp": [
+          "oklch(15.000% 0.00000 0.000)",
+          "oklch(26.429% 0.00000 0.000)",
+          "oklch(37.857% 0.00000 0.000)",
+          "oklch(49.286% 0.00000 0.000)",
+          "oklch(60.714% 0.00000 0.000)",
+          "oklch(72.143% 0.00000 0.000)",
+          "oklch(83.571% 0.00000 0.000)",
+          "oklch(95.000% 0.00000 0.000)"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Ink 2",
+        "tonalRamp": [
+          "oklch(15.000% 0.00000 0.000)",
+          "oklch(26.429% 0.00000 0.000)",
+          "oklch(37.857% 0.00000 0.000)",
+          "oklch(49.286% 0.00000 0.000)",
+          "oklch(60.714% 0.00000 0.000)",
+          "oklch(72.143% 0.00000 0.000)",
+          "oklch(83.571% 0.00000 0.000)",
+          "oklch(95.000% 0.00000 0.000)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted",
+        "tonalRamp": [
+          "oklch(15.000% 0.00000 0.000)",
+          "oklch(26.429% 0.00000 0.000)",
+          "oklch(37.857% 0.00000 0.000)",
+          "oklch(49.286% 0.00000 0.000)",
+          "oklch(60.714% 0.00000 0.000)",
+          "oklch(72.143% 0.00000 0.000)",
+          "oklch(83.571% 0.00000 0.000)",
+          "oklch(95.000% 0.00000 0.000)"
+        ]
+      },
+      "faint": {
+        "role": "neutral",
+        "displayName": "Faint",
+        "tonalRamp": [
+          "oklch(15.000% 0.00000 0.000)",
+          "oklch(26.429% 0.00000 0.000)",
+          "oklch(37.857% 0.00000 0.000)",
+          "oklch(49.286% 0.00000 0.000)",
+          "oklch(60.714% 0.00000 0.000)",
+          "oklch(72.143% 0.00000 0.000)",
+          "oklch(83.571% 0.00000 0.000)",
+          "oklch(95.000% 0.00000 0.000)"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Line",
+        "tonalRamp": [
+          "oklch(15.000% 0.00000 0.000)",
+          "oklch(26.429% 0.00000 0.000)",
+          "oklch(37.857% 0.00000 0.000)",
+          "oklch(49.286% 0.00000 0.000)",
+          "oklch(60.714% 0.00000 0.000)",
+          "oklch(72.143% 0.00000 0.000)",
+          "oklch(83.571% 0.00000 0.000)",
+          "oklch(95.000% 0.00000 0.000)"
+        ]
+      },
+      "line-strong": {
+        "role": "neutral",
+        "displayName": "Line Strong",
+        "tonalRamp": [
+          "oklch(15.000% 0.00000 0.000)",
+          "oklch(26.429% 0.00000 0.000)",
+          "oklch(37.857% 0.00000 0.000)",
+          "oklch(49.286% 0.00000 0.000)",
+          "oklch(60.714% 0.00000 0.000)",
+          "oklch(72.143% 0.00000 0.000)",
+          "oklch(83.571% 0.00000 0.000)",
+          "oklch(95.000% 0.00000 0.000)"
+        ]
+      },
+      "ground": {
+        "role": "neutral",
+        "displayName": "Ground",
+        "tonalRamp": [
+          "oklch(15.000% 0.00000 0.000)",
+          "oklch(26.429% 0.00000 0.000)",
+          "oklch(37.857% 0.00000 0.000)",
+          "oklch(49.286% 0.00000 0.000)",
+          "oklch(60.714% 0.00000 0.000)",
+          "oklch(72.143% 0.00000 0.000)",
+          "oklch(83.571% 0.00000 0.000)",
+          "oklch(95.000% 0.00000 0.000)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Surface",
+        "tonalRamp": [
+          "oklch(15.000% 0.00000 0.000)",
+          "oklch(26.429% 0.00000 0.000)",
+          "oklch(37.857% 0.00000 0.000)",
+          "oklch(49.286% 0.00000 0.000)",
+          "oklch(60.714% 0.00000 0.000)",
+          "oklch(72.143% 0.00000 0.000)",
+          "oklch(83.571% 0.00000 0.000)",
+          "oklch(95.000% 0.00000 0.000)"
+        ]
+      },
+      "surface-2": {
+        "role": "neutral",
+        "displayName": "Surface 2",
+        "tonalRamp": [
+          "oklch(15.000% 0.00000 0.000)",
+          "oklch(26.429% 0.00000 0.000)",
+          "oklch(37.857% 0.00000 0.000)",
+          "oklch(49.286% 0.00000 0.000)",
+          "oklch(60.714% 0.00000 0.000)",
+          "oklch(72.143% 0.00000 0.000)",
+          "oklch(83.571% 0.00000 0.000)",
+          "oklch(95.000% 0.00000 0.000)"
+        ]
+      },
+      "surface-hover": {
+        "role": "neutral",
+        "displayName": "Surface Hover",
+        "tonalRamp": [
+          "oklch(15.000% 0.00000 0.000)",
+          "oklch(26.429% 0.00000 0.000)",
+          "oklch(37.857% 0.00000 0.000)",
+          "oklch(49.286% 0.00000 0.000)",
+          "oklch(60.714% 0.00000 0.000)",
+          "oklch(72.143% 0.00000 0.000)",
+          "oklch(83.571% 0.00000 0.000)",
+          "oklch(95.000% 0.00000 0.000)"
+        ]
+      },
+      "field-bg": {
+        "role": "neutral",
+        "displayName": "Field Bg",
+        "tonalRamp": [
+          "oklch(15.000% 0.00000 0.000)",
+          "oklch(26.429% 0.00000 0.000)",
+          "oklch(37.857% 0.00000 0.000)",
+          "oklch(49.286% 0.00000 0.000)",
+          "oklch(60.714% 0.00000 0.000)",
+          "oklch(72.143% 0.00000 0.000)",
+          "oklch(83.571% 0.00000 0.000)",
+          "oklch(95.000% 0.00000 0.000)"
+        ]
+      },
+      "btn-bg": {
+        "role": "neutral",
+        "displayName": "Btn Bg",
+        "tonalRamp": [
+          "oklch(15.000% 0.00000 0.000)",
+          "oklch(26.429% 0.00000 0.000)",
+          "oklch(37.857% 0.00000 0.000)",
+          "oklch(49.286% 0.00000 0.000)",
+          "oklch(60.714% 0.00000 0.000)",
+          "oklch(72.143% 0.00000 0.000)",
+          "oklch(83.571% 0.00000 0.000)",
+          "oklch(95.000% 0.00000 0.000)"
+        ]
+      },
+      "btn-hover": {
+        "role": "neutral",
+        "displayName": "Btn Hover",
+        "tonalRamp": [
+          "oklch(15.000% 0.00000 0.000)",
+          "oklch(26.429% 0.00000 0.000)",
+          "oklch(37.857% 0.00000 0.000)",
+          "oklch(49.286% 0.00000 0.000)",
+          "oklch(60.714% 0.00000 0.000)",
+          "oklch(72.143% 0.00000 0.000)",
+          "oklch(83.571% 0.00000 0.000)",
+          "oklch(95.000% 0.00000 0.000)"
+        ]
+      },
+      "neutral-bg": {
+        "role": "neutral",
+        "displayName": "Neutral Bg",
+        "tonalRamp": [
+          "oklch(15.000% 0.00000 0.000)",
+          "oklch(26.429% 0.00000 0.000)",
+          "oklch(37.857% 0.00000 0.000)",
+          "oklch(49.286% 0.00000 0.000)",
+          "oklch(60.714% 0.00000 0.000)",
+          "oklch(72.143% 0.00000 0.000)",
+          "oklch(83.571% 0.00000 0.000)",
+          "oklch(95.000% 0.00000 0.000)"
+        ]
+      },
+      "neutral-text": {
+        "role": "neutral",
+        "displayName": "Neutral Text",
+        "tonalRamp": [
+          "oklch(15.000% 0.00000 0.000)",
+          "oklch(26.429% 0.00000 0.000)",
+          "oklch(37.857% 0.00000 0.000)",
+          "oklch(49.286% 0.00000 0.000)",
+          "oklch(60.714% 0.00000 0.000)",
+          "oklch(72.143% 0.00000 0.000)",
+          "oklch(83.571% 0.00000 0.000)",
+          "oklch(95.000% 0.00000 0.000)"
+        ]
+      },
+      "ok-bg": {
+        "role": "semantic",
+        "displayName": "Ok Bg",
+        "tonalRamp": [
+          "oklch(15.000% 0.02394 155.151)",
+          "oklch(26.429% 0.02394 155.151)",
+          "oklch(37.857% 0.02394 155.151)",
+          "oklch(49.286% 0.02394 155.151)",
+          "oklch(60.714% 0.02394 155.151)",
+          "oklch(72.143% 0.02394 155.151)",
+          "oklch(83.571% 0.02394 155.151)",
+          "oklch(95.000% 0.02394 155.151)"
+        ]
+      },
+      "ok-text": {
+        "role": "semantic",
+        "displayName": "Ok Text",
+        "tonalRamp": [
+          "oklch(15.000% 0.12827 147.706)",
+          "oklch(26.429% 0.12827 147.706)",
+          "oklch(37.857% 0.12827 147.706)",
+          "oklch(49.286% 0.12827 147.706)",
+          "oklch(60.714% 0.12827 147.706)",
+          "oklch(72.143% 0.12827 147.706)",
+          "oklch(83.571% 0.12827 147.706)",
+          "oklch(95.000% 0.12827 147.706)"
+        ]
+      },
+      "warn-bg": {
+        "role": "semantic",
+        "displayName": "Warn Bg",
+        "tonalRamp": [
+          "oklch(15.000% 0.02155 69.789)",
+          "oklch(26.429% 0.02155 69.789)",
+          "oklch(37.857% 0.02155 69.789)",
+          "oklch(49.286% 0.02155 69.789)",
+          "oklch(60.714% 0.02155 69.789)",
+          "oklch(72.143% 0.02155 69.789)",
+          "oklch(83.571% 0.02155 69.789)",
+          "oklch(95.000% 0.02155 69.789)"
+        ]
+      },
+      "warn-text": {
+        "role": "semantic",
+        "displayName": "Warn Text",
+        "tonalRamp": [
+          "oklch(15.000% 0.13409 50.866)",
+          "oklch(26.429% 0.13409 50.866)",
+          "oklch(37.857% 0.13409 50.866)",
+          "oklch(49.286% 0.13409 50.866)",
+          "oklch(60.714% 0.13409 50.866)",
+          "oklch(72.143% 0.13409 50.866)",
+          "oklch(83.571% 0.13409 50.866)",
+          "oklch(95.000% 0.13409 50.866)"
+        ]
+      },
+      "err-bg": {
+        "role": "semantic",
+        "displayName": "Err Bg",
+        "tonalRamp": [
+          "oklch(15.000% 0.01643 8.166)",
+          "oklch(26.429% 0.01643 8.166)",
+          "oklch(37.857% 0.01643 8.166)",
+          "oklch(49.286% 0.01643 8.166)",
+          "oklch(60.714% 0.01643 8.166)",
+          "oklch(72.143% 0.01643 8.166)",
+          "oklch(83.571% 0.01643 8.166)",
+          "oklch(95.000% 0.01643 8.166)"
+        ]
+      },
+      "err-text": {
+        "role": "semantic",
+        "displayName": "Err Text",
+        "tonalRamp": [
+          "oklch(15.000% 0.20985 25.958)",
+          "oklch(26.429% 0.20985 25.958)",
+          "oklch(37.857% 0.20985 25.958)",
+          "oklch(49.286% 0.20985 25.958)",
+          "oklch(60.714% 0.20985 25.958)",
+          "oklch(72.143% 0.20985 25.958)",
+          "oklch(83.571% 0.20985 25.958)",
+          "oklch(95.000% 0.20985 25.958)"
+        ]
+      },
+      "agent-accent": {
+        "role": "primary",
+        "displayName": "Agent Accent",
+        "tonalRamp": [
+          "oklch(15.000% 0.09302 185.140)",
+          "oklch(26.429% 0.09302 185.140)",
+          "oklch(37.857% 0.09302 185.140)",
+          "oklch(49.286% 0.09302 185.140)",
+          "oklch(60.714% 0.09302 185.140)",
+          "oklch(72.143% 0.09302 185.140)",
+          "oklch(83.571% 0.09302 185.140)",
+          "oklch(95.000% 0.09302 185.140)"
+        ]
+      },
+      "agent-tint": {
+        "role": "primary",
+        "displayName": "Agent Tint",
+        "tonalRamp": [
+          "oklch(15.000% 0.01628 182.719)",
+          "oklch(26.429% 0.01628 182.719)",
+          "oklch(37.857% 0.01628 182.719)",
+          "oklch(49.286% 0.01628 182.719)",
+          "oklch(60.714% 0.01628 182.719)",
+          "oklch(72.143% 0.01628 182.719)",
+          "oklch(83.571% 0.01628 182.719)",
+          "oklch(95.000% 0.01628 182.719)"
+        ]
+      },
+      "agent-attention": {
+        "role": "semantic",
+        "displayName": "Agent Attention",
+        "tonalRamp": [
+          "oklch(15.000% 0.15725 34.000)",
+          "oklch(26.429% 0.15725 34.000)",
+          "oklch(37.857% 0.15725 34.000)",
+          "oklch(49.286% 0.15725 34.000)",
+          "oklch(60.714% 0.15725 34.000)",
+          "oklch(72.143% 0.15725 34.000)",
+          "oklch(83.571% 0.15725 34.000)",
+          "oklch(95.000% 0.15725 34.000)"
+        ]
+      },
+      "noche-primary": {
+        "role": "primary",
+        "displayName": "Noche Primary",
+        "tonalRamp": [
+          "oklch(15.000% 0.13253 181.912)",
+          "oklch(26.429% 0.13253 181.912)",
+          "oklch(37.857% 0.13253 181.912)",
+          "oklch(49.286% 0.13253 181.912)",
+          "oklch(60.714% 0.13253 181.912)",
+          "oklch(72.143% 0.13253 181.912)",
+          "oklch(83.571% 0.13253 181.912)",
+          "oklch(95.000% 0.13253 181.912)"
+        ]
+      },
+      "noche-primary-hover": {
+        "role": "primary",
+        "displayName": "Noche Primary Hover",
+        "tonalRamp": [
+          "oklch(15.000% 0.12317 182.588)",
+          "oklch(26.429% 0.12317 182.588)",
+          "oklch(37.857% 0.12317 182.588)",
+          "oklch(49.286% 0.12317 182.588)",
+          "oklch(60.714% 0.12317 182.588)",
+          "oklch(72.143% 0.12317 182.588)",
+          "oklch(83.571% 0.12317 182.588)",
+          "oklch(95.000% 0.12317 182.588)"
+        ]
+      },
+      "noche-primary-ink": {
+        "role": "neutral",
+        "displayName": "Noche Primary Ink",
+        "tonalRamp": [
+          "oklch(15.000% 0.00000 0.000)",
+          "oklch(26.429% 0.00000 0.000)",
+          "oklch(37.857% 0.00000 0.000)",
+          "oklch(49.286% 0.00000 0.000)",
+          "oklch(60.714% 0.00000 0.000)",
+          "oklch(72.143% 0.00000 0.000)",
+          "oklch(83.571% 0.00000 0.000)",
+          "oklch(95.000% 0.00000 0.000)"
+        ]
+      },
+      "noche-link": {
+        "role": "primary",
+        "displayName": "Noche Link",
+        "tonalRamp": [
+          "oklch(15.000% 0.12508 181.071)",
+          "oklch(26.429% 0.12508 181.071)",
+          "oklch(37.857% 0.12508 181.071)",
+          "oklch(49.286% 0.12508 181.071)",
+          "oklch(60.714% 0.12508 181.071)",
+          "oklch(72.143% 0.12508 181.071)",
+          "oklch(83.571% 0.12508 181.071)",
+          "oklch(95.000% 0.12508 181.071)"
+        ]
+      },
+      "noche-ground": {
+        "role": "neutral",
+        "displayName": "Noche Ground",
+        "tonalRamp": [
+          "oklch(15.000% 0.00000 0.000)",
+          "oklch(26.429% 0.00000 0.000)",
+          "oklch(37.857% 0.00000 0.000)",
+          "oklch(49.286% 0.00000 0.000)",
+          "oklch(60.714% 0.00000 0.000)",
+          "oklch(72.143% 0.00000 0.000)",
+          "oklch(83.571% 0.00000 0.000)",
+          "oklch(95.000% 0.00000 0.000)"
+        ]
+      },
+      "noche-surface": {
+        "role": "neutral",
+        "displayName": "Noche Surface",
+        "tonalRamp": [
+          "oklch(15.000% 0.00000 0.000)",
+          "oklch(26.429% 0.00000 0.000)",
+          "oklch(37.857% 0.00000 0.000)",
+          "oklch(49.286% 0.00000 0.000)",
+          "oklch(60.714% 0.00000 0.000)",
+          "oklch(72.143% 0.00000 0.000)",
+          "oklch(83.571% 0.00000 0.000)",
+          "oklch(95.000% 0.00000 0.000)"
+        ]
+      },
+      "noche-surface-2": {
+        "role": "neutral",
+        "displayName": "Noche Surface 2",
+        "tonalRamp": [
+          "oklch(15.000% 0.00000 0.000)",
+          "oklch(26.429% 0.00000 0.000)",
+          "oklch(37.857% 0.00000 0.000)",
+          "oklch(49.286% 0.00000 0.000)",
+          "oklch(60.714% 0.00000 0.000)",
+          "oklch(72.143% 0.00000 0.000)",
+          "oklch(83.571% 0.00000 0.000)",
+          "oklch(95.000% 0.00000 0.000)"
+        ]
+      },
+      "noche-ink": {
+        "role": "neutral",
+        "displayName": "Noche Ink",
+        "tonalRamp": [
+          "oklch(15.000% 0.00000 0.000)",
+          "oklch(26.429% 0.00000 0.000)",
+          "oklch(37.857% 0.00000 0.000)",
+          "oklch(49.286% 0.00000 0.000)",
+          "oklch(60.714% 0.00000 0.000)",
+          "oklch(72.143% 0.00000 0.000)",
+          "oklch(83.571% 0.00000 0.000)",
+          "oklch(95.000% 0.00000 0.000)"
+        ]
+      },
+      "noche-muted": {
+        "role": "neutral",
+        "displayName": "Noche Muted",
+        "tonalRamp": [
+          "oklch(15.000% 0.00000 0.000)",
+          "oklch(26.429% 0.00000 0.000)",
+          "oklch(37.857% 0.00000 0.000)",
+          "oklch(49.286% 0.00000 0.000)",
+          "oklch(60.714% 0.00000 0.000)",
+          "oklch(72.143% 0.00000 0.000)",
+          "oklch(83.571% 0.00000 0.000)",
+          "oklch(95.000% 0.00000 0.000)"
+        ]
+      },
+      "noche-line": {
+        "role": "neutral",
+        "displayName": "Noche Line",
+        "tonalRamp": [
+          "oklch(15.000% 0.00000 0.000)",
+          "oklch(26.429% 0.00000 0.000)",
+          "oklch(37.857% 0.00000 0.000)",
+          "oklch(49.286% 0.00000 0.000)",
+          "oklch(60.714% 0.00000 0.000)",
+          "oklch(72.143% 0.00000 0.000)",
+          "oklch(83.571% 0.00000 0.000)",
+          "oklch(95.000% 0.00000 0.000)"
+        ]
+      },
+      "noche-line-strong": {
+        "role": "neutral",
+        "displayName": "Noche Line Strong",
+        "tonalRamp": [
+          "oklch(15.000% 0.00000 0.000)",
+          "oklch(26.429% 0.00000 0.000)",
+          "oklch(37.857% 0.00000 0.000)",
+          "oklch(49.286% 0.00000 0.000)",
+          "oklch(60.714% 0.00000 0.000)",
+          "oklch(72.143% 0.00000 0.000)",
+          "oklch(83.571% 0.00000 0.000)",
+          "oklch(95.000% 0.00000 0.000)"
+        ]
+      },
+      "noche-agent-accent": {
+        "role": "primary",
+        "displayName": "Noche Agent Accent",
+        "tonalRamp": [
+          "oklch(15.000% 0.09711 184.668)",
+          "oklch(26.429% 0.09711 184.668)",
+          "oklch(37.857% 0.09711 184.668)",
+          "oklch(49.286% 0.09711 184.668)",
+          "oklch(60.714% 0.09711 184.668)",
+          "oklch(72.143% 0.09711 184.668)",
+          "oklch(83.571% 0.09711 184.668)",
+          "oklch(95.000% 0.09711 184.668)"
+        ]
+      },
+      "noche-agent-tint": {
+        "role": "primary",
+        "displayName": "Noche Agent Tint",
+        "tonalRamp": [
+          "oklch(15.000% 0.04450 181.492)",
+          "oklch(26.429% 0.04450 181.492)",
+          "oklch(37.857% 0.04450 181.492)",
+          "oklch(49.286% 0.04450 181.492)",
+          "oklch(60.714% 0.04450 181.492)",
+          "oklch(72.143% 0.04450 181.492)",
+          "oklch(83.571% 0.04450 181.492)",
+          "oklch(95.000% 0.04450 181.492)"
+        ]
+      },
+      "noche-agent-attention": {
+        "role": "semantic",
+        "displayName": "Noche Agent Attention",
+        "tonalRamp": [
+          "oklch(15.000% 0.10481 35.997)",
+          "oklch(26.429% 0.10481 35.997)",
+          "oklch(37.857% 0.10481 35.997)",
+          "oklch(49.286% 0.10481 35.997)",
+          "oklch(60.714% 0.10481 35.997)",
+          "oklch(72.143% 0.10481 35.997)",
+          "oklch(83.571% 0.10481 35.997)",
+          "oklch(95.000% 0.10481 35.997)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "App page title",
+        "purpose": "Global page headings, with existing responsive overrides."
+      },
+      "headline": {
+        "displayName": "MATYA identity",
+        "purpose": "Compact center title."
+      },
+      "welcome": {
+        "displayName": "Conversation welcome",
+        "purpose": "Initial request prompt; maximum 15ch."
+      },
+      "title": {
+        "displayName": "Card title",
+        "purpose": "Shared container headings."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Base application copy."
+      },
+      "conversation": {
+        "displayName": "Conversation",
+        "purpose": "User and assistant messages."
+      },
+      "button": {
+        "displayName": "Button",
+        "purpose": "Shared secondary and outlined controls."
+      },
+      "button-primary": {
+        "displayName": "Primary button",
+        "purpose": "Filled action control with stronger weight."
+      },
+      "field": {
+        "displayName": "Shared field",
+        "purpose": "Base labeled form control."
+      },
+      "label": {
+        "displayName": "Status label",
+        "purpose": "Compact status pills."
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow",
+        "value": "none",
+        "purpose": "Resting cards in Claro and Noche."
+      },
+      {
+        "name": "shadow-md",
+        "value": "0 4px 18px rgba(0, 0, 0, 0.06)",
+        "purpose": "Existing medium elevation in Claro."
+      },
+      {
+        "name": "shadow-lg",
+        "value": "0 12px 40px rgba(0, 0, 0, 0.14)",
+        "purpose": "Existing large elevation in Claro."
+      },
+      {
+        "name": "noche-shadow-md",
+        "value": "0 8px 24px rgba(0, 0, 0, 0.5)",
+        "purpose": "Existing Noche medium elevation override."
+      },
+      {
+        "name": "noche-shadow-lg",
+        "value": "0 12px 40px rgba(0, 0, 0, 0.7)",
+        "purpose": "Existing Noche large elevation override."
+      },
+      {
+        "name": "mobile-sheet",
+        "value": "0 -8px 40px rgba(0, 0, 0, 0.18)",
+        "purpose": "Existing bottom navigation sheet."
+      },
+      {
+        "name": "field-focus",
+        "value": "0 0 0 4px var(--brand-ring)",
+        "purpose": "Existing field focus ring; theme inherited."
+      }
+    ],
+    "motion": [
+      {
+        "name": "control-state",
+        "value": "0.15s ease",
+        "purpose": "Shared background, border and color transitions."
+      },
+      {
+        "name": "sheet-entry",
+        "value": "0.18s ease-out",
+        "purpose": "Existing sheet enters from translateY(24px); disabled for reduced motion."
+      },
+      {
+        "name": "working-orbit",
+        "value": "12s linear infinite",
+        "purpose": "A full rotation only during a running task; disabled for reduced motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "center-phone-max",
+        "value": "560px"
+      },
+      {
+        "name": "shell-tablet-min",
+        "value": "600px"
+      },
+      {
+        "name": "card-phone-max",
+        "value": "640px"
+      },
+      {
+        "name": "shell-mobile-max",
+        "value": "900px"
+      },
+      {
+        "name": "center-single-column-max",
+        "value": "950px"
+      },
+      {
+        "name": "shell-compact-desktop-max",
+        "value": "1180px"
+      },
+      {
+        "name": "center-compact-desktop-max",
+        "value": "1200px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Existing shared pill control; text and state follow the active app theme.",
+      "html": "<button type=\"button\" class=\"ds-button-primary\">Guardar configuración</button>",
+      "css": ".ds-button-primary{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:0 18px;border-radius:var(--pill,980px);border:1px solid transparent;font:500 14px var(--body,Figtree,ui-sans-serif,system-ui,sans-serif);letter-spacing:-0.01em;cursor:pointer;text-decoration:none;transition:background 0.15s,border-color 0.15s,color 0.15s;background:var(--primary,#14c4b4);border-color:var(--primary,#14c4b4);color:var(--primary-ink,#0a0a0a);font-weight:600;}.ds-button-primary:hover:not(:disabled){background:var(--primary-hover,#0fb1a2);border-color:var(--primary-hover,#0fb1a2);}.ds-button-primary:focus-visible{outline:2px solid var(--focus,#0b6e66);outline-offset:2px;}.ds-button-primary:disabled{opacity:0.5;cursor:not-allowed;}"
+    },
+    {
+      "name": "Secondary button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Existing shared pill control; text and state follow the active app theme.",
+      "html": "<button type=\"button\" class=\"ds-button-secondary\">Actualizar</button>",
+      "css": ".ds-button-secondary{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:0 18px;border-radius:var(--pill,980px);border:1px solid transparent;font:500 14px var(--body,Figtree,ui-sans-serif,system-ui,sans-serif);letter-spacing:-0.01em;cursor:pointer;text-decoration:none;transition:background 0.15s,border-color 0.15s,color 0.15s;background:var(--btn-bg,#f2f2f2);color:var(--ink,#0a0a0a);}.ds-button-secondary:hover:not(:disabled){background:var(--btn-hover,#e8e8e8);}.ds-button-secondary:focus-visible{outline:2px solid var(--focus,#0b6e66);outline-offset:2px;}.ds-button-secondary:disabled{opacity:0.5;cursor:not-allowed;}"
+    },
+    {
+      "name": "Outline button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Existing shared pill control; text and state follow the active app theme.",
+      "html": "<button type=\"button\" class=\"ds-button-outline\">Agregar fuente</button>",
+      "css": ".ds-button-outline{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:0 18px;border-radius:var(--pill,980px);border:1px solid transparent;font:500 14px var(--body,Figtree,ui-sans-serif,system-ui,sans-serif);letter-spacing:-0.01em;cursor:pointer;text-decoration:none;transition:background 0.15s,border-color 0.15s,color 0.15s;background:transparent;border-color:var(--brand,#0b6e66);color:var(--link,#0b6e66);}.ds-button-outline:hover:not(:disabled){background:var(--brand-soft,#e3faf7);}.ds-button-outline:focus-visible{outline:2px solid var(--focus,#0b6e66);outline-offset:2px;}.ds-button-outline:disabled{opacity:0.5;cursor:not-allowed;}"
+    },
+    {
+      "name": "Labeled field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "Shared field with the incumbent focus ring and visible label.",
+      "html": "<label class=\"ds-field-label\" for=\"ds-objective\">Objetivo del negocio</label><input class=\"ds-field\" id=\"ds-objective\" placeholder=\"Qué quieres lograr\" type=\"text\">",
+      "css": ".ds-field-label{display:block;margin-bottom:8px;color:var(--ink,#0a0a0a);font:600 14px var(--body,Figtree,ui-sans-serif,system-ui,sans-serif);letter-spacing:-0.01em;}.ds-field{display:block;width:100%;border:1px solid var(--line-strong,#d4d4d4);border-radius:12px;padding:11px 14px;font:400 16px/1.4 var(--body,Figtree,ui-sans-serif,system-ui,sans-serif);letter-spacing:-0.01em;color:var(--ink,#0a0a0a);background:var(--field-bg,#fff);transition:border-color 0.15s,box-shadow 0.15s;}.ds-field::placeholder{color:var(--faint,#767676);}.ds-field:hover{border-color:#b5b5b5;}.ds-field:focus,.ds-field:focus-visible{outline:none;border-color:var(--primary,#14c4b4);box-shadow:0 0 0 4px var(--brand-ring,rgba(20,196,180,0.3));}"
+    },
+    {
+      "name": "Sidebar navigation",
+      "kind": "nav",
+      "refersTo": "sidebar-item",
+      "description": "A tool group and its selected destination, using the existing navigation tokens.",
+      "html": "<nav class=\"ds-sidebar\" aria-label=\"Herramientas\"><a class=\"ds-sidebar-row\" href=\"#inicio\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" aria-hidden=\"true\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"1\"/></svg>Inicio</a><a class=\"ds-sidebar-sub\" href=\"#matya\" aria-current=\"page\">Centro MATYA</a><a class=\"ds-sidebar-sub\" href=\"#herramientas\">Herramientas y diagnóstico</a></nav>",
+      "css": ".ds-sidebar{display:flex;flex-direction:column;gap:2px;max-width:268px;font-family:var(--body,Figtree,ui-sans-serif,system-ui,sans-serif);}.ds-sidebar-row,.ds-sidebar-sub{display:flex;align-items:center;gap:10px;border-radius:10px;color:var(--nav-ink,#333);text-decoration:none;font-size:14px;font-weight:400;line-height:1.25;letter-spacing:-0.01em;transition:background 0.15s,color 0.15s;}.ds-sidebar-row{min-height:38px;padding:0 10px 0 12px;}.ds-sidebar-sub{min-height:34px;padding:4px 12px;margin-left:14px;}.ds-sidebar-row:hover,.ds-sidebar-sub:hover{background:var(--nav-hover-bg,#f5f5f5);color:var(--nav-strong,#0a0a0a);}.ds-sidebar-sub[aria-current]{background:var(--nav-active-bg,#e3faf7);color:var(--nav-active-ink,#0b6e66);font-weight:600;}.ds-sidebar a:focus-visible{outline:2px solid var(--focus,#0b6e66);outline-offset:2px;}"
+    },
+    {
+      "name": "Status pill",
+      "kind": "chip",
+      "refersTo": "status-pill",
+      "description": "A text label with a reinforcing dot; the state is readable without color.",
+      "html": "<span class=\"ds-status\">En cola</span><span class=\"ds-status ds-status-good\">Completado</span>",
+      "css": ".ds-status{display:inline-flex;align-items:center;gap:6px;font:600 12px/1.4 var(--body,Figtree,ui-sans-serif,system-ui,sans-serif);border-radius:var(--pill,980px);padding:3px 10px;white-space:nowrap;background:var(--neutral-bg,#f2f2f2);color:var(--neutral-text,#5f5f5f);letter-spacing:0;}.ds-status::before{content:\"\";width:6px;height:6px;border-radius:3px;background:currentColor;opacity:0.8;}.ds-status-good{background:var(--ok-bg,#e5f6ea);color:var(--ok-text,#17702f);}"
+    },
+    {
+      "name": "Shared card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "The incumbent flat container for a related group of content.",
+      "html": "<section class=\"ds-card\"><h2 class=\"ds-card-title\">Resultados</h2><p class=\"ds-card-copy\">Consulta los resultados de tu negocio.</p><a class=\"ds-card-link\" href=\"#resultados\">Ver resultados</a></section>",
+      "css": ".ds-card{background:var(--surface,#fff);border:1px solid var(--card-line,#e8e8e8);border-radius:var(--radius,20px);padding:28px;display:flex;flex-direction:column;gap:16px;box-shadow:var(--shadow,none);min-width:0;color:var(--ink,#0a0a0a);font-family:var(--body,Figtree,ui-sans-serif,system-ui,sans-serif);}.ds-card-title{margin:0;font-family:var(--display,Figtree,ui-sans-serif,system-ui,sans-serif);font-size:var(--fs-card,19px);font-weight:700;line-height:1.25;letter-spacing:-0.02em;}.ds-card-copy{margin:0;font-size:16px;line-height:1.47;color:var(--muted,#666);}.ds-card-link{color:var(--link,#0b6e66);font-size:14px;text-decoration:none;}.ds-card-link:hover{text-decoration:underline;text-underline-offset:3px;}.ds-card-link:focus-visible{outline:2px solid var(--focus,#0b6e66);outline-offset:2px;}@media(max-width:640px){.ds-card{padding:20px;border-radius:18px;}}"
+    },
+    {
+      "name": "MATYA section navigation",
+      "kind": "nav",
+      "refersTo": "matya-tabs",
+      "description": "Horizontally scrollable section buttons with an explicit current section.",
+      "html": "<nav class=\"ds-matya-tabs\" aria-label=\"Centro MATYA\"><button type=\"button\" aria-current=\"page\">Conversación</button><button type=\"button\">Conocimiento</button><button type=\"button\">Noticias</button><button type=\"button\">Resultados</button><button type=\"button\">Configuración</button></nav>",
+      "css": ".ds-matya-tabs{display:flex;gap:24px;border-bottom:1px solid var(--line,#e8e8e8);overflow-x:auto;font-family:var(--body,Figtree,ui-sans-serif,system-ui,sans-serif);}.ds-matya-tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:none;color:var(--muted,#666);padding:13px 0;font:600 14px var(--body,Figtree,ui-sans-serif,system-ui,sans-serif);white-space:nowrap;cursor:pointer;min-height:44px;}.ds-matya-tabs button:hover{background:none;}.ds-matya-tabs button[aria-current]{color:var(--ink,#0a0a0a);border-bottom-color:var(--agent-accent,#087f75);}.ds-matya-tabs button:focus-visible{outline:2px solid var(--agent-accent,#087f75);outline-offset:4px;}@media(max-width:560px){.ds-matya-tabs{gap:22px;}.ds-matya-tabs button{font-size:13px;}}"
+    },
+    {
+      "name": "Voice control",
+      "kind": "button",
+      "refersTo": "voice-button",
+      "description": "A compact bordered control; the pressed style accompanies the listening label.",
+      "html": "<button type=\"button\" class=\"ds-voice\" aria-pressed=\"false\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"9\" y=\"3\" width=\"6\" height=\"12\" rx=\"3\"/><path d=\"M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-3 0h6\"/></svg>Hablar</button>",
+      "css": ".ds-voice{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:8px 12px;background:none;font:400 13px var(--body,Figtree,ui-sans-serif,system-ui,sans-serif);color:var(--ink,#0a0a0a);cursor:pointer;min-height:40px;border:1px solid var(--line,#e8e8e8);border-radius:8px;}.ds-voice:hover{background:none;}.ds-voice[aria-pressed=\"true\"]{background:var(--agent-tint,#e8f7f4);color:var(--agent-accent,#087f75);}.ds-voice:focus-visible{outline:2px solid var(--agent-accent,#087f75);outline-offset:4px;}.ds-voice:disabled{cursor:wait;opacity:0.55;}@media(max-width:560px){.ds-voice{padding:8px;}}"
+    },
+    {
+      "name": "Task disclosure",
+      "kind": "custom",
+      "refersTo": "task-disclosure",
+      "description": "A native disclosure that reveals specialist steps and wraps output.",
+      "html": "<details class=\"ds-task\"><summary class=\"ds-task-summary\"><span class=\"ds-task-title\">Revisar noticias de la industria</span><span class=\"ds-task-status\">En cola</span></summary><p class=\"ds-task-output\">Los pasos y resultados aparecerán cuando avance el encargo.</p></details>",
+      "css": ".ds-task{border-top:1px solid var(--line,#e8e8e8);padding:14px 0;color:var(--ink,#0a0a0a);font-family:var(--body,Figtree,ui-sans-serif,system-ui,sans-serif);}.ds-task-summary{cursor:pointer;list-style:none;}.ds-task-summary::-webkit-details-marker{display:none;}.ds-task-summary:hover{background:transparent;}.ds-task-summary:focus-visible{outline:2px solid var(--agent-accent,#087f75);outline-offset:4px;}.ds-task-title{display:block;font-size:14px;font-weight:500;line-height:1.45;overflow-wrap:anywhere;}.ds-task-status{display:inline-block;margin-top:6px;font-size:12px;color:var(--muted,#666);}.ds-task-status[data-status=\"completed\"],.ds-task-status[data-status=\"running\"]{color:var(--agent-accent,#087f75);}.ds-task-output{font-size:13px;line-height:1.6;overflow-wrap:anywhere;white-space:pre-wrap;margin:8px 0;}@media(max-width:950px){.ds-task{padding:18px 0;}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Clear Workspace",
+    "overview": "MATYA's application puts legible work, familiar controls and clear status ahead of decoration. Figtree unifies titles, navigation and body text. White space and fine neutral rules establish hierarchy; turquoise identifies actions and the current context. The north star is a descriptive name for the implemented system, not a newly selected identity.\n\nThe incumbent application is the visual authority. Centro MATYA extends it with compact conversation, task and settings patterns. The public website and its 3D agent are separate visual surfaces; this document does not redefine them. Spanish and English use the same flexible layouts and control hierarchy.",
+    "keyCharacteristics": [
+      "One Figtree family with weight and size carrying hierarchy.",
+      "Flat surfaces, fine rules and rounded functional containers.",
+      "Turquoise action fills paired with dark text; deeper teal for links and small accents.",
+      "Clear labels, visible focus and status communicated in words as well as color.",
+      "Responsive controls that retain business context and readable work output."
+    ],
+    "rules": [
+      {
+        "name": "The Readable Accent Rule",
+        "body": "Use dark text on the bright turquoise action fill; use the deeper link or scoped accent color for text on light surfaces.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Family Rule",
+        "body": "Keep Figtree for interface text; establish hierarchy through the existing size, weight and spacing roles.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Surface Rule",
+        "body": "Use the existing border and surface roles for resting containers; reserve stronger depth for overlays and explicit interactive state.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do use the shared CSS variables so new components inherit Claro, Noche and Vidrio.",
+      "Do keep Figtree and the existing compact control hierarchy across new app screens.",
+      "Do pair bright action fills with dark text and use deeper teal for readable links.",
+      "Do retain explicit labels, visible keyboard focus and nearby save/error feedback.",
+      "Do let long content wrap and collapse field groups at the observed mobile breakpoints.",
+      "Do connect task status and motion to actual reported state."
+    ],
+    "donts": [
+      "Don't replace the incumbent application identity with the public website's visual treatment.",
+      "Don't use bright turquoise as small body text on white.",
+      "Don't add ambient shadows to ordinary Claro or Noche cards.",
+      "Don't make status depend on color, an icon or animation alone.",
+      "Don't make every task or source row a new outer card when the implemented list pattern applies.",
+      "Don't present a simulated result, empty history or pending action as completed work."
+    ]
+  }
+}

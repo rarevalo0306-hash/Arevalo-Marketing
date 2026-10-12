@@ -15,7 +15,7 @@ export async function ApprovalBand({ items }: { items: ApprovalItem[] }) {
     <section className={s.band} aria-labelledby="dash-approve">
       <div className={s.bandHead}>
         <h2 id="dash-approve">{t("Listo para tu aprobación", "Ready for your approval")}</h2>
-        <span className={s.bandHint}>{t("Nada se publica sin tu clic", "Nothing goes out without your click")}</span>
+        <span className={s.bandHint}>{t("Estas tareas esperan tu revisión", "These tasks await your review")}</span>
       </div>
       <ul className={s.bandCards}>
         {items.map((x) => (

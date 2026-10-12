@@ -54,7 +54,7 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
   const setupShown = dataForSeoEnabled();
   const needsSetup =
     setupShown && (readTrackedKeywords(b.seoKeywords).length === 0 || readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName).length === 0);
-  const saved = needsSetup ? (await setupState(id)).proposal : null;
+  const saved = seoTabFrom(tab, mapa) === "resumen" && needsSetup ? (await setupState(id)).proposal : null;
   // «Arréglalo por mí»: si la web está conectada y el último arreglo (lo comparten los botones y el panel de revisión).
   const webfix = await loadWebFixState(id);
   // Las mismas pestañas y el mismo orden que el menú (SEO_TAB_IDS); ?mapa= abre «Local».
@@ -175,7 +175,9 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
         )}
       />
       <WebFixProvider businessId={id} connected={webfix.connected} repo={webfix.repo} fileBudget={webfix.fileBudget} aiReady={webfix.aiReady} initialJob={webfix.job}>
-        <SeoTabs tabs={tabs} initial={initial} />
+        <SeoTabs tabs={tabs.map(({ id, label, hint }) => ({ id, label, hint }))} initial={initial}>
+          {tabs.find((item) => item.id === initial)?.content}
+        </SeoTabs>
       </WebFixProvider>
     </>
   );

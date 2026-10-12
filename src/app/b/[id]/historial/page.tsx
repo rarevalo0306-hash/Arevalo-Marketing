@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import type { UiLang } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { explainFailure, explainSent, viewLabel } from "@/lib/publish-errors";
+import { businessTz } from "@/lib/business-tz";
 import { businessTzLabel, fmtWhen } from "@/lib/time";
 import s from "./historial.module.css";
 import { RetryButton } from "./RetryButton";
@@ -41,8 +42,9 @@ export default async function HistorialPage({
   const { nuevo, ver } = await searchParams;
   const filter: Filter = FILTERS.includes(ver as Filter) ? (ver as Filter) : "todas";
   const { lang, t } = await getT();
-  const when = (d: Date) => fmtWhen(d, lang);
   const b = await db.business.findUniqueOrThrow({ where: { id }, include: { connections: { select: { channel: true, updatedAt: true } } } });
+  const tz = businessTz(b);
+  const when = (d: Date) => fmtWhen(d, lang, new Date(), tz);
   const [posts, counts, reconnect] = await Promise.all([
     db.post.findMany({ where: filterWhere(filter, id), include: { targets: true }, orderBy: { createdAt: "desc" }, take: 50 }),
     Promise.all(FILTERS.map((f) => db.post.count({ where: filterWhere(f, id) }))),
@@ -65,8 +67,8 @@ export default async function HistorialPage({
         prefix={t("Historial de", "History for")}
         title={t("Historial", "History")}
         subtitle={t(
-          `Todo lo que has publicado o programado, y cómo le fue en cada canal. Las horas están en ${businessTzLabel("es")}.`,
-          `Everything you've posted or scheduled, and how it did on each channel. Times are in ${businessTzLabel("en")}.`,
+          `Todo lo que has publicado o programado, y cómo le fue en cada canal. Las horas están en ${businessTzLabel("es", tz)}.`,
+          `Everything you've posted or scheduled, and how it did on each channel. Times are in ${businessTzLabel("en", tz)}.`,
         )}
         aside={
           <Link className="btn outline" href={`/b/${id}/publicar`}>

@@ -10,3 +10,5 @@ prisma/*.db
 prisma/*.db-journal
 public/uploads/
 .DS_Store
+supabase/.temp/
+.impeccable/review/*.png

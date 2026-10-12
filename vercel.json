@@ -1,3 +1,4 @@
 {
+  "git": { "deploymentEnabled": { "codex/matya-agent-platform": false } },
   "crons": [{ "path": "/api/cron", "schedule": "0 13 * * *" }]
 }

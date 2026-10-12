@@ -49,6 +49,7 @@ export default async function InicioPage({ params, searchParams }: { params: Pro
 
   return (
     <>
+      <section className="card" style={{ marginBottom: 24 }}><h2>MATYA</h2><p>{t("Tu conversación, especialistas y noticias de la industria en un solo lugar.", "Your conversation, specialists and industry news in one place.")}</p><Link className="btn on" href={`/b/${id}/matya`}>{t("Abrir centro MATYA", "Open MATYA workspace")}</Link></section>
       <header className={s.top}>
         <div className={s.topRow}>
           <div className={s.who}>
@@ -58,10 +59,10 @@ export default async function InicioPage({ params, searchParams }: { params: Pro
             </h1>
             <p className={s.lead}>
               {n === 0
-                ? t("Todo al día.", "All caught up.")
+                ? t("No hay aprobaciones pendientes.", "No approvals pending.")
                 : n === 1
-                  ? t("La IA dejó 1 cosa lista. Tú solo apruebas.", "The AI left 1 thing ready. You just approve.")
-                  : t(`La IA dejó ${n} cosas listas. Tú solo apruebas.`, `The AI left ${n} things ready. You just approve.`)}
+                  ? t("La IA dejó 1 cosa lista. Revisa los detalles.", "The AI left 1 thing ready. Review the details.")
+                  : t(`La IA dejó ${n} cosas listas. Revisa los detalles.`, `The AI left ${n} things ready. Review the details.`)}
             </p>
             <p className={s.meta}>
               {/* El nombre del negocio, si el saludo usa el nombre del dueño */}

@@ -25,6 +25,16 @@ export async function GET(req: Request) {
     const { t } = await getT();
     return new Response(t("No autorizado", "Unauthorized"), { status: 401 });
   }
+  // Dedicated agent worker shares the exact authenticated route allowed by the
+  // security gate. It must not trigger the legacy paid jobs on every 30s tick.
+  if (new URL(req.url).searchParams.get('agent') === '1') {
+    try {
+      const { runAgentCycle } = await import('@/lib/agent/service');
+      return Response.json(await runAgentCycle(), { headers: { 'Cache-Control': 'no-store' } });
+    } catch {
+      return Response.json({ error: 'Agent cycle failed' }, { status: 500 });
+    }
+  }
   const published = await publishDue();
   // Posiciones en Google: como mucho UN negocio por llamada, después de responder (no retrasa ni rompe lo de publicar).
   after(async () => {
