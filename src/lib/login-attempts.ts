@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { LOGIN_LOCK_SECONDS, LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW_SECONDS } from "@/lib/login-limit";
+import { LOGIN_ATTEMPT_KEEP_MS, LOGIN_LOCK_SECONDS, LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW_SECONDS } from "@/lib/login-limit";
 
 const WINDOW = Prisma.raw(`interval '${LOGIN_WINDOW_SECONDS} seconds'`);
 const LOCK = Prisma.raw(`interval '${LOGIN_LOCK_SECONDS} seconds'`);
@@ -35,4 +35,10 @@ export async function countLoginAttempt(key: string): Promise<number> {
 /** Entró bien: esa dirección vuelve a tener todos sus intentos. */
 export async function clearLoginAttempts(key: string): Promise<void> {
   await db.loginAttempt.deleteMany({ where: { key } });
+}
+
+/** Borra las cuentas viejas (de direcciones que nunca entraron bien). Lo llama el cron diario. */
+export async function pruneLoginAttempts(now = new Date()): Promise<number> {
+  const { count } = await db.loginAttempt.deleteMany({ where: { updatedAt: { lt: new Date(now.getTime() - LOGIN_ATTEMPT_KEEP_MS) } } });
+  return count;
 }

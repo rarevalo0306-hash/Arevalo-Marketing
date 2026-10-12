@@ -25,3 +25,16 @@ export function attemptKey(ip: string, secret = process.env.APP_SECRET ?? ""): s
 
 /** Minutos que se muestran al bloqueado (al menos 1). */
 export const waitMinutes = (seconds: number) => Math.max(1, Math.ceil(seconds / 60));
+
+/**
+ * ¿El error es que la tabla LoginAttempt todavía no existe (el SQL aún no se corrió)? Solo en ese caso se entra sin
+ * límite. Con cualquier otro error de la base (sin conexiones, solo lectura…) no se revisa la contraseña.
+ * Prisma: P2010 con el código de Postgres 42P01 (consulta directa) o P2021 (tabla que no existe).
+ */
+export function missingTable(e: unknown): boolean {
+  const err = e as { code?: unknown; meta?: { code?: unknown } } | null;
+  return err?.code === "P2021" || (err?.code === "P2010" && err.meta?.code === "42P01");
+}
+
+/** Filas más viejas que esto ya no tienen ni ventana ni bloqueo vigente: el cron diario las borra. */
+export const LOGIN_ATTEMPT_KEEP_MS = 24 * 60 * 60 * 1000;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { attemptKey, clientIp, LOGIN_LOCK_SECONDS, LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW_SECONDS, waitMinutes } from "@/lib/login-limit";
+import { attemptKey, clientIp, LOGIN_LOCK_SECONDS, LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW_SECONDS, missingTable, waitMinutes } from "@/lib/login-limit";
 
 const bag = (h: Record<string, string>) => ({ get: (n: string) => h[n] ?? null });
 
@@ -30,5 +30,16 @@ describe("login limit", () => {
     expect(waitMinutes(60)).toBe(1);
     expect(waitMinutes(61)).toBe(2);
     expect(waitMinutes(900)).toBe(15);
+  });
+});
+
+describe("login limit when the database fails", () => {
+  it("logs in without the limit only while the table doesn't exist yet", () => {
+    expect(missingTable({ code: "P2010", meta: { code: "42P01" } })).toBe(true);
+    expect(missingTable({ code: "P2021" })).toBe(true);
+    expect(missingTable({ code: "P2024" })).toBe(false);
+    expect(missingTable({ code: "P2010", meta: { code: "25006" } })).toBe(false);
+    expect(missingTable(new Error("boom"))).toBe(false);
+    expect(missingTable(null)).toBe(false);
   });
 });

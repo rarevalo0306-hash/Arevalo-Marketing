@@ -12,7 +12,7 @@ import { decryptJson, encryptJson } from "@/lib/crypto";
 import { normalizePhone, parseContactsCsv } from "@/lib/contacts";
 import { db } from "@/lib/db";
 import { clearLoginAttempts, countLoginAttempt } from "@/lib/login-attempts";
-import { attemptKey, clientIp, waitMinutes } from "@/lib/login-limit";
+import { attemptKey, clientIp, missingTable, waitMinutes } from "@/lib/login-limit";
 import { startVideo, videoEnabled, videoResult, type Shape, type VideoJob } from "@/lib/fal";
 import { DESIGN_SHAPES, type Brand, type DesignShape } from "@/lib/design";
 import { BUILTIN_TEMPLATES, FONTS, hexOr, pickTemplate, StoredTemplate } from "@/lib/design-shapes";
@@ -29,7 +29,7 @@ import { getT } from "@/lib/i18n-server";
 import { listPages, META_COOKIE, saveMetaPage } from "@/lib/meta-oauth";
 import { publishPost, retryPost } from "@/lib/publish";
 import { PUBLISHERS } from "@/lib/publishers";
-import { safeEqual, SESSION_COOKIE, sessionToken } from "@/lib/session";
+import { safeEqual, SESSION_COOKIE, sessionCookieOptions, sessionToken } from "@/lib/session";
 import { stormEvent, stormSchedule } from "@/lib/storm";
 import { businessDay, localToUtc } from "@/lib/time";
 
@@ -60,13 +60,14 @@ export async function login(_: string | null, f: FormData): Promise<string | nul
   const expected = process.env.APP_PASSWORD?.trim();
   if (!expected) return t("Falta APP_PASSWORD en el archivo .env del servidor.", "APP_PASSWORD is missing from the server's .env file.");
   // Límite de intentos (src/lib/login-limit.ts): se cuenta antes de revisar la contraseña. Si la tabla aún no existe,
-  // se entra sin límite antes que dejar a todos fuera.
+  // se entra sin límite antes que dejar a todos fuera; con otro error de la base no se revisa la contraseña.
   const attempt = attemptKey(clientIp(await headers()));
   let wait = 0;
   try {
     wait = await countLoginAttempt(attempt);
   } catch (e) {
     console.error("login limit unavailable:", e instanceof Error ? e.message : e);
+    if (!missingTable(e)) return t("No se pudo comprobar ahora. Prueba de nuevo en un momento.", "Couldn't check right now. Try again in a moment.");
   }
   if (wait > 0) {
     const m = waitMinutes(wait);
@@ -74,13 +75,7 @@ export async function login(_: string | null, f: FormData): Promise<string | nul
   }
   if (!safeEqual(str(f, "password"), expected)) return t("Contraseña incorrecta.", "Wrong password.");
   await clearLoginAttempts(attempt).catch(() => {});
-  (await cookies()).set(SESSION_COOKIE, await sessionToken(), {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 30,
-  });
+  (await cookies()).set(SESSION_COOKIE, await sessionToken(), sessionCookieOptions());
   redirect("/");
 }
 

@@ -255,4 +255,8 @@ CREATE TABLE IF NOT EXISTS "LoginAttempt" (
 ALTER TABLE "LoginAttempt" ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON "LoginAttempt" FROM anon, authenticated;
 -- La función que activa la protección en las tablas nuevas no debe poder llamarse desde fuera (aviso de Supabase).
-REVOKE EXECUTE ON FUNCTION public.rls_auto_enable() FROM PUBLIC, anon, authenticated;
+DO $$ BEGIN
+  IF to_regprocedure('public.rls_auto_enable()') IS NOT NULL THEN
+    REVOKE EXECUTE ON FUNCTION public.rls_auto_enable() FROM PUBLIC, anon, authenticated;
+  END IF;
+END $$;
