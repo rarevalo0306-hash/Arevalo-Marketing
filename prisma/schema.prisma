@@ -538,3 +538,13 @@ model AgentNews {
   @@unique([businessId, canonicalUrl])
   @@index([businessId, eventKey])
 }
+
+/// Intentos de entrar por dirección, para el límite de src/lib/login-limit.ts. key es una huella (HMAC) de la IP,
+/// no la IP. failures cuenta los intentos de la ventana actual; lockedUntil es hasta cuándo esa dirección no puede probar.
+model LoginAttempt {
+  key         String    @id
+  failures    Int       @default(0)
+  firstAt     DateTime  @default(now())
+  lockedUntil DateTime?
+  updatedAt   DateTime  @default(now())
+}

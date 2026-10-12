@@ -4,6 +4,7 @@ import { runCampaigns } from "@/lib/campaign-engine";
 import { runDailyReports } from "@/lib/daily-report";
 import { getT } from "@/lib/i18n-server";
 import { runDueDriveSync, runDueUploadAnalysis } from "@/lib/library-sync";
+import { pruneLoginAttempts } from "@/lib/login-attempts";
 import { syncPostMetrics } from "@/lib/post-metrics";
 import { runProposals } from "@/lib/proposals";
 import { publishDue } from "@/lib/publish";
@@ -108,6 +109,13 @@ export async function GET(req: Request) {
       if (up) console.log("[subir] revisión automática:", up.businessId, JSON.stringify(up.result));
     } catch (e) {
       console.error("[subir] error en la revisión automática:", e instanceof Error ? e.message : e);
+    }
+    // Intentos de entrar de más de un día: ya no bloquean nada.
+    try {
+      const pruned = await pruneLoginAttempts(new Date());
+      if (pruned) console.log("[entrar] intentos viejos borrados:", pruned);
+    } catch (e) {
+      console.error("[entrar] error al borrar intentos viejos:", e instanceof Error ? e.message : e);
     }
   });
   return Response.json({ published });
