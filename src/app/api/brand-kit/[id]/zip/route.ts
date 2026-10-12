@@ -1,12 +1,11 @@
-import { cookies } from "next/headers";
 import { zipSync, strToU8 } from "fflate";
-import { attachment, kitItems, sessionOk } from "@/app/api/brand-kit/access";
+import { attachment, kitItems } from "@/app/api/brand-kit/access";
+import { businessAccess } from "@/lib/auth";
 import { hostOf, kitGroup, pool, signatureHtml, zipEntries } from "@/lib/brand-kit-formats";
 import { db } from "@/lib/db";
 import { asLang, translator } from "@/lib/i18n";
 import { uiLang } from "@/lib/i18n-server";
 import { publicMediaUrl, readMedia } from "@/lib/media";
-import { SESSION_COOKIE, sessionToken } from "@/lib/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,8 +17,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const u = new URL(req.url).searchParams;
   const lang = u.has("lang") ? asLang(u.get("lang")) : await uiLang();
   const t = translator(lang);
-  const cookie = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (!sessionOk(cookie, await sessionToken(), process.env.APP_PASSWORD)) return new Response(t("No autorizado", "Unauthorized"), { status: 401 });
+  const access = await businessAccess(id, "view");
+  if (!access.ok) return new Response(access.status === 401 ? t("No autorizado", "Unauthorized") : access.status === 403 ? t("Tu papel no permite esto", "Your role doesn't allow this") : t("No encontrado", "Not found"), { status: access.status });
   const b = await db.business.findUnique({ where: { id }, select: { name: true, color: true, phone: true, website: true, brandAssets: true } });
   if (!b) return new Response(t("No encontrado", "Not found"), { status: 404 });
   const items = kitItems(b.brandAssets);

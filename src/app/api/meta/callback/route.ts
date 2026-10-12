@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { saveAdsConnection } from "@/lib/ads";
+import { businessAccess } from "@/lib/auth";
 import { encryptJson } from "@/lib/crypto";
-import { db } from "@/lib/db";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { exchangeCode, listPages, META_COOKIE, metaStatePurpose, readState, saveMetaPage } from "@/lib/meta-oauth";
@@ -19,8 +19,13 @@ export async function GET(req: Request) {
   const { lang, t } = await getT();
   const state = readState(url.searchParams.get("state") ?? "");
   const { purpose, businessId } = metaStatePurpose(state ?? "");
-  if (!state || !businessId || !(await db.business.findUnique({ where: { id: businessId }, select: { id: true } })))
+  // El estado firmado no dice quién empezó: antes de cambiar el código por el permiso se revisa que quien vuelve sea
+  // Administrador de ese negocio (src/lib/auth.ts). Sin acceso se responde igual que con un negocio que no existe.
+  const access = state && businessId ? await businessAccess(businessId, "admin") : null;
+  if (!access || (!access.ok && access.status === 404))
     return new Response(t("El enlace de conexión venció o no es válido. Vuelve a intentarlo desde Conexiones.", "The connection link expired or isn't valid. Try again from Connections."), { status: 400 });
+  if (!access.ok)
+    return new Response(access.status === 401 ? t("No autorizado", "Unauthorized") : t("Tu papel en esta empresa no permite hacer esto.", "Your role in this business doesn't allow this."), { status: access.status });
 
   if (purpose === "ads") return adsCallback(url, businessId);
 

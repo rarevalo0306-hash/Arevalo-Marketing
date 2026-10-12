@@ -1,3 +1,4 @@
+import { businessAccess } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { DESIGN_SHAPES, renderDesign, samplePhoto, type DesignShape } from "@/lib/design";
 import { BUILTIN_TEMPLATES, StoredTemplate } from "@/lib/design-shapes";
@@ -38,6 +39,13 @@ export async function GET(req: Request) {
   const s = u.searchParams.get("s") ?? "square";
   const shape: DesignShape = s in DESIGN_SHAPES ? (s as DesignShape) : "square";
   const { lang, t } = await getT();
+  // Solo quien entra a este negocio (src/lib/auth.ts); es una vista previa: no gasta ni guarda nada.
+  const access = await businessAccess(businessId, "view");
+  if (!access.ok)
+    return new Response(
+      access.status === 401 ? t("No autorizado", "Unauthorized") : access.status === 403 ? t("Tu papel en esta empresa no permite hacer esto.", "Your role in this business doesn't allow this.") : t("Negocio no encontrado", "Business not found"),
+      { status: access.status },
+    );
   const b = await db.business.findUnique({ where: { id: businessId } });
   if (!b) return new Response(t("Negocio no encontrado", "Business not found"), { status: 404 });
   let spec: StoredTemplate | undefined;

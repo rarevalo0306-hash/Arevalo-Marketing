@@ -15,6 +15,7 @@ import { generateStudy, prefillStudy } from "@/app/actions-study";
 import { DIAGNOSIS_MAP, DIAGNOSIS_PRICES, type DiagnosisView, loadDiagnosis, loadFacts, loadState, STEP_KINDS, storeState } from "@/components/diagnosis/load";
 import { refreshActionPlan } from "@/lib/action-plan";
 import { researchProvider } from "@/lib/ai";
+import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import {
   canSpend,
@@ -32,6 +33,7 @@ import {
   stepDef,
   stepViews,
 } from "@/lib/diagnosis";
+import { ensure } from "@/lib/ensure";
 import { errorText, type T, type UiLang } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { readTrackedKeywords } from "@/lib/seo/dataforseo";
@@ -67,7 +69,10 @@ const busyStep = (state: DiagnosisState, now = Date.now()) =>
  * (USD) con «Sí, gastar ~US$X»; null = solo lo gratis. Nunca se gasta sin eso.
  */
 export async function startDiagnosis(businessId: string, opts: { redoAll?: boolean; only?: string[]; approve?: number | null } = {}): Promise<DiagnosisReply> {
+  ensure.text(businessId);
   const { t } = await getT();
+  // Empezar una corrida (y aprobar su gasto) es gastar: «Puede publicar» o más.
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: t("Negocio no encontrado.", "Business not found.") };
   const loaded = await loadFacts(businessId);
   if (!loaded) return { ok: false, error: t("Negocio no encontrado.", "Business not found.") };
   const { rowId, state } = await loadState(businessId);
@@ -85,6 +90,9 @@ export async function startDiagnosis(businessId: string, opts: { redoAll?: boole
 
 /** Lo que el dueño acepta gastar en lo que falta de la corrida (null = seguir solo con lo gratis). */
 export async function approveDiagnosisSpend(businessId: string, amount: number | null): Promise<DiagnosisReply> {
+  ensure.text(businessId); ensure.optionalNumber(amount);
+  const { t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: t("Negocio no encontrado.", "Business not found.") };
   const { rowId, state } = await loadState(businessId);
   if (state.run && !state.run.finishedAt) {
     state.run.approved = typeof amount === "number" && Number.isFinite(amount) && amount > 0 ? state.run.spent + Math.min(amount, 20) : null;
@@ -95,7 +103,9 @@ export async function approveDiagnosisSpend(businessId: string, amount: number |
 
 /** «Saltar por ahora»: el paso queda saltado y la corrida sigue con el siguiente. */
 export async function skipDiagnosisStep(businessId: string, step: string): Promise<DiagnosisReply> {
+  ensure.text(businessId, step);
   const { t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: t("Negocio no encontrado.", "Business not found.") };
   if (!isStepId(step)) return { ok: false, error: t("Ese paso no existe.", "That step doesn't exist.") };
   const { rowId, state } = await loadState(businessId);
   state.steps[step] = { status: "skipped", by: "owner", at: nowIso(), message: t("Lo saltaste por ahora.", "You skipped it for now."), cost: null };
@@ -106,6 +116,9 @@ export async function skipDiagnosisStep(businessId: string, step: string): Promi
 
 /** Corta la corrida (los pasos hechos quedan guardados; «Continuar» empieza otra con lo que falta). */
 export async function stopDiagnosis(businessId: string): Promise<DiagnosisReply> {
+  ensure.text(businessId);
+  const { t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: t("Negocio no encontrado.", "Business not found.") };
   const { rowId, state } = await loadState(businessId);
   if (state.run && !state.run.finishedAt) {
     state.run.finishedAt = nowIso();
@@ -290,7 +303,10 @@ async function actualCost(businessId: string, step: StepId, since: string, estim
  * termina, o se detiene en un paso que necesita al dueño o en un gasto que falta aprobar.
  */
 export async function diagnosisNext(businessId: string): Promise<DiagnosisReply> {
+  ensure.text(businessId);
   const { lang, t } = await getT();
+  // Cada paso usa servicios pagados o guarda datos traídos de afuera.
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: t("Negocio no encontrado.", "Business not found.") };
   const loaded = await loadFacts(businessId);
   if (!loaded) return { ok: false, error: t("Negocio no encontrado.", "Business not found.") };
   const { facts } = loaded;

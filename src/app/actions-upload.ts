@@ -2,11 +2,14 @@
 
 // Link de subida para los técnicos: crearlo, cambiarlo (el viejo deja de servir), quitarlo y revisar lo subido ahora.
 import { revalidatePath } from "next/cache";
+import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { errorText, type T } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { analyzeUploads, type UploadReviewResult } from "@/lib/library-sync";
 import { r2Enabled } from "@/lib/r2";
+import type { Need } from "@/lib/roles";
 import { newUploadToken } from "@/lib/upload";
 
 export type UploadLinkResult = { ok: boolean; message: string };
@@ -16,8 +19,9 @@ function refresh(businessId: string) {
   revalidatePath(`/b/${businessId}/conexiones`);
 }
 
-async function exists(businessId: string) {
-  return Boolean(await db.business.findUnique({ where: { id: businessId }, select: { id: true } }));
+// Primero el permiso (src/lib/auth.ts): sin acceso o con un papel corto, es como si el negocio no existiera.
+async function exists(businessId: string, need: Need) {
+  return hasBusiness(businessId, need);
 }
 
 const notReady = (t: T): UploadLinkResult => ({
@@ -30,8 +34,11 @@ const notReady = (t: T): UploadLinkResult => ({
 
 /** Crea el link (si ya hay uno, lo deja igual). */
 export async function createUploadLink(businessId: string): Promise<UploadLinkResult> {
+  ensure.text(businessId);
   const { t } = await getT();
   if (!r2Enabled()) return notReady(t);
+  // El link deja entrar a gente de afuera: solo el Administrador.
+  if (!(await exists(businessId, "admin"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { uploadToken: true } });
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   if (!b.uploadToken) await db.business.update({ where: { id: businessId }, data: { uploadToken: newUploadToken() } });
@@ -41,9 +48,10 @@ export async function createUploadLink(businessId: string): Promise<UploadLinkRe
 
 /** Link nuevo: el viejo deja de servir al instante. */
 export async function rotateUploadLink(businessId: string): Promise<UploadLinkResult> {
+  ensure.text(businessId);
   const { t } = await getT();
   if (!r2Enabled()) return notReady(t);
-  if (!(await exists(businessId))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  if (!(await exists(businessId, "admin"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   await db.business.update({ where: { id: businessId }, data: { uploadToken: newUploadToken() } });
   refresh(businessId);
   return {
@@ -54,8 +62,9 @@ export async function rotateUploadLink(businessId: string): Promise<UploadLinkRe
 
 /** Quita el link (las fotos ya subidas se quedan). */
 export async function removeUploadLink(businessId: string): Promise<UploadLinkResult> {
+  ensure.text(businessId);
   const { t } = await getT();
-  if (!(await exists(businessId))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  if (!(await exists(businessId, "admin"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   await db.business.update({ where: { id: businessId }, data: { uploadToken: "" } });
   refresh(businessId);
   return {
@@ -79,11 +88,12 @@ function uploadReviewMessage(r: UploadReviewResult, t: T): string {
 
 /** «Revisar ahora» de lo subido con el link. */
 export async function reviewUploadsNow(businessId: string, _prev: UploadLinkResult | null, _f: FormData): Promise<UploadLinkResult> {
+  ensure.text(businessId);
   void _prev;
   void _f;
   const { lang, t } = await getT();
   try {
-    if (!(await exists(businessId))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+    if (!(await exists(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
     const r = await analyzeUploads(businessId, { lang, limit: 24, budgetMs: 55_000 });
     refresh(businessId);
     return { ok: !r.stopped || r.stopped === "time", message: uploadReviewMessage(r, t) };

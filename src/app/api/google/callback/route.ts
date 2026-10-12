@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { businessAccess } from "@/lib/auth";
 import { encryptJson } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import { listGa4Properties, readGa4Connection, refreshGa4, writeGa4Connection } from "@/lib/ga4";
@@ -137,8 +138,13 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const { lang, t } = await getT();
   const { purpose, businessId } = googleStatePurpose(readState(url.searchParams.get("state") ?? "") ?? "");
-  if (!businessId || !(await db.business.findUnique({ where: { id: businessId }, select: { id: true } })))
+  // El estado firmado no dice quién empezó: antes de cambiar el código por el permiso se revisa que quien vuelve sea
+  // Administrador de ese negocio (src/lib/auth.ts). Sin acceso se responde igual que con un negocio que no existe.
+  const access = businessId ? await businessAccess(businessId, "admin") : null;
+  if (!access || (!access.ok && access.status === 404))
     return new Response(t("El enlace de conexión venció o no es válido. Vuelve a intentarlo desde Conexiones.", "The connection link expired or isn't valid. Try again from Connections."), { status: 400 });
+  if (!access.ok)
+    return new Response(access.status === 401 ? t("No autorizado", "Unauthorized") : t("Tu papel en esta empresa no permite hacer esto.", "Your role in this business doesn't allow this."), { status: access.status });
 
   if (purpose === "gsc") return searchConsole(url, businessId, lang, t);
   if (purpose === "ga4") return analytics(url, businessId, lang, t);

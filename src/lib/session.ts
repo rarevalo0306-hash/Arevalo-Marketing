@@ -1,6 +1,10 @@
-// Sesión simple con una contraseña. Funciona en Node y en el middleware (Web Crypto).
+// La sesión: una cookie firmada que dice qué persona entró. Funciona en Node y en el middleware (Web Crypto).
+// Forma: v2.<id de la persona>.<versión>.<vence (segundos)>.<firma HMAC-SHA256>. La firma usa APP_PASSWORD y APP_SECRET:
+// cambiar APP_PASSWORD saca a todos (nunca cambies APP_SECRET: cifra las conexiones). Para sacar a una sola persona se
+// quita su correo de LOGIN_EMAILS y se sube su User.sessionVersion (lo revisa src/lib/auth.ts, que sí ve la base).
 
 export const SESSION_COOKIE = "am_session";
+export const SESSION_DAYS = 30;
 
 /** La cookie de la sesión: solo la lee el servidor, dura 30 días. La ponen la contraseña y «Entrar con Google». */
 export const sessionCookieOptions = () => ({
@@ -8,17 +12,47 @@ export const sessionCookieOptions = () => ({
   sameSite: "lax" as const,
   secure: process.env.NODE_ENV === "production",
   path: "/",
-  maxAge: 60 * 60 * 24 * 30,
+  maxAge: 60 * 60 * 24 * SESSION_DAYS,
 });
 
-export async function sessionToken(): Promise<string> {
+export type Session = { userId: string; version: number; exp: number };
+
+const ID = /^[A-Za-z0-9_-]{1,64}$/;
+const enc = new TextEncoder();
+
+async function signingKey(): Promise<CryptoKey | null> {
   const password = process.env.APP_PASSWORD ?? "";
   const secret = process.env.APP_SECRET ?? "";
-  const bytes = new TextEncoder().encode(`arevalo-marketing:${password}:${secret}`);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  if (!password || !secret) return null;
+  return crypto.subtle.importKey("raw", enc.encode(`matya-session:v2:${password}:${secret}`), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+}
+
+async function sign(payload: string, key: CryptoKey): Promise<string> {
+  const bytes = new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(payload)));
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+const nowSec = () => Math.floor(Date.now() / 1000);
+
+/** La cookie para esta persona. Falla si falta APP_PASSWORD o APP_SECRET. */
+export async function createSession(userId: string, version: number, now = nowSec()): Promise<string> {
+  const key = await signingKey();
+  if (!key) throw new Error("APP_PASSWORD and APP_SECRET are required for sessions");
+  if (!ID.test(userId) || !Number.isSafeInteger(version) || version < 0) throw new Error("Invalid session data");
+  const payload = `v2.${userId}.${version}.${now + 60 * 60 * 24 * SESSION_DAYS}`;
+  return `${payload}.${await sign(payload, key)}`;
+}
+
+/** Quién dice la cookie que es, solo si la firma es nuestra y no venció. No revisa la base. */
+export async function readSession(cookie: string | undefined, now = nowSec()): Promise<Session | null> {
+  const parts = (cookie ?? "").split(".");
+  if (parts.length !== 5 || parts[0] !== "v2") return null;
+  const [, userId, version, exp, signature] = parts;
+  if (!ID.test(userId) || !/^\d{1,9}$/.test(version) || !/^\d{1,12}$/.test(exp)) return null;
+  const key = await signingKey();
+  if (!key || !safeEqual(signature, await sign(parts.slice(0, 4).join("."), key))) return null;
+  if (Number(exp) <= now) return null;
+  return { userId, version: Number(version), exp: Number(exp) };
 }
 
 /** Comparación en tiempo constante. */

@@ -3,6 +3,7 @@ import { AiLogFilters } from "@/components/ailog/AiLogFilters";
 import { AiLogTimeline, money } from "@/components/ailog/AiLogTimeline";
 import s from "@/components/ailog/ailog.module.css";
 import { PageHead } from "@/components/PageHead";
+import { pageBusiness } from "@/lib/auth";
 import { addDays } from "@/lib/campaign-shape";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
@@ -15,6 +16,7 @@ const SHOW = 300;
 
 export default async function RegistroPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { id } = await params;
+  await pageBusiness(id);
   const q = await searchParams;
   const { lang, t } = await getT();
   const b = await db.business.findUniqueOrThrow({ where: { id }, select: { id: true, name: true, color: true, timezone: true } });

@@ -7,12 +7,13 @@ import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { logAiAction } from "@/lib/ai-actions";
+import { hasBusiness } from "@/lib/auth";
 import { readEngine, readRules, rulesJson } from "@/lib/campaign-shape";
 import { db } from "@/lib/db";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { acceptProposal, proposeNow, rejectProposal, undoProposal } from "@/lib/proposals";
-import { isClosed } from "@/lib/proposals-shape";
+import { isClosed, readAction } from "@/lib/proposals-shape";
 
 export type ProposalActionState = { ok: boolean; message: string } | null;
 
@@ -31,9 +32,18 @@ const AFTER: Record<Done, string> = { aceptada: "aplicadas", rechazada: "nuevas"
 
 /** Hace la acción; si sale bien, vuelve a la lista donde quedó la propuesta (con un aviso), si no, devuelve el motivo. */
 async function run(f: FormData, done: Done, fn: (businessId: string, id: string) => Promise<{ ok: boolean; message: { es: string; en: string } }>): Promise<ProposalActionState> {
-  const { lang } = await getT();
+  const { lang, t } = await getT();
   const businessId = str(f, "businessId");
   const id = str(f, "proposalId");
+  // La propuesta se busca con ese businessId (acceptProposal/rejectProposal/undoProposal lo comparan).
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  // Cambiar los límites de una campaña 100% IA es del Administrador (igual que «Editar límites»), también por una propuesta.
+  if (done !== "rechazada" && !(await hasBusiness(businessId, "admin"))) {
+    const p = await db.aiProposal.findFirst({ where: { id, businessId }, select: { action: true } });
+    const a = p ? readAction(p.action) : null;
+    const c = a?.type === "campaign.update" ? await db.campaign.findFirst({ where: { id: a.campaignId, businessId }, select: { mode: true } }) : null;
+    if (c?.mode === "auto") return { ok: false, message: t("Solo un Administrador puede cambiar una campaña 100% IA.", "Only an Administrator can change a 100% AI campaign.") };
+  }
   let ok = false;
   try {
     const r = await fn(businessId, id);
@@ -63,9 +73,9 @@ export async function undoProposalAction(_prev: ProposalActionState, f: FormData
 export async function proposeNowAction(_prev: ProposalActionState, f: FormData): Promise<ProposalActionState> {
   const { lang, t } = await getT();
   const businessId = str(f, "businessId");
+  // Gasta en la IA y puede aplicar propuestas de bajo riesgo (si el Administrador lo permitió en la campaña).
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   try {
-    const b = await db.business.findUnique({ where: { id: businessId }, select: { id: true } });
-    if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
     const r = await proposeNow(businessId);
     refresh(businessId);
     if (r.tooSoon) return { ok: true, message: t("Ya se buscaron mejoras hace un momento. Prueba otra vez en unos minutos.", "Improvements were just checked. Try again in a few minutes.") };
@@ -89,6 +99,10 @@ export async function setAutoApplyAction(_prev: ProposalActionState, f: FormData
   const businessId = str(f, "businessId");
   const campaignId = str(f, "campaignId");
   const on = str(f, "on") === "1";
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  // Encenderlo deja que la IA actúe sola: solo un Administrador. Apagarlo puede quien publica.
+  if (on && !(await hasBusiness(businessId, "admin")))
+    return { ok: false, message: t("Solo un Administrador puede dejar que la IA aplique propuestas sola.", "Only an Administrator can let the AI apply proposals on its own.") };
   const res = await db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "Campaign" WHERE id = ${campaignId} FOR UPDATE`;
     const c = await tx.campaign.findFirst({ where: { id: campaignId, businessId }, select: { id: true, name: true, mode: true, status: true, rules: true } });

@@ -35,7 +35,7 @@ describe("sign in with Google", () => {
       client_id: "cid",
       redirect_uri: "https://app.matya.app/api/auth/google/callback",
       response_type: "code",
-      scope: "openid email",
+      scope: "openid email profile",
       state: "st",
       nonce: "no",
       prompt: "select_account",
@@ -60,8 +60,8 @@ describe("sign in with Google", () => {
   });
 
   it("lets in only a current Google token for this client, this attempt and an allowed verified email", () => {
-    expect(checkGoogleLogin(good, opts)).toEqual({ ok: true, email: "owner@gmail.com" });
-    expect(checkGoogleLogin({ ...good, iss: "accounts.google.com", aud: ["other", "cid"] }, opts)).toEqual({ ok: true, email: "owner@gmail.com" });
+    expect(checkGoogleLogin(good, opts)).toEqual({ ok: true, email: "owner@gmail.com", name: "" });
+    expect(checkGoogleLogin({ ...good, iss: "accounts.google.com", aud: ["other", "cid"] }, opts)).toEqual({ ok: true, email: "owner@gmail.com", name: "" });
     expect(checkGoogleLogin(null, opts)).toEqual({ ok: false, reason: "token" });
     expect(checkGoogleLogin({ ...good, iss: "https://evil.example" }, opts)).toEqual({ ok: false, reason: "token" });
     expect(checkGoogleLogin({ ...good, aud: "other" }, opts)).toEqual({ ok: false, reason: "token" });
@@ -75,7 +75,7 @@ describe("sign in with Google", () => {
   });
 
   it("trusts only addresses Google vouches for: Gmail, or a Google Workspace account", () => {
-    expect(checkGoogleLogin({ ...good, email: "ana@empresa.com", hd: "empresa.com" }, opts)).toEqual({ ok: true, email: "ana@empresa.com" });
+    expect(checkGoogleLogin({ ...good, email: "ana@empresa.com", hd: "empresa.com" }, opts)).toEqual({ ok: true, email: "ana@empresa.com", name: "" });
     expect(checkGoogleLogin({ ...good, email: "ex@otro.com" }, opts)).toEqual({ ok: false, reason: "notAllowed" });
     expect(checkGoogleLogin({ ...good, email: "ex@otro.com", hd: "" }, opts)).toEqual({ ok: false, reason: "notAllowed" });
   });

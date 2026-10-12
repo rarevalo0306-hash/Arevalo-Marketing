@@ -2,6 +2,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { chooseGoogleLocation } from "@/app/actions";
 import { PageHead } from "@/components/PageHead";
+import { pageBusiness } from "@/lib/auth";
 import { decryptJson } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
@@ -9,6 +10,8 @@ import { GOOGLE_COOKIE, type GoogleLocation } from "@/lib/google-oauth";
 
 export default async function ElegirUbicacionGoogle({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  // Solo un Administrador elige qué cuenta se conecta (src/lib/auth.ts).
+  await pageBusiness(id, "admin");
   const { t } = await getT();
   const b = await db.business.findUniqueOrThrow({ where: { id } });
   const raw = (await cookies()).get(GOOGLE_COOKIE)?.value;

@@ -2,7 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { runRankCheck } from "@/app/actions-seo-rank";
+import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { dataForSeoEnabled } from "@/lib/seo/dataforseo";
@@ -14,7 +16,10 @@ export type ProposalResult = { ok: true; proposal: SetupProposal; rejected: stri
 
 /** Prepara (o lee la guardada) la propuesta de zonas, idioma y palabras clave del negocio. Usa la IA, no DataForSEO. */
 export async function proposeSeoSetup(businessId: string, force = false): Promise<ProposalResult> {
-  const { lang } = await getT();
+  ensure.text(businessId); ensure.optionalFlag(force);
+  const { lang, t } = await getT();
+  // Puede llamar a la IA (gasta): hace falta poder publicar.
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: t("Negocio no encontrado", "Business not found") };
   try {
     const proposal = await buildProposal(businessId, { force });
     const { rejected } = await setupState(businessId);
@@ -28,12 +33,12 @@ export type MeasureResult = { ok: true; volumes: Record<string, number | null>; 
 
 /** Pregunta a Google Ads cuántas personas buscan cada palabra al mes en una zona (1 llamada, unos US$0.075). */
 export async function measureSeoKeywords(businessId: string, keywords: string[], zone: { code: number; name: string }, language: "es" | "en"): Promise<MeasureResult> {
+  ensure.text(businessId, language); ensure.texts(keywords);
   const { lang, t } = await getT();
   if (!dataForSeoEnabled()) return { ok: false, error: t("Falta conectar DataForSEO.", "DataForSEO isn't connected yet.") };
   const list = [...new Set(keywords.map(normKeyword).filter(Boolean))].slice(0, 40);
   if (!list.length || !Number.isInteger(zone.code) || zone.code <= 0) return { ok: false, error: t("Elige al menos una zona y una palabra.", "Pick at least one area and one keyword.") };
-  const exists = await db.business.findUnique({ where: { id: businessId }, select: { id: true } });
-  if (!exists) return { ok: false, error: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: t("Negocio no encontrado", "Business not found") };
   try {
     const report = await keywordReport({ keywords: list, seeds: [], locationCode: zone.code, locationName: zone.name, language: language === "en" ? "en" : "es", ideas: false });
     const volumes = new Map(report.keywords.map((r) => [normKeyword(r.keyword), r.volume]));
@@ -46,8 +51,8 @@ export async function measureSeoKeywords(businessId: string, keywords: string[],
 
 /** Recuerda las palabras que el dueño quitó, para no volver a sugerirlas. */
 export async function rejectSeoKeywords(businessId: string, keywords: string[]): Promise<void> {
-  const exists = await db.business.findUnique({ where: { id: businessId }, select: { id: true } });
-  if (exists) await rememberChoices(businessId, keywords.slice(0, 50), []);
+  ensure.text(businessId); ensure.texts(keywords);
+  if (await hasBusiness(businessId, "publish")) await rememberChoices(businessId, keywords.slice(0, 50), []);
 }
 
 export type AcceptResult = { ok: boolean; message: string; checked?: boolean } | null;
@@ -57,7 +62,10 @@ export type AcceptResult = { ok: boolean; message: string; checked?: boolean } |
  * revisión de posiciones (si se pidió). Si la revisión falla, lo elegido igual queda guardado.
  */
 export async function acceptSeoSetup(businessId: string, _prev: AcceptResult, f: FormData): Promise<AcceptResult> {
+  ensure.text(businessId);
   const { lang, t } = await getT();
+  // También cambia cada cuánto se revisan solas las posiciones (DataForSEO, pagado): solo el Administrador.
+  if (!(await hasBusiness(businessId, "admin"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { id: true, website: true } });
   if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   try {

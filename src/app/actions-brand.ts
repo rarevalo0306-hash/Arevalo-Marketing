@@ -1,7 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { getT } from "@/lib/i18n-server";
 
 /**
@@ -9,7 +11,9 @@ import { getT } from "@/lib/i18n-server";
  * y si el dueño salía de la página el logo se perdía y no aparecía en ningún lado.
  */
 export async function saveBrandLogo(businessId: string, field: "logoUrl" | "logoLightUrl", url: string): Promise<{ ok: boolean; message: string }> {
+  ensure.text(businessId, field, url);
   const { t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   if (field !== "logoUrl" && field !== "logoLightUrl") return { ok: false, message: t("Campo no válido.", "Invalid field.") };
   if (url !== "" && !/^https:\/\//.test(url)) return { ok: false, message: t("La dirección del logo no es válida.", "The logo address isn't valid.") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { id: true } });

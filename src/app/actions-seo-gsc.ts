@@ -3,31 +3,31 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { hasBusiness, requireBusiness } from "@/lib/auth";
 import { decryptJson } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import { disconnectGoogleData } from "@/lib/data-deletion";
+import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
+import type { Need } from "@/lib/roles";
 import { explainGscError, GSC_CHANNEL, GSC_COOKIE, saveGscSite, searchConsoleReport, tryFirstGscReport, type GscPending } from "@/lib/seo/gsc";
 import { saveReport } from "@/lib/seo/reports";
 
 export type GscResult = { ok: boolean; message: string } | null;
 
-async function ensureBusiness(id: string) {
-  const b = await db.business.findUnique({ where: { id }, select: { id: true } });
-  if (!b) {
-    const { t } = await getT();
-    throw new Error(t("Negocio no encontrado", "Business not found"));
-  }
+async function ensureBusiness(id: string, need: Need) {
+  await requireBusiness(id, need);
 }
 
 /** "Actualizar datos": trae los últimos 28 días de Search Console y los guarda. */
 export async function refreshSearchConsole(businessId: string, _prev: GscResult, _f: FormData): Promise<GscResult> {
+  ensure.text(businessId);
   void _prev;
   void _f;
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   try {
-    await ensureBusiness(businessId);
     const conn = await db.connection.findUnique({ where: { businessId_channel: { businessId, channel: GSC_CHANNEL } } });
     if (!conn) return { ok: false, message: t("Primero conecta Search Console.", "Connect Search Console first.") };
     const report = await searchConsoleReport(conn);
@@ -49,7 +49,8 @@ export async function refreshSearchConsole(businessId: string, _prev: GscResult,
 
 /** Después de "Conectar Search Console", cuando ningún sitio coincide con la página del negocio. */
 export async function chooseGscSite(businessId: string, siteUrl: string) {
-  await ensureBusiness(businessId);
+  ensure.text(businessId, siteUrl);
+  await ensureBusiness(businessId, "admin");
   const { t } = await getT();
   const jar = await cookies();
   const raw = jar.get(GSC_COOKIE)?.value;
@@ -70,6 +71,7 @@ export async function chooseGscSite(businessId: string, siteUrl: string) {
 
 /** Quita la conexión con Search Console (revoca Google y elimina el reporte guardado de esta conexión). */
 export async function disconnectSearchConsole(businessId: string) {
+  ensure.text(businessId);
   await disconnectGoogleData(businessId, GSC_CHANNEL);
   revalidatePath(`/b/${businessId}/seo`);
 }

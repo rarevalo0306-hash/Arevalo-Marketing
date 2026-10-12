@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { businessAccess } from "@/lib/auth";
 import { getT } from "@/lib/i18n-server";
 import { googleAuthUrl, googleEnabled } from "@/lib/google-oauth";
 
@@ -10,7 +10,12 @@ export async function GET(req: Request) {
   const businessId = new URL(req.url).searchParams.get("b") ?? "";
   const { t } = await getT();
   if (!googleEnabled()) return new Response(t("Falta configurar GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET.", "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET need to be set up."), { status: 503 });
-  const b = await db.business.findUnique({ where: { id: businessId }, select: { id: true } });
-  if (!b) return new Response(t("Negocio no encontrado", "Business not found"), { status: 404 });
-  return Response.redirect(googleAuthUrl(b.id, "youtube"), 302);
+  // Conectar cuentas es de un Administrador de este negocio (src/lib/auth.ts).
+  const access = await businessAccess(businessId, "admin");
+  if (!access.ok)
+    return new Response(
+      access.status === 401 ? t("No autorizado", "Unauthorized") : access.status === 403 ? t("Tu papel en esta empresa no permite hacer esto.", "Your role in this business doesn't allow this.") : t("Negocio no encontrado", "Business not found"),
+      { status: access.status },
+    );
+  return Response.redirect(googleAuthUrl(businessId, "youtube"), 302);
 }

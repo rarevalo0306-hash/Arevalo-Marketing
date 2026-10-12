@@ -1,7 +1,8 @@
-// «Entrar con Google»: otra forma de entrar a Matya, además de la contraseña. Solo entran los correos de LOGIN_EMAILS
-// (separados por coma), y solo de Gmail o Google Workspace. Da la misma sesión que la contraseña: quitar un correo de la
-// lista no saca a quien ya entró; para eso hay que cambiar APP_PASSWORD (nunca APP_SECRET, que cifra las conexiones). Usa el mismo cliente de Google que las conexiones, con su propia dirección de regreso
-// (/api/auth/google/callback), que debe estar en las "Authorized redirect URIs" del cliente en Google Cloud.
+// «Entrar con Google»: otra forma de entrar a Matya, además de la contraseña. Por ahora solo entran los dueños (LOGIN_EMAILS,
+// separados por coma; ver src/lib/accounts.ts), solo con correos de Gmail o Google Workspace. La sesión dice qué persona
+// entró (src/lib/session.ts). Usa el mismo cliente de Google que las conexiones,
+// con su propia dirección de regreso (/api/auth/google/callback), que debe estar en las "Authorized redirect URIs" del
+// cliente en Google Cloud.
 import { randomBytes } from "crypto";
 
 export const GOOGLE_LOGIN_COOKIE = "am_glogin";
@@ -41,8 +42,8 @@ export function googleLoginUrl(state: string, nonce: string): string {
     client_id: process.env.GOOGLE_CLIENT_ID ?? "",
     redirect_uri: googleLoginRedirectUri(),
     response_type: "code",
-    // Solo saber quién es: correo verificado. No pide permisos sobre la cuenta.
-    scope: "openid email",
+    // Solo saber quién es: correo verificado y nombre. No pide permisos sobre la cuenta.
+    scope: "openid email profile",
     state,
     nonce,
     prompt: "select_account",
@@ -62,13 +63,20 @@ export function idTokenClaims(idToken: string): Record<string, unknown> | null {
   }
 }
 
-export type LoginCheck = { ok: true; email: string } | { ok: false; reason: "token" | "notAllowed" };
+export type LoginCheck = { ok: true; email: string; name: string } | { ok: false; reason: "token" | "notAllowed" };
 
 /** Acepta solo un id_token de Google, para este cliente, vigente, de este intento y con un correo verificado y permitido. */
 export function checkGoogleLogin(
   claims: Record<string, unknown> | null,
   opts: { clientId: string; nonce: string; nowSec: number; allowed: string[] },
 ): LoginCheck {
+  const who = googleIdentity(claims, opts);
+  return who.ok && !opts.allowed.includes(who.email) ? { ok: false, reason: "notAllowed" } : who;
+}
+
+/** Quién es, sin mirar si tiene permiso: id_token de Google, para este cliente, vigente, de este intento y con correo
+ *  verificado de Gmail o Google Workspace. Si puede entrar lo decide src/lib/accounts.ts. */
+export function googleIdentity(claims: Record<string, unknown> | null, opts: { clientId: string; nonce: string; nowSec: number }): LoginCheck {
   if (!claims || !opts.clientId) return { ok: false, reason: "token" };
   const iss = claims.iss;
   if (iss !== "accounts.google.com" && iss !== "https://accounts.google.com") return { ok: false, reason: "token" };
@@ -81,6 +89,7 @@ export function checkGoogleLogin(
   // Google solo responde por correos de Gmail o de Google Workspace (hd). Otro correo puesto en una cuenta de Google
   // pudo cambiar de dueño desde que se verificó.
   const googleOwned = /@(gmail|googlemail)\.com$/.test(email) || (typeof claims.hd === "string" && claims.hd.length > 0);
-  if (!email || !googleOwned || !opts.allowed.includes(email)) return { ok: false, reason: "notAllowed" };
-  return { ok: true, email };
+  if (!email || !googleOwned) return { ok: false, reason: "notAllowed" };
+  const name = typeof claims.name === "string" ? claims.name.trim().slice(0, 120) : "";
+  return { ok: true, email, name };
 }

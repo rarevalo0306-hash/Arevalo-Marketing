@@ -12,6 +12,7 @@ import { SizesInfo } from "@/components/SizesInfo";
 import { TemplateUpload } from "@/components/TemplateUpload";
 import { TemplatesAuto } from "@/components/TemplatesAuto";
 import { aiEnabled } from "@/lib/ai";
+import { pageBusiness } from "@/lib/auth";
 import { readBrandAssets } from "@/lib/brand-assets";
 import { readBrandIdentity } from "@/lib/brand-identity-shape";
 import { db } from "@/lib/db";
@@ -45,6 +46,7 @@ const LAYOUT_LABEL: Record<UiLang, Record<(typeof LAYOUTS)[number], string>> = {
 
 export default async function MarcaPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  await pageBusiness(id);
   const { lang, t } = await getT();
   const b = await db.business.findUniqueOrThrow({ where: { id }, include: { templates: { orderBy: { createdAt: "asc" } } } });
   const own = b.templates.map((x) => ({ key: x.id, name: x.name, layout: (x.spec as { layout?: (typeof LAYOUTS)[number] }).layout, own: true, master: (x.spec as { custom?: { source?: string } }).custom?.source ?? "" }));

@@ -1,11 +1,5 @@
 // Descargas del kit de marca: quién puede bajar qué. Partes sin servidor para poder probarlas.
 import { readBrandAssets, type BrandAsset } from "@/lib/brand-assets";
-import { safeEqual } from "@/lib/session";
-
-/** Hay contraseña configurada y la cookie de la sesión es la correcta (lo mismo que revisa el middleware). */
-export function sessionOk(cookie: string | undefined, token: string, appPassword: string | undefined): boolean {
-  return Boolean(appPassword) && Boolean(cookie) && safeEqual(cookie ?? "", token);
-}
 
 /** La imagen pedida, solo si es de este negocio (está en su lista guardada). */
 export function ownAsset(raw: unknown, assetId: string): BrandAsset | null {

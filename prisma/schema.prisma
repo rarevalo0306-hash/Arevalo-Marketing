@@ -86,6 +86,9 @@ model Business {
   driveError      String   @default("")
   /// Link privado para que los técnicos suban fotos y videos sin entrar a la app (/subir/<token>). "" = sin link.
   uploadToken     String   @default("")
+  /// La organización dueña de este negocio en Matya. Solo sus miembros lo ven (src/lib/auth.ts).
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   createdAt   DateTime     @default(now())
   library     LibraryItem[]
   tasks       ActionTask[]
@@ -103,6 +106,8 @@ model Business {
   agentMessages AgentMessage[]
   agentBudgets AgentBudget[]
   agentNews AgentNews[]
+
+  @@index([organizationId])
 }
 
 /// Reportes de SEO de un negocio: auditoría del sitio, visibilidad en las IAs y Search Console.
@@ -547,4 +552,41 @@ model LoginAttempt {
   firstAt     DateTime  @default(now())
   lockedUntil DateTime?
   updatedAt   DateTime  @default(now())
+}
+
+/// Una persona que entra a Matya con su correo (contraseña o Google). email va en minúsculas.
+/// sessionVersion: al subirlo, sus sesiones abiertas dejan de valer (src/lib/session.ts).
+model User {
+  id             String       @id @default(cuid())
+  email          String       @unique
+  name           String       @default("")
+  sessionVersion Int          @default(0)
+  createdAt      DateTime     @default(now())
+  lastLoginAt    DateTime?
+  memberships    Membership[]
+}
+
+/// Quien contrata Matya: una persona (personal) o una agencia (agency). Cada negocio es de una organización.
+model Organization {
+  id         String       @id @default(cuid())
+  name       String
+  kind       String       @default("personal")
+  createdAt  DateTime     @default(now())
+  members    Membership[]
+  businesses Business[]
+}
+
+/// El papel de una persona en una organización: admin (Administrador), publisher (Puede publicar) o viewer (Solo ver).
+/// Ver src/lib/roles.ts.
+model Membership {
+  id             String       @id @default(cuid())
+  userId         String
+  organizationId String
+  role           String       @default("viewer")
+  createdAt      DateTime     @default(now())
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
 }

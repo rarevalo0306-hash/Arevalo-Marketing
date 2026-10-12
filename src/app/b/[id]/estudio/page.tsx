@@ -3,6 +3,7 @@ import { deleteStudy, generateStudy, prefillStudy, restoreStudy, saveStudyProfil
 import { PageHead } from "@/components/PageHead";
 import { StudyForm } from "@/components/StudyForm";
 import { aiEnabled, researchProvider, TEXT_PROVIDERS } from "@/lib/ai";
+import { pageBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
@@ -42,6 +43,7 @@ const PRIORITY: Record<string, [string, string, string]> = {
 
 export default async function EstudioPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ leer?: string }> }) {
   const { id } = await params;
+  await pageBusiness(id);
   const q = await searchParams;
   const b = await db.business.findUniqueOrThrow({ where: { id } });
   const { lang, t } = await getT();

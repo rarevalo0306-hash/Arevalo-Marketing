@@ -3,7 +3,9 @@
 import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { aiEnabled, pickText, suggestOnPageFix } from "@/lib/ai";
+import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { bi, errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { readAuditReport } from "@/lib/seo/audit";
@@ -100,9 +102,11 @@ async function keywordSignals(businessId: string, b: { name: string; seoKeywords
  * en Google (DataForSEO, unos US$0.002 por página) y guarda la lista de ideas como reporte "onpage".
  */
 export async function runOnPage(businessId: string, _prev: OnPageResult, f: FormData): Promise<OnPageResult> {
+  ensure.text(businessId);
   void _prev;
   const startedAt = Date.now();
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   const only = String(f.get("url") ?? "").trim();
   try {
     if (!dataForSeoEnabled())
@@ -200,7 +204,9 @@ export async function runOnPage(businessId: string, _prev: OnPageResult, f: Form
  * reporte con el cambio y deja esa página marcada para volver a revisarla; la próxima revisión la usa.
  */
 export async function setPageKeyword(businessId: string, url: string, keyword: string): Promise<{ ok: boolean; message: string }> {
+  ensure.text(businessId, url, keyword);
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   try {
     const latest = await latestOnPage(businessId);
     if (!latest || !latest.report.pages.some((p) => urlKey(p.url) === urlKey(url)))
@@ -223,9 +229,11 @@ export async function setPageKeyword(businessId: string, url: string, keyword: s
 
 /** La IA propone título SEO, descripción, H1 y subtítulos para una página, y se guardan en el último reporte. */
 export async function suggestPageFix(businessId: string, url: string, _prev: OnPageResult, _f: FormData): Promise<OnPageResult> {
+  ensure.text(businessId, url);
   void _prev;
   void _f;
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   try {
     if (!aiEnabled())
       throw bi("Falta la clave de la IA (GEMINI_API_KEY, ANTHROPIC_API_KEY u OPENAI_API_KEY) en Vercel.", "The AI key (GEMINI_API_KEY, ANTHROPIC_API_KEY or OPENAI_API_KEY) is missing in Vercel.");

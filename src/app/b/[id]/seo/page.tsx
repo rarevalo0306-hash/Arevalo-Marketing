@@ -29,6 +29,7 @@ import { DiagnosisBanner } from "@/components/diagnosis/DiagnosisBanner";
 import { ActionPlanSection } from "@/components/plan/ActionPlanSection";
 import { WebFixProvider } from "@/components/webfix/WebFixContext";
 import { WebFixReview } from "@/components/webfix/WebFixReview";
+import { pageBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
 import { dataForSeoEnabled, readTrackedKeywords, readZones } from "@/lib/seo/dataforseo";
@@ -42,6 +43,7 @@ export const maxDuration = 300;
 
 export default async function SeoPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ mapa?: string; tab?: string; competidor?: string }> }) {
   const { id } = await params;
+  await pageBusiness(id);
   const { mapa, tab, competidor: rawCompetidor } = await searchParams;
   // Desde el buscador del Tablero: el sitio del competidor llega escrito en el formulario de competencia.
   const competidor = (rawCompetidor ?? "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0].slice(0, 100) || undefined;

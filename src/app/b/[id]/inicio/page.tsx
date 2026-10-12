@@ -9,6 +9,7 @@ import { TodayList, TodayListSkeleton } from "@/components/dashboard/TodayList";
 import { ToolkitGrid, ToolkitGridSkeleton } from "@/components/dashboard/ToolkitGrid";
 import { loadApprovals } from "@/lib/approvals";
 import { approvalTotal } from "@/lib/approvals-shape";
+import { pageBusiness } from "@/lib/auth";
 import { businessTz } from "@/lib/business-tz";
 import { db } from "@/lib/db";
 import type { T, UiLang } from "@/lib/i18n";
@@ -34,6 +35,7 @@ function today(lang: UiLang, tz: string, now: Date): string {
  */
 export default async function InicioPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ q?: string | string[] }> }) {
   const { id } = await params;
+  await pageBusiness(id);
   const raw = (await searchParams).q;
   const q = (Array.isArray(raw) ? raw[0] : raw ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_Q);
   const { lang, t } = await getT();

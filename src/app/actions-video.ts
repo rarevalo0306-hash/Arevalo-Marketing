@@ -5,8 +5,10 @@
 import { revalidatePath } from "next/cache";
 import sharp from "sharp";
 import { logAiAction } from "@/lib/ai-actions";
+import { hasBusiness, requireBusiness } from "@/lib/auth";
 import type { ChannelId } from "@/lib/channels";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { readMedia } from "@/lib/media";
@@ -37,6 +39,8 @@ const page = (businessId: string) => `/b/${businessId}/videos`;
 
 /** Las fotos y clips que mejor van con la idea (para empezar con algo elegido). */
 export async function suggestVideoMedia(businessId: string, idea: string, format: VideoFormat): Promise<string[]> {
+  ensure.text(businessId, idea, format);
+  if (!(await hasBusiness(businessId, "view"))) return [];
   try {
     const b = await videoBusiness(businessId);
     return await suggestMedia(businessId, idea.slice(0, 2000), format === "horizontal" ? "horizontal" : "vertical", businessKeywords(b));
@@ -47,7 +51,9 @@ export async function suggestVideoMedia(businessId: string, idea: string, format
 
 /** Escribe el guion (la IA, o el de respaldo si la IA no responde) y lo guarda como video nuevo. */
 export async function planVideo(businessId: string, input: { idea: string; format: VideoFormat; mediaIds: string[] }): Promise<VideoResult> {
+  ensure.text(businessId);
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: t("Negocio no encontrado", "Business not found") };
   try {
     const b = await videoBusiness(businessId);
     const cl = contentLang(b);
@@ -68,7 +74,9 @@ export async function planVideo(businessId: string, input: { idea: string; forma
 
 /** Guarda lo que el dueño cambió del guion (orden, textos, movimiento, música y textos de cada red). */
 export async function saveVideoEdits(businessId: string, projectId: string, edits: { scenes: SceneEdit[]; texts?: Partial<VideoTexts>; music?: boolean }): Promise<VideoResult> {
+  ensure.text(businessId, projectId);
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: t("Negocio no encontrado", "Business not found") };
   try {
     const row = await loadProject(businessId, projectId);
     const p = row.project;
@@ -88,7 +96,9 @@ export async function saveVideoEdits(businessId: string, projectId: string, edit
 
 /** Un cuadro real de una escena (como saldrá en el video), en pequeño. */
 export async function videoSceneStill(businessId: string, projectId: string, sceneId: string): Promise<{ ok: true; src: string } | { ok: false; error: string }> {
-  const { lang } = await getT();
+  ensure.text(businessId, projectId, sceneId);
+  const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "view"))) return { ok: false, error: t("Negocio no encontrado", "Business not found") };
   try {
     const { project } = await loadProject(businessId, projectId);
     const jpg = await sceneStill(project.storyboard, sceneId, { read: readMedia });
@@ -101,7 +111,9 @@ export async function videoSceneStill(businessId: string, projectId: string, sce
 
 /** «Sí, crear video»: solo con el precio que el dueño vio y aceptó. */
 export async function startVideoRender(businessId: string, projectId: string, confirmCents: number): Promise<VideoResult> {
-  const { lang } = await getT();
+  ensure.text(businessId, projectId); ensure.number(confirmCents);
+  const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: t("Negocio no encontrado", "Business not found") };
   try {
     await startRender(businessId, projectId, Math.round(confirmCents), "owner");
     revalidatePath(page(businessId));
@@ -113,7 +125,10 @@ export async function startVideoRender(businessId: string, projectId: string, co
 
 /** ¿Ya está el video? (la pantalla pregunta cada pocos segundos). */
 export async function checkVideoRender(businessId: string, projectId: string): Promise<VideoResult> {
-  const { lang } = await getT();
+  ensure.text(businessId, projectId);
+  const { lang, t } = await getT();
+  // Sigue el trabajo pagado (pide a fal.ai el siguiente paso y guarda el video): no es solo mirar.
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: t("Negocio no encontrado", "Business not found") };
   try {
     await advanceRender(businessId, projectId, lang);
     const row = await loadProject(businessId, projectId);
@@ -131,7 +146,9 @@ export type PublishVideoResult = { ok: true; href: string; message: string } | {
  * y la publica ahora o a la hora elegida.
  */
 export async function publishVideo(businessId: string, projectId: string, f: FormData): Promise<PublishVideoResult> {
+  ensure.text(businessId, projectId);
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: t("Negocio no encontrado", "Business not found") };
   try {
     const row = await loadProject(businessId, projectId);
     const p = row.project;
@@ -200,6 +217,8 @@ export async function publishVideo(businessId: string, projectId: string, f: For
 
 /** Borra un video de la lista (no borra lo que ya se publicó). */
 export async function deleteVideo(businessId: string, projectId: string): Promise<void> {
+  ensure.text(businessId, projectId);
+  await requireBusiness(businessId, "publish");
   await db.seoReport.deleteMany({ where: { id: projectId, businessId, kind: VIDEO_KIND } });
   revalidatePath(page(businessId));
 }

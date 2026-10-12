@@ -2,6 +2,7 @@ import Link from "next/link";
 import { deleteBusiness, updateAiSettings, updateBusiness } from "@/app/actions";
 import { PageHead } from "@/components/PageHead";
 import { availableText } from "@/lib/ai";
+import { pageBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { BUILTIN_TEMPLATES, builtinTemplateName, FONTS, fontId } from "@/lib/design-shapes";
 import { getT } from "@/lib/i18n-server";
@@ -18,6 +19,7 @@ const FONT_CSS: Record<string, string> = {
 
 export default async function NegocioPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  await pageBusiness(id);
   const { lang, t } = await getT();
   const b = await db.business.findUniqueOrThrow({ where: { id }, include: { templates: { orderBy: { createdAt: "asc" } } } });
   const marca = `/b/${id}/marca`;

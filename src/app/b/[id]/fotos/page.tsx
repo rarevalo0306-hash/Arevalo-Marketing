@@ -6,6 +6,7 @@ import { ReviewNow } from "@/components/library/ReviewNow";
 import { UploadLinkCard } from "@/components/library/UploadLinkCard";
 import s from "@/components/library/Library.module.css";
 import { appOrigin } from "@/lib/app-origin";
+import { pageBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
 import { asLibraryFilter, LIBRARY_FILTERS, libraryCounts, loadLibrary, PAGE_SIZE, type LibraryFilter } from "@/lib/library";
@@ -30,11 +31,14 @@ function FolderIcon({ size = 20 }: { size?: number }) {
 
 export default async function FotosPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ver?: string; n?: string }> }) {
   const { id } = await params;
+  // El link privado de los técnicos deja subir a cualquiera que lo tenga: solo lo ve el Administrador.
+  const { role } = await pageBusiness(id);
   const q = await searchParams;
   const filter = asLibraryFilter(q.ver);
   const limit = Math.min(2000, Math.max(PAGE_SIZE, Math.round(Number(q.n) / PAGE_SIZE) * PAGE_SIZE || PAGE_SIZE));
   const { lang, t } = await getT();
   const b = await db.business.findUniqueOrThrow({ where: { id }, select: { id: true, name: true, color: true, driveFolderId: true, driveFolderName: true, driveSyncedAt: true, driveError: true, uploadToken: true } });
+  const uploadToken = role === "admin" ? b.uploadToken : "";
   const connected = !!b.driveFolderId;
   const [counts, page, uploads, origin, toEnhance, enhancedCount] = await Promise.all([
     libraryCounts(id),
@@ -47,9 +51,10 @@ export default async function FotosPage({ params, searchParams }: { params: Prom
   // Las que faltan y tienen avisos de privacidad sin indicaciones de la IA: esas se le preguntan aparte (con costo).
   const aiPhotos = toEnhance.filter((r) => r.privacy.length > 0 && !readEnhanceInfo(r.enhanceInfo)?.hints).length;
   const r2 = r2Enabled();
-  const uploadCard = (
-    <UploadLinkCard businessId={id} businessName={b.name} configured={r2} token={b.uploadToken} origin={origin} total={uploads.total} pending={uploads.pending} anchor="link-subida" />
-  );
+  const uploadCard =
+    role === "admin" ? (
+      <UploadLinkCard businessId={id} businessName={b.name} configured={r2} token={uploadToken} origin={origin} total={uploads.total} pending={uploads.pending} anchor="link-subida" />
+    ) : null;
   const conexiones = `/b/${id}/conexiones#c-drive`;
   const href = (f: LibraryFilter, n?: number) => {
     const p = new URLSearchParams();
@@ -81,8 +86,8 @@ export default async function FotosPage({ params, searchParams }: { params: Prom
         )}
         aside={
           <>
-            {r2 && b.uploadToken && (
-              <a className="btn" href={`/subir/${b.uploadToken}`} target="_blank" rel="noopener noreferrer">
+            {r2 && uploadToken && (
+              <a className="btn" href={`/subir/${uploadToken}`} target="_blank" rel="noopener noreferrer">
                 {t("Subir fotos", "Upload photos")}
               </a>
             )}

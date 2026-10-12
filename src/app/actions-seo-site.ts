@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { hasBusiness } from "@/lib/auth";
+import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { approveForSite, chooseSitePhoto, generateSitePhoto, prepareForSite } from "@/lib/seo/site-article-run";
@@ -15,8 +17,10 @@ const paths = (businessId: string) => {
 
 /** «Que la IA elija el tema»: el mejor tema con lo que Matya ya sabe (gratis: no llama a Google ni a la IA). */
 export async function suggestTopic(businessId: string, _prev: TopicResult, f: FormData): Promise<TopicResult> {
+  ensure.text(businessId);
   void _prev;
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "view"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const skip = String(f.get("skip") ?? "")
     .split("\n")
     .map((s) => s.trim())
@@ -42,9 +46,12 @@ export async function suggestTopic(businessId: string, _prev: TopicResult, f: Fo
 
 /** «Publicar en mi web»: prepara la versión bilingüe y la foto. No publica ni gasta en fotos. */
 export async function prepareSiteArticle(businessId: string, reportId: string, _prev: SiteResult, _f: FormData): Promise<SiteResult> {
+  ensure.text(businessId, reportId);
   void _prev;
   void _f;
   const { lang, t } = await getT();
+  // Traduce con la IA (gasta). El artículo se busca con este businessId (site-article-run).
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   try {
     await prepareForSite(businessId, reportId);
     paths(businessId);
@@ -56,8 +63,10 @@ export async function prepareSiteArticle(businessId: string, reportId: string, _
 
 /** Cambiar la foto de la vista previa (gratis). */
 export async function pickSitePhoto(businessId: string, reportId: string, _prev: SiteResult, f: FormData): Promise<SiteResult> {
+  ensure.text(businessId, reportId);
   void _prev;
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   try {
     await chooseSitePhoto(businessId, reportId, String(f.get("photo") ?? ""));
     paths(businessId);
@@ -69,8 +78,10 @@ export async function pickSitePhoto(businessId: string, reportId: string, _prev:
 
 /** «Crear otra con IA»: gasta lo que dice el botón (`cents`). */
 export async function newSitePhoto(businessId: string, reportId: string, _prev: SiteResult, f: FormData): Promise<SiteResult> {
+  ensure.text(businessId, reportId);
   void _prev;
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   try {
     await generateSitePhoto(businessId, reportId, Number(f.get("cents") ?? -1));
     paths(businessId);
@@ -82,8 +93,10 @@ export async function newSitePhoto(businessId: string, reportId: string, _prev: 
 
 /** «Autorizar y publicar»: gasta lo que dice el botón (`cents`) y publica. */
 export async function approveSiteArticle(businessId: string, reportId: string, _prev: SiteResult, f: FormData): Promise<SiteResult> {
+  ensure.text(businessId, reportId);
   void _prev;
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   try {
     const r = await approveForSite(businessId, reportId, Number(f.get("cents") ?? -1));
     paths(businessId);

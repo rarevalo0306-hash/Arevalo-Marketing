@@ -5,6 +5,7 @@ import { DailySettings } from "@/components/reports/DailySettings";
 import { RangePicker } from "@/components/reports/RangePicker";
 import { ReportActions } from "@/components/reports/ReportActions";
 import { ReportView } from "@/components/reports/ReportView";
+import { pageBusiness } from "@/lib/auth";
 import { appTz, businessTz, COMMON_TZS, localDay, suggestTz, tzName } from "@/lib/business-tz";
 import { buildReportFor, dailyHistory, dailyRecipients, getReportSettings, savedHighlights } from "@/lib/daily-report";
 import { db } from "@/lib/db";
@@ -22,6 +23,7 @@ export const maxDuration = 60;
 
 export default async function ReportesPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ desde?: string; hasta?: string; p?: string }> }) {
   const { id } = await params;
+  await pageBusiness(id);
   const q = await searchParams;
   const { lang, t } = await getT();
   const b = await db.business.findUniqueOrThrow({

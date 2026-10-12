@@ -4,6 +4,7 @@ import { PageHead } from "@/components/PageHead";
 import type { IdeaOption, PickItem } from "@/components/video/NewVideo";
 import { VideoStudio } from "@/components/video/VideoStudio";
 import { loadPlanTasks } from "@/lib/action-plan";
+import { pageBusiness } from "@/lib/auth";
 import { channelName } from "@/lib/channels";
 import { loadContentIdeas } from "@/lib/content-ideas";
 import { db } from "@/lib/db";
@@ -16,6 +17,7 @@ export const maxDuration = 300;
 
 export default async function VideosPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ v?: string; idea?: string }> }) {
   const { id } = await params;
+  await pageBusiness(id);
   const q = await searchParams;
   const { lang, t } = await getT();
   const b = await db.business.findUniqueOrThrow({ where: { id }, select: { id: true, name: true, color: true, connections: { select: { channel: true } } } });

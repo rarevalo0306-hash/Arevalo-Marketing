@@ -1,6 +1,5 @@
 // Provider cleanup precedes relational deletion. Failures leave rows available for retry.
-import { cookies } from 'next/headers';
-import { safeEqual, SESSION_COOKIE, sessionToken } from '@/lib/session';
+import { requireBusiness } from '@/lib/auth';
 import { decryptJson } from '@/lib/crypto';
 import { db } from '@/lib/db';
 import { deleteBusinessMedia } from '@/lib/media';
@@ -9,13 +8,9 @@ import { revokeGoogleToken } from '@/lib/google-oauth';
 
 export const GOOGLE_CHANNELS = ['google', 'gsc', 'ga4', 'youtube'] as const;
 
-async function requireSession() {
-  const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (!token || !process.env.APP_PASSWORD || !process.env.APP_SECRET || !safeEqual(token, await sessionToken())) throw new Error('Authentication required');
-}
-
+// Only an Administrator of the business's organization can disconnect or erase (src/lib/auth.ts).
 export async function disconnectGoogleData(businessId: string, channel: string) {
-  await requireSession();
+  await requireBusiness(businessId, 'admin');
   if (!GOOGLE_CHANNELS.some(c => c === channel)) throw new Error('Unsupported Google connection');
   const connection = await db.connection.findUnique({ where: { businessId_channel: { businessId, channel } } });
   if (connection) {
@@ -31,7 +26,7 @@ export async function disconnectGoogleData(businessId: string, channel: string) 
 }
 
 export async function eraseBusinessData(businessId: string) {
-  await requireSession();
+  await requireBusiness(businessId, 'admin');
   if (!r2Enabled() && await db.libraryItem.count({ where: { businessId } }) > 0) throw new Error('Configure R2 before deleting a business with library files; cleanup cannot be verified.');
   const connections = await db.connection.findMany({ where: { businessId, channel: { in: [...GOOGLE_CHANNELS] } }, select: { secret: true } });
   const tokens = new Set<string>();

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { deletePost, publishNow } from "@/app/actions";
 import { PageHead } from "@/components/PageHead";
+import { pageBusiness } from "@/lib/auth";
 import { channelDef, channelName, CHANNEL_IDS } from "@/lib/channels";
 import { connectionsNeedingReconnect, decideReconnect } from "@/lib/connection-health";
 import { db } from "@/lib/db";
@@ -39,6 +40,7 @@ export default async function HistorialPage({
   searchParams: Promise<{ nuevo?: string; ver?: string }>;
 }) {
   const { id } = await params;
+  await pageBusiness(id);
   const { nuevo, ver } = await searchParams;
   const filter: Filter = FILTERS.includes(ver as Filter) ? (ver as Filter) : "todas";
   const { lang, t } = await getT();

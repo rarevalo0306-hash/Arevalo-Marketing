@@ -2,7 +2,9 @@
 
 import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { errorText, intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import {
@@ -20,9 +22,11 @@ export type BacklinksResult = { ok: boolean; message: string; locked?: boolean }
 
 /** Revisa los enlaces hacia la página del negocio y los de su competencia (DataForSEO Backlinks API, pago por uso). */
 export async function runBacklinks(businessId: string, _prev: BacklinksResult, _f: FormData): Promise<BacklinksResult> {
+  ensure.text(businessId);
   void _prev;
   void _f;
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   if (!dataForSeoEnabled())
     return { ok: false, message: t("Falta conectar DataForSEO (DATAFORSEO_LOGIN y DATAFORSEO_PASSWORD en Vercel).", "DataForSEO isn't connected yet (DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD in Vercel).") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { website: true } });

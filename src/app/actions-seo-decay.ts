@@ -1,7 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { BiError, errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { decayReport, saveDecayReport } from "@/lib/seo/decay";
@@ -14,9 +16,11 @@ export type DecayResult = { ok: boolean; message: string; needsGsc?: boolean } |
  * y guarda las páginas que están perdiendo visitas. Gratis (Search Console no cobra).
  */
 export async function refreshDecay(businessId: string, _prev: DecayResult, _f: FormData): Promise<DecayResult> {
+  ensure.text(businessId);
   void _prev;
   void _f;
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   try {
     const b = await db.business.findUnique({ where: { id: businessId }, select: { id: true } });
     if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };

@@ -22,13 +22,13 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const mins = Math.min(60, Math.max(1, Number(m) || 15));
   const passwordError =
     e === "wrong"
-      ? t("Contraseña incorrecta.", "Wrong password.")
+      ? t("Correo o contraseña incorrectos.", "Wrong email or password.")
       : e === "locked"
         ? t(`Demasiados intentos. Espera ${mins} min y vuelve a probar.`, `Too many attempts. Wait ${mins} min and try again.`)
         : e === "check"
           ? t("No se pudo comprobar ahora. Prueba de nuevo en un momento.", "Couldn't check right now. Try again in a moment.")
           : e === "setup"
-            ? t("Falta APP_PASSWORD en el archivo .env del servidor.", "APP_PASSWORD is missing from the server's .env file.")
+            ? t("Falta APP_PASSWORD, APP_SECRET o LOGIN_EMAILS en el servidor.", "APP_PASSWORD, APP_SECRET or LOGIN_EMAILS is missing on the server.")
             : "";
   return (
     <main className="center-page">
@@ -51,7 +51,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
                 {googleError}
               </p>
             )}
-            <p className="login-or">{t("o con tu contraseña", "or with your password")}</p>
+            <p className="login-or">{t("o con tu correo y contraseña", "or with your email and password")}</p>
           </>
         )}
         <LoginForm error={passwordError} />

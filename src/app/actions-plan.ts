@@ -4,7 +4,9 @@
 // «no aplica» o pendiente otra vez (también sirve para deshacer).
 import { revalidatePath } from "next/cache";
 import { refreshActionPlan } from "@/lib/action-plan";
+import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { getT } from "@/lib/i18n-server";
 
 export type PlanRefreshResult = { ok: boolean; message: string } | null;
@@ -16,9 +18,11 @@ const revalidate = (businessId: string) => {
 
 /** «Actualizar plan»: vuelve a juntar lo último de cada reporte. No llama a ninguna API ni cobra nada. */
 export async function refreshPlanAction(businessId: string, _prev: PlanRefreshResult, _f?: FormData): Promise<PlanRefreshResult> {
+  ensure.text(businessId);
   void _prev;
   void _f;
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { id: true } });
   if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   try {
@@ -56,8 +60,10 @@ const asStatus = (v: unknown): Status | null => (STATUSES.includes(v as Status) 
  * Campos del formulario: id, status y, para deshacer, doneAt (la fecha que tenía antes).
  */
 export async function setTaskStatus(businessId: string, _prev: TaskStatusResult, f: FormData): Promise<TaskStatusResult> {
+  ensure.text(businessId);
   void _prev;
   const { t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const id = String(f.get("id") ?? "");
   const status = asStatus(f.get("status"));
   if (!id || !status) return { ok: false, message: t("No se pudo guardar el cambio.", "Couldn't save the change.") };

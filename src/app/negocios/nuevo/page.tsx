@@ -1,5 +1,6 @@
 import { createBusinessFromWeb } from "@/app/actions-study";
 import { Sidebar } from "@/components/Sidebar";
+import { myBusinessesWhere } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
 import s from "./nuevo.module.css";
@@ -7,7 +8,7 @@ import s from "./nuevo.module.css";
 export const dynamic = "force-dynamic";
 
 export default async function NewBusiness() {
-  const count = await db.business.count();
+  const count = await db.business.count({ where: await myBusinessesWhere() });
   const { t } = await getT();
   return (
     <div className="shell">

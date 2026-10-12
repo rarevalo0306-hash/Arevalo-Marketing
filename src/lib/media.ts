@@ -93,7 +93,11 @@ export async function createSignedUpload(contentType: string, folder: string, ki
 /** true si la dirección es un archivo de la carpeta del negocio en tu almacenamiento. */
 export function isOwnFile(url: string, folder: string): boolean {
   const sb = supabase();
-  return Boolean(sb) && url.startsWith(`${sb!.url}/storage/v1/object/public/${BUCKET}/${folder}/`) && !url.includes("..");
+  if (!sb) return false;
+  const prefix = `${sb.url}/storage/v1/object/public/${BUCKET}/${folder}/`;
+  // Sin "..", ni escrito como %2e / %2f / %5c, ni barra invertida: fetch y el navegador los convierten y la dirección
+  // saldría a la carpeta de otro negocio.
+  return url.startsWith(prefix) && !url.includes("..") && !/%2e|%2f|%5c|\\/i.test(url.slice(prefix.length));
 }
 
 /**

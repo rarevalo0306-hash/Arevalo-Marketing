@@ -1,7 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { MAX_ALERT_EMAILS, parseAlertEmails, senderLabel, sendWeeklyReport } from "@/lib/seo/alerts";
@@ -10,7 +12,10 @@ export type AlertsResult = { ok: boolean; message: string } | null;
 
 /** Guarda a quién mandar los avisos, qué avisos quiere y el idioma de los emails (el de la app ahora). */
 export async function saveSeoAlerts(businessId: string, _prev: AlertsResult, f: FormData): Promise<AlertsResult> {
+  ensure.text(businessId);
   const { lang, t } = await getT();
+  // A quién se mandan los datos del negocio: lo decide un Administrador.
+  if (!(await hasBusiness(businessId, "admin"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { id: true } });
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   const alerts = f.get("alerts") === "on";
@@ -41,7 +46,9 @@ export async function saveSeoAlerts(businessId: string, _prev: AlertsResult, f: 
 
 /** Manda ahora el resumen semanal al email guardado (no cuenta como el resumen del lunes). */
 export async function sendSeoTestEmail(businessId: string, _prev: AlertsResult): Promise<AlertsResult> {
+  ensure.text(businessId);
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { id: true } });
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   try {

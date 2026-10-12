@@ -1,4 +1,5 @@
 // CSV de «Lo que hizo la IA» con los mismos filtros de la pantalla (/b/<id>/registro/csv?desde=&hasta=&campana=&tipo=&quien=&lang=).
+import { businessAccess } from "@/lib/auth";
 import { addDays, localParts } from "@/lib/campaign-shape";
 import { db } from "@/lib/db";
 import { asLang } from "@/lib/i18n";
@@ -12,6 +13,9 @@ const MAX_ROWS = 20_000;
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  // Solo quien entra a este negocio (src/lib/auth.ts).
+  const access = await businessAccess(id, "view");
+  if (!access.ok) return new Response(access.status === 401 ? "Unauthorized" : access.status === 403 ? "Forbidden" : "Not found", { status: access.status });
   const b = await db.business.findUnique({ where: { id }, select: { id: true, name: true, timezone: true } });
   if (!b) return new Response("Not found", { status: 404 });
   const url = new URL(req.url);

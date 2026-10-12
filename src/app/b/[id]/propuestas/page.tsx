@@ -5,6 +5,7 @@ import { AutoApplyToggle } from "@/components/proposals/AutoApplyToggle";
 import { ProposalCard, type ProposalCardView } from "@/components/proposals/ProposalCard";
 import s from "@/components/proposals/proposals.module.css";
 import { SearchNow } from "@/components/proposals/SearchNow";
+import { pageBusiness } from "@/lib/auth";
 import { readRules } from "@/lib/campaign-shape";
 import { db } from "@/lib/db";
 import type { T, UiLang } from "@/lib/i18n";
@@ -106,6 +107,7 @@ function cardView(p: AiProposal, ctx: { lang: UiLang; t: T; tz: string; now: Dat
 
 export default async function PropuestasPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ver?: string; hecho?: string; que?: string }> }) {
   const { id } = await params;
+  await pageBusiness(id);
   const q = await searchParams;
   const filter: Filter = FILTERS.includes(q.ver as Filter) ? (q.ver as Filter) : "nuevas";
   const { lang, t } = await getT();

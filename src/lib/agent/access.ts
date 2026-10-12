@@ -1,6 +1,4 @@
-import { cookies } from "next/headers";
-import { safeEqual, SESSION_COOKIE, sessionToken } from "@/lib/session";
-import { db } from "@/lib/db";
+import { businessAccess } from "@/lib/auth";
 export class AgentError extends Error {
   constructor(
     message: string,
@@ -15,25 +13,16 @@ export async function requireAgentOwner(businessId: string) {
       "El centro de MATYA aún no está activado en este entorno.",
       503,
     );
-  if (
-    !process.env.APP_PASSWORD ||
-    !process.env.APP_SECRET ||
-    !safeEqual(
-      (await cookies()).get(SESSION_COOKIE)?.value ?? "",
-      await sessionToken(),
-    )
-  )
+  // Only an Administrator of the business's organization (src/lib/auth.ts) runs the
+  // center for now. Never accept an owner/business id from an LLM. Business ids always
+  // come from authenticated routes.
+  const access = await businessAccess(businessId, "admin");
+  if (access.ok) return;
+  if (access.status === 401)
     throw new AgentError("Vuelve a iniciar sesión.", 401);
-  // Current product has a single owner session, not client memberships. Never accept
-  // an owner/business id from an LLM. Business ids always come from authenticated routes.
-  if (
-    !/^[a-zA-Z0-9_-]{1,100}$/.test(businessId) ||
-    !(await db.business.findUnique({
-      where: { id: businessId },
-      select: { id: true },
-    }))
-  )
-    throw new AgentError("Negocio no encontrado.", 404);
+  if (access.status === 403)
+    throw new AgentError("Solo el Administrador puede usar el centro de MATYA.", 403);
+  throw new AgentError("Negocio no encontrado.", 404);
 }
 export function sameOrigin(req: Request) {
   const origin = req.headers.get("origin");

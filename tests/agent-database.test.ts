@@ -56,7 +56,8 @@ const safe =
   process.env.DATABASE_URL === url &&
   /^postgresql:\/\/[^@]+@127\.0\.0\.1:55439\/matya_agent$/.test(url);
 const A = "matya-it-a",
-  B = "matya-it-b";
+  B = "matya-it-b",
+  ORG = "matya-it-org";
 const settings = {
   ...DEFAULT_SETTINGS,
   enabled: true,
@@ -128,16 +129,23 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     vi.mocked(videoBlocker).mockReturnValue(null);
     process.env.MATYA_AGENT_ENABLED = "true";
     await db.business.deleteMany({ where: { id: { in: [A, B] } } });
+    await db.organization.upsert({
+      where: { id: ORG },
+      create: { id: ORG, name: "MATYA fixture" },
+      update: {},
+    });
     await db.business.createMany({
       data: [
         {
           id: A,
+          organizationId: ORG,
           name: "Ricardo PA · fixture",
           timezone: "America/New_York",
           aiProfile: "Solo propiedades Florida",
         },
         {
           id: B,
+          organizationId: ORG,
           name: "Fameseg · fixture",
           timezone: "America/Managua",
           aiProfile: "Solo cortinas Nicaragua",

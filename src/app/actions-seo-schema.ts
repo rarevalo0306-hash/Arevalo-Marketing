@@ -1,7 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { getT } from "@/lib/i18n-server";
 import { DAYS, normTime, SCHEMA_KEEP, SCHEMA_KIND, type WeekHours } from "@/lib/seo/schema";
 
@@ -12,8 +14,10 @@ export type SchemaSaveResult = { ok: boolean; message: string } | null;
  * Campos del formulario: open-<Day> ("on"), opens-<Day>, closes-<Day> (hh:mm) y priceRange.
  */
 export async function saveSchemaExtras(businessId: string, _prev: SchemaSaveResult, f: FormData): Promise<SchemaSaveResult> {
+  ensure.text(businessId);
   void _prev;
   const { t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { id: true } });
   if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
 

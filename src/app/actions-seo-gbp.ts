@@ -3,7 +3,9 @@
 import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { aiEnabled, draftReviewReplies, draftReviewReply } from "@/lib/ai";
+import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { errorText, intlLocale, type UiLang } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { dataForSeoEnabled, readZones } from "@/lib/seo/dataforseo";
@@ -86,9 +88,11 @@ const searchLang = (v: string) => (v === "en" ? "en" : "es");
 
 /** "Actualizar perfil": tu perfil de Google Maps y el de hasta 3 competidores del mapa de calor (~US$0.0054 cada uno). */
 export async function refreshProfile(businessId: string, _prev: GbpResult, _f: FormData): Promise<GbpResult> {
+  ensure.text(businessId);
   void _prev;
   void _f;
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   if (!dataForSeoEnabled()) return { ok: false, message: notConnected(t) };
   const b = await db.business.findUnique({ where: { id: businessId }, select: BUSINESS_FIELDS });
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
@@ -125,9 +129,11 @@ export async function refreshProfile(businessId: string, _prev: GbpResult, _f: F
 
 /** "Actualizar reseñas": las 50 más nuevas (cola prioritaria de DataForSEO, ~US$0.0075, 10-60 s). */
 export async function refreshReviews(businessId: string, _prev: GbpResult, _f: FormData): Promise<GbpResult> {
+  ensure.text(businessId);
   void _prev;
   void _f;
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   if (!dataForSeoEnabled()) return { ok: false, message: notConnected(t) };
   const b = await db.business.findUnique({ where: { id: businessId }, select: BUSINESS_FIELDS });
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
@@ -183,7 +189,9 @@ const replyBusiness = (b: { name: string; website: string; phone: string; aiProf
 
 /** La IA escribe la respuesta a una reseña y queda guardada como borrador (el dueño la puede cambiar). */
 export async function draftReply(businessId: string, reviewId: string): Promise<ReplyResult> {
+  ensure.text(businessId, reviewId);
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   if (!aiEnabled()) return { ok: false, message: noAi(t) };
   const [b, latest] = await Promise.all([db.business.findUnique({ where: { id: businessId }, select: BUSINESS_FIELDS }), latestReviews(businessId)]);
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
@@ -202,7 +210,9 @@ export async function draftReply(businessId: string, reviewId: string): Promise<
 
 /** La IA escribe las respuestas de hasta 10 reseñas sin contestar ni borrador (primero las de 3 estrellas o menos). */
 export async function draftAllReplies(businessId: string): Promise<{ ok: boolean; message: string; drafts: Record<string, string> }> {
+  ensure.text(businessId);
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found."), drafts: {} };
   if (!aiEnabled()) return { ok: false, message: noAi(t), drafts: {} };
   const [b, latest] = await Promise.all([db.business.findUnique({ where: { id: businessId }, select: BUSINESS_FIELDS }), latestReviews(businessId)]);
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found."), drafts: {} };
@@ -241,7 +251,9 @@ export async function draftAllReplies(businessId: string): Promise<{ ok: boolean
 
 /** Guarda la respuesta como la dejó el dueño. */
 export async function saveReplyDraft(businessId: string, reviewId: string, text: string): Promise<ReplyResult> {
+  ensure.text(businessId, reviewId, text);
   const { t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   const latest = await latestReviews(businessId);
   if (!latest) return { ok: false, message: noReviews(t) };
   if (!latest.report.reviews.some((r) => r.id === reviewId)) return { ok: false, message: notFoundReview(t) };
@@ -266,7 +278,9 @@ export async function saveReplyDraft(businessId: string, reviewId: string, text:
  * aprobó el acceso de la app a la API del Perfil de Negocio; si no, el dueño copia la respuesta y la pega en Google.
  */
 export async function postReply(businessId: string, reviewId: string, text?: string): Promise<ReplyResult> {
+  ensure.text(businessId, reviewId); ensure.optionalText(text);
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   const creds = await googleReplyCreds(businessId);
   if (!creds)
     return {
