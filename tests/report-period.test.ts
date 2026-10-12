@@ -454,9 +454,9 @@ describe("daily email", () => {
   });
 
   it("builds links and recipients safely", () => {
-    expect(publicBase("matya.app/")).toBe("https://matya.app");
+    expect(publicBase("app.matya.app/")).toBe("https://app.matya.app");
     expect(publicBase("http://localhost:3000")).toBe("http://localhost:3000");
-    expect(publicBase("")).toBe("https://matya.app");
+    expect(publicBase("")).toBe("https://app.matya.app");
     expect(reportUrl("https://x.app/", "b 1", { fromDay: "2026-10-01", toDay: "2026-10-07" })).toBe("https://x.app/b/b%201/reportes?desde=2026-10-01&hasta=2026-10-07");
     expect(dailyRecipients({ reportEmail: "", ownerEmail: "Dueno@Ejemplo.com" })).toEqual(["dueno@ejemplo.com"]);
     expect(dailyRecipients({ reportEmail: "a@x.com, b@y.com", ownerEmail: "c@z.com" })).toEqual(["a@x.com", "b@y.com"]);

@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
+import { oldHostRedirects } from "./src/lib/app-host";
 
 const nextConfig: NextConfig = {
+  // matya.app → app.matya.app (src/lib/app-host.ts).
+  async redirects() {
+    return oldHostRedirects();
+  },
   // Las fuentes de los diseños se leen del disco en el servidor. Las letras estándar del PDF (pdfkit) se cargan
   // con un require dinámico que Vercel no detecta solo: sin ellas la página de Diagnóstico se cae.
   outputFileTracingIncludes: { "/**": ["./src/assets/fonts/**", "./node_modules/pdfkit/js/standard-fonts/**"] },

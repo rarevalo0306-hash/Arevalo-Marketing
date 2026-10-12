@@ -20,6 +20,7 @@ import { escapeHtml } from "@/lib/text";
 import { adSnapshot, buildPeriodReport, dayPeriod, isQuiet, isSingleDay, periodText, rangeQuery, reportCounts, type PeriodReport, type RangePeriod } from "@/lib/report-period";
 import { loadPeriodInputs } from "@/lib/report-period-load";
 import { highlightFacts, reportSections, ruleHighlights, type ViewSection } from "@/lib/report-period-view";
+import { APP_HOST } from "@/lib/app-host";
 
 type Lang = "es" | "en";
 const MIN_MS = 60_000;
@@ -73,7 +74,7 @@ export const emailLang = (v: string | null | undefined): Lang => (v === "en" ? "
 /** La dirección pública de la app para los links del email (PUBLIC_BASE_URL, con o sin https://). */
 export function publicBase(raw = process.env.PUBLIC_BASE_URL): string {
   const v = (raw ?? "").trim().replace(/\/+$/, "");
-  if (!v) return "https://matya.app";
+  if (!v) return `https://${APP_HOST}`;
   return /^https?:\/\//i.test(v) ? v : `https://${v}`;
 }
 
