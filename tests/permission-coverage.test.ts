@@ -17,6 +17,9 @@ const USER_GUARDS = ["requireUser", "myBusinessesWhere", "getSessionUser"];
 /** Acciones que no usan ningún negocio. */
 const ACTIONS_WITHOUT_BUSINESS: Record<string, string> = {
   "actions.ts#logout": "solo borra la cookie de la sesión",
+  "actions-seo-dfs.ts#searchSeoLocations": "lista de zonas de Google (gratis y guardada), sin datos de ningún negocio; pide sesión",
+  "actions-seo-dfs.ts#seoLocationChildren": "lista de zonas de Google (gratis y guardada), sin datos de ningún negocio; pide sesión",
+  "actions-seo-dfs.ts#searchSeoPlaces": "búsqueda de lugares de Google (gratis y guardada), sin datos de ningún negocio; pide sesión",
 };
 
 /** Rutas públicas que revisan su propio permiso (src/lib/access.ts). */
@@ -81,7 +84,8 @@ describe("every entry point checks the permission", () => {
       const guards = guardsOf(fns, BUSINESS_GUARDS);
       for (const f of fns.filter((x) => x.exported)) {
         const key = `${rel(path)}#${f.name}`;
-        if (!calls(f.body, guards) && !ACTIONS_WITHOUT_BUSINESS[key]) missing.push(key);
+        const allowed = ACTIONS_WITHOUT_BUSINESS[key] && (f.name === "logout" || calls(f.body, USER_GUARDS));
+        if (!calls(f.body, guards) && !allowed) missing.push(key);
       }
     }
     expect(missing).toEqual([]);

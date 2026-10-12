@@ -43,7 +43,7 @@ async function photoPart(url: string): Promise<{ inlineData: { mimeType: string;
  * palabra clave del post y la ciudad; si no hay IA o falla, la plantilla «lo que se ve — palabra en ciudad».
  */
 export async function altTexts(
-  b: BizForKeywords & { name: string; brandIdentity?: unknown },
+  b: BizForKeywords & { id: string; name: string; brandIdentity?: unknown },
   items: AltInput[],
   postText: string,
   lang: "es" | "en",
@@ -51,7 +51,8 @@ export async function altTexts(
 ): Promise<AltOutput> {
   const keywords = pickPostKeywords(postText, businessKeywords(b), 3);
   const city = businessCity(b);
-  const infos = await Promise.all(items.map((i) => libraryPhotoInfo(i.url)));
+  // Solo fotos de «Tus fotos» de este negocio: nunca la descripción de una foto de otro.
+  const infos = await Promise.all(items.map((i) => libraryPhotoInfo(i.url, b.id)));
   const whats = items.map((i, n) => i.what?.trim() || infos[n].what?.[lang] || whatFromText(postText) || b.name);
   const fallback = whats.map((w, n) => altTextFallback(w, keywords[n % Math.max(1, keywords.length)] ?? keywords[0] ?? "", city, lang));
   if (!opts.ai || !process.env.GEMINI_API_KEY || !items.length) return { alts: fallback, fromAi: false };

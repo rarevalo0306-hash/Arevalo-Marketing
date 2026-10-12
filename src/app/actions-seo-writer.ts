@@ -3,6 +3,7 @@
 import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { aiEnabled, improveSeoArticle, pickText, writeSeoArticle } from "@/lib/ai";
+import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
@@ -62,6 +63,7 @@ async function prune(businessId: string) {
 export async function writeArticle(businessId: string, _prev: WriterResult, f: FormData): Promise<WriterResult> {
   void _prev;
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   const keyword = cleanKeyword(String(f.get("keyword") ?? ""));
   const language: WriterLang = f.get("language") === "en" ? "en" : "es";
   if (keyword.length < 2) return { ok: false, message: t("Escribe la búsqueda para la que quieres salir en Google.", "Enter the search you want to show up for on Google.") };
@@ -122,6 +124,7 @@ export async function improveArticle(businessId: string, reportId: string, _prev
   void _prev;
   void _f;
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   if (!aiEnabled())
     return { ok: false, message: t("Falta la clave de la IA (GEMINI_API_KEY, ANTHROPIC_API_KEY u OPENAI_API_KEY) en Vercel.", "The AI key (GEMINI_API_KEY, ANTHROPIC_API_KEY or OPENAI_API_KEY) is missing in Vercel.") };
   const [b, row] = await Promise.all([
@@ -158,6 +161,7 @@ export async function improveArticle(businessId: string, reportId: string, _prev
 
 /** Borra un artículo guardado. */
 export async function deleteArticle(businessId: string, reportId: string): Promise<{ ok: boolean }> {
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false };
   const r = await db.seoReport.deleteMany({ where: { id: reportId, businessId, kind: KIND } });
   paths(businessId);
   return { ok: r.count > 0 };

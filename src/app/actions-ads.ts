@@ -7,26 +7,26 @@ import { activateAd, chooseAdAccount, createAd, disconnectAds, pauseAd, pauseAll
 import { candidatePosts, proposalInput, proposeAds } from "@/lib/ads-ai";
 import { improveGooglePlan } from "@/lib/ads-google-load";
 import { AD_GOALS, MAX_DAYS, parseMoney, readCampaignAds, SPECIAL_CATEGORIES, type AdGoal, type AdSource, type SpecialCategory } from "@/lib/ads-shape";
+import { hasBusiness, requireBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
+import type { Need } from "@/lib/roles";
 
 export type AdsResult = { ok: boolean; message: string; at: number } | null;
 
-async function ensureBusiness(id: string) {
-  const b = await db.business.findUnique({ where: { id }, select: { id: true } });
-  if (!b) {
-    const { t } = await getT();
-    throw new Error(t("Negocio no encontrado", "Business not found"));
-  }
+// Sin acceso o con un papel corto, lanza «Negocio no encontrado» (o el error de papel) de src/lib/auth.ts.
+async function ensureBusiness(id: string, need: Need) {
+  await requireBusiness(id, need);
 }
 
 const refresh = (id: string) => revalidatePath(`/b/${id}/anuncios`);
 
-async function run(businessId: string, work: () => Promise<{ es: string; en: string }>): Promise<AdsResult> {
+async function run(businessId: string, need: Need, work: () => Promise<{ es: string; en: string }>): Promise<AdsResult> {
   const { lang, t } = await getT();
+  // El permiso va antes de todo (y fuera del try, para no refrescar ni tocar nada de un negocio ajeno).
+  if (!(await hasBusiness(businessId, need))) return { ok: false, message: t("Negocio no encontrado", "Business not found"), at: Date.now() };
   try {
-    await ensureBusiness(businessId);
     const msg = await work();
     refresh(businessId);
     return { ok: true, message: t(msg.es, msg.en), at: Date.now() };
@@ -42,7 +42,7 @@ const intOrNull = (v: string) => (v && /^\d+$/.test(v) ? Number(v) : null);
 /** Máximo por mes del negocio y categoría especial. */
 export async function saveAdsSettingsAction(businessId: string, _prev: AdsResult, f: FormData): Promise<AdsResult> {
   void _prev;
-  return run(businessId, async () => {
+  return run(businessId, "admin", async () => {
     const cap = parseMoney(str(f, "monthlyCap"));
     if (cap === null) throw new Error((await getT()).t("Escribe el máximo por mes en dólares (por ejemplo 100).", "Type the monthly maximum in dollars (for example 100)."));
     const cat = str(f, "specialCategory") as SpecialCategory;
@@ -53,14 +53,14 @@ export async function saveAdsSettingsAction(businessId: string, _prev: AdsResult
 
 export async function chooseAdAccountAction(businessId: string, _prev: AdsResult, f: FormData): Promise<AdsResult> {
   void _prev;
-  return run(businessId, async () => {
+  return run(businessId, "admin", async () => {
     await chooseAdAccount(businessId, str(f, "account"));
     return { es: "Cuenta de anuncios elegida.", en: "Ad account selected." };
   });
 }
 
 export async function disconnectAdsAction(businessId: string): Promise<void> {
-  await ensureBusiness(businessId);
+  await ensureBusiness(businessId, "admin");
   await disconnectAds(businessId);
   refresh(businessId);
 }
@@ -68,7 +68,7 @@ export async function disconnectAdsAction(businessId: string): Promise<void> {
 /** «La IA puede crear anuncios» y el tope diario de la campaña. */
 export async function campaignAdsOptionsAction(businessId: string, campaignId: string, _prev: AdsResult, f: FormData): Promise<AdsResult> {
   void _prev;
-  return run(businessId, async () => {
+  return run(businessId, "admin", async () => {
     const daily = str(f, "dailyCap");
     const dailyCents = daily ? parseMoney(daily) : 0;
     if (dailyCents === null) throw new Error((await getT()).t("El tope por día debe ser un número en dólares.", "The daily cap must be a number in dollars."));
@@ -80,7 +80,7 @@ export async function campaignAdsOptionsAction(businessId: string, campaignId: s
 /** Crear un anuncio APAGADO desde el formulario. */
 export async function createAdAction(businessId: string, campaignId: string, _prev: AdsResult, f: FormData): Promise<AdsResult> {
   void _prev;
-  return run(businessId, async () => {
+  return run(businessId, "publish", async () => {
     const { t } = await getT();
     const goal = str(f, "goal") as AdGoal;
     if (!AD_GOALS.includes(goal)) throw new Error(t("Elige qué quieres lograr.", "Pick what you want to achieve."));
@@ -122,7 +122,7 @@ export async function proposeAdsAction(businessId: string, campaignId: string, _
   void _prev;
   void _f;
   const { lang } = await getT();
-  return run(businessId, async () => {
+  return run(businessId, "publish", async () => {
     const list = await proposeAds(businessId, campaignId, lang);
     return list.length
       ? { es: `La IA propuso ${list.length} anuncio(s).`, en: `The AI proposed ${list.length} ad(s).` }
@@ -133,7 +133,7 @@ export async function proposeAdsAction(businessId: string, campaignId: string, _
 export async function createFromProposalAction(businessId: string, campaignId: string, proposalId: string, _prev: AdsResult, _f: FormData): Promise<AdsResult> {
   void _prev;
   void _f;
-  return run(businessId, async () => {
+  return run(businessId, "publish", async () => {
     const c = await db.campaign.findFirst({ where: { id: campaignId, businessId }, select: { ads: true } });
     const p = c ? readCampaignAds(c.ads).proposals.find((x) => x.id === proposalId) : undefined;
     if (!p) throw new Error((await getT()).t("Esa propuesta ya no está.", "That proposal is gone."));
@@ -145,7 +145,7 @@ export async function createFromProposalAction(businessId: string, campaignId: s
 /** Encender (o reanudar) con el máximo confirmado. */
 export async function activateAdAction(businessId: string, campaignId: string, adId: string, _prev: AdsResult, f: FormData): Promise<AdsResult> {
   void _prev;
-  return run(businessId, async () => {
+  return run(businessId, "publish", async () => {
     if (f.get("confirm") !== "yes") throw new Error((await getT()).t("Marca la casilla para confirmar el gasto.", "Tick the box to confirm the spend."));
     await activateAd(businessId, campaignId, adId, Number(str(f, "maxCents")));
     return { es: "El anuncio está encendido.", en: "The ad is on." };
@@ -155,7 +155,7 @@ export async function activateAdAction(businessId: string, campaignId: string, a
 export async function pauseAdAction(businessId: string, campaignId: string, adId: string, _prev: AdsResult, _f: FormData): Promise<AdsResult> {
   void _prev;
   void _f;
-  return run(businessId, async () => {
+  return run(businessId, "publish", async () => {
     await pauseAd(businessId, campaignId, adId);
     return { es: "Anuncio pausado.", en: "Ad paused." };
   });
@@ -164,7 +164,7 @@ export async function pauseAdAction(businessId: string, campaignId: string, adId
 export async function pauseAllAdsAction(businessId: string, _prev: AdsResult, _f: FormData): Promise<AdsResult> {
   void _prev;
   void _f;
-  return run(businessId, async () => {
+  return run(businessId, "publish", async () => {
     const r = await pauseAllAds(businessId);
     if (r.failed)
       return {
@@ -178,7 +178,7 @@ export async function pauseAllAdsAction(businessId: string, _prev: AdsResult, _f
 export async function improveGooglePlanAction(businessId: string, _prev: AdsResult, _f: FormData): Promise<AdsResult> {
   void _prev;
   void _f;
-  return run(businessId, async () => {
+  return run(businessId, "publish", async () => {
     await improveGooglePlan(businessId);
     return { es: "La IA mejoró los textos (todos caben en los límites de Google).", en: "The AI improved the texts (all fit Google's limits)." };
   });

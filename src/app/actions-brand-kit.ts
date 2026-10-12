@@ -7,6 +7,7 @@ import { updateBrandAssets } from "@/lib/brand-assets-db";
 import { renderKit, pool } from "@/lib/brand-kit";
 import { asCoverLang, cleanTagline, fallbackTagline, type CoverText } from "@/lib/brand-kit-formats";
 import { aiEnabled, ask } from "@/lib/ai";
+import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
@@ -20,6 +21,7 @@ export type KitSidecar = { kitCover: CoverText };
 /** Crea (o vuelve a crear) todas las imágenes del kit con la marca del negocio. Gratis: no usa IA. */
 export async function createBrandKit(businessId: string, _prev: KitResult, form: FormData): Promise<KitResult> {
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const b = await db.business.findUnique({
     where: { id: businessId },
     select: { name: true, color: true, color2: true, color3: true, fontHeading: true, fontBody: true, logoUrl: true, logoLightUrl: true, phone: true, website: true, brandAssets: true },
@@ -68,6 +70,7 @@ const TaglineSchema = z.object({
 /** La IA propone una frase corta para las portadas (unos centavos). Sin IA, una frase sacada de los datos del negocio. */
 export async function suggestKitTagline(businessId: string): Promise<{ ok: boolean; es: string; en: string; ai: boolean; message?: string }> {
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, es: "", en: "", ai: false, message: t("Negocio no encontrado", "Business not found") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { name: true, website: true, aiProfile: true, brandVoice: true, aiText: true } });
   if (!b) return { ok: false, es: "", en: "", ai: false, message: t("Negocio no encontrado", "Business not found") };
   const fb = fallbackTagline(b);

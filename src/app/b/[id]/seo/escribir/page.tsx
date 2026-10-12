@@ -6,6 +6,7 @@ import { DeleteArticleButton } from "@/components/seo/ArticleTools";
 import { ArticleView, ScoreDial } from "@/components/seo/ArticleView";
 import { WriterForm } from "@/components/seo/WriterForm";
 import { aiEnabled } from "@/lib/ai";
+import { pageBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
@@ -25,6 +26,7 @@ export default async function EscribirPage({
   searchParams: Promise<{ kw?: string; a?: string }>;
 }) {
   const { id } = await params;
+  await pageBusiness(id);
   const q = await searchParams;
   const { lang, t } = await getT();
   const b = await db.business.findUniqueOrThrow({

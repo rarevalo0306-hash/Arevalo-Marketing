@@ -6,7 +6,7 @@ import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { aiEnabled, interviewQuestions, profileFromWebsite, studyBusiness } from "@/lib/ai";
-import { newBusinessOrganizationId } from "@/lib/auth";
+import { newBusinessOrganizationId, requireBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
@@ -24,12 +24,14 @@ import {
   StudyInput,
 } from "@/lib/study-shape";
 import { ownerFields } from "@/lib/owner";
+import type { Need } from "@/lib/roles";
 import { readWebsite } from "@/lib/study-web";
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 const HEX = /^#[0-9a-fA-F]{6}$/;
 
-async function business(id: string) {
+async function business(id: string, need: Need) {
+  await requireBusiness(id, need);
   const b = await db.business.findUnique({ where: { id } });
   if (!b) {
     const { t } = await getT();
@@ -100,7 +102,7 @@ export type PrefillResult =
  * para no preguntarlo otra vez; si el negocio no tenía perfil, también se guarda el perfil que armó la IA.
  */
 export async function prefillStudy(businessId: string): Promise<PrefillResult> {
-  const b = await business(businessId);
+  const b = await business(businessId, "publish");
   const { lang, t } = await getT();
   if (!aiEnabled()) return { ok: false, error: t("Falta la clave de la IA en la configuración del servidor.", "The AI key is missing from the server settings.") };
   if (!b.website.trim() && !b.aiProfile.trim())
@@ -135,7 +137,7 @@ export async function prefillStudy(businessId: string): Promise<PrefillResult> {
 
 /** Guarda lo que el dueño lleva contestado (sin generar el estudio), para no perderlo. */
 export async function saveStudyDraft(businessId: string, f: FormData): Promise<void> {
-  await business(businessId);
+  await business(businessId, "publish");
   await db.business.update({ where: { id: businessId }, data: { studyInput: jsonSafe(studyInputFrom(f)) } });
 }
 
@@ -145,7 +147,7 @@ export type InterviewResult = { ok: true; interview: Interview } | { ok: false; 
 
 /** La IA lee lo básico y devuelve preguntas solo sobre lo que falta, a la medida del negocio. */
 export async function studyInterview(businessId: string, f: FormData): Promise<InterviewResult> {
-  const b = await business(businessId);
+  const b = await business(businessId, "publish");
   const { lang, t } = await getT();
   if (!aiEnabled()) return { ok: false, error: t("Falta la clave de la IA en la configuración del servidor.", "The AI key is missing from the server settings.") };
   const input = studyInputFrom(f);
@@ -166,7 +168,7 @@ export type StudyResult = { ok: boolean; message: string; warning?: boolean } | 
 
 /** La IA estudia el negocio (y su mercado en internet) y guarda el estudio en el mismo paso. */
 export async function generateStudy(businessId: string, _prev: StudyResult, f: FormData): Promise<StudyResult> {
-  const b = await business(businessId);
+  const b = await business(businessId, "publish");
   const { lang, t } = await getT();
   if (!aiEnabled()) return { ok: false, message: t("Falta la clave de la IA en la configuración del servidor.", "The AI key is missing from the server settings.") };
   const input = studyInputFrom(f);
@@ -229,7 +231,7 @@ export async function generateStudy(businessId: string, _prev: StudyResult, f: F
 
 /** Guarda el perfil (el sugerido por el estudio, revisado por el dueño) como lo que la IA sabe del negocio. */
 export async function saveStudyProfile(businessId: string, f: FormData) {
-  await business(businessId);
+  await business(businessId, "publish");
   await db.business.update({ where: { id: businessId }, data: { aiProfile: str(f, "aiProfile").slice(0, 4000) } });
   revalidatePath(`/b/${businessId}`, "layout");
 }
@@ -239,7 +241,7 @@ export async function saveStudyProfile(businessId: string, f: FormData) {
  * El perfil del negocio (Ajustes) no se toca.
  */
 export async function deleteStudy(businessId: string) {
-  const b = await business(businessId);
+  const b = await business(businessId, "publish");
   const study = readStudy(b.study);
   await db.business.update({
     where: { id: businessId },
@@ -256,7 +258,7 @@ export async function deleteStudy(businessId: string) {
 
 /** Recupera el último estudio borrado, con sus respuestas. */
 export async function restoreStudy(businessId: string) {
-  const b = await business(businessId);
+  const b = await business(businessId, "publish");
   const d = readDeleted(b.study);
   if (!d) return;
   await db.business.update({

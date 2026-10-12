@@ -3,6 +3,7 @@ import { PageHead } from "@/components/PageHead";
 import { AdsPanel, ChannelPanel, GooglePanel, GroupPanel, KpiGrid, PostsPanel, TimingPanel, TrendPanel } from "@/components/results/Panels";
 import { channelLabel } from "@/components/results/fmt";
 import s from "@/components/results/Results.module.css";
+import { pageBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
 import { resultsSummary } from "@/lib/results";
@@ -13,6 +14,7 @@ export const dynamic = "force-dynamic";
 /** Resumen de resultados: cómo le fue al negocio en los últimos 7, 30 o 90 días, comparado con el periodo anterior. */
 export default async function ResultadosPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ dias?: string }> }) {
   const { id } = await params;
+  await pageBusiness(id);
   const days = readPeriod((await searchParams).dias);
   const { lang, t } = await getT();
   const b = await db.business.findUniqueOrThrow({ where: { id }, select: { id: true, name: true, color: true } });

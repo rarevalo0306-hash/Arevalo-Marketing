@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createCampaign } from "@/app/actions-campaign";
 import { PageHead } from "@/components/PageHead";
 import { CampaignWizard } from "@/components/campaign/CampaignWizard";
+import { pageBusiness } from "@/lib/auth";
 import { wizardContext } from "@/lib/campaign";
 import { addDays, defaultRules } from "@/lib/campaign-shape";
 import { db } from "@/lib/db";
@@ -10,6 +11,7 @@ import { businessDay, businessTzLabel } from "@/lib/time";
 
 export default async function NewCampaignPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ goal?: string }> }) {
   const { id } = await params;
+  await pageBusiness(id);
   const { goal } = await searchParams;
   const { lang, t } = await getT();
   const b = await db.business.findUniqueOrThrow({ where: { id }, include: { connections: { select: { channel: true } } } });

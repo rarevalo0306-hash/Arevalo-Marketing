@@ -7,6 +7,7 @@ import { ConnectionCard } from "@/components/ConnectionCard";
 import { PageHead } from "@/components/PageHead";
 import { UploadLinkCard } from "@/components/library/UploadLinkCard";
 import { appOrigin } from "@/lib/app-origin";
+import { pageBusiness } from "@/lib/auth";
 import { brevoDomains, brevoEnvKey } from "@/lib/brevo";
 import { CHANNEL_IDS, CHANNELS, channelName, type ChannelGroup } from "@/lib/channels";
 import { decryptJson } from "@/lib/crypto";
@@ -39,6 +40,8 @@ export default async function ConexionesPage({
   searchParams: Promise<{ meta?: string; google?: string; place?: string; msg?: string; page?: string; ig?: string; youtube?: string; chan?: string }>;
 }) {
   const { id } = await params;
+  // El link privado de los técnicos deja subir a cualquiera que lo tenga: solo lo ve el Administrador.
+  const { role } = await pageBusiness(id);
   const q = await searchParams;
   const { lang, t } = await getT();
   const metaUrl = metaEnabled() ? `/api/meta/start?b=${id}` : null;
@@ -296,16 +299,18 @@ export default async function ConexionesPage({
                     counts={library}
                     aiReady={Boolean(process.env.GEMINI_API_KEY)}
                   />
-                  <UploadLinkCard
-                    businessId={id}
-                    businessName={b.name}
-                    configured={r2Enabled()}
-                    token={b.uploadToken}
-                    origin={origin}
-                    total={uploads.total}
-                    pending={uploads.pending}
-                    anchor="c-subir"
-                  />
+                  {role === "admin" && (
+                    <UploadLinkCard
+                      businessId={id}
+                      businessName={b.name}
+                      configured={r2Enabled()}
+                      token={b.uploadToken}
+                      origin={origin}
+                      total={uploads.total}
+                      pending={uploads.pending}
+                      anchor="c-subir"
+                    />
+                  )}
                 </div>
               </section>
             )}

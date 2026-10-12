@@ -6,11 +6,13 @@
 import { revalidatePath } from "next/cache";
 import type { z } from "zod";
 import { aiEnabled, ask, askGemini, type GeminiPart } from "@/lib/ai";
+import { hasBusiness } from "@/lib/auth";
 import { fromAiIdentity, fromAiProposals, type IdentityContext, identityPromptFor, IdentitySchema, proposalsPrompt, ProposalsSchema } from "@/lib/brand-identity";
 import { applyProposal, type BrandIdentity, fillEmpty, hasIdentity, identityFromForm, mergeFromBook, readBrandIdentity, withSeeds } from "@/lib/brand-identity-shape";
 import { db } from "@/lib/db";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
+import type { Need } from "@/lib/roles";
 import { readStudy, studyContext } from "@/lib/study-shape";
 import { readWebsite, siteDigest } from "@/lib/study-web";
 
@@ -18,7 +20,9 @@ export type IdentityResult = { ok: boolean; message: string; at?: number; visual
 
 type Biz = NonNullable<Awaited<ReturnType<typeof db.business.findUnique>>>;
 
-async function load(id: string): Promise<Biz | null> {
+// Primero el permiso (src/lib/auth.ts): sin acceso o con un papel corto, es como si el negocio no existiera.
+async function load(id: string, need: Need): Promise<Biz | null> {
+  if (!(await hasBusiness(id, need))) return null;
   return db.business.findUnique({ where: { id } });
 }
 
@@ -88,7 +92,7 @@ function aiFailed(e: unknown, lang: "es" | "en", t: (es: string, en: string) => 
  */
 export async function proposeIdentities(businessId: string, _prev: IdentityResult, f: FormData): Promise<IdentityResult> {
   const { lang, t } = await getT();
-  const b = await load(businessId);
+  const b = await load(businessId, "publish");
   if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   if (!aiEnabled()) return { ok: false, message: noKey(t) };
   const cur = withSeeds(readBrandIdentity(b.brandIdentity), { aiProfile: b.aiProfile, avoid: readStudy(b.study)?.avoid });
@@ -121,7 +125,7 @@ export async function proposeIdentities(businessId: string, _prev: IdentityResul
  */
 export async function chooseIdentity(businessId: string, _prev: IdentityResult, f: FormData): Promise<IdentityResult> {
   const { t } = await getT();
-  const b = await load(businessId);
+  const b = await load(businessId, "publish");
   if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const cur = readBrandIdentity(b.brandIdentity);
   const p = cur.proposals.find((x) => x.id === String(f.get("proposal") ?? ""));
@@ -151,7 +155,7 @@ export async function chooseIdentity(businessId: string, _prev: IdentityResult, 
  */
 export async function saveIdentity(businessId: string, _prev: IdentityResult, f: FormData): Promise<IdentityResult> {
   const { lang, t } = await getT();
-  const b = await load(businessId);
+  const b = await load(businessId, "publish");
   if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const get = (k: string) => String(f.get(k) ?? "");
   const mine = identityFromForm(get, readBrandIdentity(b.brandIdentity));

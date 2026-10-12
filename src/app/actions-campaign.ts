@@ -8,6 +8,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { approveDraft } from "@/app/actions";
 import { logAiAction } from "@/lib/ai-actions";
+import { hasBusiness, requireBusiness } from "@/lib/auth";
 import { competitorNames, pauseCampaign, resumeCampaign, rulesOf, saveRules, stopAllCampaigns, stopCampaign } from "@/lib/campaign";
 import {
   asMode,
@@ -20,11 +21,13 @@ import {
   readEngine,
   validateCampaign,
   type CampaignMode,
+  type CampaignRules,
   type RuleProblem,
 } from "@/lib/campaign-shape";
 import { CHANNEL_IDS } from "@/lib/channels";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
+import type { Need } from "@/lib/roles";
 import { businessDay, localToUtc } from "@/lib/time";
 
 export type CampaignFormResult = { ok: boolean; message: string; problems?: { field: string; text: string }[] } | null;
@@ -32,7 +35,8 @@ export type CampaignFormResult = { ok: boolean; message: string; problems?: { fi
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
-async function businessOf(id: string) {
+async function businessOf(id: string, need: Need) {
+  await requireBusiness(id, need);
   const b = await db.business.findUnique({ where: { id }, include: { connections: { select: { channel: true } } } });
   if (!b) {
     const { t } = await getT();
@@ -52,6 +56,32 @@ function problemsOut(list: RuleProblem[], lang: "es" | "en") {
   return list.map((p) => ({ field: p.field, text: lang === "en" ? p.en : p.es }));
 }
 
+/**
+ * Lo que solo decide un Administrador: una campaña 100% IA (elegirla o cambiar sus límites, porque la IA publica sola
+ * con ellos), subir el tope de gasto en IA o mandar los avisos a otro correo.
+ */
+function needsAdmin(mode: CampaignMode, before: CampaignRules, rules: CampaignRules): boolean {
+  const email = (v: string) => v.trim().toLowerCase();
+  return (
+    mode === "auto" ||
+    rules.maxAiCostCents > before.maxAiCostCents ||
+    (email(rules.alerts.email) !== "" && email(rules.alerts.email) !== email(before.alerts.email))
+  );
+}
+
+const adminOnly = (t: (es: string, en: string) => string) =>
+  t(
+    "Solo un Administrador puede elegir o cambiar una campaña 100% IA, subir el tope de gasto en IA o mandar los avisos a otro correo.",
+    "Only an Administrator can choose or change a 100% AI campaign, raise the AI spending cap or send the alerts to another email.",
+  );
+
+/** Empezar o reanudar una campaña 100% IA deja que la IA publique sola: eso solo lo hace un Administrador. */
+async function canStart(businessId: string, campaignId: string) {
+  await requireBusiness(businessId, "publish");
+  const c = await db.campaign.findFirst({ where: { id: campaignId, businessId }, select: { mode: true } });
+  if (c?.mode === "auto") await requireBusiness(businessId, "admin");
+}
+
 /** Fechas del formulario (día del negocio) → inicio y fin. Si empieza hoy, empieza ahora. */
 function datesFrom(f: FormData, now: Date): { startsAt: Date; endsAt: Date | null } {
   const today = businessDay(now);
@@ -63,7 +93,7 @@ function datesFrom(f: FormData, now: Date): { startsAt: Date; endsAt: Date | nul
 
 /** Crea la campaña con el asistente. «Empezar» la deja activa; «Guardar sin empezar» la deja sin empezar. */
 export async function createCampaign(businessId: string, _prev: CampaignFormResult, f: FormData): Promise<CampaignFormResult> {
-  const b = await businessOf(businessId);
+  const b = await businessOf(businessId, "publish");
   const { lang, t } = await getT();
   const now = new Date();
   const mode: CampaignMode = CAMPAIGN_MODES.includes(str(f, "mode") as CampaignMode) ? (str(f, "mode") as CampaignMode) : "approval";
@@ -75,6 +105,7 @@ export async function createCampaign(businessId: string, _prev: CampaignFormResu
   const base = defaultRules({ email: b.ownerEmail, lang: b.seoLanguage, competitors: competitorNames(b) });
   const rules = rulesFromForm(f, base);
   const basics = { name: str(f, "name").slice(0, 120), mode, startsAt, endsAt, channels, perWeek };
+  if (needsAdmin(mode, base, rules) && !(await hasBusiness(businessId, "admin"))) return { ok: false, message: adminOnly(t) };
   const problems = validateCampaign(basics, rules, { autoAccepted: f.get("autoAccepted") === "on", now });
   if (problems.length) return { ok: false, message: t("Revisa esto antes de empezar:", "Check this before starting:"), problems: problemsOut(problems, lang) };
   const start = str(f, "intent") !== "save";
@@ -111,7 +142,7 @@ export async function createCampaign(businessId: string, _prev: CampaignFormResu
 
 /** «Editar límites»: reglas, frecuencia, fecha de fin, canales y modo de una campaña que ya existe. */
 export async function updateCampaign(businessId: string, campaignId: string, _prev: CampaignFormResult, f: FormData): Promise<CampaignFormResult> {
-  const b = await businessOf(businessId);
+  const b = await businessOf(businessId, "publish");
   const { lang, t } = await getT();
   const c = await db.campaign.findFirst({ where: { id: campaignId, businessId } });
   if (!c) return { ok: false, message: t("No se encontró la campaña.", "Campaign not found.") };
@@ -124,6 +155,7 @@ export async function updateCampaign(businessId: string, campaignId: string, _pr
   const mode = f.has("mode") ? asMode(str(f, "mode")) : asMode(c.mode);
   const perWeek = f.has("perWeek") ? Math.round(Number(str(f, "perWeek")) || c.perWeek) : c.perWeek;
   const endsAt = DAY.test(str(f, "endDate")) ? localToUtc(str(f, "endDate"), 0, "23:59") : c.endsAt;
+  if (needsAdmin(mode, rulesOf(c, b), rules) && !(await hasBusiness(businessId, "admin"))) return { ok: false, message: adminOnly(t) };
   const problems = validateCampaign(
     { name: c.name, mode, startsAt: c.startsAt, endsAt, channels, perWeek },
     rules,
@@ -146,16 +178,19 @@ export async function updateCampaign(businessId: string, campaignId: string, _pr
 }
 
 export async function startCampaign(businessId: string, campaignId: string) {
+  await canStart(businessId, campaignId);
   await resumeCampaign(businessId, campaignId);
   paths(businessId, campaignId);
 }
 
 export async function pauseCampaignAction(businessId: string, campaignId: string) {
+  await requireBusiness(businessId, "publish");
   await pauseCampaign(businessId, campaignId, { actor: "owner" });
   paths(businessId, campaignId);
 }
 
 export async function resumeCampaignAction(businessId: string, campaignId: string) {
+  await canStart(businessId, campaignId);
   await resumeCampaign(businessId, campaignId);
   paths(businessId, campaignId);
 }
@@ -165,6 +200,7 @@ export type StopActionResult = { ok: boolean; message: string } | null;
 /** PARAR una campaña (emergencia). */
 export async function stopCampaignAction(businessId: string, campaignId: string, _prev?: StopActionResult): Promise<StopActionResult> {
   const { t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const r = await stopCampaign(businessId, campaignId, { actor: "owner" });
   paths(businessId, campaignId);
   if (!r.ok) return { ok: false, message: t("No se encontró la campaña.", "Campaign not found.") };
@@ -178,7 +214,7 @@ export async function stopCampaignAction(businessId: string, campaignId: string,
 
 /** «Parar todo»: todas las campañas del negocio. */
 export async function stopAllAction(businessId: string, _prev?: StopActionResult): Promise<StopActionResult> {
-  await businessOf(businessId);
+  await businessOf(businessId, "publish");
   const { t } = await getT();
   const r = await stopAllCampaigns(businessId);
   paths(businessId);
@@ -192,6 +228,7 @@ export async function stopAllAction(businessId: string, _prev?: StopActionResult
 
 /** Aprueba un borrador de la campaña (con los cambios del formulario) usando el mismo flujo que «Ideas y plan con IA». */
 export async function approveCampaignDraft(businessId: string, campaignId: string, postId: string, f: FormData) {
+  await requireBusiness(businessId, "publish");
   const post = await db.post.findFirst({ where: { id: postId, businessId, campaignId, status: "draft" }, select: { id: true, scheduledAt: true, kind: true, mediaUrl: true } });
   // Un video que todavía se está creando no se puede aprobar (saldría sin video).
   if (!post || (post.kind === "video" && !post.mediaUrl)) return;
@@ -212,6 +249,7 @@ export async function approveCampaignDraft(businessId: string, campaignId: strin
 
 /** Descarta un borrador que preparó la IA (el motor no lo vuelve a crear: su horario ya quedó atendido). */
 export async function discardCampaignDraft(businessId: string, campaignId: string, postId: string) {
+  await requireBusiness(businessId, "publish");
   const post = await db.post.findFirst({ where: { id: postId, businessId, campaignId, status: "draft" }, select: { id: true, source: true } });
   if (!post) return;
   // Solo se borra lo que escribió la IA; un texto del dueño se queda como borrador.

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { hasBusiness } from "@/lib/auth";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { authorizeRankFix, closeRankFix, pollRankFix, publishRankFix, removeRankFixItem, stockPhotoRankFixItem } from "@/lib/rankfix";
@@ -11,7 +12,8 @@ export type RankFixResult = { ok: boolean; message: string; job: RankFixView | n
 
 /** «Autorizar · hasta US$X.XX»: aprueba el gasto para PREPARAR (no publica nada). `cents` es lo que vio el dueño. */
 export async function authorizeRankFixAction(businessId: string, keys: string[], cents: number): Promise<RankFixResult> {
-  const { lang } = await getT();
+  const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found"), job: null, fix: null };
   try {
     const r = await authorizeRankFix(businessId, Array.isArray(keys) ? keys.filter((k) => typeof k === "string") : [], Number(cents), lang);
     return { ok: r.ok, message: r.message[lang], job: r.job, fix: r.fix };
@@ -22,6 +24,8 @@ export async function authorizeRankFixAction(businessId: string, keys: string[],
 
 /** El avance (solo la base de datos). Si el trabajo se cortó, sigue donde quedó. */
 export async function pollRankFixAction(businessId: string, id: string): Promise<{ job: RankFixView | null; fix: FixView | null }> {
+  // Si el trabajo se cortó, lo sigue (y sigue gastando lo autorizado): no es solo mirar.
+  if (!(await hasBusiness(businessId, "publish"))) return { job: null, fix: null };
   try {
     return await pollRankFix(businessId, String(id));
   } catch {
@@ -31,6 +35,7 @@ export async function pollRankFixAction(businessId: string, id: string): Promise
 
 /** «Quitar»: ese artículo no se publica (queda guardado en «Escribir artículo»). */
 export async function removeRankFixItemAction(businessId: string, id: string, key: string): Promise<RankFixView | null> {
+  if (!(await hasBusiness(businessId, "publish"))) return null;
   try {
     return await removeRankFixItem(businessId, String(id), String(key));
   } catch {
@@ -41,6 +46,7 @@ export async function removeRankFixItemAction(businessId: string, id: string, ke
 /** Usar la foto del tema de la web (gratis) en un artículo que paró antes de la foto con IA. */
 export async function stockPhotoRankFixAction(businessId: string, id: string, key: string): Promise<RankFixResult> {
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found"), job: null, fix: null };
   try {
     const job = await stockPhotoRankFixItem(businessId, String(id), String(key));
     return { ok: Boolean(job), message: t("Listo: usará la foto del tema de tu web.", "Done: it will use your website's topic photo."), job, fix: null };
@@ -51,7 +57,8 @@ export async function stockPhotoRankFixAction(businessId: string, id: string, ke
 
 /** «Publicar todo»: el segundo y último clic (aprueba que salga en la web). */
 export async function publishRankFixAction(businessId: string, id: string): Promise<RankFixResult> {
-  const { lang } = await getT();
+  const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found"), job: null, fix: null };
   try {
     const r = await publishRankFix(businessId, String(id));
     revalidatePath(`/b/${businessId}/seo/escribir`);
@@ -63,6 +70,7 @@ export async function publishRankFixAction(businessId: string, id: string): Prom
 
 /** «Cerrar esta lista»: los artículos quedan guardados en «Escribir artículo»; se puede armar otra ronda. */
 export async function closeRankFixAction(businessId: string, id: string): Promise<boolean> {
+  if (!(await hasBusiness(businessId, "publish"))) return false;
   try {
     const ok = await closeRankFix(businessId, String(id));
     revalidatePath(`/b/${businessId}/seo`);

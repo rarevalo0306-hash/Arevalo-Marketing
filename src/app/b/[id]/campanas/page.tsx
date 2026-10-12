@@ -4,12 +4,14 @@ import { PageHead } from "@/components/PageHead";
 import { CampaignCard } from "@/components/campaign/CampaignCard";
 import s from "@/components/campaign/Campaign.module.css";
 import { StopButton } from "@/components/campaign/StopButton";
+import { pageBusiness } from "@/lib/auth";
 import { loadCampaigns } from "@/lib/campaign";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
 
 export default async function CampaignsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  await pageBusiness(id);
   const { lang, t } = await getT();
   const [b, list] = await Promise.all([db.business.findUniqueOrThrow({ where: { id }, select: { id: true, name: true, color: true } }), loadCampaigns(id)]);
   const running = list.filter((c) => c.status === "active" || c.status === "paused" || c.status === "draft");

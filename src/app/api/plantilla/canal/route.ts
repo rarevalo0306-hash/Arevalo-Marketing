@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { businessAccess } from "@/lib/auth";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { isOwnFile, SAFE_MEDIA_NAME } from "@/lib/media";
@@ -22,8 +22,13 @@ export async function GET(req: Request) {
   const url = q.get("u") ?? "";
   const channel = q.get("c") ?? "";
   const { lang, t } = await getT();
-  const b = await db.business.findUnique({ where: { id: businessId }, select: { id: true } });
-  if (!b) return new Response(t("Negocio no encontrado", "Business not found"), { status: 404 });
+  // Solo quien entra a este negocio (src/lib/auth.ts); es una vista previa: no gasta ni guarda nada.
+  const access = await businessAccess(businessId, "view");
+  if (!access.ok)
+    return new Response(
+      access.status === 401 ? t("No autorizado", "Unauthorized") : access.status === 403 ? t("Tu papel en esta empresa no permite hacer esto.", "Your role in this business doesn't allow this.") : t("Negocio no encontrado", "Business not found"),
+      { status: access.status },
+    );
   if (!allowed(url, businessId)) return new Response(t("Esa foto no es de este negocio.", "That photo doesn't belong to this business."), { status: 400 });
   try {
     const made = await imageForChannel(url, channel);

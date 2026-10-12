@@ -2,6 +2,7 @@
 
 // Ideas de publicaciones: "✦ Más ideas con IA" (Inicio y Publicar).
 import { aiEnabled } from "@/lib/ai";
+import { hasBusiness } from "@/lib/auth";
 import { type ContentIdea, loadAllIdeas, recentOpenings } from "@/lib/content-ideas";
 import { aiMoreIdeas } from "@/lib/content-ideas-ai";
 import { db } from "@/lib/db";
@@ -13,6 +14,7 @@ export type MoreIdeasResult = { ok: true; ideas: ContentIdea[] } | { ok: false; 
 /** 10 ideas más de la IA, a partir de las oportunidades de SEO guardadas y sin repetir lo publicado. */
 export async function moreIdeas(businessId: string): Promise<MoreIdeasResult> {
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: t("Negocio no encontrado", "Business not found") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { name: true, website: true, aiProfile: true, aiText: true, study: true } });
   if (!b) return { ok: false, error: t("Negocio no encontrado", "Business not found") };
   if (!aiEnabled()) return { ok: false, error: t("Falta configurar la IA en la app.", "AI isn't set up in the app yet.") };

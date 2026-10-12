@@ -6,6 +6,7 @@ import { DiagnosisRunner } from "@/components/diagnosis/DiagnosisRunner";
 import { loadDiagnosis } from "@/components/diagnosis/load";
 import { MapPlacePicker } from "@/components/seo/MapPlacePicker";
 import { SeoSetup } from "@/components/seo/SeoSetup";
+import { pageBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
 import { readZones, zoneLabel } from "@/lib/seo/dataforseo";
@@ -19,6 +20,7 @@ export const maxDuration = 300;
 
 export default async function DiagnosticoPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ rehacer?: string }> }) {
   const { id } = await params;
+  await pageBusiness(id);
   const q = await searchParams;
   const [view, b] = await Promise.all([
     loadDiagnosis(id),

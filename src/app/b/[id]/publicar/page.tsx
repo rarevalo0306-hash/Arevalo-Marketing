@@ -5,6 +5,7 @@ import { libraryForPicker, libraryMedia, libraryPhotoFor } from "@/app/actions-l
 import { Composer } from "@/components/Composer";
 import { PageHead } from "@/components/PageHead";
 import { aiEnabled } from "@/lib/ai";
+import { pageBusiness } from "@/lib/auth";
 import { isBilingual } from "@/lib/bilingual";
 import { CHANNEL_IDS, type ChannelId } from "@/lib/channels";
 import { loadContentIdeas } from "@/lib/content-ideas";
@@ -32,6 +33,7 @@ export default async function PublicarPage({
   searchParams: Promise<{ idea?: string; magic?: string; foto?: string; tipo?: string }>;
 }) {
   const { id } = await params;
+  await pageBusiness(id);
   const q = await searchParams;
   const { lang, t } = await getT();
   const b = await db.business.findUniqueOrThrow({ where: { id }, include: { connections: { where: { channel: { in: CHANNEL_IDS } }, select: { channel: true } }, templates: { orderBy: { createdAt: "asc" } } } });

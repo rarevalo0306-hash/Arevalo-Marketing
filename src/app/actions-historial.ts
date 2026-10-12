@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
 import { retryTargets } from "@/lib/publish";
@@ -26,6 +27,7 @@ export async function retryFromHistory(_prev: RetryState, f: FormData): Promise<
   const postId = String(f.get("postId") ?? "");
   const targetId = String(f.get("targetId") ?? "");
   const force = f.get("force") === "1";
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found"), lines: [] };
   const post = await db.post.findFirst({ where: { id: postId, businessId }, select: { id: true } });
   if (!post) return { ok: false, message: t("No encontramos esta publicación. Recarga la página.", "We couldn't find this post. Reload the page."), lines: [] };
 

@@ -8,6 +8,7 @@ import { z } from "zod";
 import { refreshActionPlan } from "@/lib/action-plan";
 import { askGemini } from "@/lib/ai";
 import { logAiAction, recentAiActions } from "@/lib/ai-actions";
+import { hasBusiness } from "@/lib/auth";
 import { brandSlogan, identityPrompt } from "@/lib/brand-identity";
 import { decryptJson } from "@/lib/crypto";
 import { db } from "@/lib/db";
@@ -64,8 +65,7 @@ export async function saveListing(businessId: string, _prev: DirResult, f: FormD
   const notes = str(f, "notes", 1000);
   const nap = str(f, "napOk", 5);
   const napOk = nap === "yes" ? true : nap === "no" ? false : null;
-  const exists = await db.business.findUnique({ where: { id: businessId }, select: { id: true } });
-  if (!exists) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   // Si pega el enlace de su ficha sin marcar el estado, ya está en ese directorio.
   const data = { status: status === "todo" && url ? "listed" : status, url, notes, napOk, checkedAt: new Date() };
   await db.directoryListing.upsert({ where: { businessId_directory: { businessId, directory } }, create: { businessId, directory, ...data }, update: data });
@@ -77,8 +77,7 @@ export async function saveListing(businessId: string, _prev: DirResult, f: FormD
 export async function setListingStatus(businessId: string, directory: string, status: string): Promise<DirResult> {
   const { t } = await getT();
   if (!ALL_DIRECTORY_IDS.includes(directory) || !isListingStatus(status)) return { ok: false, message: t("No se pudo guardar.", "Couldn't save.") };
-  const exists = await db.business.findUnique({ where: { id: businessId }, select: { id: true } });
-  if (!exists) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   await db.directoryListing.upsert({
     where: { businessId_directory: { businessId, directory } },
     create: { businessId, directory, status, checkedAt: new Date() },
@@ -106,6 +105,7 @@ export async function writeDescriptions(businessId: string, _prev: DescResult, f
   void _prev;
   void f;
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const b = await db.business.findUnique({
     where: { id: businessId },
     select: { name: true, aiProfile: true, brandVoice: true, brandIdentity: true, study: true, seoKeywords: true },
@@ -161,8 +161,8 @@ export async function writeDescriptions(businessId: string, _prev: DescResult, f
 
 /** Anota que el dueño copió o descargó su link de reseñas (para el recordatorio de 30 días). Como mucho una vez cada 12 horas. */
 export async function markReviewShared(businessId: string, how: "copy" | "qr" | "card"): Promise<void> {
-  const exists = await db.business.findUnique({ where: { id: businessId }, select: { id: true } });
-  if (!exists) return;
+  // Anota en el registro y rehace el plan: quien solo ve puede copiar el link, pero no queda anotado.
+  if (!(await hasBusiness(businessId, "publish"))) return;
   const recent = await recentAiActions(businessId, { since: new Date(Date.now() - DAY_MS / 2), limit: 100 });
   if (recent.some((r) => r.kind === REVIEW_LINK_KIND)) return;
   const what = { copy: { es: "copió", en: "copied" }, qr: { es: "descargó el código QR de", en: "downloaded the QR code for" }, card: { es: "descargó la tarjeta de", en: "downloaded the card for" } }[how];
@@ -187,6 +187,7 @@ const TemplateSchema = z.object({
 /** La IA escribe el pedido de reseña con la voz de la marca (sin ofrecer nada a cambio). Si falla, la plantilla. */
 export async function writeReviewTemplate(businessId: string, reqLang: "es" | "en"): Promise<{ ok: boolean; message: string; template: ReqTemplate }> {
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found"), template: defaultTemplate(reqLang, { name: "", slogan: "" }) };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { name: true, aiProfile: true, brandVoice: true, brandIdentity: true, ownerName: true } });
   const base = defaultTemplate(reqLang, { name: b?.name ?? "", slogan: b ? brandSlogan(b, reqLang) : "", signer: b?.ownerName });
   if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found"), template: base };
@@ -225,6 +226,8 @@ export async function writeReviewTemplate(businessId: string, reqLang: "es" | "e
 export async function sendReviewRequests(businessId: string, _prev: DirResult, f: FormData): Promise<DirResult> {
   void _prev;
   const { lang, t } = await getT();
+  // Manda mensajes con la conexión del negocio; los contactos se buscan con este businessId.
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const channel: ReqChannel = str(f, "channel", 10) === "sms" ? "sms" : "email";
   const reqLang = str(f, "lang", 5) === "en" ? "en" : "es";
   const subject = str(f, "subject", 120);

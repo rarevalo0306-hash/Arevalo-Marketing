@@ -1,4 +1,5 @@
 import { PageHead } from "@/components/PageHead";
+import { pageBusiness } from "@/lib/auth";
 import { allLists } from "@/lib/contacts";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
@@ -6,6 +7,7 @@ import { ContactsBoard } from "./ContactsBoard";
 
 export default async function ContactosPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  await pageBusiness(id);
   const { t } = await getT();
   const b = await db.business.findUniqueOrThrow({ where: { id } });
   const contacts = await db.contact.findMany({

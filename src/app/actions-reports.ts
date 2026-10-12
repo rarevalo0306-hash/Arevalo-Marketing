@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { appOrigin } from "@/lib/app-origin";
+import { hasBusiness } from "@/lib/auth";
 import { businessTz, isValidTz, yesterday } from "@/lib/business-tz";
 import { dailyRecipients, saveReportSettings, sendDailyReport, sendRangeReport } from "@/lib/daily-report";
 import { db } from "@/lib/db";
@@ -17,6 +18,8 @@ const get = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 /** Guarda los ajustes del reporte diario: encendido, a quién, zona horaria, días tranquilos e idioma del email. */
 export async function saveDailySettings(businessId: string, _prev: ReportActionResult, f: FormData): Promise<ReportActionResult> {
   const { t } = await getT();
+  // Decide a quién se mandan solos los datos del negocio: solo el Administrador.
+  if (!(await hasBusiness(businessId, "admin"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { ownerEmail: true } });
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   const daily = f.get("daily") === "on";
@@ -61,6 +64,7 @@ export async function saveDailySettings(businessId: string, _prev: ReportActionR
 /** «Mandar el de ayer ahora»: manda ya el reporte de ayer (aunque ya se haya mandado), para ver cómo llega. */
 export async function sendYesterdayNow(businessId: string, _prev: ReportActionResult): Promise<ReportActionResult> {
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { timezone: true } });
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   const day = yesterday(businessTz(b));
@@ -84,6 +88,7 @@ export async function sendYesterdayNow(businessId: string, _prev: ReportActionRe
 /** «Enviarme este reporte por email»: el reporte del rango que se está viendo. */
 export async function emailRangeReport(businessId: string, _prev: ReportActionResult, f: FormData): Promise<ReportActionResult> {
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { timezone: true } });
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   const period = parseRange({ desde: get(f, "desde"), hasta: get(f, "hasta") }, businessTz(b));

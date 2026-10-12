@@ -7,6 +7,7 @@ import { OwnSitesForm } from "@/components/toxic/OwnSitesForm";
 import s from "@/components/toxic/Toxic.module.css";
 import { ToxicCheckButton } from "@/components/toxic/ToxicCheckButton";
 import { ToxicWorkspace } from "@/components/toxic/ToxicWorkspace";
+import { pageBusiness } from "@/lib/auth";
 import { intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { BACKLINKS_ACTIVATE_URL, BACKLINKS_PRICING_URL, bulkSpamCostEstimate, toxicFetchCostEstimate, TOXIC_REFERRING_LIMIT } from "@/lib/seo/backlinks";
@@ -20,6 +21,7 @@ export const dynamic = "force-dynamic";
 
 export default async function EnlacesPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  await pageBusiness(id);
   const { lang, t } = await getT();
   const st = await loadToxicState(id);
   if (!st) notFound();

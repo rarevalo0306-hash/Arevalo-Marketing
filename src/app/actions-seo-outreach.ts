@@ -3,6 +3,7 @@
 import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { aiEnabled } from "@/lib/ai";
+import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { errorText, type T } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
@@ -72,6 +73,7 @@ async function saveDrafts(businessId: string, add: OutreachDraft[]) {
 /** "Pedir enlace" de un sitio de "Dónde conseguir enlaces": correo (con IA) o pasos, y su contacto si aparece en su página. */
 export async function draftOutreach(businessId: string, domain: string): Promise<OutreachResult> {
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   const site = normalizeDomain(domain);
   if (!site) return { ok: false, message: t("Ese sitio no es válido.", "That site isn't valid.") };
   const [b, report] = await Promise.all([db.business.findUnique({ where: { id: businessId }, select: BUSINESS_FIELDS }), latestBacklinks(businessId)]);
@@ -102,6 +104,7 @@ export async function draftOutreach(businessId: string, domain: string): Promise
 /** "Preparar los 5 primeros": los 5 primeros sitios de la lista que todavía no tienen nada preparado (de a 3 a la vez). */
 export async function draftTopOutreach(businessId: string): Promise<OutreachTopResult> {
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   const [b, report, { store }] = await Promise.all([db.business.findUnique({ where: { id: businessId }, select: BUSINESS_FIELDS }), latestBacklinks(businessId), latestStore(businessId)]);
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   if (!report) return { ok: false, message: noReport(t) };
@@ -155,6 +158,7 @@ export async function draftTopOutreach(businessId: string): Promise<OutreachTopR
 /** Guarda los cambios que el dueño le hizo al correo. */
 export async function saveOutreachEdit(businessId: string, domain: string, subject: string, body: string): Promise<{ ok: boolean; message: string }> {
   const { t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   const site = normalizeDomain(domain);
   const { store } = await latestStore(businessId);
   const prev = site ? store.drafts[site] : undefined;

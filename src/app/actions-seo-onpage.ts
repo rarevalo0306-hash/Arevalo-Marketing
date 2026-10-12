@@ -3,6 +3,7 @@
 import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { aiEnabled, pickText, suggestOnPageFix } from "@/lib/ai";
+import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { bi, errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
@@ -103,6 +104,7 @@ export async function runOnPage(businessId: string, _prev: OnPageResult, f: Form
   void _prev;
   const startedAt = Date.now();
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   const only = String(f.get("url") ?? "").trim();
   try {
     if (!dataForSeoEnabled())
@@ -201,6 +203,7 @@ export async function runOnPage(businessId: string, _prev: OnPageResult, f: Form
  */
 export async function setPageKeyword(businessId: string, url: string, keyword: string): Promise<{ ok: boolean; message: string }> {
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   try {
     const latest = await latestOnPage(businessId);
     if (!latest || !latest.report.pages.some((p) => urlKey(p.url) === urlKey(url)))
@@ -226,6 +229,7 @@ export async function suggestPageFix(businessId: string, url: string, _prev: OnP
   void _prev;
   void _f;
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   try {
     if (!aiEnabled())
       throw bi("Falta la clave de la IA (GEMINI_API_KEY, ANTHROPIC_API_KEY u OPENAI_API_KEY) en Vercel.", "The AI key (GEMINI_API_KEY, ANTHROPIC_API_KEY or OPENAI_API_KEY) is missing in Vercel.");

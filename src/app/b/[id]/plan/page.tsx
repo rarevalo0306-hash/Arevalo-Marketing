@@ -4,6 +4,7 @@ import { PageHead } from "@/components/PageHead";
 import { PlanForm } from "@/components/PlanForm";
 import { StormForm } from "@/components/StormForm";
 import { aiEnabled } from "@/lib/ai";
+import { pageBusiness } from "@/lib/auth";
 import { CHANNEL_IDS, channelName, CHANNELS } from "@/lib/channels";
 import { db } from "@/lib/db";
 import { intlLocale } from "@/lib/i18n";
@@ -15,6 +16,7 @@ export const maxDuration = 300;
 
 export default async function PlanPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  await pageBusiness(id);
   const { lang, t } = await getT();
   const fmt = new Intl.DateTimeFormat(intlLocale(lang), { dateStyle: "full", timeStyle: "short", timeZone: BUSINESS_TZ });
   const b = await db.business.findUniqueOrThrow({ where: { id }, include: { connections: { where: { channel: { in: CHANNEL_IDS } }, select: { channel: true } } } });

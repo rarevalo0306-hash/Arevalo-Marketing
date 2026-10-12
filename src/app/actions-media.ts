@@ -4,6 +4,7 @@
 // dónde van la foto y el titular. Se guarda como una plantilla más del negocio.
 import { revalidatePath } from "next/cache";
 import sharp from "sharp";
+import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { CustomSpec, customBase, PHOTO_SPOTS, TEXT_SPOTS } from "@/lib/design-shapes";
 import { errorText } from "@/lib/i18n";
@@ -19,6 +20,7 @@ const pick = <T extends string>(v: FormDataEntryValue | null, list: readonly T[]
 /** Guarda una plantilla propia. La imagen llega ya subida (imageUrl, con Supabase) o como archivo (file). */
 export async function saveCustomTemplate(businessId: string, _prev: CustomTemplateResult, f: FormData): Promise<CustomTemplateResult> {
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { id: true } });
   if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   try {

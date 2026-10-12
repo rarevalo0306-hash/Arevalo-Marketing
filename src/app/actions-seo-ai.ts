@@ -1,9 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
+import type { Need } from "@/lib/roles";
 import { saveReport } from "@/lib/seo/reports";
 import { checkVisibility, cleanQuestions, PROVIDER_SHORT, providerErrors, sentimentText, suggestQuestions, visibilityProviders } from "@/lib/seo/visibility";
 
@@ -12,14 +14,15 @@ export type SuggestQuestionsResult = { ok: true; questions: string[] } | { ok: f
 
 const BUSINESS_FIELDS = { id: true, name: true, website: true, aiProfile: true, aiText: true, study: true, studyInput: true } as const;
 
-async function findBusiness(id: string) {
+async function findBusiness(id: string, need: Need) {
+  if (!(await hasBusiness(id, need))) return null;
   return db.business.findUnique({ where: { id }, select: BUSINESS_FIELDS });
 }
 
 /** La IA propone 3 a 5 preguntas de clientes para probar si las IAs recomiendan al negocio. */
 export async function suggestVisibilityQuestions(businessId: string): Promise<SuggestQuestionsResult> {
   const { lang, t } = await getT();
-  const b = await findBusiness(businessId);
+  const b = await findBusiness(businessId, "publish");
   if (!b) return { ok: false, error: t("Negocio no encontrado.", "Business not found.") };
   if (!visibilityProviders().length)
     return { ok: false, error: t("Falta la clave de la IA (GEMINI_API_KEY, ANTHROPIC_API_KEY u OPENAI_API_KEY) en el servidor.", "The AI key (GEMINI_API_KEY, ANTHROPIC_API_KEY or OPENAI_API_KEY) is missing on the server.") };
@@ -33,7 +36,7 @@ export async function suggestVisibilityQuestions(businessId: string): Promise<Su
 /** Hace las preguntas a ChatGPT, Gemini y Claude (con búsqueda en internet), guarda el reporte y dice cómo salió. */
 export async function runVisibility(businessId: string, _prev: VisibilityRunResult, f: FormData): Promise<VisibilityRunResult> {
   const { lang, t } = await getT();
-  const b = await findBusiness(businessId);
+  const b = await findBusiness(businessId, "publish");
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   if (!visibilityProviders().length)
     return {

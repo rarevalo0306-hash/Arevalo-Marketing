@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { aiEnabled, designTemplates, planWeek, readBrandBook, stormPlan, suggestBrandKit, type BrandKitSuggestion, TEXT_PROVIDERS, toPostFields, writePost, type AiPost, type AiPostOut, type Lang } from "@/lib/ai";
-import { newBusinessOrganizationId } from "@/lib/auth";
+import { hasBusiness, newBusinessOrganizationId, requireBusiness } from "@/lib/auth";
 import { recentOpenings } from "@/lib/content-ideas";
 import { brevoDomains, brevoEnvKey } from "@/lib/brevo";
 import { CHANNEL_IDS, channelDef, type ChannelId } from "@/lib/channels";
@@ -29,6 +29,7 @@ import { getT } from "@/lib/i18n-server";
 import { listPages, META_COOKIE, saveMetaPage } from "@/lib/meta-oauth";
 import { publishPost, retryPost } from "@/lib/publish";
 import { PUBLISHERS } from "@/lib/publishers";
+import type { Need } from "@/lib/roles";
 import { SESSION_COOKIE } from "@/lib/session";
 import { stormEvent, stormSchedule } from "@/lib/storm";
 import { businessDay, localToUtc } from "@/lib/time";
@@ -43,7 +44,9 @@ const safeJson = (v: string): unknown => {
 };
 const HEX = /^#[0-9a-fA-F]{6}$/;
 
-async function business(id: string) {
+// Primero el permiso (src/lib/auth.ts): sin acceso o con un papel corto, lanza antes de leer nada.
+async function business(id: string, need: Need) {
+  await requireBusiness(id, need);
   const b = await db.business.findUnique({ where: { id } });
   if (!b) {
     const { t } = await getT();
@@ -75,7 +78,7 @@ export async function createBusiness(f: FormData) {
 }
 
 export async function updateBusiness(id: string, f: FormData) {
-  await business(id);
+  await business(id, "admin"); // también el correo del dueño, que recibe los reportes
   const { t } = await getT();
   const name = str(f, "name");
   if (!name) throw new Error(t("Escribe el nombre del negocio", "Enter the business name"));
@@ -87,7 +90,7 @@ export async function updateBusiness(id: string, f: FormData) {
 }
 
 export async function deleteBusiness(id: string, f: FormData) {
-  const b = await business(id);
+  const b = await business(id, "admin");
   const { t } = await getT();
   if (str(f, "confirm") !== b.name) throw new Error(t("Escribe el nombre exacto para confirmar", "Type the exact name to confirm"));
   await eraseBusinessData(id);
@@ -97,7 +100,7 @@ export async function deleteBusiness(id: string, f: FormData) {
 // ---------- Conexiones ----------
 
 export async function saveConnection(businessId: string, channel: ChannelId, f: FormData) {
-  await business(businessId);
+  await business(businessId, "admin");
   const def = channelDef(channel);
   if (!def) {
     const { t } = await getT();
@@ -125,7 +128,7 @@ export async function saveConnection(businessId: string, channel: ChannelId, f: 
 
 /** Email con la clave de Brevo de la app: el negocio solo pone el nombre y el email que envía. */
 export async function connectBrevo(businessId: string, f: FormData): Promise<TestResult> {
-  const b = await business(businessId);
+  const b = await business(businessId, "admin");
   const { t } = await getT();
   if (!brevoEnvKey()) return { ok: false, message: t("Falta BREVO_API_KEY en la configuración del servidor.", "BREVO_API_KEY is missing from the server settings.") };
   const name = (str(f, "name") || b.name).replace(/[<>"]/g, "").slice(0, 80);
@@ -153,7 +156,7 @@ export async function connectBrevo(businessId: string, f: FormData): Promise<Tes
 
 /** Después de "Conectar con Facebook", cuando la cuenta administra varias páginas. */
 export async function chooseMetaPage(businessId: string, pageId: string) {
-  await business(businessId);
+  await business(businessId, "admin");
   const { t } = await getT();
   const jar = await cookies();
   const raw = jar.get(META_COOKIE)?.value;
@@ -169,7 +172,7 @@ export async function chooseMetaPage(businessId: string, pageId: string) {
 
 /** Después de "Conectar con Google", cuando la cuenta administra varios perfiles. */
 export async function chooseGoogleLocation(businessId: string, locationId: string) {
-  await business(businessId);
+  await business(businessId, "admin");
   const { t } = await getT();
   const jar = await cookies();
   const raw = jar.get(GOOGLE_COOKIE)?.value;
@@ -184,6 +187,7 @@ export async function chooseGoogleLocation(businessId: string, locationId: strin
 }
 
 export async function deleteConnection(businessId: string, channel: ChannelId) {
+  await requireBusiness(businessId, "admin");
   if (GOOGLE_CHANNELS.some(c => c === channel)) await disconnectGoogleData(businessId, channel);
   else await db.connection.deleteMany({ where: { businessId, channel } });
   revalidatePath(`/b/${businessId}/conexiones`);
@@ -193,6 +197,7 @@ export type TestResult = { ok: boolean; message: string } | null;
 
 export async function testConnection(businessId: string, channel: ChannelId): Promise<TestResult> {
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "admin"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const conn = await db.connection.findUnique({ where: { businessId_channel: { businessId, channel } } });
   if (!conn) return { ok: false, message: t("Primero guarda los datos de la conexión.", "Save the connection details first.") };
   try {
@@ -205,7 +210,7 @@ export async function testConnection(businessId: string, channel: ChannelId): Pr
 // ---------- Contactos ----------
 
 export async function addContact(businessId: string, f: FormData) {
-  await business(businessId);
+  await business(businessId, "publish");
   const email = str(f, "email");
   const phone = normalizePhone(str(f, "phone"));
   if (!email && !phone) {
@@ -226,7 +231,7 @@ export async function addContact(businessId: string, f: FormData) {
 }
 
 export async function importContacts(businessId: string, f: FormData) {
-  await business(businessId);
+  await business(businessId, "publish");
   const rows = parseContactsCsv(str(f, "csv"), {
     emailOptIn: f.get("emailOptIn") === "on",
     smsOptIn: f.get("smsOptIn") === "on",
@@ -236,11 +241,15 @@ export async function importContacts(businessId: string, f: FormData) {
 }
 
 export async function updateContactConsent(businessId: string, contactId: string, field: "emailOptIn" | "smsOptIn", value: boolean) {
-  await db.contact.updateMany({ where: { id: contactId, businessId }, data: { [field]: value } });
+  await requireBusiness(businessId, "publish");
+  // El campo llega del navegador: solo estos dos (con otro, como businessId, el contacto pasaría a otro negocio).
+  if (field !== "emailOptIn" && field !== "smsOptIn") return;
+  await db.contact.updateMany({ where: { id: contactId, businessId }, data: { [field]: value === true } });
   revalidatePath(`/b/${businessId}/contactos`);
 }
 
 export async function deleteContact(businessId: string, contactId: string) {
+  await requireBusiness(businessId, "publish");
   await db.contact.deleteMany({ where: { id: contactId, businessId } });
   revalidatePath(`/b/${businessId}/contactos`);
 }
@@ -249,12 +258,12 @@ export async function deleteContact(businessId: string, contactId: string) {
 
 /** Dirección para que el navegador suba la foto o el video directo a Supabase Storage. */
 export async function getUploadUrl(businessId: string, contentType: string) {
-  await business(businessId);
+  await business(businessId, "publish");
   return createSignedUpload(contentType, businessId);
 }
 
 export async function createPost(businessId: string, f: FormData) {
-  const biz = await business(businessId);
+  const biz = await business(businessId, "publish");
   const { lang, t } = await getT();
   const text = String(f.get("text") ?? "").trim();
   if (!text) throw new Error(t("Escribe tu mensaje", "Write your message"));
@@ -343,6 +352,7 @@ export async function createPost(businessId: string, f: FormData) {
 }
 
 export async function retry(businessId: string, postId: string) {
+  await requireBusiness(businessId, "publish");
   const post = await db.post.findFirst({ where: { id: postId, businessId } });
   if (!post) return;
   await retryPost(postId);
@@ -350,6 +360,7 @@ export async function retry(businessId: string, postId: string) {
 }
 
 export async function publishNow(businessId: string, postId: string) {
+  await requireBusiness(businessId, "publish");
   const res = await db.post.updateMany({
     where: { id: postId, businessId, status: "scheduled" },
     data: { scheduledAt: new Date() },
@@ -359,6 +370,7 @@ export async function publishNow(businessId: string, postId: string) {
 }
 
 export async function deletePost(businessId: string, postId: string) {
+  await requireBusiness(businessId, "publish");
   await db.post.deleteMany({ where: { id: postId, businessId, status: { not: "publishing" } } });
   revalidatePath(`/b/${businessId}/historial`);
   revalidatePath(`/b/${businessId}/plan`);
@@ -376,7 +388,7 @@ export type AiWriteResult = { ok: true; post: AiPostOut } | { ok: false; error: 
  * no repetirse; con `bilingual`, también escribe Facebook e Instagram en el otro idioma.
  */
 export async function aiWrite(businessId: string, idea: string, language: string, opts?: { bilingual?: boolean }): Promise<AiWriteResult> {
-  const b = await business(businessId);
+  const b = await business(businessId, "publish");
   const { lang, t } = await getT();
   if (!idea.trim()) return { ok: false, error: t("Escribe una idea o tema.", "Write an idea or topic.") };
   try {
@@ -388,7 +400,7 @@ export async function aiWrite(businessId: string, idea: string, language: string
 }
 
 export async function updateAiSettings(businessId: string, f: FormData) {
-  await business(businessId);
+  await business(businessId, "admin"); // aiAutopublish: Matya publica sola
   await db.business.update({
     where: { id: businessId },
     data: {
@@ -405,7 +417,7 @@ export type PlanResult = { ok: boolean; message: string } | null;
 
 /** Genera las publicaciones de una semana: borradores para aprobar, o programadas si el negocio tiene publicación automática. */
 export async function generatePlan(businessId: string, _prev: PlanResult, f: FormData): Promise<PlanResult> {
-  const b = await business(businessId);
+  const b = await business(businessId, "publish");
   const { lang, t } = await getT();
   if (!aiEnabled()) return { ok: false, message: t("Falta la clave de la IA (GEMINI_API_KEY) en la configuración del servidor.", "The AI key (GEMINI_API_KEY) is missing from the server settings.") };
   const startDate = /^\d{4}-\d{2}-\d{2}$/.test(str(f, "startDate")) ? str(f, "startDate") : businessDay(new Date());
@@ -477,7 +489,7 @@ async function savePlanPosts(
 
 /** Campaña de tormenta: 6 publicaciones listas, las de ofrecer servicios después de 48 horas. */
 export async function stormCampaign(businessId: string, _prev: PlanResult, f: FormData): Promise<PlanResult> {
-  const b = await business(businessId);
+  const b = await business(businessId, "publish");
   const { lang, t } = await getT();
   if (!aiEnabled()) return { ok: false, message: t("Falta la clave de la IA (GEMINI_API_KEY) en la configuración del servidor.", "The AI key (GEMINI_API_KEY) is missing from the server settings.") };
   const event = stormEvent(str(f, "event"));
@@ -517,6 +529,7 @@ export async function stormCampaign(businessId: string, _prev: PlanResult, f: Fo
 
 /** Guarda los cambios del borrador y lo programa. */
 export async function approveDraft(businessId: string, postId: string, f: FormData) {
+  await requireBusiness(businessId, "publish");
   const post = await db.post.findFirst({ where: { id: postId, businessId, status: "draft" }, include: { targets: true } });
   if (!post) return;
   const variants = { ...((post.variants ?? {}) as Record<string, string>) };
@@ -547,7 +560,7 @@ export type MediaResult = { ok: true; url: string } | { ok: false; error: string
 
 /** Crea una foto con IA y la guarda en tu almacenamiento. */
 export async function aiImage(businessId: string, description: string, shape: string): Promise<MediaResult> {
-  const b = await business(businessId);
+  const b = await business(businessId, "publish");
   const { lang, t } = await getT();
   if (!imagesEnabled()) return { ok: false, error: t("Falta una clave para crear imágenes en la configuración del servidor.", "An image key is missing from the server settings.") };
   if (!description.trim()) return { ok: false, error: t("Describe la imagen que quieres.", "Describe the image you want.") };
@@ -562,7 +575,7 @@ export type VideoStart = { ok: true; job: VideoJob } | { ok: false; error: strin
 
 /** Empieza a convertir una foto en video (5 segundos). */
 export async function aiVideoStart(businessId: string, imageUrl: string, motion: string): Promise<VideoStart> {
-  await business(businessId);
+  await business(businessId, "publish");
   const { lang, t } = await getT();
   if (!videoEnabled()) return { ok: false, error: t("Falta la clave para videos (FAL_KEY o GEMINI_API_KEY) en la configuración del servidor.", "The video key (FAL_KEY or GEMINI_API_KEY) is missing from the server settings.") };
   if (!/^https:\/\//.test(imageUrl)) return { ok: false, error: t("Primero crea o sube una foto para el video.", "First create or upload a photo for the video.") };
@@ -577,7 +590,7 @@ export type VideoCheck = { ok: true; done: false } | { ok: true; done: true; url
 
 /** Pregunta si el video ya está listo; si lo está, lo guarda en tu almacenamiento. */
 export async function aiVideoCheck(businessId: string, job: VideoJob): Promise<VideoCheck> {
-  await business(businessId);
+  await business(businessId, "publish");
   const { lang } = await getT();
   try {
     const r = await videoResult(job);
@@ -614,7 +627,7 @@ async function brandPhoto(
 }
 
 export async function aiDesign(businessId: string, photoUrl: string, headline: string, shape: string, template = -1, steps: string[] = []): Promise<MediaResult> {
-  const b = await business(businessId);
+  const b = await business(businessId, "publish");
   const { lang, t } = await getT();
   if (photoUrl && !/^https:\/\//.test(photoUrl)) return { ok: false, error: t("La foto necesita una dirección pública.", "The photo needs a public web address.") };
   if (!headline.trim()) return { ok: false, error: t("Escribe el titular que va en la foto.", "Write the headline that goes on the photo.") };
@@ -630,7 +643,7 @@ const safeUrl = (v: string) => (/^https:\/\//.test(v) || v === "" ? v : undefine
 
 /** Kit de marca: logos, colores, letras, tono de voz, hashtags, teléfono y diseño automático. */
 export async function updateBrandKit(businessId: string, f: FormData) {
-  const b = await business(businessId);
+  const b = await business(businessId, "publish");
   const font = str(f, "fontHeading");
   await db.business.update({
     where: { id: businessId },
@@ -654,13 +667,13 @@ export async function updateBrandKit(businessId: string, f: FormData) {
 export type BrandKitResult = { ok: true; kit: BrandKitSuggestion } | { ok: false; message: string };
 
 export async function getBrandBookUploadUrl(businessId: string, contentType: string) {
-  await business(businessId);
+  await business(businessId, "publish");
   return createSignedUpload(contentType, businessId, "document");
 }
 
 /** Guarda el manual de marca subido y la IA lo lee para llenar la identidad (el dueño revisa y guarda). */
 export async function brandFromBook(businessId: string, url: string): Promise<BrandKitResult> {
-  const b = await business(businessId);
+  const b = await business(businessId, "publish");
   const { lang, t } = await getT();
   if (!isOwnFile(url, businessId)) return { ok: false, message: t("El archivo no es de este negocio.", "That file doesn't belong to this business.") };
   await db.business.update({ where: { id: businessId }, data: { brandBookUrl: url } });
@@ -679,7 +692,7 @@ export async function brandFromBook(businessId: string, url: string): Promise<Br
 
 /** La IA propone una identidad de marca completa (el dueño revisa y guarda). */
 export async function brandFromAi(businessId: string): Promise<BrandKitResult> {
-  const b = await business(businessId);
+  const b = await business(businessId, "publish");
   const { lang, t } = await getT();
   if (!aiEnabled()) return { ok: false, message: t("Falta la clave de la IA en la configuración del servidor.", "The AI key is missing from the server settings.") };
   try {
@@ -693,7 +706,7 @@ export type TemplatesResult = { ok: boolean; message: string } | null;
 
 /** La IA diseña plantillas nuevas con la marca del negocio y las guarda. */
 export async function generateTemplates(businessId: string): Promise<TemplatesResult> {
-  const b = await business(businessId);
+  const b = await business(businessId, "publish");
   const { lang, t } = await getT();
   if (!aiEnabled()) return { ok: false, message: t("Falta la clave de la IA en la configuración del servidor.", "The AI key is missing from the server settings.") };
   try {
@@ -711,7 +724,7 @@ export async function generateTemplates(businessId: string): Promise<TemplatesRe
  * Reemplaza las que diseñó la IA antes; las que subió el dueño (plantillas propias) se quedan.
  */
 export async function proposeTemplates(businessId: string): Promise<TemplatesResult> {
-  const b = await business(businessId);
+  const b = await business(businessId, "publish");
   const { lang, t } = await getT();
   if (!aiEnabled()) return { ok: false, message: t("Falta la clave de la IA en la configuración del servidor.", "The AI key is missing from the server settings.") };
   try {
@@ -731,6 +744,7 @@ export async function proposeTemplates(businessId: string): Promise<TemplatesRes
 }
 
 export async function deleteTemplate(businessId: string, templateId: string) {
+  await requireBusiness(businessId, "publish");
   await db.template.deleteMany({ where: { id: templateId, businessId } });
   revalidatePath(`/b/${businessId}/marca`);
 }

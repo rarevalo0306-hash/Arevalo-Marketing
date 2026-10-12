@@ -2,21 +2,19 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { db } from "@/lib/db";
+import { hasBusiness, requireBusiness } from "@/lib/auth";
 import { disconnectGoogleData } from "@/lib/data-deletion";
 import { GA4_CHANNEL, readGa4Connection, refreshGa4, writeGa4Connection } from "@/lib/ga4";
 import { explainGa4Error } from "@/lib/ga4-shape";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
+import type { Need } from "@/lib/roles";
 
 export type Ga4Result = { ok: boolean; message: string } | null;
 
-async function ensureBusiness(id: string) {
-  const b = await db.business.findUnique({ where: { id }, select: { id: true } });
-  if (!b) {
-    const { t } = await getT();
-    throw new Error(t("Negocio no encontrado", "Business not found"));
-  }
+// Primero el permiso (src/lib/auth.ts): sin acceso lanza «Negocio no encontrado»; con un papel corto, el aviso del papel.
+async function ensureBusiness(id: string, need: Need) {
+  await requireBusiness(id, need);
 }
 
 const paths = (id: string) => {
@@ -29,8 +27,9 @@ export async function refreshGa4Action(businessId: string, _prev: Ga4Result, _f:
   void _prev;
   void _f;
   const { lang, t } = await getT();
+  // Trae datos de Google al negocio: hace falta poder publicar.
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   try {
-    await ensureBusiness(businessId);
     const r = await refreshGa4(businessId);
     if (!r.ok) {
       // Si se llegó a preguntar a Google, el motivo quedó guardado y el panel lo muestra (sin repetirlo aquí).
@@ -57,6 +56,8 @@ export async function refreshGa4Action(businessId: string, _prev: Ga4Result, _f:
 
 /** Al abrir el panel: actualiza solo si los datos tienen más de un día (como máximo una vez al día). */
 export async function autoRefreshGa4(businessId: string): Promise<{ refreshed: boolean }> {
+  // Quien solo puede ver no dispara la actualización (trae datos de Google al negocio).
+  if (!(await hasBusiness(businessId, "publish"))) return { refreshed: false };
   try {
     const r = await refreshGa4(businessId, { auto: true });
     // También cuando falla: el panel tiene que mostrar el motivo guardado.
@@ -69,7 +70,7 @@ export async function autoRefreshGa4(businessId: string): Promise<{ refreshed: b
 
 /** Elige la propiedad de GA4 de este negocio (de las que se encontraron al conectar) y trae los primeros datos. */
 export async function chooseGa4Property(businessId: string, propertyId: string) {
-  await ensureBusiness(businessId);
+  await ensureBusiness(businessId, "admin");
   const { t } = await getT();
   const conn = await readGa4Connection(businessId);
   const prop = conn?.secret.properties?.find((p) => p.id === propertyId);
@@ -84,7 +85,7 @@ export async function chooseGa4Property(businessId: string, propertyId: string) 
 
 /** «Cambiar de propiedad»: vuelve a mostrar la lista (sin volver a pedir permiso a Google). */
 export async function changeGa4Property(businessId: string) {
-  await ensureBusiness(businessId);
+  await ensureBusiness(businessId, "admin");
   const conn = await readGa4Connection(businessId);
   if (conn) await writeGa4Connection(businessId, { ...conn.secret, propertyId: undefined, propertyName: undefined, lastError: undefined, lastTryAt: undefined });
   paths(businessId);

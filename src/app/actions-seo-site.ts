@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { hasBusiness } from "@/lib/auth";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { approveForSite, chooseSitePhoto, generateSitePhoto, prepareForSite } from "@/lib/seo/site-article-run";
@@ -17,6 +18,7 @@ const paths = (businessId: string) => {
 export async function suggestTopic(businessId: string, _prev: TopicResult, f: FormData): Promise<TopicResult> {
   void _prev;
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "view"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const skip = String(f.get("skip") ?? "")
     .split("\n")
     .map((s) => s.trim())
@@ -45,6 +47,8 @@ export async function prepareSiteArticle(businessId: string, reportId: string, _
   void _prev;
   void _f;
   const { lang, t } = await getT();
+  // Traduce con la IA (gasta). El artículo se busca con este businessId (site-article-run).
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   try {
     await prepareForSite(businessId, reportId);
     paths(businessId);
@@ -58,6 +62,7 @@ export async function prepareSiteArticle(businessId: string, reportId: string, _
 export async function pickSitePhoto(businessId: string, reportId: string, _prev: SiteResult, f: FormData): Promise<SiteResult> {
   void _prev;
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   try {
     await chooseSitePhoto(businessId, reportId, String(f.get("photo") ?? ""));
     paths(businessId);
@@ -71,6 +76,7 @@ export async function pickSitePhoto(businessId: string, reportId: string, _prev:
 export async function newSitePhoto(businessId: string, reportId: string, _prev: SiteResult, f: FormData): Promise<SiteResult> {
   void _prev;
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   try {
     await generateSitePhoto(businessId, reportId, Number(f.get("cents") ?? -1));
     paths(businessId);
@@ -84,6 +90,7 @@ export async function newSitePhoto(businessId: string, reportId: string, _prev: 
 export async function approveSiteArticle(businessId: string, reportId: string, _prev: SiteResult, f: FormData): Promise<SiteResult> {
   void _prev;
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   try {
     const r = await approveForSite(businessId, reportId, Number(f.get("cents") ?? -1));
     paths(businessId);

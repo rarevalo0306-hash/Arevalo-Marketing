@@ -2,6 +2,7 @@
 
 import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { errorText, intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
@@ -17,6 +18,7 @@ export async function runTraffic(businessId: string, _prev: TrafficResult, _f: F
   void _prev;
   void _f;
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   if (!dataForSeoEnabled())
     return { ok: false, message: t("Falta conectar DataForSEO (DATAFORSEO_LOGIN y DATAFORSEO_PASSWORD en Vercel).", "DataForSEO isn't connected yet (DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD in Vercel).") };
   const b = await db.business.findUnique({

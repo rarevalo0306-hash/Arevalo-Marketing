@@ -2,6 +2,7 @@
 
 import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { errorText, intlLocale, type UiLang } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
@@ -59,6 +60,7 @@ export async function runToxicCheck(businessId: string, _prev: ToxicResult, _f: 
   void _prev;
   void _f;
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   if (!dataForSeoEnabled())
     return { ok: false, message: t("Falta conectar DataForSEO (DATAFORSEO_LOGIN y DATAFORSEO_PASSWORD en Vercel).", "DataForSEO isn't connected yet (DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD in Vercel).") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { website: true } });
@@ -117,6 +119,7 @@ export async function runToxicCheck(businessId: string, _prev: ToxicResult, _f: 
 export async function importToxicList(businessId: string, _prev: ToxicResult, f: FormData): Promise<ToxicResult> {
   void _prev;
   const { t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const text = String(f.get("text") ?? "");
   const name = String(f.get("name") ?? "").slice(0, 120);
   if (!text.trim()) return { ok: false, message: t("Pega la lista o elige un archivo primero.", "Paste the list or pick a file first.") };
@@ -180,6 +183,7 @@ export async function checkImportSpam(businessId: string, _prev: ToxicResult, _f
   void _prev;
   void _f;
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   if (!dataForSeoEnabled())
     return { ok: false, message: t("Falta conectar DataForSEO (DATAFORSEO_LOGIN y DATAFORSEO_PASSWORD en Vercel).", "DataForSEO isn't connected yet (DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD in Vercel).") };
   const rows = await db.seoReport.findMany({ where: { businessId, kind: TOXIC_KIND, data: { path: ["source"], equals: "import" } }, orderBy: { createdAt: "desc" }, take: 1 });
@@ -214,6 +218,7 @@ const ANSWERS: Answer[] = ["yes", "no", "unsure"];
 export async function saveToxicDecision(businessId: string, _prev: ToxicResult, f: FormData): Promise<ToxicResult> {
   void _prev;
   const { t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const manual = String(f.get("manual") ?? "");
   const drop = String(f.get("drop") ?? "");
   if (!ANSWERS.includes(manual as Answer) || !ANSWERS.includes(drop as Answer)) return { ok: false, message: t("Responde las dos preguntas.", "Answer both questions.") };
@@ -230,6 +235,7 @@ export async function saveToxicDecision(businessId: string, _prev: ToxicResult, 
 export async function saveOwnSites(businessId: string, _prev: ToxicResult, f: FormData): Promise<ToxicResult> {
   void _prev;
   const { t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const sites = parseOwnSites(String(f.get("sites") ?? ""));
   const record: SettingsRecord = { version: 1, type: "settings", createdAt: new Date().toISOString(), ownSites: sites };
   await db.seoReport.deleteMany({ where: { businessId, kind: TOXIC_KIND, data: { path: ["type"], equals: "settings" } } });
@@ -246,6 +252,7 @@ export type DisavowResult = { ok: boolean; message: string; text?: string; fileN
  */
 export async function makeDisavowFile(businessId: string, input: { domains: string[]; reason: string; outcome: Outcome | null }): Promise<DisavowResult> {
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const state = await loadToxicState(businessId);
   if (!state) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const site = state.business.website;

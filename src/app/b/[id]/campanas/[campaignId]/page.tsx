@@ -10,6 +10,7 @@ import { CampaignWizard } from "@/components/campaign/CampaignWizard";
 import { LimitsPanel } from "@/components/campaign/LimitsPanel";
 import { StopButton } from "@/components/campaign/StopButton";
 import { recentAiActions } from "@/lib/ai-actions";
+import { pageBusiness } from "@/lib/auth";
 import { aiSpentCents, rulesOf, wizardContext } from "@/lib/campaign";
 import { asMode, campaignSlots, centsText, readEngine, slotCounts, slotKey } from "@/lib/campaign-shape";
 import { db } from "@/lib/db";
@@ -21,6 +22,7 @@ export const maxDuration = 60;
 
 export default async function CampaignPage({ params, searchParams }: { params: Promise<{ id: string; campaignId: string }>; searchParams: Promise<{ nueva?: string }> }) {
   const { id, campaignId } = await params;
+  await pageBusiness(id);
   const { nueva } = await searchParams;
   const { lang, t } = await getT();
   const [b, c] = await Promise.all([

@@ -24,6 +24,7 @@ import { candidatePosts } from "@/lib/ads-ai";
 import { googlePlanFor } from "@/lib/ads-google-load";
 import { campaignRoomCents, daysBetween, guessSpecialCategory, isLive, money, readCampaignAds } from "@/lib/ads-shape";
 import { aiEnabled } from "@/lib/ai";
+import { pageBusiness } from "@/lib/auth";
 import { statusLabel } from "@/lib/campaign-shape";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
@@ -45,6 +46,7 @@ export default async function AnunciosPage({
   searchParams: Promise<{ campana?: string; tab?: string; ads?: string; msg?: string }>;
 }) {
   const { id } = await params;
+  await pageBusiness(id);
   const q = await searchParams;
   const { lang, t } = await getT();
   const tab = q.tab === "google" ? "google" : "meta";

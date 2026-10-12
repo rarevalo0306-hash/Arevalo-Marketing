@@ -5,6 +5,7 @@ import { NapCard } from "@/components/directories/NapCard";
 import { ReviewLink } from "@/components/directories/ReviewLink";
 import { ReviewRequest } from "@/components/directories/ReviewRequest";
 import { PageHead } from "@/components/PageHead";
+import { pageBusiness } from "@/lib/auth";
 import { brandSlogan } from "@/lib/brand-identity";
 import { db } from "@/lib/db";
 import { napIssueText } from "@/lib/directories";
@@ -18,6 +19,7 @@ export const dynamic = "force-dynamic";
 
 export default async function DirectoriosPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  await pageBusiness(id);
   const { lang, t } = await getT();
   const d = await loadDirectoryPage(id);
   if (!d) notFound();

@@ -3,6 +3,7 @@
 import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { aiEnabled, draftReviewReplies, draftReviewReply } from "@/lib/ai";
+import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { errorText, intlLocale, type UiLang } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
@@ -89,6 +90,7 @@ export async function refreshProfile(businessId: string, _prev: GbpResult, _f: F
   void _prev;
   void _f;
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   if (!dataForSeoEnabled()) return { ok: false, message: notConnected(t) };
   const b = await db.business.findUnique({ where: { id: businessId }, select: BUSINESS_FIELDS });
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
@@ -128,6 +130,7 @@ export async function refreshReviews(businessId: string, _prev: GbpResult, _f: F
   void _prev;
   void _f;
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   if (!dataForSeoEnabled()) return { ok: false, message: notConnected(t) };
   const b = await db.business.findUnique({ where: { id: businessId }, select: BUSINESS_FIELDS });
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
@@ -184,6 +187,7 @@ const replyBusiness = (b: { name: string; website: string; phone: string; aiProf
 /** La IA escribe la respuesta a una reseña y queda guardada como borrador (el dueño la puede cambiar). */
 export async function draftReply(businessId: string, reviewId: string): Promise<ReplyResult> {
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   if (!aiEnabled()) return { ok: false, message: noAi(t) };
   const [b, latest] = await Promise.all([db.business.findUnique({ where: { id: businessId }, select: BUSINESS_FIELDS }), latestReviews(businessId)]);
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
@@ -203,6 +207,7 @@ export async function draftReply(businessId: string, reviewId: string): Promise<
 /** La IA escribe las respuestas de hasta 10 reseñas sin contestar ni borrador (primero las de 3 estrellas o menos). */
 export async function draftAllReplies(businessId: string): Promise<{ ok: boolean; message: string; drafts: Record<string, string> }> {
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found."), drafts: {} };
   if (!aiEnabled()) return { ok: false, message: noAi(t), drafts: {} };
   const [b, latest] = await Promise.all([db.business.findUnique({ where: { id: businessId }, select: BUSINESS_FIELDS }), latestReviews(businessId)]);
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found."), drafts: {} };
@@ -242,6 +247,7 @@ export async function draftAllReplies(businessId: string): Promise<{ ok: boolean
 /** Guarda la respuesta como la dejó el dueño. */
 export async function saveReplyDraft(businessId: string, reviewId: string, text: string): Promise<ReplyResult> {
   const { t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   const latest = await latestReviews(businessId);
   if (!latest) return { ok: false, message: noReviews(t) };
   if (!latest.report.reviews.some((r) => r.id === reviewId)) return { ok: false, message: notFoundReview(t) };
@@ -267,6 +273,7 @@ export async function saveReplyDraft(businessId: string, reviewId: string, text:
  */
 export async function postReply(businessId: string, reviewId: string, text?: string): Promise<ReplyResult> {
   const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   const creds = await googleReplyCreds(businessId);
   if (!creds)
     return {
