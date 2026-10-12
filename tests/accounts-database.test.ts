@@ -35,11 +35,13 @@ describe.skipIf(!safe)("sign-in accounts on an isolated PostgreSQL", () => {
     expect(new Set(orgs.map((o) => o.organizationId)).size).toBe(1);
   });
 
-  it("someone who is not an owner never gets in, even with an existing membership", async () => {
+  it("someone who is not an owner gets in only while they are on a team", async () => {
     expect(await loginUser("guest@gmail.com", { owner: false })).toBeNull();
     expect(await db.user.findUnique({ where: { email: "guest@gmail.com" } })).toBeNull();
-    await loginUser("guest@gmail.com", { owner: true }); // fue dueño...
-    expect(await loginUser("guest@gmail.com", { owner: false })).toBeNull(); // ...y lo quitaron de LOGIN_EMAILS
+    await loginUser("guest@gmail.com", { owner: true }); // fue dueño: quedó en el equipo...
+    expect(await loginUser("guest@gmail.com", { owner: false })).not.toBeNull(); // ...y sigue entrando como miembro
+    await db.membership.deleteMany({ where: { user: { email: "guest@gmail.com" } } }); // «Quitar acceso» en Equipo
+    expect(await loginUser("guest@gmail.com", { owner: false })).toBeNull();
   });
 
   it("rejects things that are not emails", async () => {

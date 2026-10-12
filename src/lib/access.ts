@@ -3,12 +3,14 @@
 // solo se permite a las rutas que revisan su propio permiso: entrar con la contraseña y la subida de fotos de los
 // técnicos. Así ninguna acción del servidor (server action) se puede llamar sin sesión, ni desde la página de entrada.
 
-/** Públicas para leer: entrar, «Entrar con Google», el publicador automático (su propia clave), la página y los
- *  archivos para los técnicos y las redes, y lo necesario para instalar la app. Terminadas en "/" = todo lo de adentro. */
-const PUBLIC_READ = ["/login", "/api/auth/google/", "/api/cron", "/subir/", "/media/", "/manifest.webmanifest", "/icons/", "/icon", "/apple-icon", "/favicon.ico"];
+/** Públicas para leer: entrar, olvidé mi contraseña, la invitación, «Entrar con Google», el publicador automático (su
+ *  propia clave), la página y los archivos para los técnicos y las redes, y lo necesario para instalar la app.
+ *  Terminadas en "/" = todo lo de adentro. */
+const PUBLIC_READ = ["/login", "/olvide", "/clave/", "/invitacion/", "/api/auth/google/", "/api/cron", "/subir/", "/media/", "/manifest.webmanifest", "/icons/", "/icon", "/apple-icon", "/favicon.ico"];
 
-/** Públicas para enviar: la contraseña y los dos pasos de la subida de los técnicos (revisan su propio link). */
-const PUBLIC_WRITE: (string | RegExp)[] = ["/api/auth/login", /^\/api\/subir\/[^/]+\/(firmar|listo)$/];
+/** Públicas para enviar: entrar, pedir y guardar una contraseña nueva, aceptar una invitación con contraseña, y los dos
+ *  pasos de la subida de los técnicos (todas revisan su propio enlace o el límite de intentos). */
+const PUBLIC_WRITE: (string | RegExp)[] = ["/api/auth/login", "/api/auth/olvide", "/api/auth/clave", "/api/auth/invitacion", /^\/api\/subir\/[^/]+\/(firmar|listo)$/];
 
 const matches = (path: string, rule: string | RegExp) =>
   typeof rule !== "string" ? rule.test(path) : rule.endsWith("/") ? path.startsWith(rule) : path === rule;
@@ -39,3 +41,6 @@ export function fromOtherSite(h: HeaderBag, host: string): boolean {
     return true;
   }
 }
+
+/** A dónde puede volver después de entrar: solo a aceptar una invitación (nunca a otra web). */
+export const safeNext = (next: string) => (/^\/invitacion\/[A-Za-z0-9_-]{43}$/.test(next) ? next : "/");

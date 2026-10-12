@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { isOwnerEmail, loginUser } from "@/lib/accounts";
+import { acceptInvitation } from "@/lib/team";
 import {
   appBase,
   GOOGLE_LOGIN_COOKIE,
@@ -56,7 +57,9 @@ export async function GET(req: Request) {
 
   let user: Awaited<ReturnType<typeof loginUser>> = null;
   try {
-    user = await loginUser(who.email, { owner: isOwnerEmail(who.email), name: who.name });
+    // Viene de una invitación: se acepta si el correo de Google es el invitado; si no, entra como siempre.
+    if (flow.invite) user = await acceptInvitation(flow.invite, who.email, { name: who.name });
+    user ??= await loginUser(who.email, { owner: isOwnerEmail(who.email), name: who.name });
   } catch (e) {
     console.error("google login user unavailable:", e instanceof Error ? e.message : e);
     return fail("error");

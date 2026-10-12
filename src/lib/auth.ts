@@ -2,8 +2,8 @@
 //   páginas:            await pageBusiness(id)                  (sin sesión → /login, sin acceso → 404)
 //   acciones y rutas:   await requireBusiness(id, "publish")    (sin acceso → error «Negocio no encontrado»)
 //   si debe responder:  if (!(await hasBusiness(id))) return …
-// Un negocio es de una organización; la persona entra si es miembro de esa organización y su papel alcanza
-// (src/lib/roles.ts). Si llega el id de algo de un negocio (post, campaña…), primero se busca su businessId y se revisa ese.
+// Un negocio es de una organización; la persona entra si es miembro de esa organización, el miembro entra a ese negocio
+// (el Administrador y quien tiene «todas las empresas» entran a todos) y su papel alcanza (src/lib/roles.ts). Si llega el id de algo de un negocio (post, campaña…), primero se busca su businessId y se revisa ese.
 import { cache } from "react";
 import type { Prisma } from "@prisma/client";
 import { cookies } from "next/headers";
@@ -17,7 +17,14 @@ export type SessionUser = {
   id: string;
   email: string;
   name: string;
-  memberships: { organizationId: string; role: Role; organization: { id: string; name: string; kind: string } }[];
+  memberships: {
+    organizationId: string;
+    role: Role;
+    /** Entra a todas las empresas de la organización (el Administrador siempre). Si no, solo a `businessIds`. */
+    allBusinesses: boolean;
+    businessIds: string[];
+    organization: { id: string; name: string; kind: string };
+  }[];
 };
 
 /** La persona de esta visita, o null si no hay sesión válida (cookie firmada, persona que existe y versión vigente). */
@@ -37,13 +44,18 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
       email: true,
       name: true,
       sessionVersion: true,
-      memberships: { orderBy: { createdAt: "asc" }, select: { organizationId: true, role: true, organization: { select: { id: true, name: true, kind: true } } } },
+      memberships: {
+        orderBy: { createdAt: "asc" },
+        select: { organizationId: true, role: true, allBusinesses: true, businesses: { select: { businessId: true } }, organization: { select: { id: true, name: true, kind: true } } },
+      },
     },
   });
   if (!user || user.sessionVersion !== session.version) return null;
   const memberships = user.memberships.flatMap((m) => {
     const role = asRole(m.role);
-    return role ? [{ organizationId: m.organizationId, role, organization: m.organization }] : [];
+    if (!role) return [];
+    const allBusinesses = role === "admin" || m.allBusinesses;
+    return [{ organizationId: m.organizationId, role, allBusinesses, businessIds: allBusinesses ? [] : m.businesses.map((x) => x.businessId), organization: m.organization }];
   });
   return { id: user.id, email: user.email, name: user.name, memberships };
 });
@@ -62,7 +74,8 @@ async function roleIn(user: SessionUser, businessId: string): Promise<Role | nul
   if (typeof businessId !== "string" || !ID.test(businessId)) return null;
   const business = await db.business.findUnique({ where: { id: businessId }, select: { organizationId: true } });
   if (!business) return null;
-  return user.memberships.find((m) => m.organizationId === business.organizationId)?.role ?? null;
+  const m = user.memberships.find((x) => x.organizationId === business.organizationId);
+  return m && (m.allBusinesses || m.businessIds.includes(businessId)) ? m.role : null;
 }
 
 export type Access = { ok: true; user: SessionUser; role: Role } | { ok: false; status: 401 | 403 | 404 };
@@ -107,6 +120,18 @@ export async function hasBusiness(businessId: string, need: Need = "view"): Prom
   return (await businessAccess(businessId, need)).ok;
 }
 
+/** El motivo, ya traducido, de por qué no puede (para responder en vez de «no encontrado» cuando es el papel). */
+export async function deniedText(businessId: string, need: Need = "view"): Promise<string> {
+  const access = await businessAccess(businessId, need);
+  const { t } = await getT();
+  if (access.ok) return "";
+  if (access.status === 401) return t("Tu sesión venció. Vuelve a entrar.", "Your session expired. Sign in again.");
+  if (access.status === 404) return t("Negocio no encontrado", "Business not found");
+  return need === "admin"
+    ? t("Esto solo lo puede hacer el Administrador.", "Only the Administrator can do this.")
+    : t("Tu papel es «Solo ver»: puedes mirar, pero no cambiar nada. Pídele al Administrador más permisos.", "Your role is View only: you can look but not change anything. Ask the Administrator for more access.");
+}
+
 /** Para páginas: sin sesión, a /login; sin acceso, la página de «no encontrado» (no se dice si el negocio existe). */
 export async function pageBusiness(businessId: string, need: Need = "view"): Promise<{ user: SessionUser; role: Role }> {
   const access = await businessAccess(businessId, need);
@@ -115,10 +140,20 @@ export async function pageBusiness(businessId: string, need: Need = "view"): Pro
   notFound();
 }
 
-/** Filtro de los negocios que ve esta persona: los de sus organizaciones. */
+/** Filtro de los negocios que ve esta persona: los de sus organizaciones (o solo los que le dieron en cada una). */
 export async function myBusinessesWhere(): Promise<Prisma.BusinessWhereInput> {
   const user = await requireUser();
-  return { organizationId: { in: user.memberships.map((m) => m.organizationId) } };
+  const all = user.memberships.filter((m) => m.allBusinesses).map((m) => m.organizationId);
+  const some = user.memberships.filter((m) => !m.allBusinesses).flatMap((m) => m.businessIds.map((id) => ({ id, organizationId: m.organizationId })));
+  return { OR: [{ organizationId: { in: all } }, ...some] };
+}
+
+/** Para el equipo de una organización: la persona debe ser su Administrador. Sin sesión, a /login. */
+export async function requireOrgAdmin(organizationId: string): Promise<SessionUser> {
+  const user = await requireUser();
+  if (typeof organizationId === "string" && user.memberships.some((m) => m.organizationId === organizationId && m.role === "admin")) return user;
+  const { t } = await getT();
+  throw new AccessError(t("Esto solo lo puede hacer el Administrador.", "Only the Administrator can do this."), 403);
 }
 
 /** Dónde se crea un negocio nuevo: la primera organización donde la persona es Administrador. */
