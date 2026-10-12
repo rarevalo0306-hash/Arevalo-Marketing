@@ -160,7 +160,7 @@ p { margin: 0; }
   padding: 24px 14px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto;
 }
 .content {
-  flex: 1 1 auto; min-width: 0; width: 100%; max-width: calc(1100px + 128px); margin: 0 auto; padding: 56px 64px 72px;
+  flex: 1 1 auto; min-width: 0; width: 100%; max-width: calc(1100px + 128px); margin: 0 auto; padding: 72px 64px 72px;
   display: flex; flex-direction: column; gap: 32px;
 }
 /* Solo el nombre, sin logo (pedido de Ricardo) */
@@ -181,7 +181,7 @@ p { margin: 0; }
   .shell { flex-direction: column; }
   .sidebar {
     position: sticky; top: 0; z-index: 20; height: auto; min-height: 56px; flex: none; flex-direction: row; align-items: center; justify-content: space-between;
-    gap: 10px; padding: 8px 16px; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--nav-bar-line);
+    gap: 10px; padding: 8px 64px 8px 16px; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--nav-bar-line);
     background: var(--nav-top-bg, rgba(255, 255, 255, 0.9));
   }
   .sidebar > .stack { flex-direction: row !important; gap: 4px !important; }
@@ -195,7 +195,7 @@ p { margin: 0; }
 }
 @media (min-width: 600px) and (max-width: 900px) { .content { padding: 32px 28px 48px; } }
 @media (min-width: 901px) and (max-width: 1180px) {
-  .content { padding: 44px 36px 64px; }
+  .content { padding: 72px 36px 64px; }
   :root { --fs-title: 40px; }
 }
 

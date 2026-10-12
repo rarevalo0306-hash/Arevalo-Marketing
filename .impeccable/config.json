@@ -11,6 +11,42 @@
         ],
         "createdAt": "2026-10-12T09:33:57.618Z",
         "reason": "Agent: Montserrat is an existing user-selectable creative font in src/lib/design-shapes.ts and was already loaded by src/app/layout.tsx at base 9e191ac. This component only moves that existing load into the creative editors; interface text remains Figtree."
+      },
+      {
+        "rule": "design-system-font",
+        "value": "sfmono-regular",
+        "files": [
+          "src/app/globals.css"
+        ],
+        "createdAt": "2026-10-12T16:25:33.010Z",
+        "reason": "Agent reviewed: existing .mono-text and article code use the system monospace fallback for technical content, not interface typography."
+      },
+      {
+        "rule": "design-system-radius",
+        "value": "6px",
+        "files": [
+          "src/components/AppPreferences.module.css"
+        ],
+        "createdAt": "2026-10-12T16:28:38.255Z",
+        "reason": "Agent: scaled miniatures of the existing app themes use proportional corners; actual preference controls use the documented radius tokens."
+      },
+      {
+        "rule": "design-system-radius",
+        "value": "3px",
+        "files": [
+          "src/components/AppPreferences.module.css"
+        ],
+        "createdAt": "2026-10-12T16:28:38.323Z",
+        "reason": "Agent: scaled miniatures of the existing app themes use proportional corners; actual preference controls use the documented radius tokens."
+      },
+      {
+        "rule": "design-system-radius",
+        "value": "2px",
+        "files": [
+          "src/components/AppPreferences.module.css"
+        ],
+        "createdAt": "2026-10-12T16:28:38.399Z",
+        "reason": "Agent: scaled miniatures of the existing app themes use proportional corners; actual preference controls use the documented radius tokens."
       }
     ]
   }
