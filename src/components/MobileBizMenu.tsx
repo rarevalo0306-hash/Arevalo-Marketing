@@ -10,7 +10,7 @@ type Biz = { id: string; name: string; color: string };
 
 /**
  * Celular: la barra de arriba solo muestra el negocio activo. Al tocarlo se abre la lista de negocios,
- * «Agregar negocio», el idioma, el estilo y «Salir» (children). Las secciones van en la barra de abajo (NavLinks).
+ * «Agregar negocio» y «Salir» (children). Las preferencias tienen su propio acceso arriba a la derecha.
  */
 export function MobileBizMenu({ businesses, activeId, children }: { businesses: Biz[]; activeId?: string; children: React.ReactNode }) {
   const { t } = useT();
