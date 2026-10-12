@@ -104,6 +104,21 @@ typography:
     fontWeight: 600
     lineHeight: 1.4
     letterSpacing: "0"
+  asset-montserrat:
+    fontFamily: "Montserrat"
+    fontWeight: 800
+  asset-poppins:
+    fontFamily: "Poppins"
+    fontWeight: 800
+  asset-inter:
+    fontFamily: "Inter"
+    fontWeight: 800
+  asset-oswald:
+    fontFamily: "Oswald"
+    fontWeight: 700
+  asset-playfair-display:
+    fontFamily: "Playfair Display"
+    fontWeight: 800
 rounded:
   r-sm: "8px"
   r: "10px"
@@ -257,6 +272,10 @@ The type system is compact and conversational. Sentence case, short headings and
 - **Labels and metadata:** 12–14px, usually sentence case. Status text stays readable rather than competing with task titles. Existing uppercase eyebrow labels are a separate, limited global pattern.
 
 **The One Family Rule.** Keep Figtree for interface text; establish hierarchy through the existing size, weight and spacing roles.
+
+### Creative-editor fonts
+
+The `asset-*` roles are existing headline choices for the business's generated artwork: Montserrat, Poppins, Inter, Oswald and Playfair Display. They belong to the creative output, not interface navigation, forms or conversation. Their recorded weights match the editor stylesheet in `src/components/DesignFonts.tsx`; the full creative font catalog remains in `src/lib/design-shapes.ts`. These choices existed before the MATYA workspace; this change only moved their loading out of the global layout and into creative editors. Preserve the font choices in existing saved designs.
 
 ## Layout
 

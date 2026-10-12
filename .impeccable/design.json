@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-12T09:30:51.986350Z",
+  "generatedAt": "2026-10-12T09:34:22.197Z",
   "title": "Design System: MATYA application",
   "extensions": {
     "colorMeta": {
@@ -647,6 +647,26 @@
       "label": {
         "displayName": "Status label",
         "purpose": "Compact status pills."
+      },
+      "asset-montserrat": {
+        "displayName": "Montserrat · creative asset",
+        "purpose": "Existing selectable headline font for generated artwork in the creative editors; not application interface text."
+      },
+      "asset-poppins": {
+        "displayName": "Poppins · creative asset",
+        "purpose": "Existing selectable headline font for generated artwork in the creative editors; not application interface text."
+      },
+      "asset-inter": {
+        "displayName": "Inter · creative asset",
+        "purpose": "Existing selectable headline font for generated artwork in the creative editors; not application interface text."
+      },
+      "asset-oswald": {
+        "displayName": "Oswald · creative asset",
+        "purpose": "Existing selectable headline font for generated artwork in the creative editors; not application interface text."
+      },
+      "asset-playfair-display": {
+        "displayName": "Playfair Display · creative asset",
+        "purpose": "Existing selectable headline font for generated artwork in the creative editors; not application interface text."
       }
     },
     "shadows": [

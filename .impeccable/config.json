@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "montserrat",
+        "files": [
+          "src/components/DesignFonts.tsx"
+        ],
+        "createdAt": "2026-10-12T09:33:57.618Z",
+        "reason": "Agent: Montserrat is an existing user-selectable creative font in src/lib/design-shapes.ts and was already loaded by src/app/layout.tsx at base 9e191ac. This component only moves that existing load into the creative editors; interface text remains Figtree."
+      }
+    ]
+  }
+}
