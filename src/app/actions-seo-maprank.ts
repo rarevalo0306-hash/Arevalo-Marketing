@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { errorText, intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { dataForSeoEnabled, readZones } from "@/lib/seo/dataforseo";
@@ -29,6 +30,7 @@ export type MapPlaceSearch = { ok: true; candidates: MapCandidate[]; cost: numbe
 
 /** Busca el negocio por su nombre en Google Maps, en la zona principal (una búsqueda ≈ US$0.002). */
 export async function findMapPlace(businessId: string, query: string): Promise<MapPlaceSearch> {
+  ensure.text(businessId, query);
   const { lang, t } = await getT();
   if (!dataForSeoEnabled()) return { ok: false, error: notConnected(t) };
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: t("Negocio no encontrado", "Business not found") };
@@ -51,6 +53,7 @@ export async function findMapPlace(businessId: string, query: string): Promise<M
 
 /** Guarda cuál es el negocio en Google Maps (el que eligió el dueño). */
 export async function saveMapPlace(businessId: string, place: unknown): Promise<{ ok: boolean; message: string }> {
+  ensure.text(businessId);
   const { t } = await getT();
   const p = readMapPlace(place);
   if (!p) return { ok: false, message: t("Ese negocio no tiene ubicación en Google Maps. Elige otro.", "That business has no location on Google Maps. Pick another one.") };
@@ -64,6 +67,7 @@ export type MapRankResult = { ok: boolean; message: string; id?: string } | null
 
 /** Hace el mapa de calor de una palabra clave: una búsqueda en Google Maps desde cada punto de la cuadrícula. */
 export async function runMapRank(businessId: string, _prev: MapRankResult, f: FormData): Promise<MapRankResult> {
+  ensure.text(businessId);
   void _prev;
   const { lang, t } = await getT();
   if (!dataForSeoEnabled()) return { ok: false, message: notConnected(t) };
@@ -108,6 +112,7 @@ export async function runMapRank(businessId: string, _prev: MapRankResult, f: Fo
 
 /** Un mapa guardado (para ver mapas anteriores sin recargar la página). */
 export async function loadMapReport(businessId: string, id: string): Promise<(MapReport & { id: string }) | null> {
+  ensure.text(businessId, id);
   if (!(await hasBusiness(businessId, "view"))) return null;
   const r = await db.seoReport.findFirst({ where: { id: String(id), businessId, kind: "maprank" }, select: { id: true, data: true } });
   const report = r ? readMapReport(r.data) : null;

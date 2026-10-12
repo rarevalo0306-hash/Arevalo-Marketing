@@ -1,6 +1,6 @@
-// «Entrar con Google»: otra forma de entrar a Matya, además de la contraseña. Entran los dueños (LOGIN_EMAILS, separados por
-// coma) y las personas que ya son miembros de una organización (src/lib/accounts.ts), solo con correos de Gmail o Google
-// Workspace. La sesión dice qué persona entró (src/lib/session.ts). Usa el mismo cliente de Google que las conexiones,
+// «Entrar con Google»: otra forma de entrar a Matya, además de la contraseña. Por ahora solo entran los dueños (LOGIN_EMAILS,
+// separados por coma; ver src/lib/accounts.ts), solo con correos de Gmail o Google Workspace. La sesión dice qué persona
+// entró (src/lib/session.ts). Usa el mismo cliente de Google que las conexiones,
 // con su propia dirección de regreso (/api/auth/google/callback), que debe estar en las "Authorized redirect URIs" del
 // cliente en Google Cloud.
 import { randomBytes } from "crypto";

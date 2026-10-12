@@ -32,6 +32,7 @@ import { customBase, isMaster, StoredTemplate } from "@/lib/design-shapes";
 import { loadBrandAssets, updateBrandAssets } from "@/lib/brand-assets-db";
 import { setBrandAssetStatus } from "@/lib/brand-assets";
 import { isSocialAsset } from "@/lib/design-ai-pieces";
+import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 
@@ -46,6 +47,7 @@ const asShapes = (v: unknown): MasterShape[] => [...new Set((Array.isArray(v) ? 
 
 /** Empieza a crear diseños con los modelos y formas elegidos (o, con `parentId`, las otras formas de un maestro guardado). */
 export async function startDesignMasters(businessId: string, input: { models: string[]; shapes: string[]; parentId?: string; bookStyle?: boolean }): Promise<StartResult> {
+  ensure.text(businessId);
   const { lang, t } = await getT();
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: BIZ });
@@ -102,6 +104,7 @@ export async function startDesignMasters(businessId: string, input: { models: st
 
 /** ¿Ya está el diseño? Si sí, lo guarda y busca dónde van la foto, el titular y el logo. */
 export async function checkDesignMaster(businessId: string, id: string): Promise<CheckResult> {
+  ensure.text(businessId, id);
   const { lang, t } = await getT();
   // Guarda el diseño terminado; el diseño se busca con este businessId (finishMaster).
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
@@ -122,6 +125,7 @@ async function readyDetail(businessId: string, id: string) {
 
 /** El post de ejemplo armado con el diseño (y los ajustes del dueño, si los hay). */
 export async function previewDesignMaster(businessId: string, id: string, adjust?: Partial<MasterAdjust>): Promise<PreviewResult> {
+  ensure.text(businessId, id);
   const { lang, t } = await getT();
   // No es solo mirar: ensureFrame guarda el marco del diseño (archivo y registro).
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
@@ -140,6 +144,7 @@ export async function previewDesignMaster(businessId: string, id: string, adjust
  * Si es otra forma de un maestro guardado, se agrega a ese maestro.
  */
 export async function saveDesignMaster(businessId: string, id: string, adjust?: Partial<MasterAdjust>): Promise<SaveResult> {
+  ensure.text(businessId, id);
   const { lang, t } = await getT();
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const row = await db.aiAction.findFirst({ where: { id, businessId, kind: MASTER_KIND } });
@@ -178,6 +183,7 @@ export async function saveDesignMaster(businessId: string, id: string, adjust?: 
 
 /** «Descartar»: deja de mostrarse (ya se pagó; no se borra del registro). */
 export async function discardDesignMaster(businessId: string, id: string): Promise<SaveResult> {
+  ensure.text(businessId, id);
   const { t } = await getT();
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const row = await db.aiAction.findFirst({ where: { id, businessId, kind: MASTER_KIND } });
@@ -195,6 +201,7 @@ export type ConvertResult = { ok: boolean; message: string; id?: string };
  * Solo piezas de redes sociales (regla del dueño: las plantillas son solo para redes).
  */
 export async function startBookConvert(businessId: string, assetId: string, model: string): Promise<ConvertResult> {
+  ensure.text(businessId, assetId, model);
   const { lang, t } = await getT();
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { id: true, color: true } });

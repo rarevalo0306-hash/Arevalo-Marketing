@@ -1,7 +1,7 @@
 // La sesión: una cookie firmada que dice qué persona entró. Funciona en Node y en el middleware (Web Crypto).
 // Forma: v2.<id de la persona>.<versión>.<vence (segundos)>.<firma HMAC-SHA256>. La firma usa APP_PASSWORD y APP_SECRET:
 // cambiar APP_PASSWORD saca a todos (nunca cambies APP_SECRET: cifra las conexiones). Para sacar a una sola persona se
-// sube su User.sessionVersion (lo revisa src/lib/auth.ts, que sí ve la base).
+// quita su correo de LOGIN_EMAILS y se sube su User.sessionVersion (lo revisa src/lib/auth.ts, que sí ve la base).
 
 export const SESSION_COOKIE = "am_session";
 export const SESSION_DAYS = 30;

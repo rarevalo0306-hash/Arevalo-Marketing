@@ -26,6 +26,7 @@ import {
 } from "@/lib/campaign-shape";
 import { CHANNEL_IDS } from "@/lib/channels";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { getT } from "@/lib/i18n-server";
 import type { Need } from "@/lib/roles";
 import { businessDay, localToUtc } from "@/lib/time";
@@ -93,6 +94,7 @@ function datesFrom(f: FormData, now: Date): { startsAt: Date; endsAt: Date | nul
 
 /** Crea la campaña con el asistente. «Empezar» la deja activa; «Guardar sin empezar» la deja sin empezar. */
 export async function createCampaign(businessId: string, _prev: CampaignFormResult, f: FormData): Promise<CampaignFormResult> {
+  ensure.text(businessId);
   const b = await businessOf(businessId, "publish");
   const { lang, t } = await getT();
   const now = new Date();
@@ -142,6 +144,7 @@ export async function createCampaign(businessId: string, _prev: CampaignFormResu
 
 /** «Editar límites»: reglas, frecuencia, fecha de fin, canales y modo de una campaña que ya existe. */
 export async function updateCampaign(businessId: string, campaignId: string, _prev: CampaignFormResult, f: FormData): Promise<CampaignFormResult> {
+  ensure.text(businessId, campaignId);
   const b = await businessOf(businessId, "publish");
   const { lang, t } = await getT();
   const c = await db.campaign.findFirst({ where: { id: campaignId, businessId } });
@@ -178,18 +181,21 @@ export async function updateCampaign(businessId: string, campaignId: string, _pr
 }
 
 export async function startCampaign(businessId: string, campaignId: string) {
+  ensure.text(businessId, campaignId);
   await canStart(businessId, campaignId);
   await resumeCampaign(businessId, campaignId);
   paths(businessId, campaignId);
 }
 
 export async function pauseCampaignAction(businessId: string, campaignId: string) {
+  ensure.text(businessId, campaignId);
   await requireBusiness(businessId, "publish");
   await pauseCampaign(businessId, campaignId, { actor: "owner" });
   paths(businessId, campaignId);
 }
 
 export async function resumeCampaignAction(businessId: string, campaignId: string) {
+  ensure.text(businessId, campaignId);
   await canStart(businessId, campaignId);
   await resumeCampaign(businessId, campaignId);
   paths(businessId, campaignId);
@@ -199,6 +205,7 @@ export type StopActionResult = { ok: boolean; message: string } | null;
 
 /** PARAR una campaña (emergencia). */
 export async function stopCampaignAction(businessId: string, campaignId: string, _prev?: StopActionResult): Promise<StopActionResult> {
+  ensure.text(businessId, campaignId);
   const { t } = await getT();
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const r = await stopCampaign(businessId, campaignId, { actor: "owner" });
@@ -214,6 +221,7 @@ export async function stopCampaignAction(businessId: string, campaignId: string,
 
 /** «Parar todo»: todas las campañas del negocio. */
 export async function stopAllAction(businessId: string, _prev?: StopActionResult): Promise<StopActionResult> {
+  ensure.text(businessId);
   await businessOf(businessId, "publish");
   const { t } = await getT();
   const r = await stopAllCampaigns(businessId);
@@ -228,6 +236,7 @@ export async function stopAllAction(businessId: string, _prev?: StopActionResult
 
 /** Aprueba un borrador de la campaña (con los cambios del formulario) usando el mismo flujo que «Ideas y plan con IA». */
 export async function approveCampaignDraft(businessId: string, campaignId: string, postId: string, f: FormData) {
+  ensure.text(businessId, campaignId, postId);
   await requireBusiness(businessId, "publish");
   const post = await db.post.findFirst({ where: { id: postId, businessId, campaignId, status: "draft" }, select: { id: true, scheduledAt: true, kind: true, mediaUrl: true } });
   // Un video que todavía se está creando no se puede aprobar (saldría sin video).
@@ -249,12 +258,13 @@ export async function approveCampaignDraft(businessId: string, campaignId: strin
 
 /** Descarta un borrador que preparó la IA (el motor no lo vuelve a crear: su horario ya quedó atendido). */
 export async function discardCampaignDraft(businessId: string, campaignId: string, postId: string) {
+  ensure.text(businessId, campaignId, postId);
   await requireBusiness(businessId, "publish");
   const post = await db.post.findFirst({ where: { id: postId, businessId, campaignId, status: "draft" }, select: { id: true, source: true } });
   if (!post) return;
   // Solo se borra lo que escribió la IA; un texto del dueño se queda como borrador.
   if (post.source !== "ai") return;
-  const del = await db.post.deleteMany({ where: { id: postId, status: "draft" } });
+  const del = await db.post.deleteMany({ where: { id: post.id, businessId, status: "draft" } });
   if (del.count)
     await logAiAction({
       businessId,

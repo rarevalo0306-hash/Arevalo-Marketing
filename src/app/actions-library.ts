@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { syncDriveNow, type DriveResult } from "@/app/actions-drive";
 import { hasBusiness, requireBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { libraryPhotoUrl, markUsed, pickLibraryPhoto, usableLibrary, type LibraryCard } from "@/lib/library";
@@ -22,6 +23,7 @@ async function itemOf(businessId: string, itemId: string) {
 
 /** «Usar» (aprobada aunque tenga avisos), «No usar», o "" (decide la IA). */
 export async function setLibraryChoice(businessId: string, itemId: string, choice: LibraryChoice) {
+  ensure.text(businessId, itemId, choice);
   await requireBusiness(businessId, "publish");
   await itemOf(businessId, itemId);
   const value: LibraryChoice = choice === "use" || choice === "skip" ? choice : "";
@@ -31,6 +33,7 @@ export async function setLibraryChoice(businessId: string, itemId: string, choic
 
 /** Cuenta que se usó en una publicación. */
 export async function markLibraryUsed(businessId: string, itemId: string) {
+  ensure.text(businessId, itemId);
   await requireBusiness(businessId, "publish");
   await itemOf(businessId, itemId);
   await markUsed(businessId, [itemId]);
@@ -40,6 +43,7 @@ export type LibraryMediaResult = { ok: true; url: string; type: "photo" | "video
 
 /** La dirección del archivo para ponerlo en una publicación (los videos se copian de Drive en este momento). */
 export async function libraryMedia(businessId: string, itemId: string): Promise<LibraryMediaResult> {
+  ensure.text(businessId, itemId);
   const { lang, t } = await getT();
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: t("Negocio no encontrado", "Business not found") };
   try {
@@ -58,12 +62,14 @@ export async function libraryMedia(businessId: string, itemId: string): Promise<
 
 /** Lo que se puede usar, para el selector «Tus fotos» del compositor. */
 export async function libraryForPicker(businessId: string): Promise<LibraryCard[]> {
+  ensure.text(businessId);
   if (!(await hasBusiness(businessId, "view"))) return [];
   return usableLibrary(businessId);
 }
 
 /** Modo mágico del compositor: la foto real que mejor va con lo que escribió la IA (o null: se crea con IA). */
 export async function libraryPhotoFor(businessId: string, text: string, keywords: string[] = []): Promise<{ id: string; url: string } | null> {
+  ensure.text(businessId, text); ensure.optionalTexts(keywords);
   if (!text.trim()) return null;
   // Elegirla la marca como usada: es parte de crear una publicación.
   if (!(await hasBusiness(businessId, "publish"))) return null;
@@ -76,6 +82,7 @@ export async function libraryPhotoFor(businessId: string, text: string, keywords
 
 /** «Revisar ahora» de la página «Tus fotos». */
 export async function reviewDriveNow(businessId: string, _prev: DriveResult | null, _f: FormData): Promise<DriveResult> {
+  ensure.text(businessId);
   void _prev;
   void _f;
   const { lang, t } = await getT();

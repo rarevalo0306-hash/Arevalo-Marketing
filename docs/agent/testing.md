@@ -11,7 +11,7 @@ Para una prueba local equivalente:
 1. Iniciar PostgreSQL en loopback, puerto 55439, base `matya_agent`, con credenciales exclusivas de prueba. En esta sesión se utilizó `embedded-postgres@18.4.0-beta.17` instalado en un directorio temporal fuera del proyecto.
 2. Exportar `DATABASE_URL`, `DIRECT_URL` y `MATYA_TEST_DATABASE_URL` con la misma conexión local.
 3. Extraer `prisma/schema.prisma` del commit `9e191ac89d2120ee803b73aeccc9b7a162791b99`; aplicar `prisma db push --schema <archivo> --skip-generate` **solo a la base local vacía**.
-4. Crear los roles `anon` y `authenticated`, aplicar `supabase/migrations/20261012084743_matya_agent_workspace.sql` y ejecutar `npx prisma generate`.
+4. Crear los roles `anon` y `authenticated`, aplicar `supabase/migrations/20261012084743_matya_agent_workspace.sql` y después `supabase/migrations/20261012190000_users_organizations.sql`, y ejecutar `npx prisma generate`.
 5. Ejecutar `npm test`. La integración comprueba RLS, aislamiento, reservas concurrentes, reclamación única, recuperación, aprobación, cancelación, límites de envío, render con cotización exacta, noticias y medición insuficiente.
 6. `node scripts/agent-seed-local.mjs` crea dos negocios sintéticos para revisar la interfaz. También rechaza cualquier base fuera de esa conexión local.
 

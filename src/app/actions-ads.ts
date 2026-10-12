@@ -9,6 +9,7 @@ import { improveGooglePlan } from "@/lib/ads-google-load";
 import { AD_GOALS, MAX_DAYS, parseMoney, readCampaignAds, SPECIAL_CATEGORIES, type AdGoal, type AdSource, type SpecialCategory } from "@/lib/ads-shape";
 import { hasBusiness, requireBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import type { Need } from "@/lib/roles";
@@ -41,6 +42,7 @@ const intOrNull = (v: string) => (v && /^\d+$/.test(v) ? Number(v) : null);
 
 /** Máximo por mes del negocio y categoría especial. */
 export async function saveAdsSettingsAction(businessId: string, _prev: AdsResult, f: FormData): Promise<AdsResult> {
+  ensure.text(businessId);
   void _prev;
   return run(businessId, "admin", async () => {
     const cap = parseMoney(str(f, "monthlyCap"));
@@ -52,6 +54,7 @@ export async function saveAdsSettingsAction(businessId: string, _prev: AdsResult
 }
 
 export async function chooseAdAccountAction(businessId: string, _prev: AdsResult, f: FormData): Promise<AdsResult> {
+  ensure.text(businessId);
   void _prev;
   return run(businessId, "admin", async () => {
     await chooseAdAccount(businessId, str(f, "account"));
@@ -60,6 +63,7 @@ export async function chooseAdAccountAction(businessId: string, _prev: AdsResult
 }
 
 export async function disconnectAdsAction(businessId: string): Promise<void> {
+  ensure.text(businessId);
   await ensureBusiness(businessId, "admin");
   await disconnectAds(businessId);
   refresh(businessId);
@@ -67,6 +71,7 @@ export async function disconnectAdsAction(businessId: string): Promise<void> {
 
 /** «La IA puede crear anuncios» y el tope diario de la campaña. */
 export async function campaignAdsOptionsAction(businessId: string, campaignId: string, _prev: AdsResult, f: FormData): Promise<AdsResult> {
+  ensure.text(businessId, campaignId);
   void _prev;
   return run(businessId, "admin", async () => {
     const daily = str(f, "dailyCap");
@@ -79,6 +84,7 @@ export async function campaignAdsOptionsAction(businessId: string, campaignId: s
 
 /** Crear un anuncio APAGADO desde el formulario. */
 export async function createAdAction(businessId: string, campaignId: string, _prev: AdsResult, f: FormData): Promise<AdsResult> {
+  ensure.text(businessId, campaignId);
   void _prev;
   return run(businessId, "publish", async () => {
     const { t } = await getT();
@@ -119,6 +125,7 @@ export async function createAdAction(businessId: string, campaignId: string, _pr
 }
 
 export async function proposeAdsAction(businessId: string, campaignId: string, _prev: AdsResult, _f: FormData): Promise<AdsResult> {
+  ensure.text(businessId, campaignId);
   void _prev;
   void _f;
   const { lang } = await getT();
@@ -131,6 +138,7 @@ export async function proposeAdsAction(businessId: string, campaignId: string, _
 }
 
 export async function createFromProposalAction(businessId: string, campaignId: string, proposalId: string, _prev: AdsResult, _f: FormData): Promise<AdsResult> {
+  ensure.text(businessId, campaignId, proposalId);
   void _prev;
   void _f;
   return run(businessId, "publish", async () => {
@@ -144,6 +152,7 @@ export async function createFromProposalAction(businessId: string, campaignId: s
 
 /** Encender (o reanudar) con el máximo confirmado. */
 export async function activateAdAction(businessId: string, campaignId: string, adId: string, _prev: AdsResult, f: FormData): Promise<AdsResult> {
+  ensure.text(businessId, campaignId, adId);
   void _prev;
   return run(businessId, "publish", async () => {
     if (f.get("confirm") !== "yes") throw new Error((await getT()).t("Marca la casilla para confirmar el gasto.", "Tick the box to confirm the spend."));
@@ -153,6 +162,7 @@ export async function activateAdAction(businessId: string, campaignId: string, a
 }
 
 export async function pauseAdAction(businessId: string, campaignId: string, adId: string, _prev: AdsResult, _f: FormData): Promise<AdsResult> {
+  ensure.text(businessId, campaignId, adId);
   void _prev;
   void _f;
   return run(businessId, "publish", async () => {
@@ -162,6 +172,7 @@ export async function pauseAdAction(businessId: string, campaignId: string, adId
 }
 
 export async function pauseAllAdsAction(businessId: string, _prev: AdsResult, _f: FormData): Promise<AdsResult> {
+  ensure.text(businessId);
   void _prev;
   void _f;
   return run(businessId, "publish", async () => {
@@ -176,6 +187,7 @@ export async function pauseAllAdsAction(businessId: string, _prev: AdsResult, _f
 }
 
 export async function improveGooglePlanAction(businessId: string, _prev: AdsResult, _f: FormData): Promise<AdsResult> {
+  ensure.text(businessId);
   void _prev;
   void _f;
   return run(businessId, "publish", async () => {

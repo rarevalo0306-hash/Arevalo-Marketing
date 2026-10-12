@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import { aiEnabled, interviewQuestions, profileFromWebsite, studyBusiness } from "@/lib/ai";
 import { newBusinessOrganizationId, requireBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import {
@@ -102,6 +103,7 @@ export type PrefillResult =
  * para no preguntarlo otra vez; si el negocio no tenía perfil, también se guarda el perfil que armó la IA.
  */
 export async function prefillStudy(businessId: string): Promise<PrefillResult> {
+  ensure.text(businessId);
   const b = await business(businessId, "publish");
   const { lang, t } = await getT();
   if (!aiEnabled()) return { ok: false, error: t("Falta la clave de la IA en la configuración del servidor.", "The AI key is missing from the server settings.") };
@@ -137,6 +139,7 @@ export async function prefillStudy(businessId: string): Promise<PrefillResult> {
 
 /** Guarda lo que el dueño lleva contestado (sin generar el estudio), para no perderlo. */
 export async function saveStudyDraft(businessId: string, f: FormData): Promise<void> {
+  ensure.text(businessId);
   await business(businessId, "publish");
   await db.business.update({ where: { id: businessId }, data: { studyInput: jsonSafe(studyInputFrom(f)) } });
 }
@@ -147,6 +150,7 @@ export type InterviewResult = { ok: true; interview: Interview } | { ok: false; 
 
 /** La IA lee lo básico y devuelve preguntas solo sobre lo que falta, a la medida del negocio. */
 export async function studyInterview(businessId: string, f: FormData): Promise<InterviewResult> {
+  ensure.text(businessId);
   const b = await business(businessId, "publish");
   const { lang, t } = await getT();
   if (!aiEnabled()) return { ok: false, error: t("Falta la clave de la IA en la configuración del servidor.", "The AI key is missing from the server settings.") };
@@ -168,6 +172,7 @@ export type StudyResult = { ok: boolean; message: string; warning?: boolean } | 
 
 /** La IA estudia el negocio (y su mercado en internet) y guarda el estudio en el mismo paso. */
 export async function generateStudy(businessId: string, _prev: StudyResult, f: FormData): Promise<StudyResult> {
+  ensure.text(businessId);
   const b = await business(businessId, "publish");
   const { lang, t } = await getT();
   if (!aiEnabled()) return { ok: false, message: t("Falta la clave de la IA en la configuración del servidor.", "The AI key is missing from the server settings.") };
@@ -231,6 +236,7 @@ export async function generateStudy(businessId: string, _prev: StudyResult, f: F
 
 /** Guarda el perfil (el sugerido por el estudio, revisado por el dueño) como lo que la IA sabe del negocio. */
 export async function saveStudyProfile(businessId: string, f: FormData) {
+  ensure.text(businessId);
   await business(businessId, "publish");
   await db.business.update({ where: { id: businessId }, data: { aiProfile: str(f, "aiProfile").slice(0, 4000) } });
   revalidatePath(`/b/${businessId}`, "layout");
@@ -241,6 +247,7 @@ export async function saveStudyProfile(businessId: string, f: FormData) {
  * El perfil del negocio (Ajustes) no se toca.
  */
 export async function deleteStudy(businessId: string) {
+  ensure.text(businessId);
   const b = await business(businessId, "publish");
   const study = readStudy(b.study);
   await db.business.update({
@@ -258,6 +265,7 @@ export async function deleteStudy(businessId: string) {
 
 /** Recupera el último estudio borrado, con sus respuestas. */
 export async function restoreStudy(businessId: string) {
+  ensure.text(businessId);
   const b = await business(businessId, "publish");
   const d = readDeleted(b.study);
   if (!d) return;

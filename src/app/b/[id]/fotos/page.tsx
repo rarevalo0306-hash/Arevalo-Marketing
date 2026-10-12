@@ -38,6 +38,7 @@ export default async function FotosPage({ params, searchParams }: { params: Prom
   const limit = Math.min(2000, Math.max(PAGE_SIZE, Math.round(Number(q.n) / PAGE_SIZE) * PAGE_SIZE || PAGE_SIZE));
   const { lang, t } = await getT();
   const b = await db.business.findUniqueOrThrow({ where: { id }, select: { id: true, name: true, color: true, driveFolderId: true, driveFolderName: true, driveSyncedAt: true, driveError: true, uploadToken: true } });
+  const uploadToken = role === "admin" ? b.uploadToken : "";
   const connected = !!b.driveFolderId;
   const [counts, page, uploads, origin, toEnhance, enhancedCount] = await Promise.all([
     libraryCounts(id),
@@ -52,7 +53,7 @@ export default async function FotosPage({ params, searchParams }: { params: Prom
   const r2 = r2Enabled();
   const uploadCard =
     role === "admin" ? (
-      <UploadLinkCard businessId={id} businessName={b.name} configured={r2} token={b.uploadToken} origin={origin} total={uploads.total} pending={uploads.pending} anchor="link-subida" />
+      <UploadLinkCard businessId={id} businessName={b.name} configured={r2} token={uploadToken} origin={origin} total={uploads.total} pending={uploads.pending} anchor="link-subida" />
     ) : null;
   const conexiones = `/b/${id}/conexiones#c-drive`;
   const href = (f: LibraryFilter, n?: number) => {
@@ -85,8 +86,8 @@ export default async function FotosPage({ params, searchParams }: { params: Prom
         )}
         aside={
           <>
-            {r2 && b.uploadToken && (
-              <a className="btn" href={`/subir/${b.uploadToken}`} target="_blank" rel="noopener noreferrer">
+            {r2 && uploadToken && (
+              <a className="btn" href={`/subir/${uploadToken}`} target="_blank" rel="noopener noreferrer">
                 {t("Subir fotos", "Upload photos")}
               </a>
             )}

@@ -13,7 +13,7 @@ import { db } from "@/lib/db";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { acceptProposal, proposeNow, rejectProposal, undoProposal } from "@/lib/proposals";
-import { isClosed } from "@/lib/proposals-shape";
+import { isClosed, readAction } from "@/lib/proposals-shape";
 
 export type ProposalActionState = { ok: boolean; message: string } | null;
 
@@ -37,6 +37,13 @@ async function run(f: FormData, done: Done, fn: (businessId: string, id: string)
   const id = str(f, "proposalId");
   // La propuesta se busca con ese businessId (acceptProposal/rejectProposal/undoProposal lo comparan).
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  // Cambiar los límites de una campaña 100% IA es del Administrador (igual que «Editar límites»), también por una propuesta.
+  if (done !== "rechazada" && !(await hasBusiness(businessId, "admin"))) {
+    const p = await db.aiProposal.findFirst({ where: { id, businessId }, select: { action: true } });
+    const a = p ? readAction(p.action) : null;
+    const c = a?.type === "campaign.update" ? await db.campaign.findFirst({ where: { id: a.campaignId, businessId }, select: { mode: true } }) : null;
+    if (c?.mode === "auto") return { ok: false, message: t("Solo un Administrador puede cambiar una campaña 100% IA.", "Only an Administrator can change a 100% AI campaign.") };
+  }
   let ok = false;
   try {
     const r = await fn(businessId, id);

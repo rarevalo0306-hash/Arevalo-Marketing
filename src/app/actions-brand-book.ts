@@ -29,6 +29,7 @@ import {
   PAGE_TYPES,
 } from "@/lib/brand-book-extract";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { BiError, errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { isOwnFile, readMedia, storeBuffer } from "@/lib/media";
@@ -89,6 +90,7 @@ function parseKnown(raw: FormDataEntryValue | null): KnownCrop[] {
  * se encontró en envíos anteriores, para no repetir).
  */
 export async function readBookPages(businessId: string, f: FormData): Promise<BookBatchResult> {
+  ensure.text(businessId);
   const { lang, t } = await getT();
   // La IA lee las páginas (gasta) y guarda propuestas en la marca.
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("No encontramos este negocio.", "We couldn't find this business.") };
@@ -218,6 +220,7 @@ const LOGO_FOR_LIGHT = new Set(["logo", "logo-dark"]);
 
 /** Acepta, rechaza o vuelve a dejar pendiente una imagen del manual. Al aceptar el primer logo, queda como logo. */
 export async function decideBookAsset(businessId: string, assetId: string, status: BrandAssetStatus): Promise<BookActionResult> {
+  ensure.text(businessId, assetId, status);
   const { t } = await getT();
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("No encontramos este negocio.", "We couldn't find this business.") };
   if (!["accepted", "rejected", "proposed"].includes(status)) return { ok: false, message: t("Opción no válida.", "Invalid option.") };
@@ -241,6 +244,7 @@ export async function decideBookAsset(businessId: string, assetId: string, statu
 
 /** Acepta todas las que están por revisar. Si no había logo, se usa el primero (el más grande). */
 export async function acceptAllBookAssets(businessId: string): Promise<BookActionResult> {
+  ensure.text(businessId);
   const { t } = await getT();
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("No encontramos este negocio.", "We couldn't find this business.") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { logoUrl: true, logoLightUrl: true } });
@@ -274,6 +278,7 @@ export async function acceptAllBookAssets(businessId: string): Promise<BookActio
  * ejemplo de fondo; la foto va arriba y el titular abajo, con letras claras u oscuras según el fondo).
  */
 export async function applyBookAsset(businessId: string, assetId: string, use: "logo" | "logoLight" | "template"): Promise<BookActionResult> {
+  ensure.text(businessId, assetId, use);
   const { lang, t } = await getT();
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("No encontramos este negocio.", "We couldn't find this business.") };
   const a = (await loadBrandAssets(businessId)).items.find((x) => x.id === assetId && x.source === "book");
@@ -304,6 +309,7 @@ export async function applyBookAsset(businessId: string, assetId: string, use: "
 
 /** Guarda el manual que el dueño subió (y su nombre) como el manual en uso. No lo lee: eso pasa al presionar «Crear mi marca». */
 export async function saveBrandBook(businessId: string, url: string, name: string): Promise<BookActionResult> {
+  ensure.text(businessId, url, name);
   const { t } = await getT();
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   if (!isOwnFile(url, businessId)) return { ok: false, message: t("El archivo no es de este negocio.", "That file doesn't belong to this business.") };

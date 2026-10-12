@@ -1,7 +1,8 @@
 -- Etapa 1 de «Usuario → Organización → Empresas»: personas con su correo, organizaciones y papeles.
--- Correr UNA vez en Supabase (SQL Editor) ANTES de publicar el cambio de la app. Se puede volver a correr sin daño.
--- Crea la organización «Ricardo Arevalo» y le pasa todos los negocios. El primer correo de LOGIN_EMAILS que entre
--- queda como su Administrador (lo hace la app al entrar, src/lib/accounts.ts).
+-- Correr UNA vez en Supabase (SQL Editor) JUSTO ANTES de publicar el cambio de la app. Se puede volver a correr sin daño.
+-- Entre este SQL y la publicación, «Agregar negocio» falla en la versión vieja: no agregues negocios en ese rato.
+-- Crea la organización «Ricardo Arevalo» y le pasa todos los negocios. Los correos de LOGIN_EMAILS quedan como sus
+-- Administradores al entrar (lo hace la app, src/lib/accounts.ts).
 BEGIN;
 
 CREATE TABLE IF NOT EXISTS "User" (

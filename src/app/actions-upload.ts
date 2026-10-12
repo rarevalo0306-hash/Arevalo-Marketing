@@ -4,6 +4,7 @@
 import { revalidatePath } from "next/cache";
 import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { errorText, type T } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { analyzeUploads, type UploadReviewResult } from "@/lib/library-sync";
@@ -33,6 +34,7 @@ const notReady = (t: T): UploadLinkResult => ({
 
 /** Crea el link (si ya hay uno, lo deja igual). */
 export async function createUploadLink(businessId: string): Promise<UploadLinkResult> {
+  ensure.text(businessId);
   const { t } = await getT();
   if (!r2Enabled()) return notReady(t);
   // El link deja entrar a gente de afuera: solo el Administrador.
@@ -46,6 +48,7 @@ export async function createUploadLink(businessId: string): Promise<UploadLinkRe
 
 /** Link nuevo: el viejo deja de servir al instante. */
 export async function rotateUploadLink(businessId: string): Promise<UploadLinkResult> {
+  ensure.text(businessId);
   const { t } = await getT();
   if (!r2Enabled()) return notReady(t);
   if (!(await exists(businessId, "admin"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
@@ -59,6 +62,7 @@ export async function rotateUploadLink(businessId: string): Promise<UploadLinkRe
 
 /** Quita el link (las fotos ya subidas se quedan). */
 export async function removeUploadLink(businessId: string): Promise<UploadLinkResult> {
+  ensure.text(businessId);
   const { t } = await getT();
   if (!(await exists(businessId, "admin"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   await db.business.update({ where: { id: businessId }, data: { uploadToken: "" } });
@@ -84,6 +88,7 @@ function uploadReviewMessage(r: UploadReviewResult, t: T): string {
 
 /** «Revisar ahora» de lo subido con el link. */
 export async function reviewUploadsNow(businessId: string, _prev: UploadLinkResult | null, _f: FormData): Promise<UploadLinkResult> {
+  ensure.text(businessId);
   void _prev;
   void _f;
   const { lang, t } = await getT();

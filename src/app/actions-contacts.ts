@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { hasBusiness, requireBusiness } from "@/lib/auth";
 import { cleanLists, normalizePhone, parseContactsCsv } from "@/lib/contacts";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { getT } from "@/lib/i18n-server";
 import type { Need } from "@/lib/roles";
 
@@ -23,6 +24,7 @@ function listsFrom(f: FormData): string[] {
 
 /** Agrega un contacto con sus listas. Si ya existe (mismo email o teléfono), solo le suma las listas. */
 export async function addContactWithLists(businessId: string, _prev: ContactResult, f: FormData): Promise<ContactResult> {
+  ensure.text(businessId);
   void _prev;
   const { t } = await getT();
   if (!(await exists(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
@@ -49,6 +51,7 @@ export async function addContactWithLists(businessId: string, _prev: ContactResu
 
 /** Importa una lista pegada (Excel o CSV) a una lista. Los que ya existen no se repiten: solo se les suma la lista. */
 export async function importContactsToList(businessId: string, _prev: ContactResult, f: FormData): Promise<ContactResult> {
+  ensure.text(businessId);
   void _prev;
   const { t } = await getT();
   if (!(await exists(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
@@ -91,6 +94,7 @@ export async function importContactsToList(businessId: string, _prev: ContactRes
 
 /** Cambia las listas de un contacto (las casillas de cada contacto). */
 export async function setContactLists(businessId: string, contactId: string, lists: string[]): Promise<void> {
+  ensure.text(businessId, contactId); ensure.texts(lists);
   await requireBusiness(businessId, "publish");
   await db.contact.updateMany({ where: { id: contactId, businessId }, data: { lists: cleanLists(lists) } });
   revalidatePath(`/b/${businessId}/contactos`);
@@ -98,6 +102,7 @@ export async function setContactLists(businessId: string, contactId: string, lis
 
 /** Agrega o quita una lista a varios contactos a la vez. */
 export async function bulkContactsList(businessId: string, contactIds: string[], list: string, add: boolean): Promise<void> {
+  ensure.text(businessId, list); ensure.flag(add); ensure.texts(contactIds);
   await requireBusiness(businessId, "publish");
   const [name] = cleanLists([list]);
   if (!name || !contactIds.length) return;
@@ -111,6 +116,7 @@ export async function bulkContactsList(businessId: string, contactIds: string[],
 
 /** Borra una lista propia: los contactos se quedan, solo pierden esa lista. */
 export async function deleteContactList(businessId: string, list: string): Promise<void> {
+  ensure.text(businessId, list);
   await requireBusiness(businessId, "publish");
   const rows = await db.contact.findMany({ where: { businessId, lists: { has: list } }, select: { id: true, lists: true } });
   for (const r of rows) await db.contact.update({ where: { id: r.id }, data: { lists: r.lists.filter((l) => l !== list) } });

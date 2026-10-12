@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { hasBusiness, requireBusiness } from "@/lib/auth";
 import { disconnectGoogleData } from "@/lib/data-deletion";
+import { ensure } from "@/lib/ensure";
 import { GA4_CHANNEL, readGa4Connection, refreshGa4, writeGa4Connection } from "@/lib/ga4";
 import { explainGa4Error } from "@/lib/ga4-shape";
 import { errorText } from "@/lib/i18n";
@@ -24,6 +25,7 @@ const paths = (id: string) => {
 
 /** «Actualizar»: trae los últimos 28 días de Google Analytics y los guarda. */
 export async function refreshGa4Action(businessId: string, _prev: Ga4Result, _f: FormData): Promise<Ga4Result> {
+  ensure.text(businessId);
   void _prev;
   void _f;
   const { lang, t } = await getT();
@@ -56,6 +58,7 @@ export async function refreshGa4Action(businessId: string, _prev: Ga4Result, _f:
 
 /** Al abrir el panel: actualiza solo si los datos tienen más de un día (como máximo una vez al día). */
 export async function autoRefreshGa4(businessId: string): Promise<{ refreshed: boolean }> {
+  ensure.text(businessId);
   // Quien solo puede ver no dispara la actualización (trae datos de Google al negocio).
   if (!(await hasBusiness(businessId, "publish"))) return { refreshed: false };
   try {
@@ -70,6 +73,7 @@ export async function autoRefreshGa4(businessId: string): Promise<{ refreshed: b
 
 /** Elige la propiedad de GA4 de este negocio (de las que se encontraron al conectar) y trae los primeros datos. */
 export async function chooseGa4Property(businessId: string, propertyId: string) {
+  ensure.text(businessId, propertyId);
   await ensureBusiness(businessId, "admin");
   const { t } = await getT();
   const conn = await readGa4Connection(businessId);
@@ -85,6 +89,7 @@ export async function chooseGa4Property(businessId: string, propertyId: string) 
 
 /** «Cambiar de propiedad»: vuelve a mostrar la lista (sin volver a pedir permiso a Google). */
 export async function changeGa4Property(businessId: string) {
+  ensure.text(businessId);
   await ensureBusiness(businessId, "admin");
   const conn = await readGa4Connection(businessId);
   if (conn) await writeGa4Connection(businessId, { ...conn.secret, propertyId: undefined, propertyName: undefined, lastError: undefined, lastTryAt: undefined });
@@ -93,6 +98,7 @@ export async function changeGa4Property(businessId: string) {
 
 /** Quita la conexión con Google Analytics (revoca Google y elimina el reporte guardado de esta conexión). */
 export async function disconnectGa4(businessId: string) {
+  ensure.text(businessId);
   await disconnectGoogleData(businessId, GA4_CHANNEL);
   paths(businessId);
 }

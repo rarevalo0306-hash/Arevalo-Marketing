@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { ensure } from "@/lib/ensure";
 import { searchLocations, type DfsLocation } from "@/lib/seo/dataforseo";
 import { hasBusiness, requireUser } from "@/lib/auth";
 import { errorText } from "@/lib/i18n";
@@ -13,6 +14,7 @@ export type LocationSearch = { ok: true; locations: DfsLocation[] } | { ok: fals
 
 /** Busca zonas de Google por nombre dentro de un país (gratis en DataForSEO). */
 export async function searchSeoLocations(country: string, query: string): Promise<LocationSearch> {
+  ensure.text(country, query);
   const { lang } = await getT();
   // No es de un negocio: basta con que haya alguien que entró.
   await requireUser();
@@ -28,6 +30,7 @@ export type TreeResult = { ok: true; locations: TreeLocation[] } | { ok: false; 
 
 /** Lo que hay dentro de una zona (parent = null: el país y sus estados/departamentos). Gratis. */
 export async function seoLocationChildren(country: string, parent: number | null): Promise<TreeResult> {
+  ensure.text(country); ensure.optionalNumber(parent);
   const { lang } = await getT();
   // No es de un negocio: basta con que haya alguien que entró.
   await requireUser();
@@ -40,6 +43,7 @@ export async function seoLocationChildren(country: string, parent: number | null
 
 /** Busca zonas por nombre dentro de un país, con su zona "padre" (incluye barrios y códigos postales). Gratis. */
 export async function searchSeoPlaces(country: string, query: string): Promise<TreeResult> {
+  ensure.text(country, query);
   const { lang } = await getT();
   // No es de un negocio: basta con que haya alguien que entró.
   await requireUser();
@@ -55,6 +59,7 @@ export type SeoSettingsResult = { ok: boolean; message: string } | null;
 
 /** Guarda las zonas de Google, el idioma, las palabras clave que se siguen y cada cuánto se revisan las posiciones. */
 export async function saveSeoSettings(businessId: string, _prev: SeoSettingsResult, f: FormData): Promise<SeoSettingsResult> {
+  ensure.text(businessId);
   const { t } = await getT();
   // También cambia cada cuánto se revisan solas las posiciones (DataForSEO, pagado): solo el Administrador.
   if (!(await hasBusiness(businessId, "admin"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };

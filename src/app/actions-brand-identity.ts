@@ -10,6 +10,7 @@ import { hasBusiness } from "@/lib/auth";
 import { fromAiIdentity, fromAiProposals, type IdentityContext, identityPromptFor, IdentitySchema, proposalsPrompt, ProposalsSchema } from "@/lib/brand-identity";
 import { applyProposal, type BrandIdentity, fillEmpty, hasIdentity, identityFromForm, mergeFromBook, readBrandIdentity, withSeeds } from "@/lib/brand-identity-shape";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import type { Need } from "@/lib/roles";
@@ -91,6 +92,7 @@ function aiFailed(e: unknown, lang: "es" | "en", t: (es: string, en: string) => 
  * y la música; sin manual (o con `mode` "ai"), propone 3 direcciones distintas para escoger.
  */
 export async function proposeIdentities(businessId: string, _prev: IdentityResult, f: FormData): Promise<IdentityResult> {
+  ensure.text(businessId);
   const { lang, t } = await getT();
   const b = await load(businessId, "publish");
   if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
@@ -124,6 +126,7 @@ export async function proposeIdentities(businessId: string, _prev: IdentityResul
  * se vuelvan a crear con la marca nueva.
  */
 export async function chooseIdentity(businessId: string, _prev: IdentityResult, f: FormData): Promise<IdentityResult> {
+  ensure.text(businessId);
   const { t } = await getT();
   const b = await load(businessId, "publish");
   if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
@@ -154,6 +157,7 @@ export async function chooseIdentity(businessId: string, _prev: IdentityResult, 
  * quedó vacío (lo escrito no se toca).
  */
 export async function saveIdentity(businessId: string, _prev: IdentityResult, f: FormData): Promise<IdentityResult> {
+  ensure.text(businessId);
   const { lang, t } = await getT();
   const b = await load(businessId, "publish");
   if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };

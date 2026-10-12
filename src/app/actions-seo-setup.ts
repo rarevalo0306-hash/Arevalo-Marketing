@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { runRankCheck } from "@/app/actions-seo-rank";
 import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { dataForSeoEnabled } from "@/lib/seo/dataforseo";
@@ -15,6 +16,7 @@ export type ProposalResult = { ok: true; proposal: SetupProposal; rejected: stri
 
 /** Prepara (o lee la guardada) la propuesta de zonas, idioma y palabras clave del negocio. Usa la IA, no DataForSEO. */
 export async function proposeSeoSetup(businessId: string, force = false): Promise<ProposalResult> {
+  ensure.text(businessId); ensure.optionalFlag(force);
   const { lang, t } = await getT();
   // Puede llamar a la IA (gasta): hace falta poder publicar.
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: t("Negocio no encontrado", "Business not found") };
@@ -31,6 +33,7 @@ export type MeasureResult = { ok: true; volumes: Record<string, number | null>; 
 
 /** Pregunta a Google Ads cuántas personas buscan cada palabra al mes en una zona (1 llamada, unos US$0.075). */
 export async function measureSeoKeywords(businessId: string, keywords: string[], zone: { code: number; name: string }, language: "es" | "en"): Promise<MeasureResult> {
+  ensure.text(businessId, language); ensure.texts(keywords);
   const { lang, t } = await getT();
   if (!dataForSeoEnabled()) return { ok: false, error: t("Falta conectar DataForSEO.", "DataForSEO isn't connected yet.") };
   const list = [...new Set(keywords.map(normKeyword).filter(Boolean))].slice(0, 40);
@@ -48,6 +51,7 @@ export async function measureSeoKeywords(businessId: string, keywords: string[],
 
 /** Recuerda las palabras que el dueño quitó, para no volver a sugerirlas. */
 export async function rejectSeoKeywords(businessId: string, keywords: string[]): Promise<void> {
+  ensure.text(businessId); ensure.texts(keywords);
   if (await hasBusiness(businessId, "publish")) await rememberChoices(businessId, keywords.slice(0, 50), []);
 }
 
@@ -58,6 +62,7 @@ export type AcceptResult = { ok: boolean; message: string; checked?: boolean } |
  * revisión de posiciones (si se pidió). Si la revisión falla, lo elegido igual queda guardado.
  */
 export async function acceptSeoSetup(businessId: string, _prev: AcceptResult, f: FormData): Promise<AcceptResult> {
+  ensure.text(businessId);
   const { lang, t } = await getT();
   // También cambia cada cuánto se revisan solas las posiciones (DataForSEO, pagado): solo el Administrador.
   if (!(await hasBusiness(businessId, "admin"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };

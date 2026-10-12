@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getFolder } from "@/lib/drive";
+import { ensure } from "@/lib/ensure";
 import { serviceAccountEmail, serviceAccountEnabled } from "@/lib/google-sa";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
@@ -20,6 +21,7 @@ function refresh(businessId: string) {
 
 /** Revisa la carpeta ahora: trae lo nuevo y la IA lo mira. */
 export async function syncDriveNow(businessId: string): Promise<DriveResult> {
+  ensure.text(businessId);
   const { lang, t } = await getT();
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   try {
@@ -47,6 +49,7 @@ export async function syncDriveNow(businessId: string): Promise<DriveResult> {
 
 /** Conecta la carpeta: revisa que el link sea de una carpeta y que la app la pueda ver, y guarda su nombre. */
 export async function saveDriveFolder(businessId: string, link: string): Promise<DriveResult> {
+  ensure.text(businessId, link);
   const { lang, t } = await getT();
   // Conectar la carpeta es una conexión: solo el Administrador.
   if (!(await hasBusiness(businessId, "admin"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
@@ -115,6 +118,7 @@ export async function saveDriveFolder(businessId: string, link: string): Promise
 
 /** Deja de leer la carpeta. Las fotos ya copiadas se quedan en la biblioteca. */
 export async function disconnectDrive(businessId: string): Promise<DriveResult> {
+  ensure.text(businessId);
   const { t } = await getT();
   if (!(await hasBusiness(businessId, "admin"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   await db.business.update({

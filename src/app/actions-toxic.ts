@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { errorText, intlLocale, type UiLang } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import {
@@ -57,6 +58,7 @@ async function pruneAudits(businessId: string) {
 
 /** Revisa con DataForSEO los sitios que enlazan al negocio (pago por uso; el costo se muestra antes en el botón). */
 export async function runToxicCheck(businessId: string, _prev: ToxicResult, _f: FormData): Promise<ToxicResult> {
+  ensure.text(businessId);
   void _prev;
   void _f;
   const { lang, t } = await getT();
@@ -117,6 +119,7 @@ export async function runToxicCheck(businessId: string, _prev: ToxicResult, _f: 
 
 /** Guarda la lista que el dueño ya tiene (Semrush, Ahrefs, Search Console o una lista de dominios). Gratis. */
 export async function importToxicList(businessId: string, _prev: ToxicResult, f: FormData): Promise<ToxicResult> {
+  ensure.text(businessId);
   void _prev;
   const { t } = await getT();
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
@@ -180,6 +183,7 @@ export async function importToxicList(businessId: string, _prev: ToxicResult, f:
 
 /** Revisa el nivel de spam de la lista importada con DataForSEO (pago por uso; el costo se muestra antes). */
 export async function checkImportSpam(businessId: string, _prev: ToxicResult, _f: FormData): Promise<ToxicResult> {
+  ensure.text(businessId);
   void _prev;
   void _f;
   const { lang, t } = await getT();
@@ -216,6 +220,7 @@ const ANSWERS: Answer[] = ["yes", "no", "unsure"];
 
 /** Guarda las respuestas de «¿Necesito desautorizar?» con el resultado calculado con los datos del servidor. */
 export async function saveToxicDecision(businessId: string, _prev: ToxicResult, f: FormData): Promise<ToxicResult> {
+  ensure.text(businessId);
   void _prev;
   const { t } = await getT();
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
@@ -233,6 +238,7 @@ export async function saveToxicDecision(businessId: string, _prev: ToxicResult, 
 
 /** Tus otros sitios y los de tus socios: nunca se marcan como dañinos ni entran al archivo. */
 export async function saveOwnSites(businessId: string, _prev: ToxicResult, f: FormData): Promise<ToxicResult> {
+  ensure.text(businessId);
   void _prev;
   const { t } = await getT();
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
@@ -251,6 +257,7 @@ export type DisavowResult = { ok: boolean; message: string; text?: string; fileN
  * historial. Sin dominios arma el archivo «vacío» que deshace una desautorización anterior. No sube nada a Google.
  */
 export async function makeDisavowFile(businessId: string, input: { domains: string[]; reason: string; outcome: Outcome | null }): Promise<DisavowResult> {
+  ensure.text(businessId);
   const { lang, t } = await getT();
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const state = await loadToxicState(businessId);

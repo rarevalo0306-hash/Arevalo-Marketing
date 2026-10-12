@@ -403,6 +403,7 @@ export async function detectAreas(buf: Buffer, shape: MasterShape, brandColor: s
 
 /** ¿Ya está? Si sí: se descarga enseguida (las direcciones de la IA caducan), se guarda y se buscan las cajas. */
 export async function finishMaster(businessId: string, id: string): Promise<MasterDetail | null> {
+  if (typeof id !== "string") return null;
   const row = await db.aiAction.findFirst({ where: { id, businessId, kind: MASTER_KIND } });
   const d = readDetail(row?.detail);
   if (!row || !d) return null;
@@ -417,12 +418,12 @@ export async function finishMaster(businessId: string, id: string): Promise<Mast
   } catch (e) {
     const err = e as Error & { en?: string };
     const failed: MasterDetail = { ...d, status: "failed", error: { es: err.message, en: err.en ?? err.message } };
-    await writeDetail(id, failed);
+    await writeDetail(row.id, failed);
     return failed;
   }
   // Solo uno lo guarda (si la pantalla pregunta dos veces a la vez).
   const claimed = await db.aiAction.updateMany({
-    where: { id, ...(stuck ? {} : { detail: { path: ["status"], equals: "pending" } }) },
+    where: { id: row.id, businessId, kind: MASTER_KIND, ...(stuck ? {} : { detail: { path: ["status"], equals: "pending" } }) },
     data: { detail: { ...d, status: "storing", storingAt: Date.now() } as unknown as Prisma.InputJsonValue },
   });
   if (!claimed.count) return { ...d, status: "storing" };
@@ -444,12 +445,12 @@ export async function finishMaster(businessId: string, id: string): Promise<Mast
       ink = inkFromColor(det?.headlineColor, brand) ?? inkFor(await meanColor(png, areas.textBox).catch(() => "#ffffff"), brand);
     }
     const ready: MasterDetail = { ...d, status: "ready", url: stored, w: meta.width, h: meta.height, areas, ink, error: undefined };
-    await writeDetail(id, ready);
+    await writeDetail(row.id, ready);
     return ready;
   } catch (e) {
     const err = e as Error & { en?: string };
     const failed: MasterDetail = { ...d, status: "failed", error: { es: err.message, en: err.en ?? err.message } };
-    await writeDetail(id, failed);
+    await writeDetail(row.id, failed);
     return failed;
   }
 }

@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { runAudit } from "@/lib/seo/audit";
@@ -13,6 +14,7 @@ export type AuditResult = { ok: boolean; message: string } | null;
 
 /** Revisa la página web del negocio (gratis, sin claves) y guarda el reporte. */
 export async function runSiteAudit(businessId: string, _prev: AuditResult, _f: FormData): Promise<AuditResult> {
+  ensure.text(businessId);
   void _prev;
   void _f;
   const { lang, t } = await getT();

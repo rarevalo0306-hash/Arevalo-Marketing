@@ -44,7 +44,7 @@ function files(dir: string, keep: (path: string) => boolean): string[] {
   });
 }
 
-type Fn = { name: string; exported: boolean; body: string };
+type Fn = { name: string; exported: boolean; body: string; params: { name: string; type: string }[] };
 
 /** Las funciones de nivel superior del archivo (declaradas o con const = async …). */
 function functions(path: string): Fn[] {
@@ -52,11 +52,17 @@ function functions(path: string): Fn[] {
   const out: Fn[] = [];
   const exported = (n: ts.Node) => (ts.canHaveModifiers(n) ? ts.getModifiers(n) : undefined)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
   for (const st of source.statements) {
-    if (ts.isFunctionDeclaration(st) && st.name && st.body) out.push({ name: st.name.text, exported: exported(st), body: st.body.getText(source) });
+    if (ts.isFunctionDeclaration(st) && st.name && st.body)
+      out.push({
+        name: st.name.text,
+        exported: exported(st),
+        body: st.body.getText(source),
+        params: st.parameters.flatMap((p) => (ts.isIdentifier(p.name) ? [{ name: p.name.text, type: p.type?.getText(source) ?? "" }] : [])),
+      });
     if (ts.isVariableStatement(st))
       for (const d of st.declarationList.declarations)
         if (ts.isIdentifier(d.name) && d.initializer && (ts.isArrowFunction(d.initializer) || ts.isFunctionExpression(d.initializer)))
-          out.push({ name: d.name.text, exported: exported(st), body: d.initializer.body.getText(source) });
+          out.push({ name: d.name.text, exported: exported(st), body: d.initializer.body.getText(source), params: [] });
   }
   return out;
 }
@@ -86,6 +92,20 @@ describe("every entry point checks the permission", () => {
         const key = `${rel(path)}#${f.name}`;
         const allowed = ACTIONS_WITHOUT_BUSINESS[key] && (f.name === "logout" || calls(f.body, USER_GUARDS));
         if (!calls(f.body, guards) && !allowed) missing.push(key);
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+
+  it("server actions check that each text, number or yes/no argument really is one (src/lib/ensure.ts)", () => {
+    // Un objeto donde se espera un id llega a Prisma como filtro ({ in: [...] }) y puede tocar filas de otros negocios.
+    const PLAIN = /^(string|number|boolean|string\[\]|"[^"]*"(\s*\|\s*"[^"]*")*)(\s*\|\s*(null|undefined))*$/;
+    const missing: string[] = [];
+    for (const path of files(APP, (p) => /\/actions[^/]*\.ts$/.test(p))) {
+      if (!readFileSync(path, "utf8").startsWith('"use server"')) continue;
+      for (const f of functions(path).filter((x) => x.exported)) {
+        const checked = new Set([...f.body.matchAll(/\bensure\.\w+\(([^)]*)\)/g)].flatMap((m) => m[1].split(",").map((a) => a.trim())));
+        for (const p of f.params) if (!p.name.startsWith("_") && PLAIN.test(p.type.trim()) && !checked.has(p.name)) missing.push(`${rel(path)}#${f.name}(${p.name})`);
       }
     }
     expect(missing).toEqual([]);

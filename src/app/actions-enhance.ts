@@ -5,6 +5,7 @@
 import { revalidatePath } from "next/cache";
 import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { enhanceItem, enhancePending, setUseEnhanced } from "@/lib/photo-enhance-run";
@@ -28,6 +29,7 @@ export type EnhanceActionResult = { ok: boolean; message: string };
 
 /** «Mejorar» / «Volver a mejorar» una foto. Si tiene avisos de privacidad, la IA vuelve a buscar qué tapar. */
 export async function enhanceOne(businessId: string, itemId: string, _prev: EnhanceActionResult | null, _f: FormData): Promise<EnhanceActionResult> {
+  ensure.text(businessId, itemId);
   void _prev;
   void _f;
   const { lang, t } = await getT();
@@ -48,6 +50,7 @@ export type EnhanceAllStep = { ok: boolean; done: number; failed: number; left: 
  * Solo pregunta a la IA por las fotos con avisos de privacidad que no traen qué tapar desde su revisión.
  */
 export async function enhanceAllStep(businessId: string): Promise<EnhanceAllStep> {
+  ensure.text(businessId);
   const { lang, t } = await getT();
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, done: 0, failed: 0, left: 0, aiCalls: 0, message: t("Negocio no encontrado.", "Business not found.") };
   try {
@@ -61,6 +64,7 @@ export async function enhanceAllStep(businessId: string): Promise<EnhanceAllStep
 
 /** «Usar la mejorada» (true) o «Usar la original» (false) en las publicaciones. */
 export async function chooseVersion(businessId: string, itemId: string, useEnhanced: boolean): Promise<EnhanceActionResult> {
+  ensure.text(businessId, itemId); ensure.flag(useEnhanced);
   const { lang, t } = await getT();
   try {
     await ownPhoto(businessId, itemId, "publish");

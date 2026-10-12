@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { aiEnabled, improveSeoArticle, pickText, writeSeoArticle } from "@/lib/ai";
 import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { dataForSeoEnabled, readZones } from "@/lib/seo/dataforseo";
@@ -61,6 +62,7 @@ async function prune(businessId: string) {
  * arma las metas, la IA escribe y se revisa con un puntaje. Se guarda como reporte "article".
  */
 export async function writeArticle(businessId: string, _prev: WriterResult, f: FormData): Promise<WriterResult> {
+  ensure.text(businessId);
   void _prev;
   const { lang, t } = await getT();
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
@@ -121,6 +123,7 @@ export async function writeArticle(businessId: string, _prev: WriterResult, f: F
 
 /** La IA reescribe el artículo para arreglar lo que falta en la revisión. No vuelve a consultar Google (gratis en DataForSEO). */
 export async function improveArticle(businessId: string, reportId: string, _prev: WriterResult, _f: FormData): Promise<WriterResult> {
+  ensure.text(businessId, reportId);
   void _prev;
   void _f;
   const { lang, t } = await getT();
@@ -161,6 +164,7 @@ export async function improveArticle(businessId: string, reportId: string, _prev
 
 /** Borra un artículo guardado. */
 export async function deleteArticle(businessId: string, reportId: string): Promise<{ ok: boolean }> {
+  ensure.text(businessId, reportId);
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false };
   const r = await db.seoReport.deleteMany({ where: { id: reportId, businessId, kind: KIND } });
   paths(businessId);

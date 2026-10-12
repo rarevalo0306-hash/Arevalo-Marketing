@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { errorText, intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { normalizeDomain, parseOwnerDomains, runCompetitorsReport } from "@/lib/seo/competitors";
@@ -17,6 +18,7 @@ export type CompetitorsResult = { ok: boolean; message: string } | null;
 
 /** Busca a la competencia en Google (DataForSEO Labs, pago por uso) y guarda el reporte. */
 export async function runCompetitors(businessId: string, _prev: CompetitorsResult, f: FormData): Promise<CompetitorsResult> {
+  ensure.text(businessId);
   void _prev;
   const { lang, t } = await getT();
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
@@ -80,6 +82,7 @@ export async function runCompetitors(businessId: string, _prev: CompetitorsResul
 
 /** Agrega una búsqueda de las oportunidades a las palabras clave que sigue el negocio (máx. 25). */
 export async function trackGapKeyword(businessId: string, keyword: string): Promise<{ ok: boolean; message: string }> {
+  ensure.text(businessId, keyword);
   const { t } = await getT();
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const kw = String(keyword ?? "").replace(/\s+/g, " ").trim().toLowerCase().slice(0, 80);

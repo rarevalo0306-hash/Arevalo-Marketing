@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import type { Need } from "@/lib/roles";
@@ -21,6 +22,7 @@ async function findBusiness(id: string, need: Need) {
 
 /** La IA propone 3 a 5 preguntas de clientes para probar si las IAs recomiendan al negocio. */
 export async function suggestVisibilityQuestions(businessId: string): Promise<SuggestQuestionsResult> {
+  ensure.text(businessId);
   const { lang, t } = await getT();
   const b = await findBusiness(businessId, "publish");
   if (!b) return { ok: false, error: t("Negocio no encontrado.", "Business not found.") };
@@ -35,6 +37,7 @@ export async function suggestVisibilityQuestions(businessId: string): Promise<Su
 
 /** Hace las preguntas a ChatGPT, Gemini y Claude (con búsqueda en internet), guarda el reporte y dice cómo salió. */
 export async function runVisibility(businessId: string, _prev: VisibilityRunResult, f: FormData): Promise<VisibilityRunResult> {
+  ensure.text(businessId);
   const { lang, t } = await getT();
   const b = await findBusiness(businessId, "publish");
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };

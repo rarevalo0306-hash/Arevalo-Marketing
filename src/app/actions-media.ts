@@ -7,6 +7,7 @@ import sharp from "sharp";
 import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { CustomSpec, customBase, PHOTO_SPOTS, TEXT_SPOTS } from "@/lib/design-shapes";
+import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { isOwnFile, readMedia, storeBuffer } from "@/lib/media";
@@ -19,6 +20,7 @@ const pick = <T extends string>(v: FormDataEntryValue | null, list: readonly T[]
 
 /** Guarda una plantilla propia. La imagen llega ya subida (imageUrl, con Supabase) o como archivo (file). */
 export async function saveCustomTemplate(businessId: string, _prev: CustomTemplateResult, f: FormData): Promise<CustomTemplateResult> {
+  ensure.text(businessId);
   const { lang, t } = await getT();
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { id: true } });
