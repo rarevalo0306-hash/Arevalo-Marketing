@@ -112,7 +112,7 @@ export function GscCard({ businessId, connected, site, enabled, hasWebsite, disc
             type="button"
             disabled={pending}
             onClick={() => {
-              if (confirm(t("¿Desconectar Search Console? Los reportes guardados se quedan.", "Disconnect Search Console? Saved reports stay."))) start(() => disconnect());
+              if (confirm(t("¿Desconectar Search Console? Se borran los reportes guardados de esta conexión.", "Disconnect Search Console? Saved reports for this connection are deleted."))) start(() => disconnect());
             }}
           >
             {pending ? t("Desconectando…", "Disconnecting…") : t("Desconectar", "Disconnect")}

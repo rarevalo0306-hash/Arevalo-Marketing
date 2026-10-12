@@ -1,4 +1,14 @@
 {
-  "git": { "deploymentEnabled": { "codex/matya-agent-platform": false } },
-  "crons": [{ "path": "/api/cron", "schedule": "0 13 * * *" }]
+  "crons": [
+    {
+      "path": "/api/cron",
+      "schedule": "0 13 * * *"
+    }
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "codex/matya-agent-platform": false,
+      "codex/privacy-data-deletion": false
+    }
+  }
 }

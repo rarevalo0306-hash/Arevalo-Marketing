@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
+import { disconnectGoogleData } from "@/lib/data-deletion";
 import { GA4_CHANNEL, readGa4Connection, refreshGa4, writeGa4Connection } from "@/lib/ga4";
 import { explainGa4Error } from "@/lib/ga4-shape";
 import { errorText } from "@/lib/i18n";
@@ -89,8 +90,8 @@ export async function changeGa4Property(businessId: string) {
   paths(businessId);
 }
 
-/** Quita la conexión con Google Analytics (los reportes guardados se quedan). */
+/** Quita la conexión con Google Analytics (revoca Google y elimina el reporte guardado de esta conexión). */
 export async function disconnectGa4(businessId: string) {
-  await db.connection.deleteMany({ where: { businessId, channel: GA4_CHANNEL } });
+  await disconnectGoogleData(businessId, GA4_CHANNEL);
   paths(businessId);
 }

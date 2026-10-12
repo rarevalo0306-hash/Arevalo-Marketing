@@ -1,12 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { disconnectGoogleData } from "@/lib/data-deletion";
 import { GSC_CHANNEL } from "@/lib/seo/gsc";
 
-/** Quita la conexión con Search Console desde Conexiones (los reportes guardados se quedan). */
+/** Quita la conexión con Search Console desde Conexiones (revoca Google y elimina el reporte guardado de esta conexión). */
 export async function disconnectGscFromConnections(businessId: string) {
-  await db.connection.deleteMany({ where: { businessId, channel: GSC_CHANNEL } });
+  await disconnectGoogleData(businessId, GSC_CHANNEL);
   revalidatePath(`/b/${businessId}/conexiones`);
   revalidatePath(`/b/${businessId}/seo`);
 }
