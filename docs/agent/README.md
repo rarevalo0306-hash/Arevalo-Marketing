@@ -1,6 +1,6 @@
 # Centro MATYA: implementación y operación
 
-12 de octubre de 2026. Implementación en `codex/matya-agent-platform`, sobre `9e191ac`. La web pública y su agente 3D no cambian. No se ha desplegado, migrado la base remota ni publicado contenido real.
+12 de octubre de 2026. Versión de publicación del PR #57, basada en `9e191ac` e integrando los PR #55 (seguridad) y #56 (privacidad). La web pública y su agente 3D no cambian. Las migraciones remotas ya están aplicadas; el despliegue se verifica por separado en Vercel y en el navegador. No se ha publicado contenido en redes.
 
 ## Qué ejecuta esta versión
 
@@ -31,14 +31,14 @@ No es todavía una factura consolidada de toda la plataforma: herramientas anter
 
 ## Activación, en orden
 
-1. Revisar e incorporar por separado seguridad PR #55 y privacidad PR #56. Al revisar el 12 de octubre estaban abiertos, #56 en borrador. No se tocaron sus ramas ni `APP_SECRET`.
+1. Seguridad PR #55 y privacidad PR #56 integrados en esta versión. Sus ramas fuente y `APP_SECRET` se conservaron. Aplicadas las migraciones `matya_agent_workspace` y `matya_login_security_release` en Matya; verificadas las siete tablas privadas, la columna de Campaign y la revocación de ejecución pública de `rls_auto_enable`.
 2. Probar la migración `supabase/migrations/20261012084743_matya_agent_workspace.sql` en un entorno privado. Es aditiva: seis tablas, relación identificadora en Campaign e índices. Las tablas nuevas tienen RLS y sin permisos para `anon`/`authenticated`. **Aplicar antes del código**, aunque el feature flag esté apagado, porque el cliente Prisma también conoce la columna nueva de Campaign.
 3. Mantener `MATYA_AGENT_ENABLED=false` durante la preparación. Elegir proveedor/modelo compatible con JSON y establecer tarifas vigentes en las variables de `.env.example`, con la clave ya existente del proveedor. No modificar ni copiar secretos entre entornos.
 4. Habilitar el flag en el entorno de piloto, configurar industria/objetivo/fuentes y límites por negocio. De fábrica: presupuesto $0 y publicación desactivada. Definir alcance, canales, frecuencia y presupuesto reales del piloto antes de permitir gasto/envío.
 5. Ejecutar `node scripts/agent-worker.mjs` en un proceso persistente, con `MATYA_WORKER_URL=https://<app>/api/cron?agent=1` y el `CRON_SECRET` del entorno. Alternativamente invocar ese endpoint cada minuto desde el planificador contratado. El script espera 30 segundos entre ciclos y nunca superpone sus propias solicitudes. La ruta exacta `/api/cron` es compatible con el gate de PR #55; `?agent=1` evita ejecutar los trabajos de pago antiguos en cada tick. El cron diario actual permanece igual.
 6. Mantener el trabajo existente de sincronización de métricas. Verificar ambos pilotos internos, observar al menos siete días antes de atribuir mejoras y registrar fallos parciales por canal.
 
-La rama desactiva su despliegue automático en `vercel.json`. No activa un worker remoto ni cambia planes de Vercel. La autenticación sigue siendo la del dueño compartido; **no habilitar clientes externos** hasta implementar cuentas, membresías y autorización por organización.
+El centro queda habilitado en producción para los dos negocios existentes, con industria correspondiente, presupuesto cero y publicación desactivada. Proveedor/tarifas y worker frecuente quedan pendientes de la activación operativa del piloto. El resumen usa datos del negocio sin una llamada de pago. La rama desactiva su despliegue automático en `vercel.json`; publicar se hace desde main. No activa un worker remoto ni cambia planes de Vercel. La autenticación sigue siendo la del dueño compartido; **no habilitar clientes externos** hasta implementar cuentas, membresías y autorización por organización.
 
 ## Reversión
 
