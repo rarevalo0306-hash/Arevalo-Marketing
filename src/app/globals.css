@@ -334,6 +334,9 @@ th[class*="-num"] { text-align: right; }
 .login-name { font-size: 40px; letter-spacing: -0.025em; text-align: center; }
 .center-page .card:has(.login-name) { padding: 40px 32px 32px; gap: 24px; }
 .login-name { font-weight: 700; letter-spacing: -0.035em; }
+.google-login { gap: 10px; width: 100%; min-height: 48px; font-weight: 600; background: var(--surface); border-color: var(--line-strong); }
+.google-login:hover { background: var(--surface); border-color: var(--ink); }
+.login-or { text-align: center; color: var(--muted); font-size: 14px; margin: -6px 0 -10px; }
 /* Celular: deja espacio para la barra de abajo (components/nav). */
 @media (max-width: 900px) { .content { padding-bottom: 104px; } }
 

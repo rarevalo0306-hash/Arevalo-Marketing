@@ -2,6 +2,15 @@
 
 export const SESSION_COOKIE = "am_session";
 
+/** La cookie de la sesión: solo la lee el servidor, dura 30 días. La ponen la contraseña y «Entrar con Google». */
+export const sessionCookieOptions = () => ({
+  httpOnly: true,
+  sameSite: "lax" as const,
+  secure: process.env.NODE_ENV === "production",
+  path: "/",
+  maxAge: 60 * 60 * 24 * 30,
+});
+
 export async function sessionToken(): Promise<string> {
   const password = process.env.APP_PASSWORD ?? "";
   const secret = process.env.APP_SECRET ?? "";
