@@ -102,7 +102,7 @@ describe("every entry point checks the permission", () => {
 
   it("route handlers check the business, unless they are public on purpose", () => {
     const missing: string[] = [];
-    for (const path of files(APP, (p) => /\/route\.ts$/.test(p))) {
+    for (const path of files(APP, (p) => /\/route\.tsx?$/.test(p))) {
       const key = rel(path);
       if (PUBLIC_ROUTES[key]) continue;
       const fns = functions(path);

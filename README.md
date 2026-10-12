@@ -12,7 +12,7 @@ Escribe una publicación una vez y sale en Facebook, Instagram, TikTok, Google, 
 - **Programar.** Elige fecha y hora; la app lo publica sola.
 - **Historial.** Qué salió en cada canal, enlaces a cada publicación, y el error exacto si algo falló, con un botón para reintentar.
 - **Contactos.** Agrega o pega tu lista desde Excel. Email y SMS solo van a quien aceptó recibirlos.
-- **Seguro.** Entra con contraseña. Los tokens de tus cuentas se guardan cifrados (AES-256-GCM).
+- **Seguro.** Cada persona entra con su correo (contraseña o Google) y solo ve las empresas de sus organizaciones, según su papel (Administrador, Puede publicar o Solo ver). Los tokens de tus cuentas se guardan cifrados (AES-256-GCM).
 
 ## Canales y qué usa cada uno
 

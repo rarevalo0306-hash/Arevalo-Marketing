@@ -1,9 +1,10 @@
 // Tarjeta para imprimir con el código QR de reseñas de Google (A6 o tamaño tarjeta de presentación), con los colores
-// y el logo de la marca. También da el QR solo (SVG). Protegida por el middleware (sesión del dueño).
+// y el logo de la marca. También da el QR solo (SVG). Solo para quien entra a este negocio (src/lib/auth.ts).
 import { readFile } from "fs/promises";
 import { ImageResponse } from "next/og";
 import path from "path";
 import sharp from "sharp";
+import { businessAccess } from "@/lib/auth";
 import { googleReviewLink, placeIdOf } from "@/lib/directories";
 import { db } from "@/lib/db";
 import { asLang, translator } from "@/lib/i18n";
@@ -72,6 +73,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const u = new URL(req.url).searchParams;
   const lang = u.has("lang") ? asLang(u.get("lang")) : await uiLang();
   const t = translator(lang);
+  const access = await businessAccess(id, "view");
+  if (!access.ok) return new Response(access.status === 401 ? t("No autorizado", "Unauthorized") : access.status === 403 ? t("Tu papel no permite esto", "Your role doesn't allow this") : t("No encontrado", "Not found"), { status: access.status });
   const b = await db.business.findUnique({ where: { id }, select: { name: true, color: true, logoUrl: true, website: true, phone: true, seoMapPlace: true } });
   if (!b) return new Response(t("No encontrado", "Not found"), { status: 404 });
   const [gbpRow] = await latestReports(id, "gbp");
