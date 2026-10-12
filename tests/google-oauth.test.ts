@@ -43,3 +43,17 @@ describe("googleAuthUrl para Search Console", () => {
     expect(googleStatePurpose(state)).toEqual({ purpose: "profile", businessId: "biz123" });
   });
 });
+
+describe('Google revocation', () => {
+  it('uses a POST body and never puts the token in the URL', async () => {
+    const { vi } = await import('vitest');
+    const { revokeGoogleToken } = await import('@/lib/google-oauth');
+    const mock=vi.fn().mockResolvedValue(new Response('', {status:200}));vi.stubGlobal('fetch',mock);
+    try { await revokeGoogleToken('private-token'); expect(mock.mock.calls[0][0]).toBe('https://oauth2.googleapis.com/revoke'); expect(mock.mock.calls[0][1].method).toBe('POST'); expect(String(mock.mock.calls[0][1].body)).toBe('token=private-token'); } finally {vi.unstubAllGlobals();}
+  });
+  it('allows already revoked tokens but fails closed on server errors', async () => {
+    const { vi } = await import('vitest');const { revokeGoogleToken } = await import('@/lib/google-oauth');
+    const mock=vi.fn().mockResolvedValueOnce(Response.json({error:'invalid_token'},{status:400})).mockResolvedValueOnce(Response.json({error:'unavailable'},{status:503}));vi.stubGlobal('fetch',mock);
+    try {await expect(revokeGoogleToken('revoked')).resolves.toBeUndefined();await expect(revokeGoogleToken('retry')).rejects.toThrow();} finally {vi.unstubAllGlobals();}
+  });
+});

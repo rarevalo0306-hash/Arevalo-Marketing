@@ -227,3 +227,38 @@ export async function readSidecar(stored: string): Promise<unknown> {
     return null;
   }
 }
+
+/** Remove only this business's folder, including derived images, JSON sidecars and documents. */
+export async function deleteBusinessMedia(businessId: string): Promise<void> {
+  if (!/^[A-Za-z0-9_-]+$/.test(businessId)) throw new Error('Invalid business ID');
+  const sb = supabase();
+  if (!sb) throw bi('No se puede confirmar el borrado de archivos: configura Supabase Storage antes de eliminar el negocio.', 'File deletion cannot be verified: configure Supabase Storage before deleting the business.');
+  const headers = { Authorization: `Bearer ${sb.key}`, apikey: sb.key, 'Content-Type': 'application/json' };
+  const root = `${businessId}/`;
+  const pending = [businessId];
+  const files: string[] = [];
+  for (let index = 0; index < pending.length; index++) {
+    const folder = pending[index];
+    for (let offset = 0; ; offset += 1000) {
+      const r = await fetch(`${sb.url}/storage/v1/object/list/${BUCKET}`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ prefix: folder, limit: 1000, offset, sortBy: { column: 'name', order: 'asc' } }),
+      });
+      if (!r.ok) throw new Error(`Storage listing failed (${r.status})`);
+      const entries = await r.json() as { name: string; id?: string | null }[];
+      for (const entry of entries) {
+        if (!entry.name || entry.name.includes('/') || entry.name === '.' || entry.name === '..') throw new Error('Unsafe storage entry');
+        const key = `${folder}/${entry.name}`;
+        if (!key.startsWith(root)) throw new Error('Storage entry outside business folder');
+        if (entry.id) files.push(key); else pending.push(key);
+      }
+      if (entries.length < 1000) break;
+    }
+  }
+  for (let start = 0; start < files.length; start += 100) {
+    const r = await fetch(`${sb.url}/storage/v1/object/${BUCKET}`, {
+      method: 'DELETE', headers, body: JSON.stringify({ prefixes: files.slice(start, start + 100) }),
+    });
+    if (!r.ok) throw new Error(`Storage deletion failed (${r.status})`);
+  }
+}

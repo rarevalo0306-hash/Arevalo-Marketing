@@ -11,6 +11,7 @@ import { CHANNEL_IDS, channelDef, type ChannelId } from "@/lib/channels";
 import { decryptJson, encryptJson } from "@/lib/crypto";
 import { normalizePhone, parseContactsCsv } from "@/lib/contacts";
 import { db } from "@/lib/db";
+import { disconnectGoogleData, eraseBusinessData, GOOGLE_CHANNELS } from "@/lib/data-deletion";
 import { startVideo, videoEnabled, videoResult, type Shape, type VideoJob } from "@/lib/fal";
 import { DESIGN_SHAPES, type Brand, type DesignShape } from "@/lib/design";
 import { BUILTIN_TEMPLATES, FONTS, hexOr, pickTemplate, StoredTemplate } from "@/lib/design-shapes";
@@ -100,7 +101,7 @@ export async function deleteBusiness(id: string, f: FormData) {
   const b = await business(id);
   const { t } = await getT();
   if (str(f, "confirm") !== b.name) throw new Error(t("Escribe el nombre exacto para confirmar", "Type the exact name to confirm"));
-  await db.business.delete({ where: { id } });
+  await eraseBusinessData(id);
   redirect("/");
 }
 
@@ -194,7 +195,8 @@ export async function chooseGoogleLocation(businessId: string, locationId: strin
 }
 
 export async function deleteConnection(businessId: string, channel: ChannelId) {
-  await db.connection.deleteMany({ where: { businessId, channel } });
+  if (GOOGLE_CHANNELS.some(c => c === channel)) await disconnectGoogleData(businessId, channel);
+  else await db.connection.deleteMany({ where: { businessId, channel } });
   revalidatePath(`/b/${businessId}/conexiones`);
 }
 

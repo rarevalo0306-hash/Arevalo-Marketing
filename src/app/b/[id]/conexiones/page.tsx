@@ -86,6 +86,12 @@ export default async function ConexionesPage({
           "Each business has its own accounts. Connect them once, and everything you publish from this business goes out to these places. Your keys are stored encrypted.",
         )}
       />
+      <p className="note">
+        {t("Antes de conectar una cuenta, consulta ", "Before connecting an account, read ")}
+        <a href={`https://matya.app/${lang === "en" ? "en/" : ""}privacidad/`}>{t("Privacidad", "Privacy")}</a>{" · "}
+        <a href={`https://matya.app/${lang === "en" ? "en/" : ""}borrado-de-datos/`}>{t("Borrado de datos", "Data deletion")}</a>.
+        {t(" La IA puede recibir fotos y resúmenes de resultados para las funciones que solicites. Desconectar Google revoca su permiso y borra el reporte de esa conexión; otras conexiones de Google podrían necesitar reconexión.", " AI may receive photos and result summaries for requested features. Disconnecting Google revokes its permission and deletes that connection's report; other Google connections may need reconnection.")}
+      </p>
       {q.meta === "ok" && (
         <p className="note ok" role="status">
           {t(`Listo: Facebook quedó conectado con la página "${q.page}".`, `Done: Facebook is now connected to the Page "${q.page}".`)}{" "}

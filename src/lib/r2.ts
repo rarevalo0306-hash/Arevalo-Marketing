@@ -210,3 +210,38 @@ export function isLibraryKey(key: string, businessId: string, exts: readonly str
   const m = /^library\/([A-Za-z0-9_-]{1,64})\/\d{4}-\d{2}\/[a-f0-9]{24}\.([a-z0-9]{2,5})$/.exec(key);
   return Boolean(m && m[1] === businessId && exts.includes(m[2]));
 }
+
+/** S3 ListObjectsV2 XML values (no document evaluation or external entity resolution). */
+function xmlValue(text: string): string {
+  return text.replace(/&#(x[0-9a-f]+|[0-9]+);|&(amp|lt|gt|quot|apos);/gi, (_, n: string, name: string) => n ? String.fromCodePoint(n.startsWith('x') ? parseInt(n.slice(1), 16) : Number(n)) : ({ amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }[name.toLowerCase()] ?? ''));
+}
+
+/** Never delete Drive originals or another business's keys. Enumerate before removing anything. */
+export async function deleteBusinessR2Files(businessId: string): Promise<void> {
+  if (!/^[A-Za-z0-9_-]+$/.test(businessId)) throw new Error('Invalid business ID');
+  const c = r2Config();
+  if (!c) return;
+  const prefix = `library/${businessId}/`;
+  const keys: string[] = [];
+  let token = '';
+  do {
+    const query: [string, string][] = [['list-type', '2'], ['prefix', prefix], ['max-keys', '1000']];
+    if (token) query.push(['continuation-token', token]);
+    const host = hostOf(c), requestPath = `/${uriEncode(c.bucket)}`;
+    const headers = signHeaders({ method: 'GET', host, path: requestPath, query, payloadHash: EMPTY_SHA256, when: new Date() }, credsOf(c));
+    const response = await fetch(`https://${host}${requestPath}?${canonicalQuery(query)}`, { headers });
+    if (!response.ok) throw new Error(`R2 listing failed (${response.status})`);
+    const xml = await response.text();
+    if (!xml.includes('<ListBucketResult')) throw new Error('Invalid R2 listing');
+    for (const match of xml.matchAll(/<Key>([\s\S]*?)<\/Key>/g)) {
+      const key = xmlValue(match[1]);
+      if (!key.startsWith(prefix) || key.split('/').includes('..')) throw new Error('R2 entry outside business folder');
+      keys.push(key);
+    }
+    const truncated = /<IsTruncated>true<\/IsTruncated>/.test(xml);
+    const next = xml.match(/<NextContinuationToken>([\s\S]*?)<\/NextContinuationToken>/)?.[1];
+    if (truncated && (!next || xmlValue(next) === token)) throw new Error('Invalid R2 continuation token');
+    token = truncated ? xmlValue(next!) : '';
+  } while (token);
+  for (let start = 0; start < keys.length; start += 8) await Promise.all(keys.slice(start, start + 8).map(deleteObject));
+}
