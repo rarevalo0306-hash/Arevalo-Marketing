@@ -1,10 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { config } from "@/middleware";
 import { checkGoogleLogin, googleLoginEnabled, googleLoginRedirectUri, googleLoginUrl, idTokenClaims, loginEmails, newLoginFlow, readLoginFlow } from "@/lib/google-login";
 
 const jwt = (claims: object) => `h.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.sig`;
-const good = { iss: "https://accounts.google.com", aud: "cid", exp: 2_000, nonce: "n1", email: "Owner@Example.com", email_verified: true };
-const opts = { clientId: "cid", nonce: "n1", nowSec: 1_000, allowed: ["owner@example.com"] };
+const good = { iss: "https://accounts.google.com", aud: "cid", exp: 2_000, nonce: "n1", email: "Owner@Gmail.com", email_verified: true };
+const opts = { clientId: "cid", nonce: "n1", nowSec: 1_000, allowed: ["owner@gmail.com", "ana@empresa.com", "ex@otro.com"] };
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -61,8 +60,8 @@ describe("sign in with Google", () => {
   });
 
   it("lets in only a current Google token for this client, this attempt and an allowed verified email", () => {
-    expect(checkGoogleLogin(good, opts)).toEqual({ ok: true, email: "owner@example.com" });
-    expect(checkGoogleLogin({ ...good, iss: "accounts.google.com", aud: ["other", "cid"] }, opts)).toEqual({ ok: true, email: "owner@example.com" });
+    expect(checkGoogleLogin(good, opts)).toEqual({ ok: true, email: "owner@gmail.com" });
+    expect(checkGoogleLogin({ ...good, iss: "accounts.google.com", aud: ["other", "cid"] }, opts)).toEqual({ ok: true, email: "owner@gmail.com" });
     expect(checkGoogleLogin(null, opts)).toEqual({ ok: false, reason: "token" });
     expect(checkGoogleLogin({ ...good, iss: "https://evil.example" }, opts)).toEqual({ ok: false, reason: "token" });
     expect(checkGoogleLogin({ ...good, aud: "other" }, opts)).toEqual({ ok: false, reason: "token" });
@@ -75,12 +74,9 @@ describe("sign in with Google", () => {
     expect(checkGoogleLogin(good, { ...opts, clientId: "" })).toEqual({ ok: false, reason: "token" });
   });
 
-  it("leaves only the Google sign-in routes open, not the connection callbacks", () => {
-    const re = new RegExp(`^${config.matcher[0]}$`);
-    expect(re.test("/api/auth/google/start")).toBe(false);
-    expect(re.test("/api/auth/google/callback")).toBe(false);
-    expect(re.test("/api/google/callback")).toBe(true);
-    expect(re.test("/api/google/start")).toBe(true);
-    expect(re.test("/b/abc/inicio")).toBe(true);
+  it("trusts only addresses Google vouches for: Gmail, or a Google Workspace account", () => {
+    expect(checkGoogleLogin({ ...good, email: "ana@empresa.com", hd: "empresa.com" }, opts)).toEqual({ ok: true, email: "ana@empresa.com" });
+    expect(checkGoogleLogin({ ...good, email: "ex@otro.com" }, opts)).toEqual({ ok: false, reason: "notAllowed" });
+    expect(checkGoogleLogin({ ...good, email: "ex@otro.com", hd: "" }, opts)).toEqual({ ok: false, reason: "notAllowed" });
   });
 });

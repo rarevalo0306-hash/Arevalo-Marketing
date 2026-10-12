@@ -1,12 +1,12 @@
 import { LangPicker } from "@/components/I18n";
 import { LoginForm } from "@/components/LoginForm";
-import { googleLoginEnabled } from "@/lib/google-login";
+import { appBase, googleLoginEnabled } from "@/lib/google-login";
 import { getT } from "@/lib/i18n-server";
 
 export const dynamic = "force-dynamic";
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ google?: string }> }) {
-  const { google } = await searchParams;
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ google?: string; e?: string; m?: string }> }) {
+  const { google, e, m } = await searchParams;
   const { t } = await getT();
   const withGoogle = googleLoginEnabled();
   const googleError =
@@ -19,13 +19,25 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           : google
             ? t("No se pudo entrar con Google. Vuelve a intentarlo o usa tu contraseña.", "Couldn't sign in with Google. Try again or use your password.")
             : "";
+  const mins = Math.min(60, Math.max(1, Number(m) || 15));
+  const passwordError =
+    e === "wrong"
+      ? t("Contraseña incorrecta.", "Wrong password.")
+      : e === "locked"
+        ? t(`Demasiados intentos. Espera ${mins} min y vuelve a probar.`, `Too many attempts. Wait ${mins} min and try again.`)
+        : e === "check"
+          ? t("No se pudo comprobar ahora. Prueba de nuevo en un momento.", "Couldn't check right now. Try again in a moment.")
+          : e === "setup"
+            ? t("Falta APP_PASSWORD en el archivo .env del servidor.", "APP_PASSWORD is missing from the server's .env file.")
+            : "";
   return (
     <main className="center-page">
       <div className="card">
         <h1 className="login-name">Matya</h1>
         {withGoogle && (
           <>
-            <a className="btn google-login" href="/api/auth/google/start">
+            {/* Siempre en la dirección principal: ahí vuelve Google y ahí queda la cookie del intento. */}
+            <a className="btn google-login" href={`${appBase()}/api/auth/google/start`}>
               <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
                 <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z" />
                 <path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.3 5.7c4.3-4 7-9.9 7-17.1z" />
@@ -42,7 +54,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             <p className="login-or">{t("o con tu contraseña", "or with your password")}</p>
           </>
         )}
-        <LoginForm />
+        <LoginForm error={passwordError} />
         <LangPicker />
       </div>
     </main>

@@ -1,14 +1,14 @@
 "use client";
 
-import { useActionState } from "react";
-import { login } from "@/app/actions";
+import { useState } from "react";
 import { useT } from "@/components/I18n";
 
-export function LoginForm() {
-  const [error, action, pending] = useActionState(login, null);
+/** Envía la contraseña a /api/auth/login (una ruta normal, no una acción de servidor). El error llega ya traducido. */
+export function LoginForm({ error }: { error: string }) {
+  const [pending, setPending] = useState(false);
   const { t } = useT();
   return (
-    <form action={action} className="stack" style={{ gap: 14 }}>
+    <form method="post" action="/api/auth/login" onSubmit={() => setPending(true)} className="stack" style={{ gap: 14 }}>
       <div className="stack">
         <label className="lbl" htmlFor="password">{t("Contraseña", "Password")}</label>
         <input id="password" name="password" type="password" className="field" autoComplete="current-password" required autoFocus />
