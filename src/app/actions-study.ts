@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { aiEnabled, interviewQuestions, profileFromWebsite, studyBusiness } from "@/lib/ai";
+import { newBusinessOrganizationId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
@@ -273,6 +274,7 @@ export async function restoreStudy(businessId: string) {
 
 /** Crea el negocio y lleva al dueño al diagnóstico guiado, donde la IA empieza sola a leer su página web. */
 export async function createBusinessFromWeb(f: FormData) {
+  const organizationId = await newBusinessOrganizationId();
   const { t } = await getT();
   const name = str(f, "name");
   if (!name) throw new Error(t("Escribe el nombre del negocio", "Enter the business name"));
@@ -280,6 +282,6 @@ export async function createBusinessFromWeb(f: FormData) {
   const website = websiteUrl(str(f, "website")).slice(0, 300);
   const owner = ownerFields(f);
   if (owner.ownerEmail === null) throw new Error(t("El correo del dueño no es válido.", "The owner's email isn't valid."));
-  const b = await db.business.create({ data: { name, color, website, ...owner, ownerEmail: owner.ownerEmail } });
+  const b = await db.business.create({ data: { organizationId, name, color, website, ...owner, ownerEmail: owner.ownerEmail } });
   redirect(`/b/${b.id}/diagnostico`);
 }

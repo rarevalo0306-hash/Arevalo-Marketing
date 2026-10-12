@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { aiEnabled, designTemplates, planWeek, readBrandBook, stormPlan, suggestBrandKit, type BrandKitSuggestion, TEXT_PROVIDERS, toPostFields, writePost, type AiPost, type AiPostOut, type Lang } from "@/lib/ai";
+import { newBusinessOrganizationId } from "@/lib/auth";
 import { recentOpenings } from "@/lib/content-ideas";
 import { brevoDomains, brevoEnvKey } from "@/lib/brevo";
 import { CHANNEL_IDS, channelDef, type ChannelId } from "@/lib/channels";
@@ -64,11 +65,12 @@ export async function logout() {
 // ---------- Negocios ----------
 
 export async function createBusiness(f: FormData) {
+  const organizationId = await newBusinessOrganizationId();
   const { t } = await getT();
   const name = str(f, "name");
   if (!name) throw new Error(t("Escribe el nombre del negocio", "Enter the business name"));
   const color = HEX.test(str(f, "color")) ? str(f, "color") : "#126BBC";
-  const b = await db.business.create({ data: { name, color, website: str(f, "website") } });
+  const b = await db.business.create({ data: { organizationId, name, color, website: str(f, "website") } });
   redirect(`/b/${b.id}/conexiones`);
 }
 

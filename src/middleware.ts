@@ -1,10 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { gate } from "@/lib/access";
-import { safeEqual, SESSION_COOKIE, sessionToken } from "@/lib/session";
+import { readSession, SESSION_COOKIE } from "@/lib/session";
 
 export async function middleware(req: NextRequest) {
-  const cookie = req.cookies.get(SESSION_COOKIE)?.value ?? "";
-  const hasSession = Boolean(process.env.APP_PASSWORD) && safeEqual(cookie, await sessionToken());
+  // Aquí solo se revisa la firma y la fecha de la cookie (no hay base). Si esa persona aún existe y a qué negocios
+  // entra lo revisa cada página, acción y ruta con src/lib/auth.ts.
+  const hasSession = Boolean(await readSession(req.cookies.get(SESSION_COOKIE)?.value));
   const next = gate(req.nextUrl.pathname, req.method, hasSession);
   if (next === "pass") return NextResponse.next();
   const login = req.nextUrl.clone();

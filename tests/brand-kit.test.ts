@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { attachment, kitItems, ownAsset, sessionOk } from "@/app/api/brand-kit/access";
+import { attachment, kitItems, ownAsset } from "@/app/api/brand-kit/access";
 import {
   averageInk,
   cleanTagline,
@@ -175,14 +175,6 @@ describe("kit de marca: descargas", () => {
       { id: "ghi789rst", kind: "logo", url: "/media/c.png", w: 1, h: 1, source: "book", status: "proposed", label: { es: "x", en: "x" }, createdAt: "" },
     ],
   };
-
-  it("solo con la sesión correcta", () => {
-    expect(sessionOk("tok", "tok", "pass")).toBe(true);
-    expect(sessionOk("tok", "tok", undefined)).toBe(false);
-    expect(sessionOk("bad", "tok", "pass")).toBe(false);
-    expect(sessionOk(undefined, "tok", "pass")).toBe(false);
-    expect(sessionOk("", "", "pass")).toBe(false);
-  });
 
   it("solo imágenes de este negocio", () => {
     expect(ownAsset(raw, "abc123xyz")?.url).toBe("/media/a.png");

@@ -1,10 +1,9 @@
-import { cookies } from "next/headers";
+import { businessAccess } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { asLang, errorText, translator } from "@/lib/i18n";
 import { uiLang } from "@/lib/i18n-server";
 import { asPreset } from "@/lib/seo/report";
 import { createReport } from "@/lib/seo/report-run";
-import { safeEqual, SESSION_COOKIE, sessionToken } from "@/lib/session";
 
 // El PDF se arma en Node (react-pdf, sharp y las letras del disco). Con el resumen de la IA puede tardar unos segundos.
 export const runtime = "nodejs";
@@ -18,15 +17,16 @@ const on = (v: string | null) => v === "1" || v === "on" || v === "true";
 /**
  * Descarga el reporte en PDF: ?periodo=este-mes|mes-pasado|30-dias&lang=es|en&ia=1&marca=0|1.
  * Solo lee lo guardado (no gasta DataForSEO); ia=1 pide el resumen a la IA (unos centavos).
- * Protegido por el middleware (hay que haber entrado) y, por si acaso, se revisa la sesión aquí también.
+ * Protegido por el middleware (hay que haber entrado) y aquí se revisa que la persona entre a este negocio. Con el
+ * resumen de la IA (gasta) hace falta poder publicar; sin él basta con ver.
  */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const u = new URL(req.url).searchParams;
   const lang = u.has("lang") ? asLang(last(u, "lang")) : await uiLang();
   const t = translator(lang);
-  const session = (await cookies()).get(SESSION_COOKIE)?.value ?? "";
-  if (!process.env.APP_PASSWORD || !safeEqual(session, await sessionToken())) return new Response(t("No autorizado", "Unauthorized"), { status: 401 });
+  const access = await businessAccess(id, on(last(u, "ia")) ? "publish" : "view");
+  if (!access.ok) return new Response(access.status === 401 ? t("No autorizado", "Unauthorized") : access.status === 403 ? t("Tu papel no permite esto", "Your role doesn't allow this") : t("No encontrado", "Not found"), { status: access.status });
 
   const b = await db.business.findUnique({ where: { id }, select: { id: true } });
   if (!b) return new Response(t("Negocio no encontrado", "Business not found"), { status: 404 });

@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-vi.mock('next/headers', () => ({ cookies: async () => ({ get: () => ({value:'session'}) }) }));
-vi.mock('@/lib/session', () => ({ SESSION_COOKIE:'am_session', sessionToken:async ()=>'session', safeEqual:(a:string,b:string)=>a===b }));
+vi.mock('@/lib/auth', () => ({ requireBusiness: async () => ({ user: { id: 'u1' }, role: 'admin' }) }));
 const mocks = vi.hoisted(() => ({
   findUnique: vi.fn(), findMany: vi.fn(), connectionDelete: vi.fn(), reportDelete: vi.fn(), businessDelete: vi.fn(), libraryCount:vi.fn(), transaction: vi.fn(),
   decrypt: vi.fn(), revoke: vi.fn(), media: vi.fn(), r2: vi.fn(),
