@@ -2,7 +2,7 @@
 
 import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { aiEnabled, designTemplates, planWeek, readBrandBook, stormPlan, suggestBrandKit, type BrandKitSuggestion, TEXT_PROVIDERS, toPostFields, writePost, type AiPost, type AiPostOut, type Lang } from "@/lib/ai";
 import { recentOpenings } from "@/lib/content-ideas";
@@ -11,6 +11,8 @@ import { CHANNEL_IDS, channelDef, type ChannelId } from "@/lib/channels";
 import { decryptJson, encryptJson } from "@/lib/crypto";
 import { normalizePhone, parseContactsCsv } from "@/lib/contacts";
 import { db } from "@/lib/db";
+import { clearLoginAttempts, countLoginAttempt } from "@/lib/login-attempts";
+import { attemptKey, clientIp, waitMinutes } from "@/lib/login-limit";
 import { startVideo, videoEnabled, videoResult, type Shape, type VideoJob } from "@/lib/fal";
 import { DESIGN_SHAPES, type Brand, type DesignShape } from "@/lib/design";
 import { BUILTIN_TEMPLATES, FONTS, hexOr, pickTemplate, StoredTemplate } from "@/lib/design-shapes";
@@ -57,7 +59,21 @@ export async function login(_: string | null, f: FormData): Promise<string | nul
   // Sin espacios ni saltos de línea de más (pasa al pegar la contraseña en Vercel).
   const expected = process.env.APP_PASSWORD?.trim();
   if (!expected) return t("Falta APP_PASSWORD en el archivo .env del servidor.", "APP_PASSWORD is missing from the server's .env file.");
+  // Límite de intentos (src/lib/login-limit.ts): se cuenta antes de revisar la contraseña. Si la tabla aún no existe,
+  // se entra sin límite antes que dejar a todos fuera.
+  const attempt = attemptKey(clientIp(await headers()));
+  let wait = 0;
+  try {
+    wait = await countLoginAttempt(attempt);
+  } catch (e) {
+    console.error("login limit unavailable:", e instanceof Error ? e.message : e);
+  }
+  if (wait > 0) {
+    const m = waitMinutes(wait);
+    return t(`Demasiados intentos. Espera ${m} min y vuelve a probar.`, `Too many attempts. Wait ${m} min and try again.`);
+  }
   if (!safeEqual(str(f, "password"), expected)) return t("Contraseña incorrecta.", "Wrong password.");
+  await clearLoginAttempts(attempt).catch(() => {});
   (await cookies()).set(SESSION_COOKIE, await sessionToken(), {
     httpOnly: true,
     sameSite: "lax",

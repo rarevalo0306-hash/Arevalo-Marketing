@@ -242,3 +242,17 @@ CREATE TABLE IF NOT EXISTS "AiProposal" (
   CONSTRAINT "AiProposal_businessId_fkey" FOREIGN KEY ("businessId") REFERENCES "Business"("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 CREATE INDEX IF NOT EXISTS "AiProposal_businessId_status_idx" ON "AiProposal"("businessId", "status");
+
+-- 2026-10-12: límite de intentos para entrar (5 intentos cada 15 minutos por dirección; el 6.º bloquea 15 minutos).
+CREATE TABLE IF NOT EXISTS "LoginAttempt" (
+  "key" TEXT NOT NULL,
+  "failures" INTEGER NOT NULL DEFAULT 0,
+  "firstAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "lockedUntil" TIMESTAMP(3),
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "LoginAttempt_pkey" PRIMARY KEY ("key")
+);
+ALTER TABLE "LoginAttempt" ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON "LoginAttempt" FROM anon, authenticated;
+-- La función que activa la protección en las tablas nuevas no debe poder llamarse desde fuera (aviso de Supabase).
+REVOKE EXECUTE ON FUNCTION public.rls_auto_enable() FROM PUBLIC, anon, authenticated;
