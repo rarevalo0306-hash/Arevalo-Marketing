@@ -4,6 +4,7 @@ import { runCampaigns } from "@/lib/campaign-engine";
 import { runDailyReports } from "@/lib/daily-report";
 import { getT } from "@/lib/i18n-server";
 import { runDueDriveSync, runDueUploadAnalysis } from "@/lib/library-sync";
+import { pruneLoginAttempts } from "@/lib/login-attempts";
 import { syncPostMetrics } from "@/lib/post-metrics";
 import { runProposals } from "@/lib/proposals";
 import { publishDue } from "@/lib/publish";
@@ -24,6 +25,16 @@ export async function GET(req: Request) {
   if (!secret || !safeEqual(auth, `Bearer ${secret}`)) {
     const { t } = await getT();
     return new Response(t("No autorizado", "Unauthorized"), { status: 401 });
+  }
+  // Dedicated agent worker shares the exact authenticated route allowed by the
+  // security gate. It must not trigger the legacy paid jobs on every 30s tick.
+  if (new URL(req.url).searchParams.get('agent') === '1') {
+    try {
+      const { runAgentCycle } = await import('@/lib/agent/service');
+      return Response.json(await runAgentCycle(), { headers: { 'Cache-Control': 'no-store' } });
+    } catch {
+      return Response.json({ error: 'Agent cycle failed' }, { status: 500 });
+    }
   }
   const published = await publishDue();
   // Posiciones en Google: como mucho UN negocio por llamada, después de responder (no retrasa ni rompe lo de publicar).
@@ -98,6 +109,13 @@ export async function GET(req: Request) {
       if (up) console.log("[subir] revisión automática:", up.businessId, JSON.stringify(up.result));
     } catch (e) {
       console.error("[subir] error en la revisión automática:", e instanceof Error ? e.message : e);
+    }
+    // Intentos de entrar de más de un día: ya no bloquean nada.
+    try {
+      const pruned = await pruneLoginAttempts(new Date());
+      if (pruned) console.log("[entrar] intentos viejos borrados:", pruned);
+    } catch (e) {
+      console.error("[entrar] error al borrar intentos viejos:", e instanceof Error ? e.message : e);
     }
   });
   return Response.json({ published });

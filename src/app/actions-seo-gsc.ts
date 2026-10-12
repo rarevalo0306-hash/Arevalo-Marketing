@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { decryptJson } from "@/lib/crypto";
 import { db } from "@/lib/db";
+import { disconnectGoogleData } from "@/lib/data-deletion";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { explainGscError, GSC_CHANNEL, GSC_COOKIE, saveGscSite, searchConsoleReport, tryFirstGscReport, type GscPending } from "@/lib/seo/gsc";
@@ -67,8 +68,8 @@ export async function chooseGscSite(businessId: string, siteUrl: string) {
   redirect(`/b/${businessId}/seo?gsc=ok`);
 }
 
-/** Quita la conexión con Search Console (los reportes guardados se quedan). */
+/** Quita la conexión con Search Console (revoca Google y elimina el reporte guardado de esta conexión). */
 export async function disconnectSearchConsole(businessId: string) {
-  await db.connection.deleteMany({ where: { businessId, channel: GSC_CHANNEL } });
+  await disconnectGoogleData(businessId, GSC_CHANNEL);
   revalidatePath(`/b/${businessId}/seo`);
 }

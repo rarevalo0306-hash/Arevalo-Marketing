@@ -76,7 +76,7 @@ export type ClaimDb = {
  */
 export async function claimCampaign(id: string, now: Date, client: ClaimDb = db as unknown as ClaimDb): Promise<Claimed | null> {
   const c = await client.campaign.findUnique({ where: { id } });
-  if (!c || c.status !== "active" || c.mode === "manual") return null;
+  if (!c || c.status !== "active" || c.mode === "manual" || c.agentRunId) return null;
   const engine = readEngine(c.rules);
   if (!canClaim(engine, now)) return null;
   const rules = readRules(c.rules);

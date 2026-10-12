@@ -1,0 +1,201 @@
+{
+  "environment": "Production Next builds, same local PostgreSQL synthetic fixtures, alternating six warm requests each, one discarded warmup. HTTP completion, not FCP or production latency.",
+  "baseline": "9e191ac89d2120ee803b73aeccc9b7a162791b99",
+  "results": [
+    {
+      "path": "/b/matya-demo-fl/inicio",
+      "before": {
+        "medianMs": 22,
+        "bytes": 84412
+      },
+      "after": {
+        "medianMs": 21,
+        "bytes": 86712
+      },
+      "samples": {
+        "before": [
+          {
+            "ms": 45,
+            "bytes": 84412
+          },
+          {
+            "ms": 25,
+            "bytes": 84412
+          },
+          {
+            "ms": 22,
+            "bytes": 84412
+          },
+          {
+            "ms": 22,
+            "bytes": 84412
+          },
+          {
+            "ms": 19,
+            "bytes": 84412
+          },
+          {
+            "ms": 20,
+            "bytes": 84412
+          }
+        ],
+        "after": [
+          {
+            "ms": 38,
+            "bytes": 86712
+          },
+          {
+            "ms": 21,
+            "bytes": 86536
+          },
+          {
+            "ms": 21,
+            "bytes": 86712
+          },
+          {
+            "ms": 22,
+            "bytes": 86755
+          },
+          {
+            "ms": 19,
+            "bytes": 86712
+          },
+          {
+            "ms": 19,
+            "bytes": 86712
+          }
+        ]
+      }
+    },
+    {
+      "path": "/b/matya-demo-fl/seo?tab=resumen",
+      "before": {
+        "medianMs": 25,
+        "bytes": 117726
+      },
+      "after": {
+        "medianMs": 18,
+        "bytes": 61935
+      },
+      "samples": {
+        "before": [
+          {
+            "ms": 27,
+            "bytes": 117726
+          },
+          {
+            "ms": 27,
+            "bytes": 117726
+          },
+          {
+            "ms": 25,
+            "bytes": 117812
+          },
+          {
+            "ms": 23,
+            "bytes": 117769
+          },
+          {
+            "ms": 23,
+            "bytes": 117769
+          },
+          {
+            "ms": 24,
+            "bytes": 117769
+          }
+        ],
+        "after": [
+          {
+            "ms": 18,
+            "bytes": 61935
+          },
+          {
+            "ms": 17,
+            "bytes": 61935
+          },
+          {
+            "ms": 19,
+            "bytes": 62025
+          },
+          {
+            "ms": 16,
+            "bytes": 61935
+          },
+          {
+            "ms": 16,
+            "bytes": 61935
+          },
+          {
+            "ms": 18,
+            "bytes": 61935
+          }
+        ]
+      }
+    },
+    {
+      "path": "/b/matya-demo-fl/seo?tab=google",
+      "before": {
+        "medianMs": 24,
+        "bytes": 117680
+      },
+      "after": {
+        "medianMs": 12,
+        "bytes": 44469
+      },
+      "samples": {
+        "before": [
+          {
+            "ms": 24,
+            "bytes": 117680
+          },
+          {
+            "ms": 23,
+            "bytes": 117766
+          },
+          {
+            "ms": 33,
+            "bytes": 117766
+          },
+          {
+            "ms": 24,
+            "bytes": 117766
+          },
+          {
+            "ms": 21,
+            "bytes": 117766
+          },
+          {
+            "ms": 23,
+            "bytes": 117723
+          }
+        ],
+        "after": [
+          {
+            "ms": 12,
+            "bytes": 44469
+          },
+          {
+            "ms": 12,
+            "bytes": 44469
+          },
+          {
+            "ms": 14,
+            "bytes": 44469
+          },
+          {
+            "ms": 12,
+            "bytes": 44512
+          },
+          {
+            "ms": 12,
+            "bytes": 44469
+          },
+          {
+            "ms": 11,
+            "bytes": 44469
+          }
+        ]
+      }
+    }
+  ]
+}

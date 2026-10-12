@@ -177,14 +177,11 @@ export async function ToolkitGrid({ businessId }: { businessId: string }) {
       cls: s.ads,
       icon: "ads",
       name: t("Anuncios", "Ads"),
-      purpose: t("Campañas en Google y Facebook con tu presupuesto.", "Google and Facebook campaigns on your budget."),
-      href: `${base}/estudio`,
+      purpose: t("Administra tus anuncios y revisa su gasto y resultados.", "Manage ads and review spend and results."),
+      href: `${base}/anuncios`,
       nums: [],
-      empty: seo.studyAt
-        ? t("Muy pronto. Tu estudio ya sugiere a quién anunciar y con qué palabras.", "Coming soon. Your study already suggests who to target and which keywords.")
-        : t("Muy pronto. Mientras tanto, el estudio de tu negocio te dice a quién anunciar.", "Coming soon. Meanwhile, your business study tells you who to target."),
-      soon: true,
-      button: seo.studyAt ? { label: t("Ver el estudio", "See the study"), href: `${base}/estudio` } : undefined,
+      empty: t("Consulta las conexiones y los límites antes de activar una campaña.", "Check connections and limits before activating a campaign."),
+      button: { label: t("Ver anuncios", "View ads"), href: `${base}/anuncios` },
     },
   ];
 

@@ -98,6 +98,11 @@ model Business {
   posts       Post[]
   templates   Template[]
   seoReports  SeoReport[]
+  agentWorkspace AgentWorkspace?
+  agentRuns AgentRun[]
+  agentMessages AgentMessage[]
+  agentBudgets AgentBudget[]
+  agentNews AgentNews[]
 }
 
 /// Reportes de SEO de un negocio: auditoría del sitio, visibilidad en las IAs y Search Console.
@@ -191,6 +196,7 @@ model Post {
 /// propone y el dueño aprueba cada publicación) y auto (la IA publica sola dentro de los límites de `rules`).
 /// Forma de `rules`: CampaignRules en src/lib/campaign-shape.ts.
 model Campaign {
+  agentRunId String? @unique
   id          String     @id @default(cuid())
   businessId  String
   business    Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
@@ -419,4 +425,126 @@ model ActionTask {
 
   @@unique([businessId, key])
   @@index([businessId, status])
+}
+
+
+/// Owner-only agent control plane. No public Data API access; business-scoped through the server.
+model AgentWorkspace {
+  businessId String @id
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  enabled Boolean @default(false)
+  mode String @default("auto")
+  allowPublish Boolean @default(false)
+  industry String @default("general")
+  objective String @default("")
+  memory String @default("")
+  knowledge Json @default("[]")
+  sources Json @default("[]")
+  channels String[] @default([])
+  dailyBudgetCents Int @default(0)
+  runBudgetCents Int @default(0)
+  maxPostsPerDay Int @default(3)
+  radarEnabled Boolean @default(false)
+  radarHours Int @default(24)
+  radarAt DateTime?
+  revision Int @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AgentRun {
+  id String @id @default(cuid())
+  businessId String
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  requestKey String
+  kind String
+  prompt String
+  status String @default("queued")
+  stage Int @default(0)
+  context Json
+  result Json?
+  error String @default("")
+  reservedCents Int @default(0)
+  chargedCents Int @default(0)
+  leaseToken String @default("")
+  leaseUntil DateTime?
+  cancelRequested Boolean @default(false)
+  approvedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  steps AgentStep[]
+  @@unique([businessId, requestKey])
+  @@index([status, createdAt])
+  @@index([businessId, createdAt])
+}
+
+model AgentStep {
+  id String @id @default(cuid())
+  runId String
+  run AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  name String
+  specialist String
+  status String @default("running")
+  output Json?
+  reservedCents Int @default(0)
+  chargedCents Int @default(0)
+  budgetDay String
+  error String @default("")
+  createdAt DateTime @default(now())
+  finishedAt DateTime?
+  @@unique([runId, name])
+}
+
+model AgentMessage {
+  id String @id @default(cuid())
+  businessId String
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  runId String?
+  role String
+  text String
+  createdAt DateTime @default(now())
+  @@index([businessId, createdAt])
+  @@unique([runId, role])
+}
+
+model AgentBudget {
+  id String @id @default(cuid())
+  businessId String
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  day String
+  reservedCents Int @default(0)
+  chargedCents Int @default(0)
+  posts Int @default(0)
+  deliveries Int @default(0)
+  @@unique([businessId, day])
+}
+
+model AgentNews {
+  id String @id @default(cuid())
+  businessId String
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  canonicalUrl String
+  eventKey String
+  title String
+  source String
+  publishedAt DateTime?
+  retrievedAt DateTime @default(now())
+  eventDate DateTime?
+  status String @default("detected")
+  summary String @default("")
+  evidence Json @default("[]")
+  contentHash String
+  revision Int @default(1)
+  @@unique([businessId, canonicalUrl])
+  @@index([businessId, eventKey])
+}
+
+/// Intentos de entrar por dirección, para el límite de src/lib/login-limit.ts. key es una huella (HMAC) de la IP,
+/// no la IP. failures cuenta los intentos de la ventana actual; lockedUntil es hasta cuándo esa dirección no puede probar.
+model LoginAttempt {
+  key         String    @id
+  failures    Int       @default(0)
+  firstAt     DateTime  @default(now())
+  lockedUntil DateTime?
+  updatedAt   DateTime  @default(now())
 }

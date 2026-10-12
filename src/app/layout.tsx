@@ -29,13 +29,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <head>
         {/* Aplica el estilo guardado antes de pintar, para que no parpadee. Sin elección guardada: «Claro». */}
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        {/* eslint-disable-next-line @next/next/no-page-custom-font */}
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Montserrat:wght@800&family=Poppins:wght@800&family=Inter:wght@800&family=Oswald:wght@700&family=Playfair+Display:wght@800&display=swap"
-        />
+
       </head>
       <body>
         <I18nProvider lang={lang}>{children}</I18nProvider>

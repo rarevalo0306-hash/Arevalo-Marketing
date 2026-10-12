@@ -11,6 +11,7 @@ import { CHANNEL_IDS, channelDef, type ChannelId } from "@/lib/channels";
 import { decryptJson, encryptJson } from "@/lib/crypto";
 import { normalizePhone, parseContactsCsv } from "@/lib/contacts";
 import { db } from "@/lib/db";
+import { disconnectGoogleData, eraseBusinessData, GOOGLE_CHANNELS } from "@/lib/data-deletion";
 import { startVideo, videoEnabled, videoResult, type Shape, type VideoJob } from "@/lib/fal";
 import { DESIGN_SHAPES, type Brand, type DesignShape } from "@/lib/design";
 import { BUILTIN_TEMPLATES, FONTS, hexOr, pickTemplate, StoredTemplate } from "@/lib/design-shapes";
@@ -27,7 +28,7 @@ import { getT } from "@/lib/i18n-server";
 import { listPages, META_COOKIE, saveMetaPage } from "@/lib/meta-oauth";
 import { publishPost, retryPost } from "@/lib/publish";
 import { PUBLISHERS } from "@/lib/publishers";
-import { safeEqual, SESSION_COOKIE, sessionToken } from "@/lib/session";
+import { SESSION_COOKIE } from "@/lib/session";
 import { stormEvent, stormSchedule } from "@/lib/storm";
 import { businessDay, localToUtc } from "@/lib/time";
 
@@ -52,21 +53,8 @@ async function business(id: string) {
 
 // ---------- Sesión ----------
 
-export async function login(_: string | null, f: FormData): Promise<string | null> {
-  const { t } = await getT();
-  // Sin espacios ni saltos de línea de más (pasa al pegar la contraseña en Vercel).
-  const expected = process.env.APP_PASSWORD?.trim();
-  if (!expected) return t("Falta APP_PASSWORD en el archivo .env del servidor.", "APP_PASSWORD is missing from the server's .env file.");
-  if (!safeEqual(str(f, "password"), expected)) return t("Contraseña incorrecta.", "Wrong password.");
-  (await cookies()).set(SESSION_COOKIE, await sessionToken(), {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 30,
-  });
-  redirect("/");
-}
+// Entrar: POST /api/auth/login (src/app/api/auth/login/route.ts), no una acción de servidor: sin sesión el middleware
+// no deja llamar ninguna acción (src/lib/access.ts).
 
 export async function logout() {
   (await cookies()).delete(SESSION_COOKIE);
@@ -100,7 +88,7 @@ export async function deleteBusiness(id: string, f: FormData) {
   const b = await business(id);
   const { t } = await getT();
   if (str(f, "confirm") !== b.name) throw new Error(t("Escribe el nombre exacto para confirmar", "Type the exact name to confirm"));
-  await db.business.delete({ where: { id } });
+  await eraseBusinessData(id);
   redirect("/");
 }
 
@@ -194,7 +182,8 @@ export async function chooseGoogleLocation(businessId: string, locationId: strin
 }
 
 export async function deleteConnection(businessId: string, channel: ChannelId) {
-  await db.connection.deleteMany({ where: { businessId, channel } });
+  if (GOOGLE_CHANNELS.some(c => c === channel)) await disconnectGoogleData(businessId, channel);
+  else await db.connection.deleteMany({ where: { businessId, channel } });
   revalidatePath(`/b/${businessId}/conexiones`);
 }
 

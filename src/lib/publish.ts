@@ -10,6 +10,7 @@ import { STORY_CHANNELS } from "@/lib/formats";
 import { isPostKind, readPostMedia, type PostKind } from "@/lib/post-media";
 import { TIKTOK_NO_PHOTOS } from "@/lib/publishers/tiktok";
 import type { PublishMedia } from "@/lib/publishers/types";
+import { claimAgentPost } from "@/lib/agent/publication";
 
 /** Cuántas fotos de un carrusel manda cada red (Instagram y Facebook 10, LinkedIn 20, X 4, las demás solo la primera). */
 const CAROUSEL_LIMIT: Partial<Record<ChannelId, number>> = { instagram: 10, facebook: 10, linkedin: 20, x: 4 };
@@ -39,7 +40,7 @@ async function mediaForTarget<B extends Parameters<typeof mediaForChannel>[0]["b
  * Solo un proceso puede tomarla a la vez (pasa de "scheduled" a "publishing" de forma atómica).
  */
 export async function publishPost(postId: string): Promise<void> {
-  const claimed = await db.post.updateMany({
+  const claimed = postId.startsWith('agent-') ? await claimAgentPost(postId) : await db.post.updateMany({
     where: { id: postId, status: "scheduled" },
     data: { status: "publishing" },
   });

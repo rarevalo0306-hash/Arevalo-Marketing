@@ -441,7 +441,7 @@ export async function Ga4Panel({ businessId }: { businessId: string }) {
     <Ga4ConfirmButton
       action={disconnectGa4.bind(null, id)}
       label={t("Desconectar Google Analytics", "Disconnect Google Analytics")}
-      question={t("¿Desconectar Google Analytics? Los datos guardados se quedan.", "Disconnect Google Analytics? Saved data stays.")}
+      question={t("¿Revocar Google Analytics y borrar sus reportes guardados? Otras conexiones de Google podrían necesitar reconexión.", "Revoke Google Analytics and delete its saved reports? Other Google connections may need reconnection.")}
     />
   );
 

@@ -153,3 +153,16 @@ export async function saveYoutubeChannel(businessId: string, refreshToken: strin
     update: { secret, label: channel.title },
   });
 }
+
+/** Revoke at Google rather than merely forgetting our local token. Never include tokens in logs/URLs. */
+export async function revokeGoogleToken(token: string): Promise<void> {
+  const response = await fetch('https://oauth2.googleapis.com/revoke', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ token }),
+  });
+  if (response.ok) return;
+  const error = await response.json().catch(() => null) as { error?: string } | null;
+  if (response.status === 400 && error?.error === 'invalid_token') return;
+  throw bi('No se pudo revocar el permiso en Google. Intenta de nuevo; no se han borrado los datos.', 'Google access could not be revoked. Retry; the stored data has not been deleted.');
+}

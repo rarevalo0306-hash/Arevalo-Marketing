@@ -40,7 +40,7 @@ export const NAV_GROUPS: NavGroup[] = [
     key: "tablero",
     icon: "tablero",
     label: ["Inicio", "Home"],
-    items: [{ key: "inicio", label: ["Inicio", "Home"], path: "inicio" }],
+    items: [{ key: "matya", label: ["Centro MATYA", "MATYA workspace"], path: "matya" }, { key: "inicio", label: ["Herramientas y diagnóstico", "Tools & diagnosis"], path: "inicio" }],
   },
   {
     key: "negocio",
