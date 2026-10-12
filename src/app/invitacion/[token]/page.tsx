@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
   // El enlace lleva el token: que no se indexe ni viaje a otras páginas.
-  return { title: t("Invitación · Matya", "Invitation · Matya"), robots: { index: false, follow: false }, referrer: "no-referrer" };
+  return { title: t("Invitación · Matya", "Invitation · Matya"), robots: { index: false, follow: false }, referrer: "same-origin" };
 }
 
 /** A qué organización, con qué papel y a qué empresas lo invitaron. */

@@ -6,7 +6,7 @@
 import { revalidatePath } from "next/cache";
 import type { z } from "zod";
 import { aiEnabled, ask, askGemini, type GeminiPart } from "@/lib/ai";
-import { hasBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness } from "@/lib/auth";
 import { fromAiIdentity, fromAiProposals, type IdentityContext, identityPromptFor, IdentitySchema, proposalsPrompt, ProposalsSchema } from "@/lib/brand-identity";
 import { applyProposal, type BrandIdentity, fillEmpty, hasIdentity, identityFromForm, mergeFromBook, readBrandIdentity, withSeeds } from "@/lib/brand-identity-shape";
 import { db } from "@/lib/db";
@@ -95,7 +95,7 @@ export async function proposeIdentities(businessId: string, _prev: IdentityResul
   ensure.text(businessId);
   const { lang, t } = await getT();
   const b = await load(businessId, "publish");
-  if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!b) return { ok: false, message: await deniedText(businessId, "publish") };
   if (!aiEnabled()) return { ok: false, message: noKey(t) };
   const cur = withSeeds(readBrandIdentity(b.brandIdentity), { aiProfile: b.aiProfile, avoid: readStudy(b.study)?.avoid });
   const fromBook = f.get("mode") !== "ai" && Boolean(b.brandBookUrl);
@@ -129,7 +129,7 @@ export async function chooseIdentity(businessId: string, _prev: IdentityResult, 
   ensure.text(businessId);
   const { t } = await getT();
   const b = await load(businessId, "publish");
-  if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!b) return { ok: false, message: await deniedText(businessId, "publish") };
   const cur = readBrandIdentity(b.brandIdentity);
   const p = cur.proposals.find((x) => x.id === String(f.get("proposal") ?? ""));
   if (!p) return { ok: false, message: t("Esa propuesta ya no está. Vuelve a cargar la página.", "That proposal is gone. Reload the page.") };
@@ -160,7 +160,7 @@ export async function saveIdentity(businessId: string, _prev: IdentityResult, f:
   ensure.text(businessId);
   const { lang, t } = await getT();
   const b = await load(businessId, "publish");
-  if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!b) return { ok: false, message: await deniedText(businessId, "publish") };
   const get = (k: string) => String(f.get(k) ?? "");
   const mine = identityFromForm(get, readBrandIdentity(b.brandIdentity));
   await store(businessId, mine);

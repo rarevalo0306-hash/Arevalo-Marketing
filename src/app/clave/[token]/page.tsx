@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
   // El enlace lleva el token: que no se indexe ni viaje a otras páginas.
-  return { title: t("Contraseña nueva · Matya", "New password · Matya"), robots: { index: false, follow: false }, referrer: "no-referrer" };
+  return { title: t("Contraseña nueva · Matya", "New password · Matya"), robots: { index: false, follow: false }, referrer: "same-origin" };
 }
 
 export default async function NewPasswordPage({ params, searchParams }: { params: Promise<{ token: string }>; searchParams: Promise<{ e?: string }> }) {

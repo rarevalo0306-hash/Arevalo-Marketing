@@ -57,3 +57,14 @@ describe("who can open what without signing in", () => {
     expect(re.test("/_next/static/chunks/a.js")).toBe(false);
   });
 });
+
+describe("forms from our own pages are not taken for another site", () => {
+  it("accepts same-origin posts and refuses other sites or an opaque origin", () => {
+    const h = (o: Record<string, string>) => ({ get: (k: string) => o[k] ?? null });
+    expect(fromOtherSite(h({ origin: "https://app.matya.app", "sec-fetch-site": "same-origin" }), "app.matya.app")).toBe(false);
+    expect(fromOtherSite(h({ origin: "https://evil.example" }), "app.matya.app")).toBe(true);
+    expect(fromOtherSite(h({ "sec-fetch-site": "cross-site" }), "app.matya.app")).toBe(true);
+    // Una página con Referrer-Policy no-referrer manda Origin: null: por eso las de invitación y contraseña usan same-origin.
+    expect(fromOtherSite(h({ origin: "null" }), "app.matya.app")).toBe(true);
+  });
+});

@@ -2,7 +2,7 @@
 
 // Link de subida para los técnicos: crearlo, cambiarlo (el viejo deja de servir), quitarlo y revisar lo subido ahora.
 import { revalidatePath } from "next/cache";
-import { hasBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensure } from "@/lib/ensure";
 import { errorText, type T } from "@/lib/i18n";
@@ -38,7 +38,7 @@ export async function createUploadLink(businessId: string): Promise<UploadLinkRe
   const { t } = await getT();
   if (!r2Enabled()) return notReady(t);
   // El link deja entrar a gente de afuera: solo el Administrador.
-  if (!(await exists(businessId, "admin"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  if (!(await exists(businessId, "admin"))) return { ok: false, message: await deniedText(businessId, "admin") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { uploadToken: true } });
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   if (!b.uploadToken) await db.business.update({ where: { id: businessId }, data: { uploadToken: newUploadToken() } });
@@ -51,7 +51,7 @@ export async function rotateUploadLink(businessId: string): Promise<UploadLinkRe
   ensure.text(businessId);
   const { t } = await getT();
   if (!r2Enabled()) return notReady(t);
-  if (!(await exists(businessId, "admin"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  if (!(await exists(businessId, "admin"))) return { ok: false, message: await deniedText(businessId, "admin") };
   await db.business.update({ where: { id: businessId }, data: { uploadToken: newUploadToken() } });
   refresh(businessId);
   return {
@@ -64,7 +64,7 @@ export async function rotateUploadLink(businessId: string): Promise<UploadLinkRe
 export async function removeUploadLink(businessId: string): Promise<UploadLinkResult> {
   ensure.text(businessId);
   const { t } = await getT();
-  if (!(await exists(businessId, "admin"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  if (!(await exists(businessId, "admin"))) return { ok: false, message: await deniedText(businessId, "admin") };
   await db.business.update({ where: { id: businessId }, data: { uploadToken: "" } });
   refresh(businessId);
   return {
@@ -93,7 +93,7 @@ export async function reviewUploadsNow(businessId: string, _prev: UploadLinkResu
   void _f;
   const { lang, t } = await getT();
   try {
-    if (!(await exists(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+    if (!(await exists(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
     const r = await analyzeUploads(businessId, { lang, limit: 24, budgetMs: 55_000 });
     refresh(businessId);
     return { ok: !r.stopped || r.stopped === "time", message: uploadReviewMessage(r, t) };

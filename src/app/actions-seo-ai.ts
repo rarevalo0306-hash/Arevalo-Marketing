@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { hasBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
@@ -25,7 +25,7 @@ export async function suggestVisibilityQuestions(businessId: string): Promise<Su
   ensure.text(businessId);
   const { lang, t } = await getT();
   const b = await findBusiness(businessId, "publish");
-  if (!b) return { ok: false, error: t("Negocio no encontrado.", "Business not found.") };
+  if (!b) return { ok: false, error: await deniedText(businessId, "publish") };
   if (!visibilityProviders().length)
     return { ok: false, error: t("Falta la clave de la IA (GEMINI_API_KEY, ANTHROPIC_API_KEY u OPENAI_API_KEY) en el servidor.", "The AI key (GEMINI_API_KEY, ANTHROPIC_API_KEY or OPENAI_API_KEY) is missing on the server.") };
   try {
@@ -40,7 +40,7 @@ export async function runVisibility(businessId: string, _prev: VisibilityRunResu
   ensure.text(businessId);
   const { lang, t } = await getT();
   const b = await findBusiness(businessId, "publish");
-  if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  if (!b) return { ok: false, message: await deniedText(businessId, "publish") };
   if (!visibilityProviders().length)
     return {
       ok: false,
