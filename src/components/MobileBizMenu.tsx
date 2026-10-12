@@ -10,9 +10,9 @@ type Biz = { id: string; name: string; color: string };
 
 /**
  * Celular: la barra de arriba solo muestra el negocio activo. Al tocarlo se abre la lista de negocios,
- * «Agregar negocio» y «Salir» (children). Las preferencias tienen su propio acceso arriba a la derecha.
+ * «Agregar negocio» (solo para el Administrador) y «Salir» (children). Las preferencias tienen su propio acceso arriba a la derecha.
  */
-export function MobileBizMenu({ businesses, activeId, children }: { businesses: Biz[]; activeId?: string; children: React.ReactNode }) {
+export function MobileBizMenu({ businesses, activeId, canAdd, children }: { businesses: Biz[]; activeId?: string; canAdd: boolean; children: React.ReactNode }) {
   const { t } = useT();
   const path = usePathname();
   const [open, setOpen] = useState(false);
@@ -49,10 +49,12 @@ export function MobileBizMenu({ businesses, activeId, children }: { businesses: 
                 {b.id === activeId && <span aria-hidden="true">✓</span>}
               </Link>
             ))}
-            <Link href="/negocios/nuevo" className="biz">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" style={{ margin: "0 3px" }}><path d="M12 5v14M5 12h14" /></svg>
-              {t("Agregar negocio", "Add business")}
-            </Link>
+            {canAdd && (
+              <Link href="/negocios/nuevo" className="biz">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" style={{ margin: "0 3px" }}><path d="M12 5v14M5 12h14" /></svg>
+                {t("Agregar negocio", "Add business")}
+              </Link>
+            )}
             <div className="mbiz-sep" />
             {children}
           </div>

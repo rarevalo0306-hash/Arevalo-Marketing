@@ -5,6 +5,8 @@ BEGIN;
 
 ALTER TABLE "Membership" ADD COLUMN IF NOT EXISTS "allBusinesses" BOOLEAN NOT NULL DEFAULT true;
 ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "passwordHash" TEXT NOT NULL DEFAULT '';
+-- La organización cuyo Administrador pudo ver el enlace con el que se eligió la contraseña ('' = la eligió la persona).
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "passwordOrgId" TEXT NOT NULL DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS "MembershipBusiness" (
     "membershipId" TEXT NOT NULL,
@@ -37,6 +39,7 @@ CREATE INDEX IF NOT EXISTS "Invitation_email_idx" ON "Invitation"("email");
 CREATE TABLE IF NOT EXISTS "PasswordReset" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
+    "organizationId" TEXT NOT NULL DEFAULT '',
     "tokenHash" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "expiresAt" TIMESTAMP(3) NOT NULL,
@@ -44,6 +47,7 @@ CREATE TABLE IF NOT EXISTS "PasswordReset" (
 
     CONSTRAINT "PasswordReset_pkey" PRIMARY KEY ("id")
 );
+ALTER TABLE "PasswordReset" ADD COLUMN IF NOT EXISTS "organizationId" TEXT NOT NULL DEFAULT '';
 CREATE UNIQUE INDEX IF NOT EXISTS "PasswordReset_tokenHash_key" ON "PasswordReset"("tokenHash");
 CREATE INDEX IF NOT EXISTS "PasswordReset_userId_idx" ON "PasswordReset"("userId");
 

@@ -6,6 +6,7 @@
 //   propia o con Google.
 // Para sacar a alguien: «Quitar acceso» en Equipo (borra su papel y cierra sus sesiones). A un dueño, además, quita su
 // correo de LOGIN_EMAILS.
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { loginEmails } from "@/lib/google-login";
 import { verifyPassword } from "@/lib/password";
@@ -16,6 +17,12 @@ export const looksLikeEmail = (email: string) => /^[^\s@]{1,64}@[^\s@]{1,190}\.[
 
 /** ¿Es un dueño de Matya (LOGIN_EMAILS)? */
 export const isOwnerEmail = (email: string, raw = process.env.LOGIN_EMAILS) => loginEmails(raw).includes(normalizeEmail(email));
+
+/** La organización principal: la más antigua (la que creó el SQL con los negocios de Ricardo). Los dueños son sus Administradores. */
+export async function mainOrganizationId(client: Pick<Prisma.TransactionClient, "organization"> = db): Promise<string | null> {
+  const main = await client.organization.findFirst({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true } });
+  return main?.id ?? null;
+}
 
 /**
  * Busca o crea a la persona y la deja lista para entrar. Devuelve null si no puede entrar.
@@ -33,8 +40,7 @@ export async function loginUser(rawEmail: string, opts: { owner: boolean; name?:
     if (!opts.owner && !user?._count.memberships) return null;
     user ??= await tx.user.create({ data: { email, name }, select });
     if (user._count.memberships === 0) {
-      const main = await tx.organization.findFirst({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true } });
-      const organizationId = main?.id ?? (await tx.organization.create({ data: { name: name || email, kind: "personal" }, select: { id: true } })).id;
+      const organizationId = (await mainOrganizationId(tx)) ?? (await tx.organization.create({ data: { name: name || email, kind: "personal" }, select: { id: true } })).id;
       await tx.membership.create({ data: { userId: user.id, organizationId, role: "admin" } });
     }
     await tx.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date(), ...(name && !user.name && { name }) } });
@@ -45,12 +51,16 @@ export async function loginUser(rawEmail: string, opts: { owner: boolean; name?:
 /**
  * ¿Correo y contraseña son correctos? Con contraseña propia se revisa esa. Sin contraseña propia, solo un dueño puede
  * entrar con APP_PASSWORD. Siempre hace el mismo trabajo (scrypt) para no delatar qué correos tienen cuenta.
+ * Una contraseña elegida con un enlace que vio un Administrador (passwordOrgId) solo sirve mientras la persona esté
+ * solo en esa organización: así ese Administrador nunca entra a otra organización con ella.
  */
 export async function checkPassword(rawEmail: string, password: string): Promise<boolean> {
   const email = normalizeEmail(rawEmail);
-  const user = looksLikeEmail(email) ? await db.user.findUnique({ where: { email }, select: { passwordHash: true } }) : null;
+  const user = looksLikeEmail(email)
+    ? await db.user.findUnique({ where: { email }, select: { passwordHash: true, passwordOrgId: true, memberships: { select: { organizationId: true } } } })
+    : null;
   const own = await verifyPassword(password, user?.passwordHash ?? "");
-  if (user?.passwordHash) return own;
+  if (user?.passwordHash) return own && (!user.passwordOrgId || user.memberships.every((m) => m.organizationId === user.passwordOrgId));
   const appPassword = process.env.APP_PASSWORD?.trim() ?? "";
   return Boolean(appPassword) && isOwnerEmail(email) && safeEqual(password, appPassword);
 }

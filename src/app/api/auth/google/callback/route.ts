@@ -58,8 +58,9 @@ export async function GET(req: Request) {
 
   let user: Awaited<ReturnType<typeof loginUser>> = null;
   try {
-    // Viene de una invitación: se acepta si el correo de Google es el invitado; si no, entra como siempre.
-    if (flow.invite) user = await acceptInvitation(flow.invite, who.email, { name: who.name });
+    // Viene de una invitación: se acepta si el correo de Google es el invitado; si no, entra como siempre. Un dueño
+    // nunca acepta invitaciones: entra como siempre (Administrador de la organización principal).
+    if (flow.invite && !isOwnerEmail(who.email)) user = await acceptInvitation(flow.invite, who.email, { name: who.name });
     user ??= await loginUser(who.email, { owner: isOwnerEmail(who.email), name: who.name });
   } catch (e) {
     console.error("google login user unavailable:", e instanceof Error ? e.message : e);

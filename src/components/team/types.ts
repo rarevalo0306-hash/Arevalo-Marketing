@@ -16,8 +16,10 @@ export type TeamMember = {
   businessIds: string[];
   /** Fecha del último acceso, ya en el idioma de la app, o null si nunca entró. */
   lastLogin: string | null;
-  /** Dueño de Matya (LOGIN_EMAILS): no se le quita el acceso ni se le cambia la contraseña desde aquí. */
+  /** Dueño de Matya (LOGIN_EMAILS): no se le cambia la contraseña desde aquí. */
   owner: boolean;
+  /** Dueño en la organización principal: siempre Administrador; no se le cambia el papel ni se le quita el acceso. */
+  fixedAdmin: boolean;
 };
 
 export type TeamInvite = {

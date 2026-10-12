@@ -23,4 +23,27 @@ describe("the server only downloads public internet addresses", () => {
     ]) expect(await isPublicHttpsUrl(url), url).toBe(false);
     expect(await isPublicHttpsUrl("https://8.8.8.8/a.png")).toBe(true);
   });
+
+  it("sees IPv4 hidden inside IPv6 (mapped, compatible, NAT64, 6to4) and other reserved IPv6", () => {
+    for (const ip of ["::ffff:7f00:1", "::ffff:a9fe:a9fe", "::7f00:1", "64:ff9b::a9fe:a9fe", "64:ff9b:1::1", "2002:7f00:1::1", "2001:0:4136:e378::1", "100::1", "2001:db8::1", "ff02::1"]) expect(isPrivateIp(ip), ip).toBe(true);
+    for (const ip of ["2606:4700:4700::1111", "2001:4860:4860::8888"]) expect(isPrivateIp(ip), ip).toBe(false);
+  });
+
+  it("only blocks the reserved parts of 192.0.0.0/16, so WordPress photos still download", () => {
+    for (const ip of ["192.0.0.170", "192.0.2.1", "198.51.100.7", "203.0.113.9"]) expect(isPrivateIp(ip), ip).toBe(true);
+    for (const ip of ["192.0.78.17", "192.0.77.2"]) expect(isPrivateIp(ip), ip).toBe(false);
+  });
+
+  it("refuses bracketed IPv6 addresses that point inside, as the URL parser rewrites them", async () => {
+    for (const url of [
+      "https://[::ffff:127.0.0.1]/",
+      "https://[::ffff:169.254.169.254]/",
+      "https://[64:ff9b::a9fe:a9fe]/",
+      "https://[64:ff9b::169.254.169.254]/",
+      "https://[::127.0.0.1]/",
+      "https://[2002:7f00:1::1]/",
+    ]) expect(await isPublicHttpsUrl(url), url).toBe(false);
+    expect(await isPublicHttpsUrl("https://[2606:4700:4700::1111]/a.png")).toBe(true);
+    expect(await isPublicHttpsUrl("https://192.0.78.17/a.png")).toBe(true);
+  });
 });

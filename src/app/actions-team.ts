@@ -10,7 +10,7 @@ import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { looksLikeToken } from "@/lib/password";
-import { SESSION_COOKIE } from "@/lib/session";
+import { createSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/session";
 import { acceptInvitation, adminResetLink, cancelInvite, changeMember, invite, removeMember, resendInvite } from "@/lib/team";
 
 export type TeamResult = { ok: boolean; message: string; link?: string } | null;
@@ -116,8 +116,15 @@ export async function signOutForInvitation(token: string): Promise<void> {
 export async function acceptInvitationAction(token: string): Promise<TeamResult> {
   ensure.text(token);
   const user = await requireUser();
-  const { t } = await getT();
-  const done = await acceptInvitation(token, user.email);
+  const { lang, t } = await getT();
+  let done: Awaited<ReturnType<typeof acceptInvitation>> = null;
+  try {
+    done = await acceptInvitation(token, user.email);
+  } catch (e) {
+    return { ok: false, message: errorText(e, lang) };
+  }
   if (!done) return { ok: false, message: t("Esta invitación no es para tu correo, o ya no sirve.", "This invitation isn't for your email, or it no longer works.") };
+  // Al aceptar se pueden cerrar sus otras sesiones (si su contraseña venía de otra organización): esta sigue abierta.
+  (await cookies()).set(SESSION_COOKIE, await createSession(done.id, done.sessionVersion), sessionCookieOptions());
   redirect("/");
 }

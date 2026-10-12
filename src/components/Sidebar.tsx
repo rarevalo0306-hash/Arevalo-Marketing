@@ -24,7 +24,7 @@ export async function Sidebar({ activeId }: { activeId?: string }) {
   // Lo que espera la aprobación del dueño: numerito turquesa en «Inicio».
   const waiting = approvalTotal(approvals);
   const orgs = user.memberships.map((m) => m.organization.name).join(" · ");
-  // El centro de MATYA es solo del Administrador; «Equipo y permisos» aparece si administra alguna organización.
+  // El centro de MATYA es solo del Administrador; «Equipo y permisos» y «Agregar negocio» aparecen si administra alguna organización.
   const role = access?.ok ? access.role : null;
   const hide = role && role !== "admin" ? ["matya"] : undefined;
   const managesTeam = user.memberships.some((m) => m.role === "admin");
@@ -39,7 +39,7 @@ export async function Sidebar({ activeId }: { activeId?: string }) {
       <nav className="sidebar" aria-label={t("Menú principal", "Main menu")}>
         <Link href="/" className="brandmark">Matya</Link>
 
-        <MobileBizMenu businesses={list} activeId={activeId}>
+        <MobileBizMenu businesses={list} activeId={activeId} canAdd={managesTeam}>
           {managesTeam && teamLink("biz")}
           <form action={logout}>
             <button type="submit" className="biz" style={{ width: "100%", background: "none", border: 0, cursor: "pointer", font: "inherit" }}>
@@ -48,7 +48,7 @@ export async function Sidebar({ activeId }: { activeId?: string }) {
           </form>
         </MobileBizMenu>
 
-        <BizSwitcher businesses={list} activeId={activeId} />
+        <BizSwitcher businesses={list} activeId={activeId} canAdd={managesTeam} />
 
         {activeId && <NavLinks businessId={activeId} badges={waiting ? { inicio: waiting } : undefined} hide={hide} />}
 

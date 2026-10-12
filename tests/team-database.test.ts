@@ -9,9 +9,9 @@ vi.mock("@/lib/auth-email", () => ({
   },
 }));
 
-import { checkPassword, loginUser } from "@/lib/accounts";
+import { checkPassword, loginUser, mainOrganizationId } from "@/lib/accounts";
 import { db } from "@/lib/db";
-import { hashPassword } from "@/lib/password";
+import { hashPassword, newLinkToken } from "@/lib/password";
 import {
   acceptInvitation,
   adminResetLink,
@@ -112,10 +112,46 @@ describe.skipIf(!safe)("team: invitations, roles and passwords on an isolated Po
     expect(back?.id).toBe(ana.id);
     expect(back!.sessionVersion).toBeGreaterThan(ana.sessionVersion);
     expect(await checkPassword("ana@ejemplo.com", "clave-nueva-ana")).toBe(true);
-    await db.user.create({ data: { email: "owner-it@gmail.com" } });
-    const own = await invite(ORG, boss, { email: "owner-it@gmail.com", role: "viewer", allBusinesses: true, businessIds: [] }, "es");
-    expect((await readInvitation(tokenOf(own.link)))?.existingUser).toBe(true);
-    await expect(acceptInvitation(tokenOf(own.link), "owner-it@gmail.com", { newPassword: "toma-de-cuenta" })).rejects.toThrow();
+  });
+
+  it("an owner's email can't be invited, and an old invitation never creates or changes an owner's account", async () => {
+    await expect(invite(ORG, boss, { email: "Owner-IT@gmail.com", role: "admin", allBusinesses: true, businessIds: [] }, "es")).rejects.toThrow(/dueño/);
+    // Una invitación hecha antes de que el correo estuviera en LOGIN_EMAILS, sin cuenta todavía.
+    const { token, hash } = newLinkToken();
+    await db.invitation.create({ data: { organizationId: ORG, email: "owner-it@gmail.com", role: "viewer", tokenHash: hash, invitedById: boss.id, expiresAt: new Date(Date.now() + 86_400_000) } });
+    expect((await readInvitation(token))?.existingUser).toBe(true);
+    await expect(acceptInvitation(token, "owner-it@gmail.com", { newPassword: "toma-de-cuenta" })).rejects.toThrow(/dueño/);
+    await expect(acceptInvitation(token, "owner-it@gmail.com")).rejects.toThrow(/dueño/);
+    expect(await db.user.findUnique({ where: { email: "owner-it@gmail.com" } })).toBeNull();
+    expect(await checkPassword("owner-it@gmail.com", "toma-de-cuenta")).toBe(false);
+  });
+
+  it("a password chosen with an invitation link stops working once the person is in another organization", async () => {
+    const { link } = await invite(ORG, boss, { email: "ana@ejemplo.com", role: "viewer", allBusinesses: true, businessIds: [] }, "es");
+    const ana = (await acceptInvitation(tokenOf(link), "ana@ejemplo.com", { newPassword: "clave-de-ana-1" }))!;
+    expect((await db.user.findUniqueOrThrow({ where: { id: ana.id } })).passwordOrgId).toBe(ORG);
+    expect(await checkPassword("ana@ejemplo.com", "clave-de-ana-1")).toBe(true);
+    // Si de algún modo entra a otra organización, esa contraseña (que el Administrador de ORG pudo elegir) ya no sirve.
+    const extra = await db.membership.create({ data: { userId: ana.id, organizationId: OTHER, role: "viewer" } });
+    expect(await checkPassword("ana@ejemplo.com", "clave-de-ana-1")).toBe(false);
+    await db.membership.delete({ where: { id: extra.id } });
+    expect(await checkPassword("ana@ejemplo.com", "clave-de-ana-1")).toBe(true);
+    // Al aceptar una invitación de otra organización (con Google o ya dentro), se borra y se cierran sus sesiones.
+    const pending = await adminResetLink(ORG, (await db.membership.findFirstOrThrow({ where: { userId: ana.id, organizationId: ORG } })).id);
+    const other = await invite(OTHER, boss, { email: "ana@ejemplo.com", role: "viewer", allBusinesses: true, businessIds: [] }, "es");
+    expect((await readInvitation(tokenOf(other.link)))?.existingUser).toBe(true);
+    const joined = (await acceptInvitation(tokenOf(other.link), "ana@ejemplo.com"))!;
+    expect(joined.sessionVersion).toBe(ana.sessionVersion + 1);
+    expect(await db.user.findUniqueOrThrow({ where: { id: ana.id } })).toMatchObject({ passwordHash: "", passwordOrgId: "" });
+    expect(await checkPassword("ana@ejemplo.com", "clave-de-ana-1")).toBe(false);
+    // El enlace de contraseña nueva que había hecho el Administrador de ORG tampoco sirve ya.
+    expect(await readReset(tokenOf(pending))).toBeNull();
+    expect(await completeReset(tokenOf(pending), "clave-del-admin-x")).toBeNull();
+    // Con el enlace que le llega a su correo sí elige una que sirve en las dos.
+    await requestPasswordReset("ana@ejemplo.com", "es");
+    expect(await completeReset(tokenOf(lastLink()), "clave-propia-ana")).not.toBeNull();
+    expect(await db.user.findUniqueOrThrow({ where: { id: ana.id } })).toMatchObject({ passwordOrgId: "" });
+    expect(await checkPassword("ana@ejemplo.com", "clave-propia-ana")).toBe(true);
   });
 
   it("resending makes the old link useless; canceling and expiry too", async () => {
@@ -158,12 +194,37 @@ describe.skipIf(!safe)("team: invitations, roles and passwords on an isolated Po
     expect(await loginUser("boss@gmail.com", { owner: false })).toBeNull();
   });
 
-  it("an owner of Matya can't be removed or get a reset link from the team screen", async () => {
+  it("an owner of Matya is always Administrator of the main organization: no change, removal or reset link there", async () => {
+    const main = (await mainOrganizationId())!;
+    expect(main).not.toBe(ORG);
     const owner = await db.user.create({ data: { email: "owner-it@gmail.com" } });
-    const m = await db.membership.create({ data: { userId: owner.id, organizationId: ORG, role: "admin" } });
-    await expect(removeMember(ORG, m.id)).rejects.toThrow(/LOGIN_EMAILS/);
-    await expect(adminResetLink(ORG, m.id)).rejects.toThrow();
+    const inMain = await db.membership.create({ data: { userId: owner.id, organizationId: main, role: "admin" } });
+    await expect(changeMember(main, inMain.id, { role: "viewer", allBusinesses: false, businessIds: [] })).rejects.toThrow(/dueño/);
+    await expect(changeMember(main, inMain.id, { role: "publisher", allBusinesses: true, businessIds: [] })).rejects.toThrow(/dueño/);
+    await expect(removeMember(main, inMain.id)).rejects.toThrow(/LOGIN_EMAILS/);
+    await expect(adminResetLink(main, inMain.id)).rejects.toThrow();
+    expect(await db.membership.findUniqueOrThrow({ where: { id: inMain.id } })).toMatchObject({ role: "admin", allBusinesses: true });
+    expect((await teamOf(main)).members.find((m) => m.email === "owner-it@gmail.com")).toMatchObject({ owner: true, fixedAdmin: true });
+    // En otra organización es un miembro más (pero su contraseña nunca se cambia desde ahí).
+    const inOrg = await db.membership.create({ data: { userId: owner.id, organizationId: ORG, role: "viewer" } });
+    expect((await teamOf(ORG)).members.find((m) => m.email === "owner-it@gmail.com")).toMatchObject({ owner: true, fixedAdmin: false });
+    await expect(adminResetLink(ORG, inOrg.id)).rejects.toThrow();
+    expect(await removeMember(ORG, inOrg.id)).toBe(owner.id);
     expect(await checkPassword("owner-it@gmail.com", "app-pass-123")).toBe(true);
+  });
+
+  it("two Administrators demoting or removing each other at the same time still leave one", async () => {
+    const { link } = await invite(ORG, boss, { email: "ana@ejemplo.com", role: "admin", allBusinesses: true, businessIds: [] }, "es");
+    const ana = (await acceptInvitation(tokenOf(link), "ana@ejemplo.com", { newPassword: "clave-de-ana-1" }))!;
+    const anaM = (await db.membership.findFirstOrThrow({ where: { userId: ana.id, organizationId: ORG } })).id;
+    const viewer = { role: "viewer", allBusinesses: true, businessIds: [] };
+    const demoted = await Promise.allSettled([changeMember(ORG, bossMembership, viewer), changeMember(ORG, anaM, viewer)]);
+    expect(demoted.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(await db.membership.count({ where: { organizationId: ORG, role: "admin" } })).toBe(1);
+    await db.membership.updateMany({ where: { id: { in: [bossMembership, anaM] } }, data: { role: "admin" } });
+    const removed = await Promise.allSettled([removeMember(ORG, bossMembership), removeMember(ORG, anaM)]);
+    expect(removed.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(await db.membership.count({ where: { organizationId: ORG, role: "admin" } })).toBe(1);
   });
 
   it("forgot password: only real members get a one-time link that closes their other sessions", async () => {
@@ -178,12 +239,27 @@ describe.skipIf(!safe)("team: invitations, roles and passwords on an isolated Po
     expect(await checkPassword("boss@gmail.com", "clave-nueva-boss")).toBe(true);
   });
 
-  it("an admin reset link only works for people who are only in this organization", async () => {
+  it("an admin reset link only works for people who are only in this organization, checked again when it's used", async () => {
     const both = await db.user.create({ data: { email: "both@ejemplo.com" } });
     const inOrg = await db.membership.create({ data: { userId: both.id, organizationId: ORG, role: "viewer" } });
-    expect(await adminResetLink(ORG, inOrg.id)).toMatch(/\/clave\/[A-Za-z0-9_-]{43}$/);
-    await db.membership.create({ data: { userId: both.id, organizationId: OTHER, role: "admin" } });
+    const first = await adminResetLink(ORG, inOrg.id);
+    expect(first).toMatch(/\/clave\/[A-Za-z0-9_-]{43}$/);
+    // Un enlace nuevo deja sin efecto el anterior: el Administrador no puede guardar uno escondido.
+    const second = await adminResetLink(ORG, inOrg.id);
+    expect(await readReset(tokenOf(first))).toBeNull();
+    expect(await readReset(tokenOf(second))).toEqual({ email: "both@ejemplo.com" });
+    // Entra a otra organización antes de que se use: el enlace ya no sirve.
+    const elsewhere = await db.membership.create({ data: { userId: both.id, organizationId: OTHER, role: "admin" } });
+    expect(await readReset(tokenOf(second))).toBeNull();
+    expect(await completeReset(tokenOf(second), "clave-del-admin-x")).toBeNull();
+    expect((await db.user.findUniqueOrThrow({ where: { id: both.id } })).passwordHash).toBe("");
     await expect(adminResetLink(ORG, inOrg.id)).rejects.toThrow(/otra organización/);
+    // Solo en ORG otra vez: la contraseña que elige queda atada a ORG.
+    await db.membership.delete({ where: { id: elsewhere.id } });
+    const third = await adminResetLink(ORG, inOrg.id);
+    expect(await completeReset(tokenOf(third), "clave-de-both-1")).not.toBeNull();
+    expect((await db.user.findUniqueOrThrow({ where: { id: both.id } })).passwordOrgId).toBe(ORG);
+    expect(await checkPassword("both@ejemplo.com", "clave-de-both-1")).toBe(true);
   });
 
   it("the team view lists members, pending invitations and the organization's businesses", async () => {

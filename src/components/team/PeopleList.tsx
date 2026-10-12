@@ -154,11 +154,13 @@ function MemberRow({ member: m, isMe, orgId, businesses, life, onNotice }: Commo
       <tr className={s.acts}>
         <td colSpan={4}>
           <div className={s.actButtons}>
-            <button ref={changeButton} type="button" className={`btn ${s.act} ${mode === "edit" ? "on" : ""}`} aria-expanded={mode === "edit"} aria-controls={panelId} onClick={() => open("edit")}>
-              {t("Cambiar", "Change")}
-              <span className="sr-only">{t(` el papel de ${who}`, ` ${who}'s role`)}</span>
-            </button>
-            {!m.owner && (
+            {!m.fixedAdmin && (
+              <button ref={changeButton} type="button" className={`btn ${s.act} ${mode === "edit" ? "on" : ""}`} aria-expanded={mode === "edit"} aria-controls={panelId} onClick={() => open("edit")}>
+                {t("Cambiar", "Change")}
+                <span className="sr-only">{t(` el papel de ${who}`, ` ${who}'s role`)}</span>
+              </button>
+            )}
+            {!m.fixedAdmin && (
               <button ref={removeButton} type="button" className={`btn danger ${s.act}`} aria-expanded={mode === "confirm"} aria-controls={panelId} onClick={() => open("confirm")} disabled={busy}>
                 {t("Quitar acceso", "Remove access")}
                 <span className="sr-only">{t(` a ${who}`, ` for ${who}`)}</span>

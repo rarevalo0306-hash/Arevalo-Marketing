@@ -2,34 +2,34 @@
 // solo https y solo a direcciones públicas de internet. Nunca a la red interna, a la propia máquina ni a los servicios
 // de metadatos de la nube (169.254.169.254), aunque el nombre apunte ahí por DNS.
 import { lookup } from "dns/promises";
-import { isIP } from "net";
+import { BlockList, isIP } from "net";
 
-/** ¿Es una IP privada, local o reservada (v4 o v6)? */
+// Rangos privados, locales o reservados. BlockList compara las IPv6 que llevan una IPv4 (::ffff:7f00:1) con las
+// reglas IPv4; por eso ::ffff:0:0/96 no va como regla: bloquearía todas las IPv4.
+const BLOCKED = new BlockList();
+for (const [net, bits] of [
+  ["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16], ["172.16.0.0", 12],
+  ["192.0.0.0", 24], ["192.0.2.0", 24], ["192.168.0.0", 16], ["198.18.0.0", 15], ["198.51.100.0", 24], ["203.0.113.0", 24],
+  ["224.0.0.0", 3],
+] as const) BLOCKED.addSubnet(net, bits, "ipv4");
+for (const [net, bits] of [
+  ["::", 128], ["::1", 128],
+  ["::", 96], // IPv4 compatible (::127.0.0.1)
+  ["64:ff9b::", 96], ["64:ff9b:1::", 48], // NAT64: llevan una IPv4 adentro
+  ["2002::", 16], // 6to4: también lleva una IPv4; no se decodifica, se bloquea
+  ["2001::", 32], // Teredo
+  ["100::", 64], ["2001:db8::", 32], ["fc00::", 7], ["fe80::", 10], ["ff00::", 8],
+] as const) BLOCKED.addSubnet(net, bits, "ipv6");
+
+/** ¿Es una IP privada, local o reservada (v4 o v6)? Lo que no es una IP cuenta como privada. */
 export function isPrivateIp(ip: string): boolean {
   const v = isIP(ip);
-  if (v === 4) {
-    const [a, b] = ip.split(".").map(Number);
-    return (
-      a === 0 ||
-      a === 10 ||
-      a === 127 ||
-      (a === 100 && b >= 64 && b <= 127) ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) ||
-      (a === 192 && b === 0) ||
-      (a === 198 && (b === 18 || b === 19)) ||
-      a >= 224
-    );
+  if (!v) return true;
+  try {
+    return BLOCKED.check(ip, v === 4 ? "ipv4" : "ipv6");
+  } catch {
+    return true;
   }
-  if (v === 6) {
-    const x = ip.toLowerCase();
-    if (x === "::" || x === "::1") return true;
-    const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(x);
-    if (mapped) return isPrivateIp(mapped[1]);
-    return /^(fc|fd|fe8|fe9|fea|feb|ff)/.test(x);
-  }
-  return true;
 }
 
 /** ¿Se puede descargar esta dirección desde el servidor? https, sin usuario/clave, puerto normal y solo IPs públicas. */

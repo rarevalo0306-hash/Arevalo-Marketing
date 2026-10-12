@@ -564,6 +564,10 @@ model User {
   sessionVersion Int             @default(0)
   /// Contraseña propia (scrypt, src/lib/password.ts). "" = entra con Google, o con APP_PASSWORD si es dueño.
   passwordHash   String          @default("")
+  /// Organización cuyo Administrador pudo ver el enlace con el que se eligió la contraseña (invitación o enlace del
+  /// Administrador). "" = la eligió la persona con un enlace que solo le llegó a su correo. Esa contraseña solo sirve
+  /// mientras la persona esté solo en esa organización.
+  passwordOrgId  String          @default("")
   createdAt      DateTime        @default(now())
   lastLoginAt    DateTime?
   memberships    Membership[]
@@ -632,13 +636,15 @@ model Invitation {
 
 /// Enlace para elegir una contraseña nueva. Se guarda solo la huella (tokenHash). Vence en 1 hora y sirve una vez.
 model PasswordReset {
-  id        String    @id @default(cuid())
-  userId    String
-  tokenHash String    @unique
-  createdAt DateTime  @default(now())
-  expiresAt DateTime
-  usedAt    DateTime?
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String    @id @default(cuid())
+  userId         String
+  /// La organización del Administrador que hizo el enlace. "" = lo pidió la persona y le llegó a su correo.
+  organizationId String    @default("")
+  tokenHash      String    @unique
+  createdAt      DateTime  @default(now())
+  expiresAt      DateTime
+  usedAt         DateTime?
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }

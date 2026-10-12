@@ -47,6 +47,7 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'CREATE ROLE anon; CREATE ROLE authenticated;'
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20261012084743_matya_agent_workspace.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20261012190000_users_organizations.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20261012230000_team_invitations.sql
       - run: npm run build
       - run: npm run typecheck
       - run: npm test

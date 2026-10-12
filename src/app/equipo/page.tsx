@@ -49,6 +49,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
     businessIds: m.businessIds,
     lastLogin: m.lastLoginAt ? fmtDate(m.lastLoginAt, lang) : null,
     owner: m.owner,
+    fixedAdmin: m.fixedAdmin,
   }));
   const invitations = team.invitations.map((i) => ({
     id: i.id,

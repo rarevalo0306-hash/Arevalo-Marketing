@@ -2,6 +2,7 @@ import { randomBytes } from "crypto";
 import { mkdir, readFile, stat, writeFile } from "fs/promises";
 import path from "path";
 import { bi } from "@/lib/i18n";
+import { isPublicHttpsUrl } from "@/lib/net-guard";
 
 // Las fotos y videos van a Supabase Storage (bucket público). Sin Supabase configurado,
 // se guardan en el disco del servidor (útil solo en tu computadora).
@@ -183,9 +184,20 @@ export async function readMedia(stored: string): Promise<Buffer> {
   const local = /^\/media\/([^/]+)$/.exec(stored);
   if (local && SAFE_MEDIA_NAME.test(local[1])) return readFile(path.join(UPLOAD_DIR, local[1]));
   if (!/^https:\/\//i.test(stored)) throw bi("La foto necesita una dirección pública.", "The photo needs a public web address.");
-  const res = await fetch(stored);
-  if (!res.ok) throw bi(`No se pudo descargar la foto (${res.status}).`, `Couldn't download the photo (${res.status}).`);
-  return Buffer.from(await res.arrayBuffer());
+  // Solo direcciones públicas de internet, también en cada redirección (como mucho 3): nunca la red interna.
+  let url = stored;
+  for (let hops = 0; ; hops++) {
+    if (!(await isPublicHttpsUrl(url))) throw bi("La foto no está en una dirección pública de internet.", "The photo isn't at a public web address.");
+    const res = await fetch(url, { redirect: "manual" });
+    const next = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
+    if (!next) {
+      if (!res.ok) throw bi(`No se pudo descargar la foto (${res.status}).`, `Couldn't download the photo (${res.status}).`);
+      return Buffer.from(await res.arrayBuffer());
+    }
+    res.body?.cancel().catch(() => undefined);
+    if (hops >= 3) throw bi("No se pudo descargar la foto: redirige demasiadas veces.", "Couldn't download the photo: too many redirects.");
+    url = URL.canParse(next, url) ? new URL(next, url).href : "";
+  }
 }
 
 /**

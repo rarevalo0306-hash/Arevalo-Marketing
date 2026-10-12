@@ -2,9 +2,12 @@
 // permisos» (src/app/actions-team.ts), la página de la invitación y las rutas de entrar. Quien llama ya revisó que la
 // persona es Administrador de la organización (requireOrgAdmin) o, al aceptar, que el correo es el de la invitación.
 // Reglas: siempre queda al menos un Administrador; el Administrador entra a todas las empresas; los enlaces sirven una
-// vez y vencen (invitación 7 días, contraseña 1 hora); a un dueño de Matya (LOGIN_EMAILS) no se le quita ni se le
-// cambia la contraseña desde aquí.
-import { isOwnerEmail, looksLikeEmail, normalizeEmail } from "@/lib/accounts";
+// vez y vencen (invitación 7 días, contraseña 1 hora); a un dueño de Matya (LOGIN_EMAILS) no se le invita, ni se le
+// quita, ni se le cambia el papel o la contraseña desde aquí (en la organización principal siempre es Administrador).
+// Una contraseña elegida con un enlace que pudo ver un Administrador guarda de qué organización era (passwordOrgId):
+// deja de servir si la persona entra a otra organización (src/lib/accounts.ts checkPassword).
+import type { Prisma } from "@prisma/client";
+import { isOwnerEmail, looksLikeEmail, mainOrganizationId, normalizeEmail } from "@/lib/accounts";
 import { sendAuthEmail } from "@/lib/auth-email";
 import { db } from "@/lib/db";
 import { appBase } from "@/lib/google-login";
@@ -32,7 +35,7 @@ async function cleanAccess(organizationId: string, raw: { role: string; allBusin
 // ---------- Ver el equipo ----------
 
 export async function teamOf(organizationId: string) {
-  const [org, members, invitations, businesses] = await Promise.all([
+  const [org, members, invitations, businesses, main] = await Promise.all([
     db.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { id: true, name: true, kind: true } }),
     db.membership.findMany({
       where: { organizationId },
@@ -45,6 +48,7 @@ export async function teamOf(organizationId: string) {
       select: { id: true, email: true, role: true, allBusinesses: true, businessIds: true, createdAt: true, expiresAt: true },
     }),
     db.business.findMany({ where: { organizationId }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, color: true } }),
+    mainOrganizationId(),
   ]);
   return {
     org,
@@ -60,6 +64,8 @@ export async function teamOf(organizationId: string) {
       lastLoginAt: m.user.lastLoginAt,
       hasPassword: Boolean(m.user.passwordHash),
       owner: isOwnerEmail(m.user.email),
+      /** Dueño en la organización principal: siempre Administrador, no se cambia ni se quita desde aquí. */
+      fixedAdmin: isOwnerEmail(m.user.email) && organizationId === main,
     })),
     invitations: invitations.map((i) => ({ ...i, role: asRole(i.role) ?? "viewer" })),
   };
@@ -100,6 +106,7 @@ export async function invite(
 ): Promise<{ link: string; emailed: boolean; email: string }> {
   const email = normalizeEmail(String(raw.email ?? "")).slice(0, 254);
   if (!looksLikeEmail(email)) throw bi("Ese correo no parece válido.", "That email doesn't look valid.");
+  if (isOwnerEmail(email)) throw bi("Ese correo es de un dueño de Matya: ya entra como Administrador, no hace falta invitarlo.", "That email belongs to a Matya owner: they already sign in as Administrator, no invitation needed.");
   const access = await cleanAccess(organizationId, raw);
   const member = await db.membership.findFirst({ where: { organizationId, user: { email } }, select: { id: true } });
   if (member) throw bi("Esa persona ya es parte del equipo. Cambia su papel en la lista.", "That person is already on the team. Change their role in the list.");
@@ -165,33 +172,45 @@ export async function readInvitation(token: string): Promise<InvitationView | nu
     role: asRole(inv.role) ?? "viewer",
     businessNames: businesses ? businesses.map((b) => b.name) : null,
     inviterName: inviter?.name || inviter?.email || "",
-    existingUser: Boolean(user && (user._count.memberships > 0 || isOwnerEmail(inv.email))),
+    existingUser: isOwnerEmail(inv.email) || Boolean(user?._count.memberships),
   };
 }
 
 /**
  * Acepta la invitación para ese correo (debe ser el de la invitación): crea la persona si no existe (con su contraseña,
  * si la eligió) y le da el papel. El enlace queda usado. Devuelve la persona para abrir su sesión, o null.
- * Con `newPassword` solo funciona si la cuenta no existe, o si ya no está en ninguna organización y no es de un dueño
- * (alguien a quien quitaron y vuelven a invitar): a una cuenta que entra a algo nunca se le pone contraseña aquí.
+ * Con `newPassword` solo funciona si la cuenta no existe, o si ya no está en ninguna organización (alguien a quien
+ * quitaron y vuelven a invitar): a una cuenta que entra a algo nunca se le pone contraseña aquí. Quien tiene el enlace
+ * (también el Administrador que invitó) puede elegir esa contraseña, así que queda atada a esta organización.
+ * Un dueño de Matya nunca acepta invitaciones: entra solo y es Administrador de la organización principal.
  */
 export async function acceptInvitation(token: string, rawEmail: string, opts: { name?: string; newPassword?: string } = {}): Promise<{ id: string; sessionVersion: number } | null> {
   const inv = await pendingByToken(token);
   const email = normalizeEmail(rawEmail);
   if (!inv || inv.email !== email) return null;
+  if (isOwnerEmail(email)) throw bi("Ese correo es de un dueño de Matya: entra normalmente, sin la invitación.", "That email belongs to a Matya owner: sign in normally, without the invitation.");
   const passwordHash = opts.newPassword ? await hashPassword(opts.newPassword) : "";
   const name = (opts.name ?? "").trim().slice(0, 120);
   return db.$transaction(async (tx) => {
     // El enlace sirve una vez: si otro lo usó al mismo tiempo, este no cambia nada.
     const used = await tx.invitation.updateMany({ where: { id: inv.id, acceptedAt: null, canceledAt: null, expiresAt: { gt: new Date() } }, data: { acceptedAt: new Date() } });
     if (used.count !== 1) return null;
-    let user = await tx.user.findUnique({ where: { email }, select: { id: true, name: true, sessionVersion: true, _count: { select: { memberships: true } } } });
+    // Una sola cosa a la vez con esta cuenta (otra invitación, un enlace de contraseña): ver y cambiar van juntos.
+    await tx.$queryRaw`SELECT id FROM "User" WHERE email = ${email} FOR UPDATE`;
+    const select = { id: true, name: true, sessionVersion: true, passwordHash: true, passwordOrgId: true, _count: { select: { memberships: true } } } as const;
+    let user = await tx.user.findUnique({ where: { email }, select });
     if (user && passwordHash) {
-      if (user._count.memberships > 0 || isOwnerEmail(email)) throw bi("Ya tienes una cuenta con ese correo: entra con ella para aceptar.", "You already have an account with that email: sign in with it to accept.");
+      if (user._count.memberships > 0) throw bi("Ya tienes una cuenta con ese correo: entra con ella para aceptar.", "You already have an account with that email: sign in with it to accept.");
       // Cuenta sin ninguna organización (la quitaron antes): elige contraseña nueva y se cierran sus sesiones viejas.
-      user = await tx.user.update({ where: { id: user.id }, data: { passwordHash, sessionVersion: { increment: 1 } }, select: { id: true, name: true, sessionVersion: true, _count: { select: { memberships: true } } } });
+      user = await tx.user.update({ where: { id: user.id }, data: { passwordHash, passwordOrgId: inv.organizationId, sessionVersion: { increment: 1 } }, select });
+    } else if (user?.passwordHash && user.passwordOrgId && user.passwordOrgId !== inv.organizationId) {
+      // Su contraseña salió de un enlace que vio un Administrador de otra organización: deja de servir y se cierran sus
+      // sesiones, para que ese Administrador no entre aquí. La vuelve a elegir con «¿Olvidaste tu contraseña?».
+      user = await tx.user.update({ where: { id: user.id }, data: { passwordHash: "", passwordOrgId: "", sessionVersion: { increment: 1 } }, select });
     }
-    user ??= await tx.user.create({ data: { email, name, passwordHash }, select: { id: true, name: true, sessionVersion: true, _count: { select: { memberships: true } } } });
+    user ??= await tx.user.create({ data: { email, name, passwordHash, passwordOrgId: passwordHash ? inv.organizationId : "" }, select });
+    // Los enlaces para contraseña nueva que hizo el Administrador de otra organización dejan de servir.
+    await tx.passwordReset.updateMany({ where: { userId: user.id, usedAt: null, organizationId: { notIn: ["", inv.organizationId] } }, data: { usedAt: new Date() } });
     const access = { role: inv.role, allBusinesses: inv.role === "admin" || inv.allBusinesses };
     const businessIds = access.allBusinesses ? [] : (await tx.business.findMany({ where: { id: { in: inv.businessIds }, organizationId: inv.organizationId }, select: { id: true } })).map((b) => b.id);
     const m = await tx.membership.upsert({
@@ -209,41 +228,75 @@ export async function acceptInvitation(token: string, rawEmail: string, opts: { 
 
 // ---------- Cambiar o quitar ----------
 
-async function adminsLeftWithout(organizationId: string, membershipId: string) {
-  return db.membership.count({ where: { organizationId, role: "admin", id: { not: membershipId } } });
+/** Cambios de papel uno a la vez por organización: dos Administradores que se bajan al mismo tiempo no la dejan sin ninguno. */
+async function lockOrganization(tx: Prisma.TransactionClient, organizationId: string) {
+  await tx.$queryRaw`SELECT id FROM "Organization" WHERE id = ${organizationId} FOR UPDATE`;
+}
+
+async function adminsLeftWithout(tx: Prisma.TransactionClient, organizationId: string, membershipId: string) {
+  return tx.membership.count({ where: { organizationId, role: "admin", id: { not: membershipId } } });
+}
+
+/** ¿Es un dueño de Matya en la organización principal? Ahí siempre es Administrador con todas las empresas. */
+async function fixedAdmin(tx: Prisma.TransactionClient, organizationId: string, email: string) {
+  return isOwnerEmail(email) && (await mainOrganizationId(tx)) === organizationId;
 }
 
 export async function changeMember(organizationId: string, membershipId: string, raw: { role: string; allBusinesses: boolean; businessIds: string[] }): Promise<void> {
-  const m = await db.membership.findFirst({ where: { id: membershipId, organizationId }, select: { id: true, role: true } });
-  if (!m) throw bi("Esa persona ya no está en el equipo.", "That person is no longer on the team.");
-  const access = await cleanAccess(organizationId, raw);
-  if (m.role === "admin" && access.role !== "admin" && (await adminsLeftWithout(organizationId, m.id)) === 0)
-    throw bi("Tiene que quedar al menos un Administrador.", "There must be at least one Administrator.");
-  await db.$transaction([
-    db.membership.update({ where: { id: m.id }, data: { role: access.role, allBusinesses: access.allBusinesses } }),
-    db.membershipBusiness.deleteMany({ where: { membershipId: m.id } }),
-    ...(access.businessIds.length ? [db.membershipBusiness.createMany({ data: access.businessIds.map((businessId) => ({ membershipId: m.id, businessId })) })] : []),
-  ]);
+  await db.$transaction(async (tx) => {
+    await lockOrganization(tx, organizationId);
+    const m = await tx.membership.findFirst({ where: { id: membershipId, organizationId }, select: { id: true, role: true, user: { select: { email: true } } } });
+    if (!m) throw bi("Esa persona ya no está en el equipo.", "That person is no longer on the team.");
+    if (await fixedAdmin(tx, organizationId, m.user.email)) throw bi("Es dueño de Matya: siempre es Administrador con todas las empresas.", "They're a Matya owner: they're always an Administrator with every business.");
+    const access = await cleanAccess(organizationId, raw);
+    if (m.role === "admin" && access.role !== "admin" && (await adminsLeftWithout(tx, organizationId, m.id)) === 0)
+      throw bi("Tiene que quedar al menos un Administrador.", "There must be at least one Administrator.");
+    await tx.membership.update({ where: { id: m.id }, data: { role: access.role, allBusinesses: access.allBusinesses } });
+    await tx.membershipBusiness.deleteMany({ where: { membershipId: m.id } });
+    if (access.businessIds.length) await tx.membershipBusiness.createMany({ data: access.businessIds.map((businessId) => ({ membershipId: m.id, businessId })) });
+  });
 }
 
 /** Quita a la persona de la organización y cierra sus sesiones en todos lados. Devuelve a quién quitó. */
 export async function removeMember(organizationId: string, membershipId: string): Promise<string | null> {
-  const m = await db.membership.findFirst({ where: { id: membershipId, organizationId }, select: { id: true, role: true, userId: true, user: { select: { email: true } } } });
-  if (!m) return null;
-  if (isOwnerEmail(m.user.email)) throw bi("Es dueño de Matya: para quitarlo, primero quita su correo de LOGIN_EMAILS en Vercel.", "They're a Matya owner: to remove them, first take their email out of LOGIN_EMAILS in Vercel.");
-  if (m.role === "admin" && (await adminsLeftWithout(organizationId, m.id)) === 0) throw bi("Tiene que quedar al menos un Administrador.", "There must be at least one Administrator.");
-  await db.$transaction([db.membership.delete({ where: { id: m.id } }), db.user.update({ where: { id: m.userId }, data: { sessionVersion: { increment: 1 } } })]);
-  return m.userId;
+  return db.$transaction(async (tx) => {
+    await lockOrganization(tx, organizationId);
+    const m = await tx.membership.findFirst({ where: { id: membershipId, organizationId }, select: { id: true, role: true, userId: true, user: { select: { email: true } } } });
+    if (!m) return null;
+    if (await fixedAdmin(tx, organizationId, m.user.email)) throw bi("Es dueño de Matya: para quitarlo, primero quita su correo de LOGIN_EMAILS en Vercel.", "They're a Matya owner: to remove them, first take their email out of LOGIN_EMAILS in Vercel.");
+    if (m.role === "admin" && (await adminsLeftWithout(tx, organizationId, m.id)) === 0) throw bi("Tiene que quedar al menos un Administrador.", "There must be at least one Administrator.");
+    await tx.membership.delete({ where: { id: m.id } });
+    await tx.user.update({ where: { id: m.userId }, data: { sessionVersion: { increment: 1 } } });
+    return m.userId;
+  });
 }
 
 // ---------- Contraseña nueva ----------
 
 const resetLink = (token: string) => `${appBase()}/clave/${token}`;
 
-async function newReset(userId: string): Promise<string> {
+/** Un enlace nuevo (los anteriores de esa persona dejan de servir). organizationId: la del Administrador que lo hizo, o "". */
+async function newReset(userId: string, organizationId: string): Promise<string> {
   const { token, hash } = newLinkToken();
-  await db.passwordReset.create({ data: { userId, tokenHash: hash, expiresAt: new Date(Date.now() + RESET_MINUTES * 60_000) } });
+  await db.$transaction([
+    db.passwordReset.updateMany({ where: { userId, usedAt: null }, data: { usedAt: new Date() } }),
+    db.passwordReset.create({ data: { userId, organizationId, tokenHash: hash, expiresAt: new Date(Date.now() + RESET_MINUTES * 60_000) } }),
+  ]);
   return token;
+}
+
+type ResetRow = { usedAt: Date | null; expiresAt: Date; organizationId: string; user: { email: string; memberships: { organizationId: string }[] } };
+const resetSelect = { usedAt: true, expiresAt: true, organizationId: true, user: { select: { email: true, memberships: { select: { organizationId: true } } } } } as const;
+
+/**
+ * ¿Sirve todavía? Sin usar, sin vencer y la persona sigue en algún equipo (o es dueño). Si lo hizo un Administrador,
+ * además la persona sigue solo en esa organización y no es dueño: se revisa al usarlo, no solo al hacerlo.
+ */
+function resetUsable(r: ResetRow | null): r is ResetRow {
+  if (!r || r.usedAt || r.expiresAt <= new Date()) return false;
+  const orgs = r.user.memberships.map((m) => m.organizationId);
+  if (!r.organizationId) return orgs.length > 0 || isOwnerEmail(r.user.email);
+  return orgs.length > 0 && orgs.every((id) => id === r.organizationId) && !isOwnerEmail(r.user.email);
 }
 
 /**
@@ -254,7 +307,7 @@ export async function requestPasswordReset(rawEmail: string, lang: UiLang): Prom
   if (!looksLikeEmail(email)) return;
   const user = await db.user.findUnique({ where: { email }, select: { id: true, _count: { select: { memberships: true } } } });
   if (!user || (!user._count.memberships && !isOwnerEmail(email))) return;
-  const token = await newReset(user.id);
+  const token = await newReset(user.id, "");
   const t = translator(lang);
   await sendAuthEmail({
     to: email,
@@ -273,26 +326,37 @@ export async function adminResetLink(organizationId: string, membershipId: strin
   if (isOwnerEmail(m.user.email)) throw bi("Es dueño de Matya: elige su contraseña con «¿Olvidaste tu contraseña?».", "They're a Matya owner: they choose their password with \"Forgot your password?\".");
   const elsewhere = await db.membership.count({ where: { userId: m.userId, organizationId: { not: organizationId } } });
   if (elsewhere) throw bi("Esa persona también está en otra organización: que use «¿Olvidaste tu contraseña?».", "That person is also in another organization: they should use \"Forgot your password?\".");
-  return resetLink(await newReset(m.userId));
+  return resetLink(await newReset(m.userId, organizationId));
 }
 
 /** El correo del enlace de contraseña nueva, o null si no sirve. */
 export async function readReset(token: string): Promise<{ email: string } | null> {
   if (!looksLikeToken(token)) return null;
-  const r = await db.passwordReset.findUnique({ where: { tokenHash: tokenHash(token) }, select: { usedAt: true, expiresAt: true, user: { select: { email: true } } } });
-  return r && !r.usedAt && r.expiresAt > new Date() ? { email: r.user.email } : null;
+  const r = await db.passwordReset.findUnique({ where: { tokenHash: tokenHash(token) }, select: resetSelect });
+  return resetUsable(r) ? { email: r.user.email } : null;
 }
 
-/** Guarda la contraseña nueva (el enlace queda usado) y cierra las demás sesiones. Devuelve la persona para entrar. */
+/**
+ * Guarda la contraseña nueva (el enlace queda usado) y cierra las demás sesiones. Devuelve la persona para entrar.
+ * La contraseña queda atada a la organización del Administrador que hizo el enlace (o a nadie, si llegó al correo).
+ */
 export async function completeReset(token: string, password: string): Promise<{ id: string; sessionVersion: number } | null> {
-  if (!looksLikeToken(token)) return null;
+  // Primero el enlace (barato): scrypt solo corre con un enlace que sirve.
+  if (!(await readReset(token))) return null;
   const passwordHash = await hashPassword(password);
   return db.$transaction(async (tx) => {
-    const r = await tx.passwordReset.findUnique({ where: { tokenHash: tokenHash(token) }, select: { id: true, userId: true } });
-    if (!r) return null;
+    const found = await tx.passwordReset.findUnique({ where: { tokenHash: tokenHash(token) }, select: { id: true, userId: true } });
+    if (!found) return null;
+    // Una sola cosa a la vez con esta cuenta (p. ej. aceptar otra invitación): se vuelve a revisar ya bloqueada.
+    await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${found.userId} FOR UPDATE`;
+    const r = await tx.passwordReset.findUnique({ where: { id: found.id }, select: { ...resetSelect, id: true, userId: true } });
+    if (!resetUsable(r)) return null;
     const used = await tx.passwordReset.updateMany({ where: { id: r.id, usedAt: null, expiresAt: { gt: new Date() } }, data: { usedAt: new Date() } });
     if (used.count !== 1) return null;
-    const user = await tx.user.update({ where: { id: r.userId }, data: { passwordHash, sessionVersion: { increment: 1 }, lastLoginAt: new Date() }, select: { id: true, sessionVersion: true } });
-    return user;
+    return tx.user.update({
+      where: { id: r.userId },
+      data: { passwordHash, passwordOrgId: r.organizationId, sessionVersion: { increment: 1 }, lastLoginAt: new Date() },
+      select: { id: true, sessionVersion: true },
+    });
   });
 }

@@ -1,6 +1,7 @@
+import { redirect } from "next/navigation";
 import { createBusinessFromWeb } from "@/app/actions-study";
 import { Sidebar } from "@/components/Sidebar";
-import { myBusinessesWhere } from "@/lib/auth";
+import { myBusinessesWhere, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
 import s from "./nuevo.module.css";
@@ -8,8 +9,28 @@ import s from "./nuevo.module.css";
 export const dynamic = "force-dynamic";
 
 export default async function NewBusiness() {
-  const count = await db.business.count({ where: await myBusinessesWhere() });
+  const user = await requireUser();
   const { t } = await getT();
+  // Solo un Administrador crea negocios (src/lib/auth.ts); los demás esperan a que les den acceso.
+  if (!user.memberships.some((m) => m.role === "admin")) {
+    if (await db.business.count({ where: await myBusinessesWhere() })) redirect("/");
+    return (
+      <div className="shell">
+        <Sidebar />
+        <main className="content">
+          <div className="page-head">
+            <div>
+              <h1>{t("Sin negocios todavía", "No businesses yet")}</h1>
+            </div>
+          </div>
+          <div className="card empty">
+            {t("Todavía no tienes acceso a ningún negocio. Pídele al Administrador de tu equipo que te dé acceso.", "You don't have access to any business yet. Ask your team's Administrator to give you access.")}
+          </div>
+        </main>
+      </div>
+    );
+  }
+  const count = await db.business.count({ where: await myBusinessesWhere() });
   return (
     <div className="shell">
       <Sidebar />

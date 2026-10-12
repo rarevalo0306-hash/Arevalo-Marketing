@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { fromOtherSite } from "@/lib/access";
 import { getT } from "@/lib/i18n-server";
 import { countLoginAttempt } from "@/lib/login-attempts";
@@ -7,8 +7,9 @@ import { requestPasswordReset } from "@/lib/team";
 
 export const dynamic = "force-dynamic";
 
-// Pública: «¿Olvidaste tu contraseña?». Siempre responde lo mismo (no dice si el correo tiene cuenta). Cuenta en el mismo
-// límite de intentos que entrar, con su propia llave: 5 pedidos cada 15 minutos por dirección.
+// Pública: «¿Olvidaste tu contraseña?». Siempre responde lo mismo y en el mismo tiempo (el enlace se hace y se manda
+// después de responder), así no dice si el correo tiene cuenta. Cuenta en el mismo límite de intentos que entrar, con su
+// propia llave: 5 pedidos cada 15 minutos por dirección.
 export async function POST(req: Request) {
   if (fromOtherSite(req.headers, new URL(req.url).host)) return new NextResponse(null, { status: 403 });
   const done = (q = "enviado=1") => NextResponse.redirect(new URL(`/olvide?${q}`, req.url), 303);
@@ -24,6 +25,6 @@ export async function POST(req: Request) {
     if (!missingTable(e)) return done("e=check");
   }
   const { lang } = await getT();
-  await requestPasswordReset(email, lang).catch((e) => console.error("password reset failed:", e instanceof Error ? e.message : e));
+  after(() => requestPasswordReset(email, lang).catch((e) => console.error("password reset failed:", e instanceof Error ? e.message : e)));
   return done();
 }

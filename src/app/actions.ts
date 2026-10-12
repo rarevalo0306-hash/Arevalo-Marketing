@@ -22,6 +22,7 @@ import { createImage, IMAGE_PROVIDERS, imagesEnabled } from "@/lib/imagegen";
 import { ownerFields } from "@/lib/owner";
 import { pickLibraryPhotos } from "@/lib/library";
 import { createSignedUpload, isOwnFile, saveUpload, storeRemote } from "@/lib/media";
+import { isPublicHttpsUrl } from "@/lib/net-guard";
 import { ALT_MAX, checkPostMedia, postKindFor, readPostMedia } from "@/lib/post-media";
 import { altTexts, focusForUrl } from "@/lib/post-seo";
 import { GOOGLE_COOKIE, saveGoogleLocation, type GoogleLocation } from "@/lib/google-oauth";
@@ -666,18 +667,21 @@ export async function aiDesign(businessId: string, photoUrl: string, headline: s
   }
 }
 
-const safeUrl = (v: string) => (/^https:\/\//.test(v) || v === "" ? v : undefined);
+// El servidor descarga el logo después (kit de marca): solo archivos propios o direcciones públicas de internet.
+// Si no vale, el logo guardado no cambia.
+const safeLogoUrl = async (v: string, businessId: string) => (v === "" || isOwnFile(v, businessId) || (await isPublicHttpsUrl(v)) ? v : undefined);
 
 /** Kit de marca: logos, colores, letras, tono de voz, hashtags, teléfono y diseño automático. */
 export async function updateBrandKit(businessId: string, f: FormData) {
   ensure.text(businessId);
   const b = await business(businessId, "publish");
   const font = str(f, "fontHeading");
+  const [logoUrl, logoLightUrl] = await Promise.all([safeLogoUrl(str(f, "logoUrl"), businessId), safeLogoUrl(str(f, "logoLightUrl"), businessId)]);
   await db.business.update({
     where: { id: businessId },
     data: {
-      logoUrl: safeUrl(str(f, "logoUrl")),
-      logoLightUrl: safeUrl(str(f, "logoLightUrl")),
+      logoUrl,
+      logoLightUrl,
       color: hexOr(str(f, "color"), b.color),
       color2: str(f, "color2") === "" ? "" : hexOr(str(f, "color2"), b.color2),
       color3: str(f, "color3") === "" ? "" : hexOr(str(f, "color3"), b.color3),
