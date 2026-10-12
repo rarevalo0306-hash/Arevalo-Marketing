@@ -25,6 +25,14 @@ El publicador común vuelve a comprobar política, revisión del contexto, conex
 
 ## Alcance de presupuestos
 
+### Primero la biblioteca de cada compañía
+
+El agente busca material adecuado en la biblioteca del negocio antes de preparar diseños o videos. Usa la relevancia temática y los filtros existentes de calidad, privacidad y «No usar»; solo selecciona archivos de esa compañía. Los diseños adaptan una foto reutilizada a tres formatos con las plantillas de marca; los videos montan fotos y clips de la biblioteca. Si no hay material adecuado, recurre a diseños de marca sin generar imágenes o escenas nuevas con IA. La selección no llama a un modelo de pago ni busca archivos externos.
+
+Cada paso registra `mediaSelection` con la política, procedencia y archivos elegidos, y muestra un resumen del material utilizado. Generar desde cero queda como propuesta excepcional para una herramienta con presupuesto propio; este flujo no activa generación de imágenes/video ni usa los proveedores antiguos como respaldo automático. El montaje sigue sujeto a las reservas y topes del agente. La corrección pendiente del registro de costos inciertos es independiente de esta política.
+
+### Qué cubren los límites
+
 Los topes nuevos cubren las llamadas de texto del agente y una reserva conservadora del máximo configurado por render. Cada solicitud de texto hace una sola llamada: no hay fallback/reintento de pago oculto. Una tarifa ausente bloquea la tarea; respuesta sin uso verificable conserva la reserva.
 
 No es todavía una factura consolidada de toda la plataforma: herramientas anteriores, anuncios, almacenamiento y cómputo de infraestructura mantienen sus controles/facturas propios. El agente no puede aumentar esos presupuestos. El modo de aprobación no amplía límites ni conecta cuentas.
