@@ -3,7 +3,7 @@
 // «Tus fotos»: lo que el dueño decide de cada foto o video de su carpeta de Drive, y lo que pide el compositor.
 import { revalidatePath } from "next/cache";
 import { syncDriveNow, type DriveResult } from "@/app/actions-drive";
-import { hasBusiness, requireBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness, requireBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
@@ -45,7 +45,7 @@ export type LibraryMediaResult = { ok: true; url: string; type: "photo" | "video
 export async function libraryMedia(businessId: string, itemId: string): Promise<LibraryMediaResult> {
   ensure.text(businessId, itemId);
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: await deniedText(businessId, "publish") };
   try {
     const item = await itemOf(businessId, itemId);
     // Las fotos ya tienen su copia; los videos (o lo que falte) se traen de Drive ahora.
@@ -86,7 +86,7 @@ export async function reviewDriveNow(businessId: string, _prev: DriveResult | nu
   void _prev;
   void _f;
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   try {
     const r = await syncDriveNow(businessId);
     revalidatePath(`/b/${businessId}/fotos`);

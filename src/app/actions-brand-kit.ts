@@ -7,7 +7,7 @@ import { updateBrandAssets } from "@/lib/brand-assets-db";
 import { renderKit, pool } from "@/lib/brand-kit";
 import { asCoverLang, cleanTagline, fallbackTagline, type CoverText } from "@/lib/brand-kit-formats";
 import { aiEnabled, ask } from "@/lib/ai";
-import { hasBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
@@ -23,7 +23,7 @@ export type KitSidecar = { kitCover: CoverText };
 export async function createBrandKit(businessId: string, _prev: KitResult, form: FormData): Promise<KitResult> {
   ensure.text(businessId);
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   const b = await db.business.findUnique({
     where: { id: businessId },
     select: { name: true, color: true, color2: true, color3: true, fontHeading: true, fontBody: true, logoUrl: true, logoLightUrl: true, phone: true, website: true, brandAssets: true },
@@ -73,7 +73,7 @@ const TaglineSchema = z.object({
 export async function suggestKitTagline(businessId: string): Promise<{ ok: boolean; es: string; en: string; ai: boolean; message?: string }> {
   ensure.text(businessId);
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, es: "", en: "", ai: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, es: "", en: "", ai: false, message: await deniedText(businessId, "publish") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { name: true, website: true, aiProfile: true, brandVoice: true, aiText: true } });
   if (!b) return { ok: false, es: "", en: "", ai: false, message: t("Negocio no encontrado", "Business not found") };
   const fb = fallbackTagline(b);

@@ -6,7 +6,7 @@
 // especial). No se hace ahora: cada post usa el diseño maestro como plantilla, casi gratis.
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
-import { hasBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { designModels, estimateUsd, MASTER_SHAPES, maxUsd, type MasterShape, usdText } from "@/lib/design-ai";
 import {
@@ -49,7 +49,7 @@ const asShapes = (v: unknown): MasterShape[] => [...new Set((Array.isArray(v) ? 
 export async function startDesignMasters(businessId: string, input: { models: string[]; shapes: string[]; parentId?: string; bookStyle?: boolean }): Promise<StartResult> {
   ensure.text(businessId);
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: BIZ });
   if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const available = designModels();
@@ -107,7 +107,7 @@ export async function checkDesignMaster(businessId: string, id: string): Promise
   ensure.text(businessId, id);
   const { lang, t } = await getT();
   // Guarda el diseño terminado; el diseño se busca con este businessId (finishMaster).
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   try {
     const d = await finishMaster(businessId, id);
     if (!d) return { ok: false, message: t("Ese diseño ya no existe.", "That design no longer exists.") };
@@ -128,7 +128,7 @@ export async function previewDesignMaster(businessId: string, id: string, adjust
   ensure.text(businessId, id);
   const { lang, t } = await getT();
   // No es solo mirar: ensureFrame guarda el marco del diseño (archivo y registro).
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   const [b, d] = await Promise.all([db.business.findUnique({ where: { id: businessId }, select: BIZ }), readyDetail(businessId, id)]);
   if (!b || !d) return { ok: false, message: t("Ese diseño todavía no está listo.", "That design isn't ready yet.") };
   try {
@@ -146,7 +146,7 @@ export async function previewDesignMaster(businessId: string, id: string, adjust
 export async function saveDesignMaster(businessId: string, id: string, adjust?: Partial<MasterAdjust>): Promise<SaveResult> {
   ensure.text(businessId, id);
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   const row = await db.aiAction.findFirst({ where: { id, businessId, kind: MASTER_KIND } });
   const d0 = await readyDetail(businessId, id);
   if (!row || !d0) return { ok: false, message: t("Ese diseño todavía no está listo.", "That design isn't ready yet.") };
@@ -185,7 +185,7 @@ export async function saveDesignMaster(businessId: string, id: string, adjust?: 
 export async function discardDesignMaster(businessId: string, id: string): Promise<SaveResult> {
   ensure.text(businessId, id);
   const { t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   const row = await db.aiAction.findFirst({ where: { id, businessId, kind: MASTER_KIND } });
   const d = readDetail(row?.detail);
   if (!row || !d) return { ok: false, message: t("Ese diseño ya no existe.", "That design no longer exists.") };
@@ -203,7 +203,7 @@ export type ConvertResult = { ok: boolean; message: string; id?: string };
 export async function startBookConvert(businessId: string, assetId: string, model: string): Promise<ConvertResult> {
   ensure.text(businessId, assetId, model);
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { id: true, color: true } });
   if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const asset = (await loadBrandAssets(businessId)).items.find((a) => a.id === assetId && a.source === "book");

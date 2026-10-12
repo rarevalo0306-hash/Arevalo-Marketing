@@ -7,7 +7,7 @@ import { activateAd, chooseAdAccount, createAd, disconnectAds, pauseAd, pauseAll
 import { candidatePosts, proposalInput, proposeAds } from "@/lib/ads-ai";
 import { improveGooglePlan } from "@/lib/ads-google-load";
 import { AD_GOALS, MAX_DAYS, parseMoney, readCampaignAds, SPECIAL_CATEGORIES, type AdGoal, type AdSource, type SpecialCategory } from "@/lib/ads-shape";
-import { hasBusiness, requireBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness, requireBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
@@ -26,7 +26,7 @@ const refresh = (id: string) => revalidatePath(`/b/${id}/anuncios`);
 async function run(businessId: string, need: Need, work: () => Promise<{ es: string; en: string }>): Promise<AdsResult> {
   const { lang, t } = await getT();
   // El permiso va antes de todo (y fuera del try, para no refrescar ni tocar nada de un negocio ajeno).
-  if (!(await hasBusiness(businessId, need))) return { ok: false, message: t("Negocio no encontrado", "Business not found"), at: Date.now() };
+  if (!(await hasBusiness(businessId, need))) return { ok: false, message: await deniedText(businessId, need), at: Date.now() };
   try {
     const msg = await work();
     refresh(businessId);

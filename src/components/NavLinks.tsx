@@ -6,7 +6,7 @@ import { Suspense, useCallback, useEffect, useId, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import { useT } from "@/components/I18n";
 import { NavIcon } from "@/components/nav/NavIcon";
-import { MOBILE_TABS, NAV_GROUPS, isGroupOn, isItemOn, itemHref, type NavGroup, type NavHere, type NavItem } from "@/components/nav/model";
+import { MOBILE_TABS, isGroupOn, isItemOn, itemHref, visibleGroups, type NavGroup, type NavHere, type NavItem } from "@/components/nav/model";
 import s from "@/components/nav/Nav.module.css";
 
 const OPEN_KEY = "am-nav-open";
@@ -29,26 +29,28 @@ function readOpen(): Record<string, boolean> {
 /** Numeritos junto a un enlace (clave del enlace → cuántas cosas esperan), ej. { inicio: 3 }. */
 type Badges = Record<string, number>;
 
-export function NavLinks({ businessId, badges }: { businessId: string; badges?: Badges }) {
+/** `hide`: claves de enlaces que este papel no usa (ej. "matya" si no es Administrador). */
+export function NavLinks({ businessId, badges, hide }: { businessId: string; badges?: Badges; hide?: string[] }) {
   return (
-    <Suspense fallback={<Nav businessId={businessId} tab={null} mapa={null} badges={badges} />}>
-      <NavWithParams businessId={businessId} badges={badges} />
+    <Suspense fallback={<Nav businessId={businessId} tab={null} mapa={null} badges={badges} hide={hide} />}>
+      <NavWithParams businessId={businessId} badges={badges} hide={hide} />
     </Suspense>
   );
 }
 
-function NavWithParams({ businessId, badges }: { businessId: string; badges?: Badges }) {
+function NavWithParams({ businessId, badges, hide }: { businessId: string; badges?: Badges; hide?: string[] }) {
   const params = useSearchParams();
-  return <Nav businessId={businessId} tab={params.get("tab")} mapa={params.get("mapa")} badges={badges} />;
+  return <Nav businessId={businessId} tab={params.get("tab")} mapa={params.get("mapa")} badges={badges} hide={hide} />;
 }
 
-function Nav({ businessId, tab, mapa, badges }: { businessId: string; tab: string | null; mapa: string | null; badges?: Badges }) {
+function Nav({ businessId, tab, mapa, badges, hide }: { businessId: string; tab: string | null; mapa: string | null; badges?: Badges; hide?: string[] }) {
   const pathname = usePathname();
   const here: NavHere = { pathname, tab, mapa };
+  const groups = visibleGroups(hide);
   return (
     <>
-      <SideNav businessId={businessId} here={here} badges={badges} />
-      <MobileNav businessId={businessId} here={here} badges={badges} />
+      <SideNav businessId={businessId} here={here} badges={badges} groups={groups} />
+      <MobileNav businessId={businessId} here={here} badges={badges} groups={groups} />
     </>
   );
 }
@@ -119,7 +121,7 @@ function ItemLink({
 
 // ---------------------------------------------------------------- Computadora
 
-function SideNav({ businessId, here, badges }: { businessId: string; here: NavHere; badges?: Badges }) {
+function SideNav({ businessId, here, badges, groups }: { businessId: string; here: NavHere; badges?: Badges; groups: NavGroup[] }) {
   const { t } = useT();
   const [chosen, setChosen] = useState<Record<string, boolean>>({});
   useEffect(() => setChosen(readOpen()), []);
@@ -132,7 +134,7 @@ function SideNav({ businessId, here, badges }: { businessId: string; here: NavHe
   };
   return (
     <div className={`desk-only ${s.side}`} role="list" aria-label={t("Herramientas", "Tools")}>
-      {NAV_GROUPS.map((g) => (
+      {groups.map((g) => (
         <div key={g.key} role="listitem">
           {g.items.length === 1 ? (
             <ItemLink businessId={businessId} item={g.items[0]} here={here} className={s.row} icon={g.icon} badge={badges?.[g.items[0].key]} />
@@ -198,7 +200,7 @@ function SideGroup({
 
 // ---------------------------------------------------------------- Celular
 
-function MobileNav({ businessId, here, badges }: { businessId: string; here: NavHere; badges?: Badges }) {
+function MobileNav({ businessId, here, badges, groups }: { businessId: string; here: NavHere; badges?: Badges; groups: NavGroup[] }) {
   const { lang, t } = useT();
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
@@ -273,7 +275,7 @@ function MobileNav({ businessId, here, badges }: { businessId: string; here: Nav
               </button>
             </div>
             <div className={s.sheetBody}>
-              {NAV_GROUPS.map((g) =>
+              {groups.map((g) =>
                 g.items.length === 1 ? (
                   <ItemLink key={g.key} businessId={businessId} item={g.items[0]} here={here} className={s.srow} icon={g.icon} onPick={() => close()} badge={badges?.[g.items[0].key]} />
                 ) : (

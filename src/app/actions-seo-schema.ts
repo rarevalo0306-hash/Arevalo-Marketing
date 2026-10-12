@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { hasBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensure } from "@/lib/ensure";
 import { getT } from "@/lib/i18n-server";
@@ -17,7 +17,7 @@ export async function saveSchemaExtras(businessId: string, _prev: SchemaSaveResu
   ensure.text(businessId);
   void _prev;
   const { t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { id: true } });
   if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
 

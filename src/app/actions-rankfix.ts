@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { hasBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness } from "@/lib/auth";
 import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
@@ -14,8 +14,8 @@ export type RankFixResult = { ok: boolean; message: string; job: RankFixView | n
 /** «Autorizar · hasta US$X.XX»: aprueba el gasto para PREPARAR (no publica nada). `cents` es lo que vio el dueño. */
 export async function authorizeRankFixAction(businessId: string, keys: string[], cents: number): Promise<RankFixResult> {
   ensure.text(businessId); ensure.number(cents); ensure.texts(keys);
-  const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found"), job: null, fix: null };
+  const { lang } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish"), job: null, fix: null };
   try {
     const r = await authorizeRankFix(businessId, Array.isArray(keys) ? keys.filter((k) => typeof k === "string") : [], Number(cents), lang);
     return { ok: r.ok, message: r.message[lang], job: r.job, fix: r.fix };
@@ -51,7 +51,7 @@ export async function removeRankFixItemAction(businessId: string, id: string, ke
 export async function stockPhotoRankFixAction(businessId: string, id: string, key: string): Promise<RankFixResult> {
   ensure.text(businessId, id, key);
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found"), job: null, fix: null };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish"), job: null, fix: null };
   try {
     const job = await stockPhotoRankFixItem(businessId, String(id), String(key));
     return { ok: Boolean(job), message: t("Listo: usará la foto del tema de tu web.", "Done: it will use your website's topic photo."), job, fix: null };
@@ -63,8 +63,8 @@ export async function stockPhotoRankFixAction(businessId: string, id: string, ke
 /** «Publicar todo»: el segundo y último clic (aprueba que salga en la web). */
 export async function publishRankFixAction(businessId: string, id: string): Promise<RankFixResult> {
   ensure.text(businessId, id);
-  const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found"), job: null, fix: null };
+  const { lang } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish"), job: null, fix: null };
   try {
     const r = await publishRankFix(businessId, String(id));
     revalidatePath(`/b/${businessId}/seo/escribir`);

@@ -6,6 +6,7 @@ import type { Business } from "@prisma/client";
 import { askGemini } from "@/lib/ai";
 import { identityPrompt } from "@/lib/brand-identity";
 import { businessPlace } from "@/lib/media-formats";
+import { isPublicHttpsUrl } from "@/lib/net-guard";
 import { businessKeywords, libraryPhotoInfo } from "@/lib/post-focus";
 import { altTextFallback, pickPostKeywords, whatFromText } from "@/lib/post-keywords";
 
@@ -25,9 +26,10 @@ const AltSchema = z.object({ alts: z.array(z.string()) });
 
 /** Una foto chica (para la IA) en base64, o null si no se puede leer. */
 async function photoPart(url: string): Promise<{ inlineData: { mimeType: string; data: string } } | null> {
-  if (!/^https:\/\//.test(url)) return null;
+  // Solo direcciones públicas de internet (nunca la red interna): la dirección la manda el navegador.
+  if (!(await isPublicHttpsUrl(url))) return null;
   try {
-    const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(8000) });
+    const res = await fetch(url, { cache: "no-store", redirect: "error", signal: AbortSignal.timeout(8000) });
     if (!res.ok) return null;
     const buf = Buffer.from(await res.arrayBuffer());
     const sharp = (await import("sharp")).default;

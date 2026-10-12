@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { hasBusiness, requireBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness, requireBusiness } from "@/lib/auth";
 import { disconnectGoogleData } from "@/lib/data-deletion";
 import { ensure } from "@/lib/ensure";
 import { GA4_CHANNEL, readGa4Connection, refreshGa4, writeGa4Connection } from "@/lib/ga4";
@@ -30,7 +30,7 @@ export async function refreshGa4Action(businessId: string, _prev: Ga4Result, _f:
   void _f;
   const { lang, t } = await getT();
   // Trae datos de Google al negocio: hace falta poder publicar.
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   try {
     const r = await refreshGa4(businessId);
     if (!r.ok) {

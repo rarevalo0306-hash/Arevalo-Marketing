@@ -3,7 +3,7 @@
 import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { aiEnabled, draftReviewReplies, draftReviewReply } from "@/lib/ai";
-import { hasBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensure } from "@/lib/ensure";
 import { errorText, intlLocale, type UiLang } from "@/lib/i18n";
@@ -92,7 +92,7 @@ export async function refreshProfile(businessId: string, _prev: GbpResult, _f: F
   void _prev;
   void _f;
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   if (!dataForSeoEnabled()) return { ok: false, message: notConnected(t) };
   const b = await db.business.findUnique({ where: { id: businessId }, select: BUSINESS_FIELDS });
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
@@ -133,7 +133,7 @@ export async function refreshReviews(businessId: string, _prev: GbpResult, _f: F
   void _prev;
   void _f;
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   if (!dataForSeoEnabled()) return { ok: false, message: notConnected(t) };
   const b = await db.business.findUnique({ where: { id: businessId }, select: BUSINESS_FIELDS });
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
@@ -191,7 +191,7 @@ const replyBusiness = (b: { name: string; website: string; phone: string; aiProf
 export async function draftReply(businessId: string, reviewId: string): Promise<ReplyResult> {
   ensure.text(businessId, reviewId);
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   if (!aiEnabled()) return { ok: false, message: noAi(t) };
   const [b, latest] = await Promise.all([db.business.findUnique({ where: { id: businessId }, select: BUSINESS_FIELDS }), latestReviews(businessId)]);
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
@@ -212,7 +212,7 @@ export async function draftReply(businessId: string, reviewId: string): Promise<
 export async function draftAllReplies(businessId: string): Promise<{ ok: boolean; message: string; drafts: Record<string, string> }> {
   ensure.text(businessId);
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found."), drafts: {} };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish"), drafts: {} };
   if (!aiEnabled()) return { ok: false, message: noAi(t), drafts: {} };
   const [b, latest] = await Promise.all([db.business.findUnique({ where: { id: businessId }, select: BUSINESS_FIELDS }), latestReviews(businessId)]);
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found."), drafts: {} };
@@ -253,7 +253,7 @@ export async function draftAllReplies(businessId: string): Promise<{ ok: boolean
 export async function saveReplyDraft(businessId: string, reviewId: string, text: string): Promise<ReplyResult> {
   ensure.text(businessId, reviewId, text);
   const { t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   const latest = await latestReviews(businessId);
   if (!latest) return { ok: false, message: noReviews(t) };
   if (!latest.report.reviews.some((r) => r.id === reviewId)) return { ok: false, message: notFoundReview(t) };
@@ -280,7 +280,7 @@ export async function saveReplyDraft(businessId: string, reviewId: string, text:
 export async function postReply(businessId: string, reviewId: string, text?: string): Promise<ReplyResult> {
   ensure.text(businessId, reviewId); ensure.optionalText(text);
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   const creds = await googleReplyCreds(businessId);
   if (!creds)
     return {

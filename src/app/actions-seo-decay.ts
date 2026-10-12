@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { hasBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensure } from "@/lib/ensure";
 import { BiError, errorText } from "@/lib/i18n";
@@ -20,7 +20,7 @@ export async function refreshDecay(businessId: string, _prev: DecayResult, _f: F
   void _prev;
   void _f;
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   try {
     const b = await db.business.findUnique({ where: { id: businessId }, select: { id: true } });
     if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };

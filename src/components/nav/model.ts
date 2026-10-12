@@ -33,6 +33,10 @@ export type NavGroup = {
   items: NavItem[];
 };
 
+/** Los grupos sin los enlaces escondidos para el papel de la persona (ej. el centro MATYA si no es Administrador). */
+export const visibleGroups = (hide: readonly string[] = []): NavGroup[] =>
+  hide.length ? NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => !hide.includes(i.key)) })).filter((g) => g.items.length) : NAV_GROUPS;
+
 // Ordenado por las fases del trabajo con cada negocio: 1 Negocio → 2 Diagnóstico (la IA conoce el negocio) → 3 Marca →
 // 4 Campañas y publicación → 5 Resultados. Inicio arriba, con lo urgente de hoy.
 export const NAV_GROUPS: NavGroup[] = [

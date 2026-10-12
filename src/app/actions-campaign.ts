@@ -8,7 +8,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { approveDraft } from "@/app/actions";
 import { logAiAction } from "@/lib/ai-actions";
-import { hasBusiness, requireBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness, requireBusiness } from "@/lib/auth";
 import { competitorNames, pauseCampaign, resumeCampaign, rulesOf, saveRules, stopAllCampaigns, stopCampaign } from "@/lib/campaign";
 import {
   asMode,
@@ -207,7 +207,7 @@ export type StopActionResult = { ok: boolean; message: string } | null;
 export async function stopCampaignAction(businessId: string, campaignId: string, _prev?: StopActionResult): Promise<StopActionResult> {
   ensure.text(businessId, campaignId);
   const { t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   const r = await stopCampaign(businessId, campaignId, { actor: "owner" });
   paths(businessId, campaignId);
   if (!r.ok) return { ok: false, message: t("No se encontró la campaña.", "Campaign not found.") };

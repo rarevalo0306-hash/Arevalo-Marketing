@@ -5,7 +5,7 @@
 import { revalidatePath } from "next/cache";
 import sharp from "sharp";
 import { logAiAction } from "@/lib/ai-actions";
-import { hasBusiness, requireBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness, requireBusiness } from "@/lib/auth";
 import type { ChannelId } from "@/lib/channels";
 import { db } from "@/lib/db";
 import { ensure } from "@/lib/ensure";
@@ -53,7 +53,7 @@ export async function suggestVideoMedia(businessId: string, idea: string, format
 export async function planVideo(businessId: string, input: { idea: string; format: VideoFormat; mediaIds: string[] }): Promise<VideoResult> {
   ensure.text(businessId);
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: await deniedText(businessId, "publish") };
   try {
     const b = await videoBusiness(businessId);
     const cl = contentLang(b);
@@ -76,7 +76,7 @@ export async function planVideo(businessId: string, input: { idea: string; forma
 export async function saveVideoEdits(businessId: string, projectId: string, edits: { scenes: SceneEdit[]; texts?: Partial<VideoTexts>; music?: boolean }): Promise<VideoResult> {
   ensure.text(businessId, projectId);
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: await deniedText(businessId, "publish") };
   try {
     const row = await loadProject(businessId, projectId);
     const p = row.project;
@@ -97,8 +97,8 @@ export async function saveVideoEdits(businessId: string, projectId: string, edit
 /** Un cuadro real de una escena (como saldrá en el video), en pequeño. */
 export async function videoSceneStill(businessId: string, projectId: string, sceneId: string): Promise<{ ok: true; src: string } | { ok: false; error: string }> {
   ensure.text(businessId, projectId, sceneId);
-  const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "view"))) return { ok: false, error: t("Negocio no encontrado", "Business not found") };
+  const { lang } = await getT();
+  if (!(await hasBusiness(businessId, "view"))) return { ok: false, error: await deniedText(businessId, "view") };
   try {
     const { project } = await loadProject(businessId, projectId);
     const jpg = await sceneStill(project.storyboard, sceneId, { read: readMedia });
@@ -112,8 +112,8 @@ export async function videoSceneStill(businessId: string, projectId: string, sce
 /** «Sí, crear video»: solo con el precio que el dueño vio y aceptó. */
 export async function startVideoRender(businessId: string, projectId: string, confirmCents: number): Promise<VideoResult> {
   ensure.text(businessId, projectId); ensure.number(confirmCents);
-  const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: t("Negocio no encontrado", "Business not found") };
+  const { lang } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: await deniedText(businessId, "publish") };
   try {
     await startRender(businessId, projectId, Math.round(confirmCents), "owner");
     revalidatePath(page(businessId));
@@ -126,9 +126,9 @@ export async function startVideoRender(businessId: string, projectId: string, co
 /** ¿Ya está el video? (la pantalla pregunta cada pocos segundos). */
 export async function checkVideoRender(businessId: string, projectId: string): Promise<VideoResult> {
   ensure.text(businessId, projectId);
-  const { lang, t } = await getT();
+  const { lang } = await getT();
   // Sigue el trabajo pagado (pide a fal.ai el siguiente paso y guarda el video): no es solo mirar.
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: await deniedText(businessId, "publish") };
   try {
     await advanceRender(businessId, projectId, lang);
     const row = await loadProject(businessId, projectId);
@@ -148,7 +148,7 @@ export type PublishVideoResult = { ok: true; href: string; message: string } | {
 export async function publishVideo(businessId: string, projectId: string, f: FormData): Promise<PublishVideoResult> {
   ensure.text(businessId, projectId);
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: await deniedText(businessId, "publish") };
   try {
     const row = await loadProject(businessId, projectId);
     const p = row.project;

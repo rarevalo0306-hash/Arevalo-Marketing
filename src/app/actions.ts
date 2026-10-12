@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { aiEnabled, designTemplates, planWeek, readBrandBook, stormPlan, suggestBrandKit, type BrandKitSuggestion, TEXT_PROVIDERS, toPostFields, writePost, type AiPost, type AiPostOut, type Lang } from "@/lib/ai";
-import { hasBusiness, newBusinessOrganizationId, requireBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness, newBusinessOrganizationId, requireBusiness } from "@/lib/auth";
 import { recentOpenings } from "@/lib/content-ideas";
 import { brevoDomains, brevoEnvKey } from "@/lib/brevo";
 import { CHANNEL_IDS, channelDef, type ChannelId } from "@/lib/channels";
@@ -206,7 +206,7 @@ export type TestResult = { ok: boolean; message: string } | null;
 export async function testConnection(businessId: string, channel: ChannelId): Promise<TestResult> {
   ensure.text(businessId, channel);
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "admin"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "admin"))) return { ok: false, message: await deniedText(businessId, "admin") };
   const conn = await db.connection.findUnique({ where: { businessId_channel: { businessId, channel } } });
   if (!conn) return { ok: false, message: t("Primero guarda los datos de la conexión.", "Save the connection details first.") };
   try {
