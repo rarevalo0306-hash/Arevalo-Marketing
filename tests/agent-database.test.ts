@@ -16,6 +16,19 @@ import { loadContext } from "@/lib/agent/context";
 import { DEFAULT_SETTINGS } from "@/components/agent/types";
 import { collectNews } from "@/lib/agent/news";
 import { readSource } from "@/lib/agent/network";
+import { storeDesign } from "@/lib/media-formats";
+import { ensureStoredCopy } from "@/lib/library-files";
+vi.mock("@/lib/library-files", () => ({
+  ensureStoredCopy: vi.fn().mockImplementation(async (id) =>
+    `https://example.com/stored-${id}.mp4`,
+  ),
+}));
+vi.mock("@/lib/media-formats", async (original) => ({
+  ...(await original<typeof import("@/lib/media-formats")>()),
+  storeDesign: vi.fn().mockImplementation(async (input) =>
+    `https://example.com/fixture-${input.shape}.jpg`,
+  ),
+}));
 vi.mock("@/lib/agent/network", async (original) => ({
   ...(await original<typeof import("@/lib/agent/network")>()),
   readSource: vi.fn(),
@@ -34,6 +47,8 @@ import {
   advanceRender,
   loadProject,
   projectCost,
+  suggestMedia,
+  loadVideoMedia,
 } from "@/lib/video-jobs";
 const url = process.env.MATYA_TEST_DATABASE_URL ?? "";
 const safe =
@@ -109,6 +124,7 @@ async function prepared(mode = "auto") {
 }
 describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
   beforeEach(async () => {
+    vi.clearAllMocks();
     vi.mocked(videoBlocker).mockReturnValue(null);
     process.env.MATYA_AGENT_ENABLED = "true";
     await db.business.deleteMany({ where: { id: { in: [A, B] } } });
@@ -154,6 +170,106 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     await expect(
       ask("Pausa", { kind: "pause", campaignId: c.id }),
     ).rejects.toThrow("encontrada");
+  });
+  async function visualRun(kind: "campaign" | "video") {
+    const r = await ask("Prepara contenido sobre techos", { kind });
+    await workOne(A, async () => ({ data: research }), () => 0);
+    await workOne(A, async () => ({ data: { ...copy, title: "Techos", headline: "¿Cómo cuidas tu techo?" } }), () => 0);
+    return r;
+  }
+  async function libraryItem(externalId: string, extra: Record<string, unknown> = {}) {
+    return db.libraryItem.create({
+      data: {
+        businessId: A,
+        source: "upload",
+        externalId,
+        kind: "photo",
+        url: `https://example.com/${externalId}.jpg`,
+        status: "ready",
+        quality: 4,
+        usable: true,
+        tags: ["techos"],
+        width: 1080,
+        height: 1920,
+        ...extra,
+      },
+    });
+  }
+  it("reuses a company's suitable photo in every format without image generation", async () => {
+    const owned = await libraryItem("owned", {
+      enhancedUrl: "https://example.com/enhanced-owned.jpg",
+      useEnhanced: true,
+    });
+    await libraryItem("other-company", { businessId: B, quality: 5 });
+    await libraryItem("private", { privacy: ["faces"], quality: 5 });
+    await libraryItem("skipped", { choice: "skip", quality: 5 });
+    await libraryItem("poor", { quality: 1 });
+    await libraryItem("unreviewed", { status: "new" });
+    await libraryItem("unrelated", { tags: ["automóviles"], quality: 5 });
+    const r = await visualRun("campaign");
+    await workOne(A, executeStep, () => 0);
+    expect(storeDesign).toHaveBeenCalledTimes(3);
+    for (const [input, businessId] of vi.mocked(storeDesign).mock.calls) {
+      expect(businessId).toBe(A);
+      expect(input.photoUrl).toBe(owned.enhancedUrl);
+      // Even question headlines must actually use the selected image.
+      expect(input.template.layout).not.toBe("color-solido");
+    }
+    const step = await db.agentStep.findUniqueOrThrow({ where: { runId_name: { runId: r.id, name: "design" } } });
+    expect(step.output).toMatchObject({
+      mediaSelection: { source: "library", libraryItems: [{ id: owned.id, kind: "photo" }], generatedFromScratch: false },
+    });
+    expect(step.chargedCents).toBe(0);
+    expect(await db.libraryItem.findUnique({ where: { id: owned.id } })).toMatchObject({ usedCount: 1 });
+    expect(await db.libraryItem.count({ where: { businessId: B, usedCount: { gt: 0 } } })).toBe(0);
+  });
+  it("uses a brand-only fallback when the library has no suitable allowed photos", async () => {
+    await libraryItem("unrelated", { tags: ["automóviles"] });
+    await libraryItem("private", { privacy: ["document"] });
+    await libraryItem("skipped", { choice: "skip" });
+    const r = await visualRun("campaign");
+    await workOne(A, executeStep, () => 0);
+    expect(storeDesign).toHaveBeenCalledTimes(3);
+    for (const [input] of vi.mocked(storeDesign).mock.calls) {
+      expect(input.photoUrl).toBeUndefined();
+      expect(input.template.layout).toBe("color-solido");
+    }
+    const step = await db.agentStep.findUniqueOrThrow({ where: { runId_name: { runId: r.id, name: "design" } } });
+    expect(step.output).toMatchObject({
+      mediaSelection: { source: "brand_template", libraryItems: [], generatedFromScratch: false },
+    });
+    expect(step.chargedCents).toBe(0);
+  });
+  it("rechecks current library permission and still accepts a photo explicitly allowed by the owner", async () => {
+    const owned = await libraryItem("approved", { privacy: ["faces"], choice: "use" });
+    const ids = await suggestMedia(A, "techos", "vertical", [], 6, { minRelevance: 3 });
+    expect(ids).toEqual([owned.id]);
+    expect(await loadVideoMedia(A, ids, "es")).toHaveLength(1);
+    expect(await loadVideoMedia(B, ids, "es")).toEqual([]);
+    await db.libraryItem.update({ where: { id: owned.id }, data: { choice: "skip" } });
+    expect(await loadVideoMedia(A, ids, "es")).toEqual([]);
+  });
+  it("builds videos from suitable company photos and clips instead of generated designs", async () => {
+    const photo = await libraryItem("photo");
+    const clip = await libraryItem("clip", { source: "drive", kind: "video", url: "", durationSec: 8 });
+    await libraryItem("other-company-clip", { businessId: B, kind: "video", durationSec: 8, quality: 5 });
+    await libraryItem("private-clip", { kind: "video", privacy: ["child"], durationSec: 8, quality: 5 });
+    const r = await visualRun("video");
+    await workOne(A, executeStep, () => 0);
+    await workOne(A, executeStep, (name) => name === "video" ? 50 : 0);
+    expect(startRender).toHaveBeenCalledTimes(1);
+    const args = vi.mocked(startRender).mock.calls[0];
+    const storyboard = (await loadProject(A, args[1])).project.storyboard;
+    expect(storyboard.media.map((m) => m.id).sort()).toEqual([photo.id, clip.id].sort());
+    expect(storyboard.media.some((m) => m.kind === "video")).toBe(true);
+    expect(ensureStoredCopy).toHaveBeenCalledExactlyOnceWith(clip.id);
+    expect(storyboard.media.find((m) => m.id === clip.id)?.url).toBe(`https://example.com/stored-${clip.id}.mp4`);
+    expect(storyboard.media.some((m) => m.id.startsWith("design-"))).toBe(false);
+    expect(storyboard.music.on).toBe(false);
+    expect(args[2]).toBe(projectCost(storyboard));
+    const step = await db.agentStep.findUniqueOrThrow({ where: { runId_name: { runId: r.id, name: "video" } } });
+    expect(step.output).toMatchObject({ mediaSelection: { source: "library", generatedFromScratch: false } });
+    expect(await db.libraryItem.findUnique({ where: { id: clip.id } })).toMatchObject({ usedCount: 1 });
   });
   it("excludes facts from a previous territory after the industry changes", async () => {
     const fact = {

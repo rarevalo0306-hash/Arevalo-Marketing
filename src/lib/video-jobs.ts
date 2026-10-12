@@ -148,12 +148,18 @@ export async function loadVideoMedia(businessId: string, ids: string[], lang: "e
 }
 
 /** Las fotos (y clips) que mejor van con la idea, para empezar con algo elegido. */
-export async function suggestMedia(businessId: string, idea: string, format: VideoFormat, keywords: string[], max = 6): Promise<string[]> {
-  const rows = await db.libraryItem.findMany({ where: { businessId, status: "ready", NOT: { choice: "skip" } }, select: MEDIA_SELECT, take: 400 });
+export async function suggestMedia(businessId: string, idea: string, format: VideoFormat, keywords: string[], max = 6, options: { kind?: "photo" | "video"; minRelevance?: number } = {}): Promise<string[]> {
+  const rows = await db.libraryItem.findMany({
+    where: { businessId, status: "ready", NOT: { choice: "skip" }, ...(options.kind ? { kind: options.kind } : {}) },
+    select: MEDIA_SELECT,
+    orderBy: [{ usedCount: "asc" }, { createdAt: "desc" }, { id: "asc" }],
+    take: 400,
+  });
   const usable = rows.filter((r) => usableNow(r) && (r.kind === "photo" ? Boolean(r.url) : true));
   const q = { text: idea, keywords: keywords.slice(0, 6), shape: format === "vertical" ? ("vertical" as const) : ("horizontal" as const) };
   return usable
     .map((r) => ({ id: r.id, kind: r.kind, s: scoreItem(r, q) }))
+    .filter((r) => r.s.relevance >= (options.minRelevance ?? 0))
     .sort((a, b) => b.s.relevance - a.s.relevance || b.s.score - a.s.score || (a.kind === "photo" ? -1 : 1))
     .slice(0, max)
     .map((x) => x.id);
