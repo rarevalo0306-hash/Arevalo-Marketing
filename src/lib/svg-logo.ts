@@ -10,13 +10,17 @@ const SAFE_DATA_IMAGE = /^data:image\/(png|jpe?g|gif|webp);base64,/i;
 
 /**
  * Deja solo el dibujo: sin scripts, eventos (onload…), foreignObject, @import ni enlaces a archivos de afuera (solo
- * `#id` e imágenes incrustadas). Rechaza DOCTYPE y ENTITY (pueden leer archivos o inflar el archivo sin fin).
+ * `#id` e imágenes incrustadas). El DOCTYPE simple que ponen Illustrator y otros programas se quita; uno con
+ * definiciones propias ([…]) o cualquier ENTITY se rechaza (pueden leer archivos o inflar el archivo sin fin).
  * null si no es un SVG o es demasiado grande.
  */
 export function cleanSvg(text: string): string | null {
   if (Buffer.byteLength(text) > SVG_MAX_BYTES) return null;
-  let s = text.replace(/^﻿/, "").trim();
-  if (/<!DOCTYPE|<!ENTITY/i.test(s) || !/<svg[\s>]/i.test(s)) return null;
+  let s = text.replace(/^\uFEFF/, "").trim();
+  if (/<!ENTITY/i.test(s)) return null;
+  // <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/…/svg11.dtd"> (sin «[»): no sirve para dibujar.
+  s = s.replace(/<!DOCTYPE[^>[]*>/gi, "");
+  if (/<!DOCTYPE/i.test(s) || !/<svg[\s>]/i.test(s)) return null;
   s = s.replace(/<script\b[\s\S]*?<\/script\s*>/gi, "").replace(/<script\b[^>]*\/>/gi, "");
   s = s.replace(/<foreignObject\b[\s\S]*?<\/foreignObject\s*>/gi, "").replace(/<foreignObject\b[^>]*\/>/gi, "");
   s = s.replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "");
