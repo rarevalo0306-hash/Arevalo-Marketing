@@ -231,6 +231,8 @@ describe.skipIf(!safe)("team: invitations, roles and passwords on an isolated Po
     const ana = (await acceptInvitation(tokenOf(link), "ana@ejemplo.com", { newPassword: "clave-de-ana-1" }))!;
     vi.stubEnv("LOGIN_EMAILS", "owner-it@gmail.com,ana@ejemplo.com");
     expect(await checkPassword("ana@ejemplo.com", "clave-de-ana-1")).toBe(false);
+    // Como dueño, su contraseña atada no cuenta: entra con APP_PASSWORD como cualquier dueño sin contraseña propia.
+    expect(await checkPassword("ana@ejemplo.com", "app-pass-123")).toBe(true);
     await removeMember(ORG, (await db.membership.findFirstOrThrow({ where: { userId: ana.id, organizationId: ORG } })).id);
     expect(await checkPassword("ana@ejemplo.com", "clave-de-ana-1")).toBe(false);
     // Entra de verdad (p. ej. con Google): queda Administrador de la principal, y la contraseña y las sesiones viejas se borran.
@@ -240,6 +242,31 @@ describe.skipIf(!safe)("team: invitations, roles and passwords on an isolated Po
     expect(await db.user.findUniqueOrThrow({ where: { id: ana.id } })).toMatchObject({ passwordHash: "", passwordOrgId: "" });
     const main = (await mainOrganizationId())!;
     expect(await db.membership.findMany({ where: { userId: ana.id }, select: { organizationId: true, role: true, allBusinesses: true } })).toEqual([{ organizationId: main, role: "admin", allBusinesses: true }]);
+  });
+
+  it("an owner who signs in with a forgot-password link is also made Administrator of the main organization", async () => {
+    const main = (await mainOrganizationId())!;
+    const owner = await db.user.create({ data: { email: "owner-it@gmail.com" } });
+    await db.membership.create({ data: { userId: owner.id, organizationId: ORG, role: "viewer" } });
+    await requestPasswordReset("owner-it@gmail.com", "es");
+    expect(await completeReset(tokenOf(lastLink()), "clave-del-dueno-1")).not.toBeNull();
+    expect(await db.membership.findFirst({ where: { userId: owner.id, organizationId: main }, select: { role: true, allBusinesses: true } })).toEqual({ role: "admin", allBusinesses: true });
+    expect(await db.user.findUniqueOrThrow({ where: { id: owner.id } })).toMatchObject({ passwordOrgId: "" });
+  });
+
+  it("accepting while the admin re-sends the same invitation never deadlocks", async () => {
+    for (let i = 0; i < 15; i++) {
+      await db.user.deleteMany({ where: { email: "ana@ejemplo.com" } });
+      await db.invitation.deleteMany({ where: { organizationId: ORG, email: "ana@ejemplo.com" } });
+      // Cuenta que ya existe (acepta con Google, sin contraseña): así aceptar y volver a invitar corren a la vez.
+      await db.user.create({ data: { email: "ana@ejemplo.com" } });
+      const { link } = await invite(ORG, boss, { email: "ana@ejemplo.com", role: "viewer", allBusinesses: true, businessIds: [] }, "es");
+      const both = await Promise.allSettled([
+        acceptInvitation(tokenOf(link), "ana@ejemplo.com"),
+        invite(ORG, boss, { email: "ana@ejemplo.com", role: "publisher", allBusinesses: true, businessIds: [] }, "es"),
+      ]);
+      for (const r of both) if (r.status === "rejected") expect(String(r.reason)).not.toMatch(/deadlock/i);
+    }
   });
 
   it("an owner who already had another role in the main organization is made Administrator when signing in", async () => {

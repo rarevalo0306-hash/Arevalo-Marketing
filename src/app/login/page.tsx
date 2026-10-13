@@ -6,8 +6,8 @@ import { getT } from "@/lib/i18n-server";
 
 export const dynamic = "force-dynamic";
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ google?: string; e?: string; m?: string; next?: string }> }) {
-  const { google, e, m, next } = await searchParams;
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ google?: string; e?: string; m?: string; next?: string; aceptada?: string }> }) {
+  const { google, e, m, next, aceptada } = await searchParams;
   const { t } = await getT();
   const withGoogle = googleLoginEnabled();
   // Viene de una invitación (?next=/invitacion/…): después de entrar vuelve ahí para aceptarla. Con Google se va a la
@@ -40,6 +40,14 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       <div className="card">
         <h1 className="login-name">Matya</h1>
         {inviteToken && <p className="note info">{t("Entra con tu cuenta para aceptar la invitación.", "Sign in with your account to accept the invitation.")}</p>}
+        {aceptada === "1" && (
+          <p className="note info">
+            {t(
+              "Ya eres parte del equipo. Por seguridad, vuelve a entrar: con Google, o elige una contraseña nueva en «¿Olvidaste tu contraseña?».",
+              "You're on the team now. For security, sign in again: with Google, or choose a new password with \"Forgot your password?\".",
+            )}
+          </p>
+        )}
         {withGoogle && (
           <>
             {/* Siempre en la dirección principal: ahí vuelve Google y ahí queda la cookie del intento. */}

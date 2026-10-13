@@ -7,7 +7,7 @@
 // Una contraseña elegida con un enlace que pudo ver un Administrador guarda de qué organización era (passwordOrgId):
 // deja de servir si la persona entra a otra organización (src/lib/accounts.ts checkPassword).
 import type { Prisma } from "@prisma/client";
-import { isOwnerEmail, looksLikeEmail, mainOrganizationId, normalizeEmail } from "@/lib/accounts";
+import { isOwnerEmail, looksLikeEmail, mainOrganizationId, makeOwnerAdmin, normalizeEmail } from "@/lib/accounts";
 import { sendAuthEmail } from "@/lib/auth-email";
 import { db } from "@/lib/db";
 import { appBase } from "@/lib/google-login";
@@ -202,6 +202,8 @@ export async function acceptInvitation(token: string, rawEmail: string, opts: { 
   const passwordHash = opts.newPassword ? await hashPassword(opts.newPassword) : "";
   const name = (opts.name ?? "").trim().slice(0, 120);
   return db.$transaction(async (tx) => {
+    // Primero la organización (en el mismo orden que invitar o cambiar el equipo, para que nunca se esperen en cruz).
+    await tx.$queryRaw`SELECT id FROM "Organization" WHERE id = ${inv.organizationId} FOR KEY SHARE`;
     // El enlace sirve una vez: si otro lo usó al mismo tiempo, este no cambia nada.
     const used = await tx.invitation.updateMany({ where: { id: inv.id, acceptedAt: null, canceledAt: null, expiresAt: { gt: new Date() } }, data: { acceptedAt: new Date() } });
     if (used.count !== 1) return null;
@@ -356,6 +358,8 @@ export async function completeReset(token: string, password: string): Promise<{ 
     if (!resetUsable(r)) return null;
     const used = await tx.passwordReset.updateMany({ where: { id: r.id, usedAt: null, expiresAt: { gt: new Date() } }, data: { usedAt: new Date() } });
     if (used.count !== 1) return null;
+    // Un dueño que entra así también queda Administrador de la organización principal (como al entrar con contraseña o Google).
+    if (isOwnerEmail(r.user.email)) await makeOwnerAdmin(tx, r.userId, r.user.email);
     return tx.user.update({
       where: { id: r.userId },
       data: { passwordHash, passwordOrgId: r.organizationId, sessionVersion: { increment: 1 }, lastLoginAt: new Date() },

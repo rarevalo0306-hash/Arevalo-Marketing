@@ -24,6 +24,18 @@ export async function mainOrganizationId(client: Pick<Prisma.TransactionClient, 
   return main?.id ?? null;
 }
 
+/** Deja a un dueño como Administrador (con todas las empresas) de la organización principal; si no hay ninguna, crea una personal. */
+export async function makeOwnerAdmin(tx: Prisma.TransactionClient, userId: string, label: string): Promise<void> {
+  const organizationId = (await mainOrganizationId(tx)) ?? (await tx.organization.create({ data: { name: label, kind: "personal" }, select: { id: true } })).id;
+  const m = await tx.membership.upsert({
+    where: { userId_organizationId: { userId, organizationId } },
+    create: { userId, organizationId, role: "admin", allBusinesses: true },
+    update: { role: "admin", allBusinesses: true },
+    select: { id: true },
+  });
+  await tx.membershipBusiness.deleteMany({ where: { membershipId: m.id } });
+}
+
 /**
  * Busca o crea a la persona y la deja lista para entrar. Devuelve null si no puede entrar.
  * Un dueño siempre queda como Administrador (con todas las empresas) de la organización principal (la más antigua: la
@@ -47,14 +59,7 @@ export async function loginUser(rawEmail: string, opts: { owner: boolean; name?:
     if (!opts.owner && !user?._count.memberships) return null;
     user ??= await tx.user.create({ data: { email, name }, select });
     if (opts.owner) {
-      const organizationId = (await mainOrganizationId(tx)) ?? (await tx.organization.create({ data: { name: name || email, kind: "personal" }, select: { id: true } })).id;
-      const m = await tx.membership.upsert({
-        where: { userId_organizationId: { userId: user.id, organizationId } },
-        create: { userId: user.id, organizationId, role: "admin", allBusinesses: true },
-        update: { role: "admin", allBusinesses: true },
-        select: { id: true },
-      });
-      await tx.membershipBusiness.deleteMany({ where: { membershipId: m.id } });
+      await makeOwnerAdmin(tx, user.id, name || email);
       if (user.passwordOrgId) user = await tx.user.update({ where: { id: user.id }, data: { passwordHash: "", passwordOrgId: "", sessionVersion: { increment: 1 } }, select });
     }
     await tx.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date(), ...(name && !user.name && { name }) } });
@@ -76,13 +81,15 @@ export async function verifyLogin(rawEmail: string, password: string): Promise<{
     : null;
   const own = await verifyPassword(password, user?.passwordHash ?? "");
   const seen = { sessionVersion: user?.sessionVersion ?? null };
-  if (user?.passwordHash) {
+  const owner = isOwnerEmail(email);
+  // La contraseña atada de un dueño nunca cuenta: es como si no tuviera (entra con APP_PASSWORD o Google, y al entrar se borra).
+  if (user?.passwordHash && !(user.passwordOrgId && owner)) {
     const tied = user.passwordOrgId;
-    const trusted = !tied || (!isOwnerEmail(email) && user.memberships.length > 0 && user.memberships.every((m) => m.organizationId === tied));
+    const trusted = !tied || (user.memberships.length > 0 && user.memberships.every((m) => m.organizationId === tied));
     return own && trusted ? seen : false;
   }
   const appPassword = process.env.APP_PASSWORD?.trim() ?? "";
-  return Boolean(appPassword) && isOwnerEmail(email) && safeEqual(password, appPassword) ? seen : false;
+  return Boolean(appPassword) && owner && safeEqual(password, appPassword) ? seen : false;
 }
 
 /** ¿Correo y contraseña son correctos? (verifyLogin sin la versión.) */
