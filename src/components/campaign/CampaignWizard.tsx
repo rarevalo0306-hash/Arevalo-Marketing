@@ -495,6 +495,7 @@ export function CampaignWizard(p: Props) {
               {t(...NEED_NAMES[n])}
             </label>
           ))}
+          <p className={s.help}>{t("Las subidas a YouTube siempre esperan tu aprobación, incluso en 100% IA.", "YouTube uploads always wait for your approval, even in 100% AI.")}</p>
         </fieldset>
 
         <div className={s.field}>

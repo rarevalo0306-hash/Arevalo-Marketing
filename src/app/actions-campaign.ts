@@ -244,15 +244,16 @@ export async function approveCampaignDraft(businessId: string, campaignId: strin
   const c = await db.campaign.findFirst({ where: { id: campaignId, businessId }, select: { name: true, status: true } });
   // Si su hora ya pasó, sale en la próxima hora.
   if (post.scheduledAt.getTime() < Date.now()) await db.post.update({ where: { id: postId }, data: { scheduledAt: new Date(Date.now() + 60 * 60000) } });
-  await approveDraft(businessId, postId, f);
-  await logAiAction({
-    businessId,
-    campaignId,
-    postId,
-    kind: "post.approved",
-    actor: "owner",
-    summary: { es: `Aprobaste un borrador de la campaña «${c?.name ?? ""}»: quedó programado.`, en: `You approved a draft of the campaign “${c?.name ?? ""}”: it's now scheduled.` },
-  });
+  // Solo se anota si de verdad se aprobó (por ejemplo, un video para YouTube sin sus campos no se aprueba).
+  if (await approveDraft(businessId, postId, f))
+    await logAiAction({
+      businessId,
+      campaignId,
+      postId,
+      kind: "post.approved",
+      actor: "owner",
+      summary: { es: `Aprobaste un borrador de la campaña «${c?.name ?? ""}»: quedó programado.`, en: `You approved a draft of the campaign “${c?.name ?? ""}”: it's now scheduled.` },
+    });
   paths(businessId, campaignId);
 }
 

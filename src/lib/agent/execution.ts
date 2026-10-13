@@ -464,9 +464,10 @@ async function prepareCampaign(run: AgentRun): Promise<StepResult> {
         facebook: videoData.texts.facebook,
       }
     : copy.variants;
+  // Sin YouTube: el agente nunca sube videos a YouTube; esa subida siempre la aprueba una persona (Videos o Campañas).
   const supported =
     run.kind === "video"
-      ? ["facebook", "instagram", "tiktok", "youtube"]
+      ? ["facebook", "instagram", "tiktok"]
       : Object.keys(copy.variants);
   const channels = s.channels.filter(
     (x) => supported.includes(x) && connected.some((c) => c.channel === x),

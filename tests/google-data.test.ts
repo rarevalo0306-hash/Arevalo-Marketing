@@ -181,7 +181,7 @@ describe("checkGoogleConnections", () => {
 
   it("invalid_client, 5xx o falta de datos nunca marcan el permiso como quitado, pero sí guardan checkedAt", async () => {
     mockGoogle();
-    m.conns = [conn("a", "gsc", { refreshToken: "badclient" }), conn("b", "ga4", { refreshToken: "down" }), conn("c", "gsc", { refreshToken: "ok", clientId: "" })];
+    m.conns = [conn("a", "gsc", { refreshToken: "badclient" }), conn("b", "ga4", { refreshToken: "down" }), conn("c", "gsc", { refreshToken: "ok", clientId: "own-client", clientSecret: "" })];
     const sum = await checkGoogleConnections(now, { budgetMs: 30_000 });
     expect(sum).toEqual({ checked: 3, revoked: 0, purged: 0, errors: 3 });
     for (const w of writes()) {

@@ -32,6 +32,7 @@ import {
   SAFETY_TOPICS,
   slotCounts,
   slotKey,
+  statusForErrors,
   writeLang,
   type CampaignRules,
   type CheckCounts,
@@ -218,18 +219,20 @@ async function createCampaignPost(campaignId: string, data: Prisma.PostUnchecked
 /**
  * Videos de campaña que se están creando (src/lib/video-campaign.ts): se avanzan y, al estar listos, la publicación
  * toma el video y queda como debía (programada en 100% IA, o borrador para aprobar). Si falla, queda como borrador.
+ * Con YouTube entre sus canales nunca se programa sola: una persona aprueba la subida (también los pendientes de antes).
  */
 async function pollVideos(c: Campaign, pending: PendingVideo[], now: Date): Promise<PendingVideo[]> {
   const keep: PendingVideo[] = [...pending.slice(3)];
   for (const v of pending.slice(0, 3)) {
-    const post = await db.post.findFirst({ where: { id: v.postId, campaignId: c.id }, select: { id: true, status: true, scheduledAt: true } });
+    const post = await db.post.findFirst({ where: { id: v.postId, campaignId: c.id }, select: { id: true, status: true, scheduledAt: true, targets: { select: { channel: true } } } });
     if (!post || post.status !== "draft") continue;
     const job = await pollCampaignVideo(c.businessId, v.projectId);
     const old = now.getTime() - Date.parse(v.since) > 24 * 3600000;
     if (job?.status === "ready" && job.videoUrl) {
       await db.post.update({ where: { id: post.id }, data: { mediaUrl: job.videoUrl, mediaType: "video" } });
+      const youtube = post.targets.some((t) => t.channel === "youtube");
       let scheduled = false;
-      if (v.want === "scheduled" && post.scheduledAt.getTime() > now.getTime() + 5 * 60000) {
+      if (v.want === "scheduled" && !youtube && post.scheduledAt.getTime() > now.getTime() + 5 * 60000) {
         const r = await db.post.updateMany({ where: { id: post.id, status: "draft", campaign: { is: { status: "active" } } }, data: { status: "scheduled" } });
         scheduled = r.count > 0;
       }
@@ -240,7 +243,12 @@ async function pollVideos(c: Campaign, pending: PendingVideo[], now: Date): Prom
         kind: scheduled ? "post.scheduled" : "video.ready",
         summary: scheduled
           ? { es: "El video quedó listo y la publicación quedó programada.", en: "The video is ready and the post is now scheduled." }
-          : { es: "El video quedó listo: la publicación espera tu aprobación.", en: "The video is ready: the post is waiting for your approval." },
+          : youtube
+            ? {
+                es: "El video quedó listo. Las subidas a YouTube necesitan tu aprobación, así que la publicación te espera.",
+                en: "The video is ready. YouTube uploads need your approval, so the post is waiting for you.",
+              }
+            : { es: "El video quedó listo: la publicación espera tu aprobación.", en: "The video is ready: the post is waiting for your approval." },
       });
     } else if (!job || job.status === "failed" || old) {
       if (job && job.status !== "failed" && !old) {
@@ -308,9 +316,10 @@ async function runOne(claim: Claimed, now: Date, sum: RunSummary, deadline: numb
     where: { campaignId: c.id, status: { in: ["done", "partial", "failed"] }, ...(engine.resetAt ? { scheduledAt: { gt: new Date(engine.resetAt) } } : {}) },
     orderBy: { scheduledAt: "desc" },
     take: 12,
-    select: { status: true },
+    select: { status: true, targets: { select: { status: true, detail: true } } },
   });
-  const failed = failuresInRow(finished.map((p) => p.status));
+  // Lo que YouTube saltó por falta de aprobación no es un error de la campaña (no la pausa).
+  const failed = failuresInRow(finished.map(statusForErrors));
   if (failed >= rules.stopOnErrors || engine.errorsInRow >= rules.stopOnErrors) {
     const n = Math.max(failed, engine.errorsInRow);
     await pauseCampaign(c.businessId, c.id, {
@@ -418,7 +427,8 @@ async function runOne(claim: Claimed, now: Date, sum: RunSummary, deadline: numb
         if (txt?.trim()) (fields.variants as Record<string, string>)[ch] = txt;
       if (vt.title?.trim()) fields.seoTitle = vt.title.slice(0, 100);
     }
-    const check = checkPost(rules, c, { texts: postTexts(post), channels: targets, scheduledAt: slot, aiCostCents: media.costCents, aiImage: media.aiImage }, counts(), now);
+    // Un video con YouTube siempre queda como borrador para que una persona apruebe la subida (también en 100% IA).
+    const check = checkPost(rules, c, { texts: postTexts(post), channels: targets, scheduledAt: slot, aiCostCents: media.costCents, aiImage: media.aiImage, video: !!video }, counts(), now);
     const status = decideStatus(c.mode, check);
     if (!status) {
       if (media.costCents) {

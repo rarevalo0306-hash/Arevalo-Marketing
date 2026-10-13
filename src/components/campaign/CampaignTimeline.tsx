@@ -1,15 +1,19 @@
+import Link from "next/link";
 import { approveCampaignDraft, discardCampaignDraft } from "@/app/actions-campaign";
+import { YoutubeOptionsFields } from "@/components/posts/YoutubeOptionsFields";
 import { kindLabel } from "@/lib/campaign-shape";
 import { channelName } from "@/lib/channels";
 import type { UiLang } from "@/lib/i18n";
 import { translator } from "@/lib/i18n";
 import { businessDay, fmtDate, fmtTime } from "@/lib/time";
+import { readYoutubeApproval, youtubeSummary, youtubeTags, youtubeTitleFor } from "@/lib/youtube-options";
 import s from "./Campaign.module.css";
 
 export type TimelinePost = {
   id: string;
   text: string;
   subject: string;
+  seoTitle: string;
   variants: unknown;
   status: string;
   source: string;
@@ -47,6 +51,8 @@ export function CampaignTimeline({
   campaignId,
   cancelled,
   lang,
+  businessName,
+  keywords,
 }: {
   posts: TimelinePost[];
   upcoming: Date[];
@@ -55,6 +61,9 @@ export function CampaignTimeline({
   /** La campaña está parada o terminada: los borradores quedaron cancelados. */
   cancelled: boolean;
   lang: UiLang;
+  /** Para sugerir el título y las etiquetas de YouTube de los videos por aprobar. */
+  businessName: string;
+  keywords: string[];
 }) {
   const t = translator(lang);
   type Entry = { at: Date; post?: TimelinePost };
@@ -74,7 +83,7 @@ export function CampaignTimeline({
           <div className={s.dayHead}>{new Intl.DateTimeFormat(lang === "en" ? "en-US" : "es", { weekday: "long", timeZone: "UTC" }).format(new Date(`${day}T12:00:00Z`))} · {fmtDate(list[0].at, lang)}</div>
           {list.map((e, i) =>
             e.post ? (
-              <PostItem key={e.post.id} p={e.post} businessId={businessId} campaignId={campaignId} cancelled={cancelled} lang={lang} />
+              <PostItem key={e.post.id} p={e.post} businessId={businessId} campaignId={campaignId} cancelled={cancelled} lang={lang} businessName={businessName} keywords={keywords} />
             ) : (
               <div key={`u${i}`} className={`${s.item} ${s.ghost}`}>
                 <div className={s.itemMeta}>
@@ -90,10 +99,35 @@ export function CampaignTimeline({
   );
 }
 
-function PostItem({ p, businessId, campaignId, cancelled, lang }: { p: TimelinePost; businessId: string; campaignId: string; cancelled: boolean; lang: UiLang }) {
+function PostItem({
+  p,
+  businessId,
+  campaignId,
+  cancelled,
+  lang,
+  businessName,
+  keywords,
+}: {
+  p: TimelinePost;
+  businessId: string;
+  campaignId: string;
+  cancelled: boolean;
+  lang: UiLang;
+  businessName: string;
+  keywords: string[];
+}) {
   const t = translator(lang);
-  const variants = (p.variants && typeof p.variants === "object" ? p.variants : {}) as Record<string, string>;
-  const main = (variants.facebook || p.text || "").trim();
+  const variants = (p.variants && typeof p.variants === "object" ? p.variants : {}) as Record<string, unknown>;
+  const textOf = (ch: string) => (typeof variants[ch] === "string" ? (variants[ch] as string) : "");
+  const main = (textOf("facebook") || p.text || "").trim();
+  const video = p.kind === "video" || p.mediaType === "video";
+  const hasYoutube = p.targets.some((x) => x.channel === "youtube");
+  // Un video para YouTube no se aprueba con un clic: la persona revisa y elige lo que se sube.
+  const ytDraft = p.status === "draft" && video && !!p.mediaUrl && hasYoutube;
+  const approved = hasYoutube && video ? readYoutubeApproval(p.variants, p.mediaUrl) : null;
+  // Los borradores del agente se aprueban en MATYA.
+  const agent = p.id.startsWith("agent-");
+  const ytText = textOf("youtube") || p.text;
   return (
     <article className={s.item}>
       {p.mediaUrl && p.mediaType === "photo" ? (
@@ -110,22 +144,33 @@ function PostItem({ p, businessId, campaignId, cancelled, lang }: { p: TimelineP
           <span>· {p.targets.map((x) => channelName(x.channel, lang)).join(", ")}</span>
         </div>
         <p className={s.itemText}>{main}</p>
+        {approved && p.status !== "draft" && <p className="small muted" style={{ margin: 0, overflowWrap: "anywhere" }}>{youtubeSummary(approved, lang)}</p>}
         {p.status === "draft" && p.kind === "video" && !p.mediaUrl && (
           <p className="small muted" style={{ margin: 0 }}>{t("El video se está creando. Podrás aprobarlo cuando esté listo.", "The video is being made. You can approve it when it's ready.")}</p>
         )}
-        {p.status === "draft" && !(p.kind === "video" && !p.mediaUrl) && (
+        {p.status === "draft" && agent && (
+          <p className="small muted" style={{ margin: 0 }}>
+            {t("Este borrador es de MATYA: apruébalo en ", "This draft belongs to MATYA: approve it in ")}
+            <Link href={`/b/${businessId}/matya`}>MATYA</Link>.
+          </p>
+        )}
+        {p.status === "draft" && !agent && !(p.kind === "video" && !p.mediaUrl) && (
           <>
             <div className="row">
-              <form action={approveCampaignDraft.bind(null, businessId, campaignId, p.id)}>
-                <button className="btn on" type="submit">{t("Aprobar", "Approve")}</button>
-              </form>
+              {ytDraft ? (
+                <p className="small muted" style={{ margin: 0 }}>{t("Revisa los datos de YouTube abajo para aprobar.", "Review the YouTube details below to approve.")}</p>
+              ) : (
+                <form action={approveCampaignDraft.bind(null, businessId, campaignId, p.id)}>
+                  <button className="btn on" type="submit">{t("Aprobar", "Approve")}</button>
+                </form>
+              )}
               {p.source === "ai" && (
                 <form action={discardCampaignDraft.bind(null, businessId, campaignId, p.id)}>
                   <button className="btn danger" type="submit">{t("Descartar", "Discard")}</button>
                 </form>
               )}
             </div>
-            <details className={s.edit}>
+            <details className={s.edit} open={ytDraft}>
               <summary>{t("Editar antes de aprobar", "Edit before approving")}</summary>
               <form action={approveCampaignDraft.bind(null, businessId, campaignId, p.id)} className="stack" style={{ gap: 10, marginTop: 10 }}>
                 {p.targets.some((x) => x.channel === "email") && (
@@ -134,14 +179,27 @@ function PostItem({ p, businessId, campaignId, cancelled, lang }: { p: TimelineP
                     <input id={`${p.id}-subject`} name="subject" className="field" defaultValue={p.subject} />
                   </div>
                 )}
-                {p.targets.map((x) => (
-                  <div key={x.id} className="stack" style={{ gap: 4 }}>
-                    <label className="small" style={{ fontWeight: 700 }} htmlFor={`${p.id}-${x.channel}`}>{channelName(x.channel, lang)}</label>
-                    <textarea id={`${p.id}-${x.channel}`} name={`v_${x.channel}`} className="field" style={{ minHeight: x.channel === "sms" || x.channel === "x" ? 70 : 130 }} defaultValue={variants[x.channel] ?? p.text} />
-                  </div>
-                ))}
+                {p.targets
+                  .filter((x) => !(ytDraft && x.channel === "youtube"))
+                  .map((x) => (
+                    <div key={x.id} className="stack" style={{ gap: 4 }}>
+                      <label className="small" style={{ fontWeight: 700 }} htmlFor={`${p.id}-${x.channel}`}>{channelName(x.channel, lang)}</label>
+                      <textarea id={`${p.id}-${x.channel}`} name={`v_${x.channel}`} className="field" style={{ minHeight: x.channel === "sms" || x.channel === "x" ? 70 : 130 }} defaultValue={typeof variants[x.channel] === "string" ? textOf(x.channel) : p.text} />
+                    </div>
+                  ))}
+                {ytDraft && (
+                  <YoutubeOptionsFields
+                    lang={lang}
+                    idPrefix={p.id}
+                    mediaUrl={p.mediaUrl}
+                    title={approved?.title ?? youtubeTitleFor({ seoTitle: p.seoTitle, text: ytText, businessName })}
+                    description={approved?.description ?? ytText}
+                    tags={approved?.tags ?? youtubeTags(ytText, keywords)}
+                    verb="approve"
+                  />
+                )}
                 <div>
-                  <button className="btn on" type="submit">{t("Guardar y aprobar", "Save and approve")}</button>
+                  <button className="btn on" type="submit">{ytDraft ? t("Aprobar y programar, con YouTube", "Approve and schedule, including YouTube") : t("Guardar y aprobar", "Save and approve")}</button>
                 </div>
               </form>
             </details>

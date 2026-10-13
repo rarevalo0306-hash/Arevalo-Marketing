@@ -16,6 +16,7 @@ import { asMode, campaignSlots, centsText, readEngine, slotCounts, slotKey } fro
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
 import { businessDay, businessTzLabel } from "@/lib/time";
+import { youtubeKeywords } from "@/lib/youtube-options";
 
 // Aprobar publica a su hora; «Guardar y aprobar» puede tardar un poco.
 export const maxDuration = 60;
@@ -35,7 +36,7 @@ export default async function CampaignPage({ params, searchParams }: { params: P
       where: { campaignId },
       orderBy: { scheduledAt: "asc" },
       take: 200,
-      select: { id: true, text: true, subject: true, variants: true, status: true, source: true, kind: true, mediaUrl: true, mediaType: true, altText: true, scheduledAt: true, targets: { select: { id: true, channel: true, status: true } } },
+      select: { id: true, text: true, subject: true, seoTitle: true, variants: true, status: true, source: true, kind: true, mediaUrl: true, mediaType: true, altText: true, scheduledAt: true, targets: { select: { id: true, channel: true, status: true } } },
     }),
     recentAiActions(id, { campaignId, limit: 60 }),
     aiSpentCents(campaignId),
@@ -152,7 +153,7 @@ export default async function CampaignPage({ params, searchParams }: { params: P
                 {t(`${drafts} borrador(es) esperan tu aprobación. Nada sale sin que lo apruebes.`, `${drafts} draft(s) are waiting for your approval. Nothing goes out until you approve it.`)}
               </p>
             )}
-            <CampaignTimeline posts={posts} upcoming={upcoming} businessId={id} campaignId={c.id} cancelled={closed} lang={lang} />
+            <CampaignTimeline posts={posts} upcoming={upcoming} businessId={id} campaignId={c.id} cancelled={closed} lang={lang} businessName={b.name} keywords={youtubeKeywords(b.study)} />
           </div>
           <div className="stack" style={{ gap: 16 }}>
             <div className="card" style={{ gap: 8 }}>

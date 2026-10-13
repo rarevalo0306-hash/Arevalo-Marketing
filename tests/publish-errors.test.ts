@@ -4,6 +4,7 @@ vi.mock("@/lib/db", () => ({ db: {} }));
 
 import { decideReconnect } from "@/lib/connection-health";
 import { classifyFailure, explainFailure, explainSent, needsReconnect, ownerMustAct, viewLabel } from "@/lib/publish-errors";
+import { YOUTUBE_NEEDS_APPROVAL } from "@/lib/youtube-options";
 
 const PERM =
   "400: Any of the pages_read_engagement, pages_manage_metadata, pages_read_user_content, pages_manage_ads, pages_show_list or pages_messaging permission(s) must be granted before impersonating a user's page.";
@@ -81,11 +82,27 @@ describe("errores de publicación en palabras sencillas", () => {
     expect(needsReconnect("No hay contactos con email que hayan aceptado recibir correos.", "email")).toBe(false);
     expect(needsReconnect("500: boom", "facebook")).toBe(false);
   });
+  it("YouTube sin aprobación: el dueño tiene que revisarlo y aprobarlo (no es un error de conexión)", () => {
+    expect(classifyFailure(YOUTUBE_NEEDS_APPROVAL, "youtube")).toBe("needs-approval");
+    expect(ownerMustAct("needs-approval")).toBe(true);
+    expect(needsReconnect(YOUTUBE_NEEDS_APPROVAL, "youtube")).toBe(false);
+    const en = explainFailure("youtube", YOUTUBE_NEEDS_APPROVAL, "en", BIZ);
+    expect(en.message).toBe("YouTube: not uploaded. This video needs your approval first: review its title, description, tags and visibility, then approve it.");
+    expect(en.ownerMustAct).toBe(true);
+    expect(en.action?.href).toBe("/b/biz1/videos");
+    expect(explainFailure("youtube", YOUTUBE_NEEDS_APPROVAL, "es", BIZ).message).toMatch(/^YouTube: no se subió\. Este video necesita tu aprobación/);
+  });
   it("lo que salió bien", () => {
     expect(viewLabel("facebook", "es")).toBe("Ver en Facebook");
     expect(viewLabel("instagram", "en")).toBe("See on Instagram");
     expect(explainSent("email", "Email enviado a 3 contactos", "en")).toBe("Email sent to 3 contacts");
     expect(explainSent("tiktok", "Enviado a TikTok, se procesa en unos minutos. Id v_123", "es")).toBe("Enviado a TikTok, se procesa en unos minutos");
+    // YouTube dice con qué privacidad se subió.
+    const yt = "Subido a YouTube como no listado (Short); YouTube lo procesa en unos minutos. Id abc";
+    expect(explainSent("youtube", yt, "en")).toBe("Uploaded to YouTube as Unlisted (Short); YouTube processes it in a few minutes");
+    expect(explainSent("youtube", yt, "es")).toBe("Subido a YouTube como no listado (Short); YouTube lo procesa en unos minutos");
+    expect(explainSent("youtube", "Subido a YouTube como privado; YouTube lo procesa en unos minutos. Id x", "en")).toBe("Uploaded to YouTube as Private; YouTube processes it in a few minutes");
+    expect(explainSent("youtube", "Subido a YouTube como Short; YouTube lo procesa en unos minutos. Id x", "en")).toBe("Posted on YouTube");
   });
 });
 

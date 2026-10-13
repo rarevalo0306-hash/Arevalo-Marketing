@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { approveDraft, deletePost, generatePlan, stormCampaign } from "@/app/actions";
+import { approvePlanDraft, deletePost, generatePlan, stormCampaign } from "@/app/actions";
 import { PageHead } from "@/components/PageHead";
 import { PlanForm } from "@/components/PlanForm";
+import { YoutubeOptionsFields } from "@/components/posts/YoutubeOptionsFields";
 import { StormForm } from "@/components/StormForm";
 import { aiEnabled } from "@/lib/ai";
 import { pageBusiness } from "@/lib/auth";
@@ -10,6 +11,7 @@ import { db } from "@/lib/db";
 import { intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { BUSINESS_TZ } from "@/lib/time";
+import { readYoutubeApproval, youtubeKeywords, youtubeTags, youtubeTitleFor } from "@/lib/youtube-options";
 
 // La IA puede tardar en escribir una semana completa.
 export const maxDuration = 300;
@@ -30,6 +32,7 @@ export default async function PlanPage({ params }: { params: Promise<{ id: strin
   const today = new Date().toLocaleDateString("en-CA", { timeZone: BUSINESS_TZ });
   const nowLocal = `${today}T${new Date().toLocaleTimeString("en-GB", { timeZone: BUSINESS_TZ, hour: "2-digit", minute: "2-digit" })}`;
   const channelList = CHANNELS.map((c) => ({ id: c.id, name: channelName(c.id, lang), connected: connected.has(c.id) }));
+  const keywords = youtubeKeywords(b.study);
 
   return (
     <>
@@ -64,10 +67,19 @@ export default async function PlanPage({ params }: { params: Promise<{ id: strin
           <h2 style={{ marginTop: 8 }}>{t("Borradores por aprobar", "Drafts to approve")} ({drafts.length})</h2>
           {drafts.length === 0 && <div className="card empty">{t("No hay borradores. Crea un plan arriba.", "No drafts. Create a plan above.")}</div>}
           {drafts.map((p) => {
-            const variants = (p.variants ?? {}) as Record<string, string>;
+            const variants = (p.variants ?? {}) as Record<string, unknown>;
+            const textOr = (ch: string) => (typeof variants[ch] === "string" ? (variants[ch] as string) : p.text);
+            const video = p.kind === "video" || p.mediaType === "video";
+            // Un video para YouTube se aprueba revisando lo que se sube (título, etiquetas, quién lo ve, para niños).
+            const ytDraft = video && !!p.mediaUrl && p.targets.some((x) => x.channel === "youtube");
+            const before = ytDraft ? readYoutubeApproval(p.variants, p.mediaUrl) : null;
+            const ytText = (typeof variants.youtube === "string" && variants.youtube.trim()) || p.text;
+            // Los del agente se aprueban en MATYA; un video que se está creando, cuando esté listo.
+            const agent = p.id.startsWith("agent-");
+            const rendering = video && !p.mediaUrl;
             return (
               <article key={p.id} className="card">
-                <form action={approveDraft.bind(null, id, p.id)} className="stack" style={{ gap: 12 }}>
+                <form action={approvePlanDraft.bind(null, id, p.id)} className="stack" style={{ gap: 12 }}>
                   <div className="row between">
                     <div className="row">
                       <span className="pill draft">{t("Borrador", "Draft")}</span>
@@ -89,21 +101,45 @@ export default async function PlanPage({ params }: { params: Promise<{ id: strin
                       <input id={`${p.id}-subject`} name="subject" className="field" defaultValue={p.subject} />
                     </div>
                   )}
-                  {p.targets.map((x) => (
-                    <div key={x.id} className="stack" style={{ gap: 4 }}>
-                      <label className="small" style={{ fontWeight: 600 }} htmlFor={`${p.id}-${x.channel}`}>{channelName(x.channel, lang)}</label>
-                      <textarea
-                        id={`${p.id}-${x.channel}`}
-                        name={`v_${x.channel}`}
-                        className="field"
-                        style={{ minHeight: x.channel === "sms" ? 70 : 140 }}
-                        defaultValue={variants[x.channel] ?? p.text}
-                      />
-                    </div>
-                  ))}
+                  {p.targets
+                    .filter((x) => !(ytDraft && x.channel === "youtube"))
+                    .map((x) => (
+                      <div key={x.id} className="stack" style={{ gap: 4 }}>
+                        <label className="small" style={{ fontWeight: 600 }} htmlFor={`${p.id}-${x.channel}`}>{channelName(x.channel, lang)}</label>
+                        <textarea
+                          id={`${p.id}-${x.channel}`}
+                          name={`v_${x.channel}`}
+                          className="field"
+                          style={{ minHeight: x.channel === "sms" ? 70 : 140 }}
+                          defaultValue={textOr(x.channel)}
+                        />
+                      </div>
+                    ))}
+                  {ytDraft && !agent && (
+                    <YoutubeOptionsFields
+                      lang={lang}
+                      idPrefix={p.id}
+                      mediaUrl={p.mediaUrl}
+                      title={before?.title ?? youtubeTitleFor({ seoTitle: p.seoTitle, text: ytText, businessName: b.name })}
+                      description={before?.description ?? ytText}
+                      tags={before?.tags ?? youtubeTags(ytText, keywords)}
+                      verb="approve"
+                    />
+                  )}
+                  {agent && (
+                    <p className="small muted" style={{ margin: 0 }}>
+                      {t("Este borrador es de MATYA: apruébalo en ", "This draft belongs to MATYA: approve it in ")}
+                      <Link href={`/b/${id}/matya`}>MATYA</Link>.
+                    </p>
+                  )}
+                  {rendering && !agent && (
+                    <p className="small muted" style={{ margin: 0 }}>{t("El video se está creando. Podrás aprobarlo cuando esté listo.", "The video is being made. You can approve it when it's ready.")}</p>
+                  )}
                   <div className="row">
-                    <button className="btn on" type="submit">{t("Aprobar y programar", "Approve and schedule")}</button>
-                    <button className="btn danger" type="submit" formAction={deletePost.bind(null, id, p.id)}>{t("Borrar", "Delete")}</button>
+                    {!agent && !rendering && (
+                      <button className="btn on" type="submit">{ytDraft ? t("Aprobar y programar, con YouTube", "Approve and schedule, including YouTube") : t("Aprobar y programar", "Approve and schedule")}</button>
+                    )}
+                    <button className="btn danger" type="submit" formAction={deletePost.bind(null, id, p.id)} formNoValidate>{t("Borrar", "Delete")}</button>
                   </div>
                 </form>
               </article>

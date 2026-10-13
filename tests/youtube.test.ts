@@ -4,8 +4,9 @@ import { notesFor } from "@/lib/channels";
 import { googleAuthUrl, googleStatePurpose, YOUTUBE_SCOPE } from "@/lib/google-oauth";
 import { readState } from "@/lib/meta-oauth";
 import { PUBLISHERS } from "@/lib/publishers";
-import { uploadInitRequest, youtube, youtubeMetadata, youtubeTags } from "@/lib/publishers/youtube";
+import { uploadInitRequest, youtube, youtubeMetadata, youtubeTags, youtubeUploadBody } from "@/lib/publishers/youtube";
 import { tagsLength } from "@/lib/video-plan";
+import { YOUTUBE_NEEDS_APPROVAL, type YoutubeApproval } from "@/lib/youtube-options";
 
 // DNS de mentira (sin red): "inside.example.com" apunta a la red interna, todo lo demás (x.supabase.co) a internet.
 vi.mock("dns/promises", () => ({
@@ -23,6 +24,18 @@ const base = {
   contacts: [],
 };
 const creds = { clientId: "cid", clientSecret: "sec", refreshToken: "rt" };
+// Lo que una persona revisó y aprobó para este video (sin esto no se sube nada).
+const approval: YoutubeApproval = {
+  title: "Cortinas metálicas en Managua | Fameseg #Shorts",
+  description: base.text,
+  tags: ["cortinas metálicas", "Managua"],
+  privacy: "unlisted",
+  madeForKids: false,
+  mediaUrl: base.mediaUrl,
+  approvedBy: "user1",
+  approvedAt: "2026-10-13T12:00:00.000Z",
+};
+const approved = { ...base, youtube: approval };
 
 type Call = { url: string; init: RequestInit };
 function mockFetch(handler: (url: string, init: RequestInit) => Response) {
@@ -41,7 +54,7 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
 afterEach(() => vi.unstubAllGlobals());
 
 describe("YouTube: lo que se manda", () => {
-  it("título del seoTitle (≤ 100), descripción del texto, etiquetas con palabras clave, público y no para niños", () => {
+  it("sugerencia: título del seoTitle (≤ 100), descripción del texto, etiquetas con palabras clave; sin privacidad", () => {
     const m = youtubeMetadata(base);
     expect(m.snippet.title).toBe("Cortinas metálicas en Managua | Fameseg #Shorts");
     expect(m.snippet.description).toBe(base.text);
@@ -49,7 +62,8 @@ describe("YouTube: lo que se manda", () => {
     expect(m.snippet.tags).toContain("Managua");
     expect(m.snippet.tags).not.toContain("Shorts");
     expect(m.snippet.categoryId).toBe("22");
-    expect(m.status).toEqual({ privacyStatus: "public", selfDeclaredMadeForKids: false, embeddable: true });
+    // La privacidad y «para niños» nunca se sugieren: las elige la persona.
+    expect(m).not.toHaveProperty("status");
   });
   it("sin seoTitle usa la primera línea sin hashtags ni enlaces, sin < > y como mucho 100 caracteres", () => {
     const m = youtubeMetadata({ ...base, seoTitle: "", text: `<b>${"Puertas enrollables ".repeat(8)}</b> https://x.com #tag\nOtra línea` });
@@ -62,14 +76,17 @@ describe("YouTube: lo que se manda", () => {
     expect(tagsLength(tags)).toBeLessThanOrEqual(500);
     expect(tags[0]).toBe("cortinas metálicas");
   });
-  it("arma la subida reanudable", () => {
-    const r = uploadInitRequest(youtubeMetadata(base), 1234, "video/mp4", "tok");
+  it("arma la subida reanudable con exactamente lo aprobado", () => {
+    const r = uploadInitRequest(youtubeUploadBody({ ...approval, privacy: "private", madeForKids: true }), 1234, "video/mp4", "tok");
     expect(r.url).toBe("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status");
     const h = r.init.headers as Record<string, string>;
     expect(h.Authorization).toBe("Bearer tok");
     expect(h["X-Upload-Content-Type"]).toBe("video/mp4");
     expect(h["X-Upload-Content-Length"]).toBe("1234");
-    expect(JSON.parse(String(r.init.body)).status.selfDeclaredMadeForKids).toBe(false);
+    expect(JSON.parse(String(r.init.body))).toEqual({
+      snippet: { title: approval.title, description: approval.description, tags: approval.tags, categoryId: "22" },
+      status: { privacyStatus: "private", selfDeclaredMadeForKids: true, embeddable: true },
+    });
   });
 });
 
@@ -82,7 +99,7 @@ describe("YouTube: publicar (sin subir de verdad)", () => {
       if (url.includes("upload_id=XYZ") && init.method === "PUT") return json({ id: "vid123" });
       return json({ error: { message: "unexpected" } }, 500);
     });
-    const r = await youtube.publish(base, creds);
+    const r = await youtube.publish(approved, creds);
     expect(calls.map((c) => c.url.split("?")[0])).toEqual([
       "https://oauth2.googleapis.com/token",
       base.mediaUrl,
@@ -95,12 +112,14 @@ describe("YouTube: publicar (sin subir de verdad)", () => {
     expect(init.method).toBe("POST");
     expect((init.headers as Record<string, string>)["X-Upload-Content-Length"]).toBe("4");
     const meta = JSON.parse(String(init.body));
-    expect(meta.snippet.title).toMatch(/#Shorts$/);
-    expect(meta.status.privacyStatus).toBe("public");
+    // Lo aprobado tal cual: título, descripción, etiquetas (no las palabras clave del estudio), privacidad y para niños.
+    expect(meta.snippet).toEqual({ title: approval.title, description: approval.description, tags: ["cortinas metálicas", "Managua"], categoryId: "22" });
+    expect(meta.status).toEqual({ privacyStatus: "unlisted", selfDeclaredMadeForKids: false, embeddable: true });
     expect(calls[3].init.method).toBe("PUT");
     expect((calls[3].init.body as Uint8Array).byteLength).toBe(4);
     expect(r.url).toBe("https://www.youtube.com/shorts/vid123");
     expect(r.detail).toContain("Short");
+    expect(r.detail).toMatch(/^Subido a YouTube como no listado \(Short\)/);
     expect(lookup).toHaveBeenCalledWith("x.supabase.co", expect.anything());
   });
   it("video horizontal (sin #Shorts): enlace normal", async () => {
@@ -111,8 +130,9 @@ describe("YouTube: publicar (sin subir de verdad)", () => {
       if (init.method === "PUT") return json({ id: "h1" });
       return json({}, 500);
     });
-    const r = await youtube.publish({ ...base, seoTitle: "Cortinas metálicas en Managua", text: "Video largo" }, creds);
+    const r = await youtube.publish({ ...approved, youtube: { ...approval, title: "Cortinas metálicas en Managua", description: "Video largo", privacy: "public" } }, creds);
     expect(r.url).toBe("https://youtu.be/h1");
+    expect(r.detail).toMatch(/^Subido a YouTube como público;/);
   });
   it("explica el límite de subidas", async () => {
     mockFetch((url) => {
@@ -120,7 +140,7 @@ describe("YouTube: publicar (sin subir de verdad)", () => {
       if (url === base.mediaUrl) return new Response(new Uint8Array([1]), { status: 200 });
       return json({ error: { message: "quota", errors: [{ reason: "uploadLimitExceeded" }] } }, 400);
     });
-    await expect(youtube.publish(base, creds)).rejects.toThrow("límite de subidas");
+    await expect(youtube.publish(approved, creds)).rejects.toThrow("límite de subidas");
   });
   it("no sube a una dirección que no es de Google", async () => {
     mockFetch((url) => {
@@ -128,12 +148,12 @@ describe("YouTube: publicar (sin subir de verdad)", () => {
       if (url === base.mediaUrl) return new Response(new Uint8Array([1]), { status: 200 });
       return new Response("", { status: 200, headers: { Location: "https://evil.example.com/upload" } });
     });
-    await expect(youtube.publish(base, creds)).rejects.toThrow("dirección para subir");
+    await expect(youtube.publish(approved, creds)).rejects.toThrow("dirección para subir");
   });
   it("no descarga un video de la red interna, ni siguiendo una redirección", async () => {
     for (const mediaUrl of ["https://inside.example.com/v.mp4", "https://169.254.169.254/latest/meta-data", "http://x.supabase.co/v.mp4"]) {
       const calls = mockFetch((url) => (url.includes("oauth2") ? json({ access_token: "AT" }) : json({}, 500)));
-      await expect(youtube.publish({ ...base, mediaUrl }, creds), mediaUrl).rejects.toThrow("dirección pública");
+      await expect(youtube.publish({ ...approved, mediaUrl }, creds), mediaUrl).rejects.toThrow("dirección pública");
       expect(calls.map((c) => c.url), mediaUrl).toEqual(["https://oauth2.googleapis.com/token"]);
     }
     for (const location of ["https://inside.example.com/v.mp4", "http://169.254.169.254/latest/meta-data", "https://[::ffff:7f00:1]/v.mp4"]) {
@@ -142,15 +162,34 @@ describe("YouTube: publicar (sin subir de verdad)", () => {
         if (url === base.mediaUrl) return new Response(null, { status: 302, headers: { Location: location } });
         return new Response(new Uint8Array([1]), { status: 200 });
       });
-      await expect(youtube.publish(base, creds), location).rejects.toThrow("dirección pública");
+      await expect(youtube.publish(approved, creds), location).rejects.toThrow("dirección pública");
       expect(calls.map((c) => c.url), location).toEqual(["https://oauth2.googleapis.com/token", base.mediaUrl]);
       expect(calls[1].init.redirect).toBe("manual");
     }
   });
   it("sin video no intenta nada", async () => {
     const calls = mockFetch(() => json({}));
-    await expect(youtube.publish({ ...base, mediaType: "photo" }, creds)).rejects.toThrow("necesita un video");
+    await expect(youtube.publish({ ...approved, mediaType: "photo" }, creds)).rejects.toThrow("necesita un video");
     expect(calls).toHaveLength(0);
+  });
+  it("sin la aprobación de una persona no sube nada: ni pide el token", async () => {
+    const calls = mockFetch(() => json({ access_token: "AT" }));
+    await expect(youtube.publish(base, creds)).rejects.toThrow(YOUTUBE_NEEDS_APPROVAL);
+    expect(calls).toHaveLength(0);
+  });
+  it("privado, para niños y sin etiquetas: se manda tal cual", async () => {
+    const calls = mockFetch((url, init) => {
+      if (url.includes("oauth2")) return json({ access_token: "AT" });
+      if (url === base.mediaUrl) return new Response(new Uint8Array([1]), { status: 200, headers: { "Content-Type": "video/mp4" } });
+      if (url.includes("uploadType=resumable")) return new Response("", { status: 200, headers: { Location: "https://www.googleapis.com/upload/youtube/v3/videos?upload_id=P" } });
+      if (init.method === "PUT") return json({ id: "p1" });
+      return json({}, 500);
+    });
+    const r = await youtube.publish({ ...approved, youtube: { ...approval, privacy: "private", madeForKids: true, tags: [] } }, creds);
+    const meta = JSON.parse(String(calls[2].init.body));
+    expect(meta.status).toEqual({ privacyStatus: "private", selfDeclaredMadeForKids: true, embeddable: true });
+    expect(meta.snippet.tags).toEqual([]);
+    expect(r.detail).toMatch(/^Subido a YouTube como privado/);
   });
   it("probar la conexión: nombre del canal", async () => {
     mockFetch((url) => (url.includes("oauth2") ? json({ access_token: "AT" }) : json({ items: [{ id: "UC1", snippet: { title: "Fameseg Nicaragua" } }] })));

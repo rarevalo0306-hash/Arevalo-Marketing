@@ -1,11 +1,10 @@
 // YouTube: sube el video al canal del negocio con la API de datos (videos.insert, subida reanudable).
-// - Título ≤ 100 caracteres (el seoTitle de la publicación, o la primera línea del texto), descripción ≤ 5000,
-//   etiquetas ≤ 500 caracteres con las palabras clave del negocio.
+// - Solo sube lo que aprobó una persona para ese video (input.youtube): título, descripción, etiquetas, privacidad
+//   (público, no listado o privado) y si es para niños. Sin aprobación no hace nada (ni pide el token).
 // - Los verticales cortos se ven como Shorts (YouTube los reconoce solo; el título y la descripción llevan #Shorts).
-// - Público y «no es para niños» (selfDeclaredMadeForKids: false).
 // Permisos: youtube.upload y youtube.readonly. La conexión guarda el refreshToken (y clientId/clientSecret solo si se pegó a mano con un cliente propio, ver googleClient).
 import { fetchMedia } from "@/lib/media";
-import { fitTags } from "@/lib/video-plan";
+import { cleanYoutubeDescription, PRIVACY_LABEL, YOUTUBE_NEEDS_APPROVAL, youtubeTags, youtubeTitleFor, type YoutubeApproval } from "@/lib/youtube-options";
 import { googleAccessToken } from "./google";
 import { fetchJson, PublishError } from "./http";
 import type { PublishInput, Publisher } from "./types";
@@ -15,35 +14,26 @@ const UPLOAD = "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=r
 /** 22 = «Gente y blogs» (la categoría más general); se puede cambiar con YOUTUBE_CATEGORY_ID. */
 const CATEGORY = () => (/^\d{1,3}$/.test(process.env.YOUTUBE_CATEGORY_ID ?? "") ? process.env.YOUTUBE_CATEGORY_ID! : "22");
 
-const noAngles = (s: string) => s.replace(/[<>]/g, "");
-const firstLine = (s: string) =>
-  s
-    .split("\n")
-    .map((l) => l.replace(/https?:\/\/\S+/g, "").replace(/#[\p{L}\p{N}_]+/gu, "").replace(/\s+/g, " ").trim())
-    .find(Boolean) ?? "";
+// Las sugerencias viven en youtube-options (sin fs: también las usan las pantallas).
+export { youtubeTags };
 
-/** «#CortinasMetalicas» → «Cortinas Metalicas». */
-const words = (tag: string) => tag.replace(/^#/, "").replace(/_/g, " ").replace(/([a-záéíóúñ])([A-ZÁÉÍÓÚÑ])/g, "$1 $2");
-
-/** Etiquetas: las palabras clave del negocio y los hashtags del texto (sin #Shorts), ≤ 500 caracteres. */
-export function youtubeTags(text: string, keywords: string[] = []): string[] {
-  const tags = [...text.matchAll(/#([\p{L}\p{N}_]{2,60})/gu)].map((m) => m[1]).filter((t) => t.toLowerCase() !== "shorts");
-  return fitTags([...keywords, ...tags.map(words)]);
+/** Lo que se sugiere para YouTube (la persona lo ve, lo cambia y lo aprueba): título, descripción y etiquetas. */
+export function youtubeMetadata(input: Pick<PublishInput, "text" | "seoTitle" | "businessName" | "keywords">) {
+  return {
+    snippet: { title: youtubeTitleFor(input), description: cleanYoutubeDescription(input.text), tags: youtubeTags(input.text, input.keywords ?? []), categoryId: CATEGORY() },
+  };
 }
 
-/** Lo que se manda a YouTube (sin subir nada): título, descripción, etiquetas, categoría y privacidad. */
-export function youtubeMetadata(input: Pick<PublishInput, "text" | "seoTitle" | "businessName" | "keywords">) {
-  const raw = noAngles(input.seoTitle.trim() || firstLine(input.text) || input.businessName).replace(/\s+/g, " ").trim();
-  const title = raw.length <= 100 ? raw : raw.slice(0, 101).replace(/\s+\S*$/, "").slice(0, 100);
-  const description = noAngles(input.text).slice(0, 5000);
+/** Lo que se manda a YouTube: exactamente lo que aprobó la persona. */
+export function youtubeUploadBody(a: YoutubeApproval) {
   return {
-    snippet: { title, description, tags: youtubeTags(input.text, input.keywords ?? []), categoryId: CATEGORY() },
-    status: { privacyStatus: "public" as const, selfDeclaredMadeForKids: false, embeddable: true },
+    snippet: { title: a.title, description: a.description, tags: a.tags, categoryId: CATEGORY() },
+    status: { privacyStatus: a.privacy, selfDeclaredMadeForKids: a.madeForKids, embeddable: true },
   };
 }
 
 /** El primer paso de la subida reanudable: pide la dirección donde se sube el archivo. */
-export function uploadInitRequest(meta: ReturnType<typeof youtubeMetadata>, size: number, contentType: string, token: string): { url: string; init: RequestInit } {
+export function uploadInitRequest(meta: ReturnType<typeof youtubeUploadBody>, size: number, contentType: string, token: string): { url: string; init: RequestInit } {
   return {
     url: UPLOAD,
     init: {
@@ -77,13 +67,16 @@ async function apiError(res: Response): Promise<PublishError> {
 export const youtube: Publisher = {
   async publish(input, creds) {
     if (input.mediaType !== "video" || !input.mediaUrl) throw new PublishError("YouTube necesita un video.");
+    // Nunca se sube nada que una persona no haya aprobado (antes de pedir el token o tocar la red).
+    if (!input.youtube) throw new PublishError(YOUTUBE_NEEDS_APPROVAL);
+    const approval = input.youtube;
     const token = await googleAccessToken(creds);
     // Solo archivos propios o direcciones públicas de internet (también en cada redirección): nunca la red interna.
     const file = await fetchMedia(input.mediaUrl, { cache: "no-store" });
     if (!file.ok) throw new PublishError(`No se pudo leer el video para subirlo (${file.status}).`);
     const data = new Uint8Array(await file.arrayBuffer());
     const type = (file.headers.get("content-type") || "video/mp4").split(";")[0].trim();
-    const meta = youtubeMetadata(input);
+    const meta = youtubeUploadBody(approval);
     const init = uploadInitRequest(meta, data.byteLength, type.startsWith("video/") ? type : "video/mp4", token);
     const start = await fetch(init.url, { ...init.init, cache: "no-store" });
     if (!start.ok) throw await apiError(start);
@@ -96,7 +89,7 @@ export const youtube: Publisher = {
     const shorts = /#shorts/i.test(`${meta.snippet.title} ${meta.snippet.description}`);
     return {
       url: shorts ? `https://www.youtube.com/shorts/${video.id}` : `https://youtu.be/${video.id}`,
-      detail: `Subido a YouTube${shorts ? " como Short" : ""}; YouTube lo procesa en unos minutos. Id ${video.id}`,
+      detail: `Subido a YouTube como ${PRIVACY_LABEL[approval.privacy].es.toLowerCase()}${shorts ? " (Short)" : ""}; YouTube lo procesa en unos minutos. Id ${video.id}`,
       id: video.id,
     };
   },

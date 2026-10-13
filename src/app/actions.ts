@@ -35,6 +35,7 @@ import type { Need } from "@/lib/roles";
 import { SESSION_COOKIE } from "@/lib/session";
 import { stormEvent, stormSchedule } from "@/lib/storm";
 import { businessDay, localToUtc } from "@/lib/time";
+import { withoutYoutubeApproval, YT_KEY, youtubeApprovalFromForm, youtubeApprovalLog, type YoutubeApproval } from "@/lib/youtube-options";
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 const safeJson = (v: string): unknown => {
@@ -360,23 +361,40 @@ export async function createPost(businessId: string, f: FormData) {
     variants = undefined;
   }
 
-  const post = await db.post.create({
-    data: {
-      businessId,
-      text,
-      variants,
-      source: str(f, "source") === "ai" ? "ai" : "manual",
-      subject: str(f, "subject"),
-      seoTitle: str(f, "seoTitle"),
-      mediaUrl,
-      mediaType: mediaType === "photo" || mediaType === "video" ? mediaType : "none",
-      kind,
-      media,
-      altText,
-      scheduledAt,
-      targets: { create: channels.map((channel) => ({ channel })) },
-    },
-  });
+  // YouTube con video: solo con lo que la persona revisó y eligió (título, etiquetas, quién puede verlo, para niños).
+  // La descripción es el texto de YouTube que se manda (el mismo que usa publishPost).
+  let youtube: YoutubeApproval | null = null;
+  if (channels.includes("youtube") && mediaType === "video") {
+    const { user } = await requireBusiness(businessId, "publish");
+    const yt = youtubeApprovalFromForm(f, { mediaUrl, approvedBy: user.id, description: variants?.youtube?.trim() || text });
+    if (!yt.ok) throw new Error(t(yt.error.es, yt.error.en));
+    youtube = yt.value;
+  }
+
+  const data: Prisma.PostUncheckedCreateInput = {
+    businessId,
+    text,
+    variants: youtube ? ({ ...variants, [YT_KEY]: youtube } as Prisma.InputJsonValue) : variants,
+    source: str(f, "source") === "ai" ? "ai" : "manual",
+    subject: str(f, "subject"),
+    seoTitle: str(f, "seoTitle"),
+    mediaUrl,
+    mediaType: mediaType === "photo" || mediaType === "video" ? mediaType : "none",
+    kind,
+    media,
+    altText,
+    scheduledAt,
+    targets: { create: channels.map((channel) => ({ channel })) },
+  };
+  // La publicación y la constancia de la aprobación de YouTube se guardan juntas (o ninguna).
+  const approval = youtube;
+  const post = approval
+    ? await db.$transaction(async (tx) => {
+        const created = await tx.post.create({ data });
+        await tx.aiAction.create({ data: youtubeApprovalLog(businessId, created.id, approval) });
+        return created;
+      })
+    : await db.post.create({ data });
   if (!later || scheduledAt <= new Date()) await publishPost(post.id);
   revalidatePath(`/b/${businessId}/historial`);
   redirect(`/b/${businessId}/historial?nuevo=${post.id}`);
@@ -565,29 +583,55 @@ export async function stormCampaign(businessId: string, _prev: PlanResult, f: Fo
   }
 }
 
-/** Guarda los cambios del borrador y lo programa. */
-export async function approveDraft(businessId: string, postId: string, f: FormData) {
+/**
+ * Guarda los cambios del borrador y lo programa. Devuelve false si no se aprobó: los del agente se aprueban en MATYA,
+ * un video que todavía se está creando no se aprueba, y un video para YouTube necesita los campos de YouTube.
+ */
+export async function approveDraft(businessId: string, postId: string, f: FormData): Promise<boolean> {
   ensure.text(businessId, postId);
-  await requireBusiness(businessId, "publish");
+  const { user } = await requireBusiness(businessId, "publish");
+  if (postId.startsWith("agent-")) return false;
   const post = await db.post.findFirst({ where: { id: postId, businessId, status: "draft" }, include: { targets: true } });
-  if (!post) return;
-  const variants = { ...((post.variants ?? {}) as Record<string, string>) };
+  if (!post) return false;
+  const video = post.kind === "video" || post.mediaType === "video";
+  if (video && !post.mediaUrl) return false;
+  // La aprobación de YouTube solo se pone con los campos que la persona envía ahora (nunca se copia la de antes).
+  const variants = withoutYoutubeApproval(post.variants);
   for (const t of post.targets) {
     const v = f.get(`v_${t.channel}`);
     if (typeof v === "string") variants[t.channel] = v.trim();
   }
+  const yt = video && post.targets.some((t) => t.channel === "youtube") ? youtubeApprovalFromForm(f, { mediaUrl: post.mediaUrl, approvedBy: user.id }) : null;
+  if (yt && !yt.ok) return false;
+  const approval = yt?.ok ? yt.value : null;
+  if (approval) {
+    variants.youtube = approval.description;
+    variants[YT_KEY] = approval;
+  }
   const subject = f.get("subject");
-  await db.post.update({
-    where: { id: postId },
-    data: {
-      variants,
-      text: variants.facebook || post.text,
-      subject: typeof subject === "string" ? subject.trim() : post.subject,
-      status: "scheduled",
-    },
-  });
+  const main = typeof variants.facebook === "string" ? variants.facebook : "";
+  const data = {
+    variants: variants as Prisma.InputJsonValue,
+    text: main || post.text,
+    subject: typeof subject === "string" ? subject.trim() : post.subject,
+    status: "scheduled",
+  };
+  // Con YouTube, el cambio y la constancia de la aprobación se guardan juntos (o ninguno).
+  if (approval)
+    await db.$transaction(async (tx) => {
+      await tx.post.update({ where: { id: postId }, data });
+      await tx.aiAction.create({ data: youtubeApprovalLog(businessId, postId, approval, post.campaignId) });
+    });
+  else await db.post.update({ where: { id: postId }, data });
   revalidatePath(`/b/${businessId}/plan`);
   revalidatePath(`/b/${businessId}/historial`);
+  return true;
+}
+
+/** «Aprobar y programar» del Plan (el formulario no usa la respuesta). */
+export async function approvePlanDraft(businessId: string, postId: string, f: FormData): Promise<void> {
+  ensure.text(businessId, postId);
+  await approveDraft(businessId, postId, f);
 }
 
 // ---------- Imágenes y videos con IA ----------

@@ -6,6 +6,7 @@
 
 import type { UiLang } from "@/lib/i18n";
 import { BUSINESS_TZ, localToUtc } from "@/lib/time";
+import { YOUTUBE_NEEDS_APPROVAL } from "@/lib/youtube-options";
 
 // ---------- Modos, estados y tipos ----------
 
@@ -514,6 +515,15 @@ export function pickKind(mix: ContentMix, index: number): PostKind {
   return pick;
 }
 
+/**
+ * El estado que cuenta para «errores seguidos»: una publicación que solo se saltó en YouTube porque falta la
+ * aprobación de una persona no es un error de la campaña ("waiting": no suma ni corta la racha).
+ */
+export function statusForErrors(p: { status: string; targets: { status: string; detail: string }[] }): string {
+  const waiting = p.targets.length > 0 && p.targets.every((t) => t.status === "skipped" && t.detail === YOUTUBE_NEEDS_APPROVAL);
+  return p.status === "failed" && waiting ? "waiting" : p.status;
+}
+
 /** Cuántas de las últimas publicaciones (la más nueva primero) fallaron seguidas. */
 export function failuresInRow(statuses: string[]): number {
   let n = 0;
@@ -589,7 +599,9 @@ export type ReasonCode =
   | "empty"
   | "prices"
   | "newChannel"
-  | "aiImage";
+  | "aiImage"
+  /** Un video para YouTube: siempre lo aprueba una persona (no se puede apagar). */
+  | "youtube";
 
 export type Reason = { code: ReasonCode; word?: string; channel?: string; topic?: string; detail?: string };
 
@@ -603,6 +615,8 @@ export type CheckDraft = {
   aiCostCents: number;
   /** La foto la hizo la IA (no es una foto real del negocio). */
   aiImage?: boolean;
+  /** Es un video (con YouTube entre los canales, siempre espera tu aprobación). */
+  video?: boolean;
 };
 export type CheckCounts = {
   /** Publicaciones de la campaña ya puestas ese mismo día (sin contar esta). */
@@ -659,6 +673,8 @@ export function checkPost(rules: CampaignRules, campaign: CheckCampaign, draft: 
   if (rules.needsApprovalFor.includes("newChannel"))
     for (const ch of draft.channels) if (!counts.usedChannels.includes(ch)) needsApproval.push({ code: "newChannel", channel: ch });
   if (draft.aiImage && rules.needsApprovalFor.includes("aiImage")) needsApproval.push({ code: "aiImage" });
+  // Subir a YouTube siempre lo aprueba una persona, también en 100% IA (no está en APPROVAL_NEEDS: no se apaga).
+  if (draft.video && draft.channels.includes("youtube")) needsApproval.push({ code: "youtube", channel: "youtube" });
 
   return { ok: reasons.length === 0, reasons, needsApproval };
 }
@@ -712,6 +728,8 @@ export function reasonText(r: Reason, lang: UiLang = "es", channelName: (id: str
       return t(`Es la primera vez que se publica en ${ch}: necesita tu aprobación.`, `It's the first post on ${ch}: it needs your approval.`);
     case "aiImage":
       return t("La foto la hizo la IA: necesita tu aprobación.", "The photo was made by the AI: it needs your approval.");
+    case "youtube":
+      return t("Subir un video a YouTube siempre necesita tu aprobación.", "Uploading a video to YouTube always needs your approval.");
   }
 }
 
