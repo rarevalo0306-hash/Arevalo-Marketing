@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { DESIGN_SHAPES, renderDesign, samplePhoto, type DesignShape } from "@/lib/design";
 import { BUILTIN_TEMPLATES, StoredTemplate } from "@/lib/design-shapes";
 import { sloganFrom } from "@/lib/design-layout";
+import { designStyleOf, isDesignStyle } from "@/lib/design-style";
 import { errorText, type T } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import sharp from "sharp";
@@ -41,7 +42,7 @@ async function photoBytes(url: string): Promise<Buffer> {
 // Vista previa de una plantilla con la marca del negocio (protegida por el middleware: hay que haber entrado).
 // ?b=negocio&t=plantilla (builtin-N o el id) y, opcional, &s=forma (square, portrait, story, link, google, wide, email)
 // o &p=formato de una red (ver src/lib/placements.ts; ej. pinterest.standard_pin). Con &dl=1 sale en su tamaño real
-// para descargar.
+// para descargar. Con &estilo=elegante (profesional, elegante, fresco o audaz) se ve con ese estilo sin guardarlo.
 export async function GET(req: Request) {
   const u = new URL(req.url);
   const businessId = u.searchParams.get("b") ?? "";
@@ -51,6 +52,7 @@ export async function GET(req: Request) {
   const pid = u.searchParams.get("p") ?? "";
   const placement = pid ? placementById(pid) : undefined;
   const download = u.searchParams.get("dl") === "1";
+  const asked = u.searchParams.get("estilo");
   const { lang, t } = await getT();
   if (pid && (!placement || !renderable(placement))) return new Response(t("Ese formato no se dibuja con plantillas.", "That format isn't drawn with templates."), { status: 404 });
   const size = placement ? (download ? { w: placement.canvas.width, h: placement.canvas.height ?? placement.canvas.width } : previewSize(placement)) : undefined;
@@ -81,7 +83,7 @@ export async function GET(req: Request) {
       return new Response(new Uint8Array(jpg), { headers });
     }
     const jpg = await renderDesign({
-      brand: { name: b.name, color: b.color, color2: b.color2, color3: b.color3, logoUrl: b.logoUrl, logoLightUrl: b.logoLightUrl, phone: b.phone, website: b.website, fontHeading: b.fontHeading, fontBody: b.fontBody, slogan: sloganFrom(b.brandIdentity, lang) },
+      brand: { name: b.name, color: b.color, color2: b.color2, color3: b.color3, logoUrl: b.logoUrl, logoLightUrl: b.logoLightUrl, phone: b.phone, website: b.website, fontHeading: b.fontHeading, fontBody: b.fontBody, slogan: sloganFrom(b.brandIdentity, lang), style: isDesignStyle(asked) ? asked : designStyleOf(b).style },
       template: spec,
       headline: sample(t)[spec.layout] ?? t("Revisa tu casa después de la tormenta", "Check your home after the storm"),
       steps: [t("Toma fotos desde el suelo", "Take photos from the ground"), t("Guarda los recibos", "Keep your receipts"), t("Pide una evaluación", "Ask for an assessment")],
