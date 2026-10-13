@@ -1,4 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+// DNS de mentira (sin red): "inside.example.com" apunta a la red interna, todo lo demás a internet.
+vi.mock("dns/promises", () => ({
+  lookup: vi.fn(async (host: string) => [{ address: host === "inside.example.com" ? "10.0.0.5" : "93.184.215.14", family: 4 }]),
+}));
 import { placeSiteArticle, publishSiteArticle, siteArticleUrl, type SiteArticleInput, type SiteEntry } from "@/lib/publishers/website";
 import {
   approveCostCents,
@@ -253,6 +258,26 @@ describe("publicar en GitHub (simulado, sin red)", () => {
     expect(body.sha).toBe("abc");
     const saved = JSON.parse(Buffer.from(body.content, "base64").toString("utf8")) as SiteEntry[];
     expect(saved.map((a) => a.id)).toEqual(["article-r1", "post-1"]);
+  });
+
+  it("no descarga una foto de la red interna: el artículo sale igual, sin esa foto", async () => {
+    for (const [photoUrl, redirectTo] of [["https://inside.example.com/a.jpg", ""], ["https://x.supabase.co/storage/v1/object/public/media/b/a.jpg", "http://169.254.169.254/latest/meta-data"]]) {
+      const calls: { url: string; method: string }[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string, init: RequestInit = {}) => {
+          calls.push({ url, method: init.method ?? "GET" });
+          if (url === photoUrl) return new Response(null, { status: 302, headers: { Location: redirectTo } });
+          if (!init.method) return new Response(JSON.stringify({ sha: "abc", content: Buffer.from(JSON.stringify(existing())).toString("base64") }), { status: 200 });
+          return new Response("{}", { status: 200 });
+        }),
+      );
+      const out = await publishSiteArticle(input(), creds, { mode: "new", today: "2026-10-10", photoUrl });
+      expect(out.photoFailed, photoUrl).toBe(true);
+      expect(out.article.image, photoUrl).toBeUndefined();
+      expect(calls.some((c) => c.url.includes("inside.example.com") || c.url.includes("169.254.169.254")), photoUrl).toBe(false);
+      expect(calls.filter((c) => c.method === "PUT").map((c) => c.url), photoUrl).toEqual(["https://api.github.com/repos/owner/site/contents/content/articles.json"]);
+    }
   });
 
   it("si ya estaba, no escribe nada", async () => {

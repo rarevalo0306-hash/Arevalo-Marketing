@@ -1,8 +1,9 @@
 import { randomBytes } from "crypto";
 import { mkdir, readFile, stat, writeFile } from "fs/promises";
 import path from "path";
+import { appBase } from "@/lib/google-login";
 import { bi } from "@/lib/i18n";
-import { isPublicHttpsUrl } from "@/lib/net-guard";
+import { fetchPublic } from "@/lib/net-guard";
 
 // Las fotos y videos van a Supabase Storage (bucket público). Sin Supabase configurado,
 // se guardan en el disco del servidor (útil solo en tu computadora).
@@ -145,8 +146,27 @@ export async function saveUpload(file: File): Promise<{ path: string; type: "pho
 export function publicMediaUrl(stored: string): string {
   if (!stored) return "";
   if (/^https?:\/\//i.test(stored)) return stored;
-  const base = (process.env.PUBLIC_BASE_URL || "http://localhost:3000").replace(/\/+$/, "");
-  return base + stored;
+  return appBase() + stored;
+}
+
+/** La ruta /media/<nombre> si la dirección es un archivo propio que armó publicMediaUrl (`${appBase()}/media/…`); si no, null. */
+export function ownMediaPath(url: string): string | null {
+  const prefix = `${appBase()}/media/`;
+  const name = url.startsWith(prefix) ? url.slice(prefix.length) : "";
+  return SAFE_MEDIA_NAME.test(name) ? `/media/${name}` : null;
+}
+
+/**
+ * Descarga una foto o un video para mandarlo a otro servicio (sitio web, YouTube, Veo). Los archivos propios
+ * (`${appBase()}/media/…`, en tu computadora es http://localhost) se leen del disco; lo demás solo de direcciones
+ * públicas de internet (fetchPublic). Devuelve una respuesta como fetch: si el archivo propio falta, 404.
+ */
+export async function fetchMedia(url: string, init?: RequestInit): Promise<Response> {
+  const own = ownMediaPath(url);
+  if (!own) return fetchPublic(url, init);
+  const data = await readMedia(own).catch(() => null);
+  if (!data) return new Response(null, { status: 404 });
+  return new Response(new Uint8Array(data), { headers: { "Content-Type": MEDIA_CONTENT_TYPES[own.split(".").pop()!] ?? "application/octet-stream" } });
 }
 
 // ---------- Copias por canal y datos del diseño ----------
@@ -185,19 +205,9 @@ export async function readMedia(stored: string): Promise<Buffer> {
   if (local && SAFE_MEDIA_NAME.test(local[1])) return readFile(path.join(UPLOAD_DIR, local[1]));
   if (!/^https:\/\//i.test(stored)) throw bi("La foto necesita una dirección pública.", "The photo needs a public web address.");
   // Solo direcciones públicas de internet, también en cada redirección (como mucho 3): nunca la red interna.
-  let url = stored;
-  for (let hops = 0; ; hops++) {
-    if (!(await isPublicHttpsUrl(url))) throw bi("La foto no está en una dirección pública de internet.", "The photo isn't at a public web address.");
-    const res = await fetch(url, { redirect: "manual" });
-    const next = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
-    if (!next) {
-      if (!res.ok) throw bi(`No se pudo descargar la foto (${res.status}).`, `Couldn't download the photo (${res.status}).`);
-      return Buffer.from(await res.arrayBuffer());
-    }
-    res.body?.cancel().catch(() => undefined);
-    if (hops >= 3) throw bi("No se pudo descargar la foto: redirige demasiadas veces.", "Couldn't download the photo: too many redirects.");
-    url = URL.canParse(next, url) ? new URL(next, url).href : "";
-  }
+  const res = await fetchPublic(stored);
+  if (!res.ok) throw bi(`No se pudo descargar la foto (${res.status}).`, `Couldn't download the photo (${res.status}).`);
+  return Buffer.from(await res.arrayBuffer());
 }
 
 /**

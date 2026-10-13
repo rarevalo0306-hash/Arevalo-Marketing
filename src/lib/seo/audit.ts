@@ -662,10 +662,10 @@ function makeFetcher() {
     if (isIP(host.replace(/^\[|\]$/g, ""))) return Promise.resolve(false);
     let p = dns.get(host);
     if (!p) {
-      // Si el nombre apunta a una IP interna, no se visita. Si la consulta falla, fetch dará su propio error.
+      // Si el nombre apunta a una IP interna, no se visita. Si la consulta falla, tampoco (falla cerrado).
       p = lookup(host, { all: true })
         .then((list) => list.some((a) => isPrivateHost(a.address)))
-        .catch(() => false);
+        .catch(() => true);
       dns.set(host, p);
     }
     return p;

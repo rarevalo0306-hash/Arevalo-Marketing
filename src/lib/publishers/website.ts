@@ -3,6 +3,7 @@
 import sharp from "sharp";
 import { z } from "zod";
 import { aiEnabled, ask } from "@/lib/ai";
+import { fetchMedia } from "@/lib/media";
 import { BUSINESS_TZ } from "@/lib/time";
 import { fetchJson, PublishError, required } from "./http";
 import type { Creds, Publisher, PublishInput } from "./types";
@@ -39,7 +40,8 @@ export const sitePhotoPath = (id: string) => `public/images/marketing/${id}.webp
 
 /** Convierte la foto del post a WEBP (máximo 1600 px de ancho) para el sitio. */
 export async function photoForSite(url: string): Promise<Buffer> {
-  const res = await fetch(url);
+  // Solo archivos propios o direcciones públicas de internet (también en cada redirección): nunca la red interna.
+  const res = await fetchMedia(url);
   if (!res.ok) throw new PublishError(`No se pudo descargar la foto del post (${res.status}).`);
   return sharp(Buffer.from(await res.arrayBuffer())).rotate().resize({ width: 1600, withoutEnlargement: true }).webp({ quality: 82 }).toBuffer();
 }

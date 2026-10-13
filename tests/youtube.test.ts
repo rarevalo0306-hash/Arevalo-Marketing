@@ -1,3 +1,4 @@
+import { lookup } from "dns/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { notesFor } from "@/lib/channels";
 import { googleAuthUrl, googleStatePurpose, YOUTUBE_SCOPE } from "@/lib/google-oauth";
@@ -5,6 +6,11 @@ import { readState } from "@/lib/meta-oauth";
 import { PUBLISHERS } from "@/lib/publishers";
 import { uploadInitRequest, youtube, youtubeMetadata, youtubeTags } from "@/lib/publishers/youtube";
 import { tagsLength } from "@/lib/video-plan";
+
+// DNS de mentira (sin red): "inside.example.com" apunta a la red interna, todo lo demás (x.supabase.co) a internet.
+vi.mock("dns/promises", () => ({
+  lookup: vi.fn(async (host: string) => [{ address: host === "inside.example.com" ? "10.0.0.5" : "93.184.215.14", family: 4 }]),
+}));
 
 const base = {
   text: "Cortinas metálicas en Managua: instalamos la tuya en un día.\n\n📞 +505 8888 0000\n\n#Shorts #CortinasMetalicas #Managua",
@@ -95,6 +101,7 @@ describe("YouTube: publicar (sin subir de verdad)", () => {
     expect((calls[3].init.body as Uint8Array).byteLength).toBe(4);
     expect(r.url).toBe("https://www.youtube.com/shorts/vid123");
     expect(r.detail).toContain("Short");
+    expect(lookup).toHaveBeenCalledWith("x.supabase.co", expect.anything());
   });
   it("video horizontal (sin #Shorts): enlace normal", async () => {
     mockFetch((url, init) => {
@@ -122,6 +129,23 @@ describe("YouTube: publicar (sin subir de verdad)", () => {
       return new Response("", { status: 200, headers: { Location: "https://evil.example.com/upload" } });
     });
     await expect(youtube.publish(base, creds)).rejects.toThrow("dirección para subir");
+  });
+  it("no descarga un video de la red interna, ni siguiendo una redirección", async () => {
+    for (const mediaUrl of ["https://inside.example.com/v.mp4", "https://169.254.169.254/latest/meta-data", "http://x.supabase.co/v.mp4"]) {
+      const calls = mockFetch((url) => (url.includes("oauth2") ? json({ access_token: "AT" }) : json({}, 500)));
+      await expect(youtube.publish({ ...base, mediaUrl }, creds), mediaUrl).rejects.toThrow("dirección pública");
+      expect(calls.map((c) => c.url), mediaUrl).toEqual(["https://oauth2.googleapis.com/token"]);
+    }
+    for (const location of ["https://inside.example.com/v.mp4", "http://169.254.169.254/latest/meta-data", "https://[::ffff:7f00:1]/v.mp4"]) {
+      const calls = mockFetch((url) => {
+        if (url.includes("oauth2")) return json({ access_token: "AT" });
+        if (url === base.mediaUrl) return new Response(null, { status: 302, headers: { Location: location } });
+        return new Response(new Uint8Array([1]), { status: 200 });
+      });
+      await expect(youtube.publish(base, creds), location).rejects.toThrow("dirección pública");
+      expect(calls.map((c) => c.url), location).toEqual(["https://oauth2.googleapis.com/token", base.mediaUrl]);
+      expect(calls[1].init.redirect).toBe("manual");
+    }
   });
   it("sin video no intenta nada", async () => {
     const calls = mockFetch(() => json({}));

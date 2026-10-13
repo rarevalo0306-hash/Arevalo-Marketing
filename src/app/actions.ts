@@ -277,6 +277,10 @@ export async function getUploadUrl(businessId: string, contentType: string) {
   return createSignedUpload(contentType, businessId);
 }
 
+// El servidor y las redes descargan después la foto o el video de un enlace: solo archivos propios o direcciones
+// públicas de internet (https), nunca la red interna. Igual que el logo del kit de marca (safeLogoUrl).
+const ownOrPublicUrl = async (url: string, businessId: string) => isOwnFile(url, businessId) || (await isPublicHttpsUrl(url));
+
 export async function createPost(businessId: string, f: FormData) {
   ensure.text(businessId);
   const biz = await business(businessId, "publish");
@@ -295,6 +299,7 @@ export async function createPost(businessId: string, f: FormData) {
     mediaType = saved.type;
   } else if (mediaType !== "none" && /^https?:\/\//i.test(str(f, "mediaLink"))) {
     mediaUrl = str(f, "mediaLink");
+    if (!(await ownOrPublicUrl(mediaUrl, businessId))) throw new Error(t("El enlace de la foto o el video debe ser una dirección pública de internet (https).", "The photo or video link must be a public web address (https)."));
   } else {
     mediaType = "none";
   }
@@ -305,6 +310,7 @@ export async function createPost(businessId: string, f: FormData) {
   let items = readPostMedia(safeJson(str(f, "media")));
   if (kind === "carousel") {
     items = items.filter((i) => /^https?:\/\//i.test(i.url));
+    if (!(await Promise.all(items.map((i) => ownOrPublicUrl(i.url, businessId)))).every(Boolean)) throw new Error(t("Las fotos del carrusel deben estar en direcciones públicas de internet (https).", "The carousel photos must be at public web addresses (https)."));
     if (items[0]) {
       mediaUrl = items[0].url;
       mediaType = "photo";
@@ -605,6 +611,8 @@ export async function aiVideoStart(businessId: string, imageUrl: string, motion:
   const { lang, t } = await getT();
   if (!videoEnabled()) return { ok: false, error: t("Falta la clave para videos (FAL_KEY o GEMINI_API_KEY) en la configuración del servidor.", "The video key (FAL_KEY or GEMINI_API_KEY) is missing from the server settings.") };
   if (!/^https:\/\//.test(imageUrl)) return { ok: false, error: t("Primero crea o sube una foto para el video.", "First create or upload a photo for the video.") };
+  // La foto la descarga el servidor (Veo) o fal.ai: solo archivos propios o direcciones públicas de internet.
+  if (!(await ownOrPublicUrl(imageUrl, businessId))) return { ok: false, error: t("La foto del video debe estar en una dirección pública de internet.", "The video's photo must be at a public web address.") };
   try {
     return { ok: true, job: await startVideo(imageUrl, motion.slice(0, 500)) };
   } catch (e) {

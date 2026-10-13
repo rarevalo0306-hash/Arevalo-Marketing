@@ -4,6 +4,7 @@
 //   Veo 3.1 Lite de Google con la clave de Gemini (VIDEO_PROVIDER=veo, o si no hay FAL_KEY).
 // Precios y tiempos verificados en las páginas oficiales en octubre de 2026 (ver VIDEO_MODELS).
 import { bi } from "@/lib/i18n";
+import { fetchMedia } from "@/lib/media";
 
 export const falEnabled = () => Boolean(process.env.FAL_KEY);
 
@@ -112,7 +113,8 @@ export async function startVideo(imageUrl: string, motion: string): Promise<Vide
 
 /** Veo (API de Gemini): foto inicial + texto, 9:16, 6 segundos, 720p. */
 async function startVeo(imageUrl: string, prompt: string): Promise<{ statusUrl: string; responseUrl: string }> {
-  const img = await fetch(imageUrl);
+  // Solo archivos propios o direcciones públicas de internet (también en cada redirección): nunca la red interna.
+  const img = await fetchMedia(imageUrl);
   if (!img.ok) throw bi(`No se pudo leer la foto para el video (${img.status}).`, `Couldn't read the photo for the video (${img.status}).`);
   const mimeType = (img.headers.get("content-type") || "image/jpeg").split(";")[0];
   const data = Buffer.from(await img.arrayBuffer()).toString("base64");

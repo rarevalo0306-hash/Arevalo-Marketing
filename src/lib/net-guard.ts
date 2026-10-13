@@ -3,6 +3,7 @@
 // de metadatos de la nube (169.254.169.254), aunque el nombre apunte ahí por DNS.
 import { lookup } from "dns/promises";
 import { BlockList, isIP } from "net";
+import { bi } from "@/lib/i18n";
 
 // Rangos privados, locales o reservados. BlockList compara las IPv6 que llevan una IPv4 (::ffff:7f00:1) con las
 // reglas IPv4; por eso ::ffff:0:0/96 no va como regla: bloquearía todas las IPv4.
@@ -49,5 +50,24 @@ export async function isPublicHttpsUrl(raw: string): Promise<boolean> {
     return addrs.length > 0 && addrs.every((a) => !isPrivateIp(a.address));
   } catch {
     return false;
+  }
+}
+
+/**
+ * fetch para una dirección que escribió una persona: sigue las redirecciones a mano (como mucho 3) y revisa con
+ * isPublicHttpsUrl cada salto antes de pedirlo. Si alguno no es público, falla sin pedirlo. Devuelve la última
+ * respuesta, aunque no sea ok (eso lo revisa quien llama).
+ */
+export async function fetchPublic(url: string, init?: RequestInit): Promise<Response> {
+  let current = url;
+  for (let hops = 0; ; hops++) {
+    if (!(await isPublicHttpsUrl(current))) throw bi("El archivo no está en una dirección pública de internet.", "The file isn't at a public web address.");
+    const res = await fetch(current, { ...init, redirect: "manual" });
+    const next = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
+    if (!next) return res;
+    res.body?.cancel().catch(() => undefined);
+    if (hops >= 3) throw bi("No se pudo descargar el archivo: redirige demasiadas veces.", "Couldn't download the file: too many redirects.");
+    // Location relativa: contra la dirección actual. Si no se entiende, "" no pasa la revisión.
+    current = URL.canParse(next, current) ? new URL(next, current).href : "";
   }
 }
