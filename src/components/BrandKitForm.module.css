@@ -61,3 +61,43 @@
 .ok .dot { background: var(--teal-text); color: #fff; border-color: transparent; }
 .err .dot { background: var(--err-text); color: #fff; border-color: transparent; }
 .wait .dot { font-size: 12px; }
+
+/* Logos por tipo */
+.logoBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.logoTitle {
+  margin: 0;
+  font-size: 16px;
+}
+
+.typePick {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.typeChips {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.typeChips :global(.chip) {
+  align-items: flex-start;
+}
+
+.more > summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}

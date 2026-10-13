@@ -259,11 +259,11 @@ async function prepareLogos(b: KitBrand, F: Fonts, c1: string): Promise<Logos> {
   const { ink: colorInk, inks } = await rawInk(color.buf);
   const colorInks = inks.length ? inks : colorInk ? [colorInk] : [];
 
-  // Símbolo: el isotipo aceptado del manual; si no, el símbolo que va al lado del nombre en el logo; si no, el logo
-  // entero si es más o menos cuadrado; si no, las iniciales.
+  // Símbolo: el isotipo que subió el dueño o el aceptado del manual; si no, el símbolo que va al lado del nombre en el
+  // logo; si no, el logo entero si es más o menos cuadrado; si no, las iniciales.
   let mark: Pic | null = null;
   let markLight: Pic | null = null;
-  const markUrl = b.logoUrl ? bestMark(b.assets, b.logoUrl) : "";
+  const markUrl = bestMark(b.assets, b.logoUrl ?? "");
   if (markUrl && markUrl !== b.logoUrl) {
     const m = await readMedia(markUrl).catch(() => null);
     if (m) {
@@ -272,6 +272,11 @@ async function prepareLogos(b: KitBrand, F: Fonts, c1: string): Promise<Logos> {
       const mMulti = t.transparent && (await rawInk(mark.buf)).multi;
       const mOne = t.transparent ? (mMulti ? mark.buf : await solid(m)) : null;
       markLight = mOne ? await pic(await shrink(await oneColor(mOne, "#ffffff", mMulti))) : null;
+      // La versión blanca del isotipo que subió el dueño va antes que la que pinta la app.
+      const ownWhite = markUrl === b.assets.logos?.slots.isotipo?.color ? b.assets.logos?.slots.isotipo?.white : undefined;
+      const w = ownWhite ? await readMedia(ownWhite).catch(() => null) : null;
+      const wt = w ? await transparentLogo(w) : null;
+      if (wt?.transparent) markLight = await pic(await shrink(wt.data));
     }
   }
   if (!mark && src && colorTransparent) {

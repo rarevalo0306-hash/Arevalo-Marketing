@@ -1,6 +1,6 @@
 import { brandFromAi, brandFromBook, deleteTemplate, getBrandBookUploadUrl, getUploadUrl, proposeTemplates, updateBrandKit } from "@/app/actions";
 import { saveBrandBook } from "@/app/actions-brand-book";
-import { saveBrandLogo } from "@/app/actions-brand";
+import { saveBrandLogo, saveLogoSlot, saveMainLogoType, uploadSvgLogo } from "@/app/actions-brand";
 import { BrandKitForm } from "@/components/BrandKitForm";
 import { BookAssetsSection } from "@/components/brand/BookAssetsSection";
 import { IdentitySection } from "@/components/brand/IdentitySection";
@@ -79,6 +79,10 @@ export default async function MarcaPage({ params }: { params: Promise<{ id: stri
           canRead: Boolean(process.env.GEMINI_API_KEY),
         }}
         hasKit={assets.items.some((a) => a.kind === "kit")}
+        logos={assets.logos}
+        saveSlot={saveLogoSlot.bind(null, id)}
+        saveMainType={saveMainLogoType.bind(null, id)}
+        uploadSvg={uploadSvgLogo.bind(null, id)}
       >
         <BookAssetsSection businessId={id} />
       </BrandKitForm>
