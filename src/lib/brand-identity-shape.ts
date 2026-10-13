@@ -63,6 +63,21 @@ export type IdentityProposal = {
 
 export type IdentitySource = "book" | "ai" | "manual";
 
+/** Cómo quiere sonar la marca: lo elige el dueño antes de que la IA proponga (máximo 3). */
+export const TONES = ["cercano", "profesional", "directo", "alegre", "experto", "tranquilizador"] as const;
+export type Tone = (typeof TONES)[number];
+export const TONE_LABEL: Record<Tone, BiText> = {
+  cercano: { es: "Cercano", en: "Friendly" },
+  profesional: { es: "Profesional", en: "Professional" },
+  directo: { es: "Directo", en: "Direct" },
+  alegre: { es: "Alegre", en: "Upbeat" },
+  experto: { es: "Experto", en: "Expert" },
+  tranquilizador: { es: "Tranquilizador", en: "Reassuring" },
+};
+export const MAX_TONES = 3;
+/** Cómo le habla la marca a sus clientes en español. "" = sin elegir. */
+export type Address = "tu" | "usted" | "";
+
 export type BrandIdentity = {
   slogan: BiText;
   /** Frase corta o descripción de una línea. */
@@ -72,6 +87,9 @@ export type BrandIdentity = {
   voice: IdentityVoice;
   /** A quién le habla la marca. */
   audience: string;
+  /** Lo que eligió el dueño: tú o usted, y hasta 3 tonos. La IA lo sigue al proponer y al escribir. */
+  address: Address;
+  tones: Tone[];
   music: IdentityMusic;
   /** Qué tipo de fotos van con la marca. */
   photoStyle: string;
@@ -180,6 +198,8 @@ export function emptyIdentity(): BrandIdentity {
     messages: [],
     voice: { summary: "", personality: [], do: [], dont: [], useWords: [], avoidWords: [] },
     audience: "",
+    address: "",
+    tones: [],
     music: { moods: [], genres: [], bpmMin: null, bpmMax: null, energy: "", instruments: [], searchTerms: [] },
     photoStyle: "",
     proposals: [],
@@ -222,6 +242,8 @@ export function readBrandIdentity(raw: unknown): BrandIdentity {
       avoidWords: readList(voice.avoidWords, 20, 80),
     },
     audience: s(o.audience, MAX_TEXT),
+    address: o.address === "tu" || o.address === "usted" ? o.address : "",
+    tones: readTones(o.tones),
     music: {
       moods: readList(music.moods, 8, 40),
       genres: readList(music.genres, 8, 40),
@@ -401,4 +423,10 @@ export function identityFromForm(get: (name: string) => string, cur: BrandIdenti
     source: cur.source || (hasIdentity(next) ? "manual" : ""),
     updatedAt: now,
   };
+}
+
+/** Los tonos elegidos, sin repetir, solo los conocidos y como mucho 3. */
+export function readTones(v: unknown): Tone[] {
+  const list = Array.isArray(v) ? v : [];
+  return [...new Set(list.filter((x): x is Tone => (TONES as readonly unknown[]).includes(x)))].slice(0, MAX_TONES);
 }

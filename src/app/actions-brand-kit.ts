@@ -79,7 +79,7 @@ export async function suggestKitTagline(businessId: string): Promise<{ ok: boole
   const fb = fallbackTagline(b);
   if (!aiEnabled()) return { ok: true, ...fb, ai: false };
   try {
-    const system = `You write the short tagline printed on the social media covers, website banner and business card of "${b.name}"${b.website ? ` (${b.website})` : ""}.
+    const system = `You write the short tagline printed on the social media covers and website banner of "${b.name}"${b.website ? ` (${b.website})` : ""}.
 About the business (the only facts you may use): ${b.aiProfile.trim().slice(0, 1500) || "(no profile — keep it general)"}
 ${b.brandVoice.trim() ? `Brand voice: ${b.brandVoice.trim().slice(0, 600)}` : ""}
 Rules: 3 to 8 words; say what the business does for its customers (and where, if the profile says it); no prices, no promises of results or money, no statistics, no hashtags, no emoji, no quotes, no final period. If it's a public adjuster or insurance-related, never promise a payout. Spanish must use correct accents.`;

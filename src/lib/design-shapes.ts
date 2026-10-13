@@ -16,6 +16,21 @@ export const DESIGN_SHAPES = {
 } as const;
 export type DesignShape = keyof typeof DESIGN_SHAPES;
 
+/** La forma de la lista más parecida a una medida cualquiera (por proporción): sus reglas y variantes valen ahí. */
+export function nearestShape(w: number, h: number): DesignShape {
+  const want = Math.log(w / h);
+  let best: DesignShape = "square";
+  let diff = Infinity;
+  for (const [k, v] of Object.entries(DESIGN_SHAPES) as [DesignShape, { w: number; h: number }][]) {
+    const d = Math.abs(Math.log(v.w / v.h) - want);
+    if (d < diff) {
+      best = k;
+      diff = d;
+    }
+  }
+  return best;
+}
+
 /** Letras para titulares (los archivos están en src/assets/fonts). */
 export const FONTS = {
   montserrat: { name: "Montserrat", semi: 600, bold: 800 },

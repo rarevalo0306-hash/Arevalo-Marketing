@@ -1,5 +1,5 @@
-// Kit de marca listo para usar: la lista de piezas (logos, foto de perfil, portadas, favicon, encabezado de email,
-// tarjeta de presentación), dónde se usa cada una y cómo subirla. Sin servidor ni JSX: se usa en pantalla, en el
+// Kit de marca listo para usar: la lista de piezas (logos, foto de perfil, portadas, favicon, encabezado de email),
+// dónde se usa cada una y cómo subirla. No hay piezas impresas: el negocio no imprime nada desde la app. Sin servidor ni JSX: se usa en pantalla, en el
 // servidor y en las pruebas.
 //
 // Medidas revisadas en octubre de 2026 (las redes muestran estas imágenes más chicas; se crean al doble para que
@@ -15,13 +15,12 @@
 // - Perfil de Negocio de Google: portada 16:9 (recomendado 1080×608), logo 1:1. https://support.google.com/business/answer/6103862
 // - Open Graph (vista previa de enlaces en Facebook, WhatsApp, LinkedIn, X): 1200×630 (1.91:1). https://developers.facebook.com/docs/sharing/webmasters/images
 // - Favicon: 32×32, apple-touch-icon 180×180 (sin transparencia: iOS pone fondo negro), Android 192 y 512.
-// - Tarjeta de presentación EE. UU.: 3.5×2 in; a 300 dpi con 0.125 in de sangrado por lado: 1125×675.
 // - Encabezado de email: 600 px de ancho visibles en el correo (se crea a 1200×400).
 // Resúmenes consultados: https://socialbee.com/blog/social-media-image-sizes/ · https://www.stndigital.com/social-media-image-sizes/
 import { contrast, mix } from "@/lib/design-shapes";
 
 export type L = { es: string; en: string };
-export type KitGroup = "logos" | "social" | "web" | "email" | "print";
+export type KitGroup = "logos" | "social" | "web" | "email";
 export type KitPlace = { name: L; steps: { es: string[]; en: string[] } };
 export type KitFormat = {
   /** Clave guardada en BrandAsset.format. */
@@ -49,7 +48,6 @@ export const KIT_GROUPS: { key: KitGroup; label: L; folder: L }[] = [
   { key: "social", label: { es: "Redes sociales", en: "Social media" }, folder: { es: "2 Redes sociales", en: "2 Social media" } },
   { key: "web", label: { es: "Sitio web", en: "Website" }, folder: { es: "3 Sitio web", en: "3 Website" } },
   { key: "email", label: { es: "Email", en: "Email" }, folder: { es: "4 Email", en: "4 Email" } },
-  { key: "print", label: { es: "Impresos", en: "Print" }, folder: { es: "5 Impresos", en: "5 Print" } },
 ];
 
 const LOGO_TIPS: KitPlace = {
@@ -280,31 +278,6 @@ export const KIT_FORMATS: KitFormat[] = [
       p("iPhone (Mail)", "iPhone (Mail)", ["«Ajustes» → «Apps» → «Mail» → «Firma».", "Pega la firma."], ["“Settings” → “Apps” → “Mail” → “Signature”.", "Paste the signature."]),
     ],
   },
-  // ---------- Impresos ----------
-  {
-    key: "card-front",
-    group: "print",
-    w: 1125,
-    h: 675,
-    safe: { w: 975, h: 525 },
-    label: { es: "Tarjeta de presentación (frente)", en: "Business card (front)" },
-    where: { es: "Tarjeta de 3.5 × 2 pulgadas (8.9 × 5.1 cm), lista para imprenta: 300 dpi con margen de corte.", en: "3.5 × 2 inch business card, print-ready: 300 dpi with bleed." },
-    file: { es: "tarjeta-frente", en: "business-card-front" },
-    places: [
-      p("Imprenta", "Print shop", ["Manda el frente y el reverso juntos.", "Diles: «3.5 × 2 pulgadas, 300 dpi, ya trae 1/8 de pulgada de sangrado».", "Algunas imprentas piden PDF: casi todas convierten la imagen sin problema."], ["Send the front and back together.", "Tell them: “3.5 × 2 inches, 300 dpi, includes 1/8 inch bleed”.", "Some print shops ask for a PDF: most will convert the image without trouble."]),
-    ],
-  },
-  {
-    key: "card-back",
-    group: "print",
-    w: 1125,
-    h: 675,
-    safe: { w: 975, h: 525 },
-    label: { es: "Tarjeta de presentación (reverso)", en: "Business card (back)" },
-    where: { es: "El lado con tus datos: teléfono y sitio web.", en: "The side with your details: phone and website." },
-    file: { es: "tarjeta-reverso", en: "business-card-back" },
-    places: [],
-  },
 ];
 
 export const kitFormat = (key: string | undefined) => KIT_FORMATS.find((f) => f.key === key);
@@ -405,11 +378,46 @@ export function averageInk(data: Uint8Array | Buffer, step = 4): string | null {
 }
 
 /**
- * Qué versión del logo va sobre un fondo: la de color si se distingue bien; si no, la blanca sobre fondos oscuros
- * y la de un solo color oscuro sobre fondos claros.
+ * Los colores principales del logo (RGBA crudo), del más usado al menos usado: los que ocupan al menos el 10% de lo
+ * visible. Sirve para medir el contraste de cada color por separado: el promedio de un logo azul, turquesa y gris
+ * puede "pasar" sobre azul marino aunque las letras azules casi no se lean.
  */
-export function logoFor(bg: string, colorInk: string | null): "color" | "light" | "dark" {
-  if (colorInk && contrast(colorInk, bg) >= 2.6) return "color";
+export function mainInks(data: Uint8Array | Buffer, minShare = 0.1): string[] {
+  const count = new Map<number, { n: number; r: number; g: number; b: number }>();
+  let all = 0;
+  for (let i = 0; i + 3 < data.length; i += 4) {
+    if (data[i + 3] < 160) continue;
+    all++;
+    const k = ((data[i] >> 5) << 6) | ((data[i + 1] >> 5) << 3) | (data[i + 2] >> 5);
+    const c = count.get(k) ?? { n: 0, r: 0, g: 0, b: 0 };
+    c.n++;
+    c.r += data[i];
+    c.g += data[i + 1];
+    c.b += data[i + 2];
+    count.set(k, c);
+  }
+  if (!all) return [];
+  const h = (v: number, n: number) => Math.round(v / n).toString(16).padStart(2, "0");
+  return [...count.values()]
+    .filter((c) => c.n / all >= minShare)
+    .sort((a, b) => b.n - a.n)
+    .map((c) => `#${h(c.r, c.n)}${h(c.g, c.n)}${h(c.b, c.n)}`);
+}
+
+/**
+ * Qué versión del logo va sobre un fondo: la de color si se distingue bien; si no, la blanca sobre fondos oscuros
+ * y la de un solo color oscuro sobre fondos claros. `inks` son los colores del logo (ver mainInks, el más usado
+ * primero) o uno solo. Sobre un fondo casi blanco basta con que se lea el color principal (el logo a color está hecho
+ * para fondos claros); sobre un fondo de color u oscuro, cada color del logo tiene que distinguirse (3:1, lo mínimo
+ * para gráficos), si no va la versión blanca.
+ */
+export function logoFor(bg: string, inks: string | readonly string[] | null): "color" | "light" | "dark" {
+  const list = typeof inks === "string" ? [inks] : (inks ?? []);
+  if (list.length) {
+    const nearWhite = contrast(bg, "#ffffff") < 1.5;
+    const ok = nearWhite ? contrast(list[0], bg) >= 2.6 : list.every((ink) => contrast(ink, bg) >= 3);
+    if (ok) return "color";
+  }
   return isDark(bg) || contrast(bg, "#ffffff") >= contrast(bg, "#111111") ? "light" : "dark";
 }
 

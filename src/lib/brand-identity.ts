@@ -11,6 +11,7 @@ import {
   MAX_MESSAGES,
   readBrandIdentity,
   readProposal,
+  TONE_LABEL,
 } from "@/lib/brand-identity-shape";
 import { BODY_FONTS, FONTS } from "@/lib/design-shapes";
 import type { UiLang } from "@/lib/i18n";
@@ -84,7 +85,16 @@ export type IdentityContext = {
   brandVoice: string;
   hashtags: string;
   identity: BrandIdentity;
+  /** Colores principales del logo (#rrggbb), si hay logo. La paleta tiene que salir de aquí. */
+  logoColors?: string[];
 };
+
+/**
+ * Sin manual, los colores se eligen según la industria del negocio y, si ya hay logo, salen del logo. Se usa al
+ * proponer la identidad (proposalsPrompt) y al crear la marca con IA (suggestBrandKit).
+ */
+export const INDUSTRY_COLOR_RULE = `- First work out the industry from the profile, the study and the website, and choose colors its customers already associate with trustworthy businesses of that industry; say which industry and why in the color explanation. Usual associations: insurance, finance, legal and public adjusters: deep blues, navy and teal with one warm accent; health and clinics: blues, teals and greens; construction, roofing and contractors: strong blue, orange or yellow with charcoal; food and restaurants: warm reds, oranges and yellows; beauty and spa: soft neutrals, rose or sage; cleaning: fresh blues and greens; real estate: navy, green or charcoal with gold. Avoid colors that signal another industry and never copy the exact colors of a big well-known brand.
+- If the logo's colors are given, the brand already has colors: the main and secondary colors must be the logo's colors (exactly, or a slightly darker shade of them so white text reads well on the main color), and the accent must go well with them.`;
 
 const ownerLang = (lang: UiLang) =>
   lang === "en" ? "Write owner-facing texts (why, summary, audience, rules, photo style, voice, names) in English." : "Write owner-facing texts (why, summary, audience, rules, photo style, voice, names) in Spanish with correct accents.";
@@ -97,6 +107,7 @@ const RULES = `Rules:
 
 function contextText(c: IdentityContext): string {
   const kit = [
+    c.logoColors?.length ? `Logo colors (from the logo image, most used first): ${c.logoColors.join(", ")}` : "",
     `Colors now: ${[c.color, c.color2, c.color3].filter(Boolean).join(", ") || "(none)"}`,
     `Heading font now: ${c.fontHeading || "(none)"}; body font: ${c.fontBody || "(none)"}`,
     c.brandVoice.trim() ? `Brand voice now: ${c.brandVoice.trim().slice(0, 800)}` : "",
@@ -118,7 +129,9 @@ export function proposalsPrompt(c: IdentityContext, lang: UiLang): { system: str
     system: `You are a senior brand strategist and designer. Propose three clearly different brand identity directions for this small business (for example one classic and trustworthy, one modern and bold, one warm and close), each one ready to use on social media posts.
 Heading font ids: ${Object.entries(FONTS).map(([id, f]) => `${id} (${f.name})`).join(", ")}. Body font ids: ${Object.entries(BODY_FONTS).map(([id, f]) => `${id} (${f.name})`).join(", ")}.
 ${RULES}
-- If the brand already has colors, at least one direction keeps its main color.
+${INDUSTRY_COLOR_RULE}
+- If the brand already has colors and no logo colors are given, at least one direction keeps its main color.
+- If the owner chose tú or usted and a tone (see brand identity), every direction's voice must follow it.
 - ${ownerLang(lang)}`,
     user: `${contextText(c)}\n\nPropose the three directions.`,
   };
@@ -174,6 +187,8 @@ export function identityPrompt(b: { brandIdentity?: unknown }): string {
   const id = readBrandIdentity(b.brandIdentity);
   const v = id.voice;
   const lines = [
+    id.address && `In Spanish, address customers as ${id.address === "usted" ? `"usted" (formal; never "tú")` : `"tú" (informal; never "usted")`}. The owner chose this.`,
+    id.tones.length > 0 && `Tone the owner chose: ${id.tones.map((x) => TONE_LABEL[x].en.toLowerCase()).join(", ")}`,
     biLine(id.slogan) && `Slogan (use it only where it fits naturally, never in every post): ${biLine(id.slogan)}`,
     id.messages.length > 0 && `Key messages (weave in one when it fits):\n${id.messages.map((m) => `- ${biLine(m.text)}`).join("\n")}`,
     v.summary && `Voice: ${v.summary}`,

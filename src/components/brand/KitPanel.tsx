@@ -19,7 +19,7 @@ const STEPS: [string, string][] = [
   ["Preparando tu logo…", "Preparing your logo…"],
   ["Dibujando la foto de perfil y los íconos…", "Drawing the profile picture and icons…"],
   ["Creando las portadas de las redes…", "Creating the social media covers…"],
-  ["Armando el encabezado de email y la tarjeta…", "Building the email header and business card…"],
+  ["Armando el encabezado de email…", "Building the email header…"],
   ["Guardando las imágenes…", "Saving the images…"],
 ];
 
@@ -129,8 +129,8 @@ export function KitPanel({
         <h2 id="kit-title">{t("3. Kit de marca listo para usar", "3. Ready-to-use brand kit")}</h2>
         <p className="small muted">
           {t(
-            `Con un botón creamos las ${total} imágenes que tu negocio necesita —logos limpios, foto de perfil, portadas de cada red, íconos del sitio web, encabezado de email y tarjeta de presentación— con tu logo, tus colores y tu letra. Listas para descargar y subir.`,
-            `With one button we create the ${total} images your business needs —clean logos, profile picture, a cover for each network, website icons, email header and business card— with your logo, colors and font. Ready to download and upload.`,
+            `Con un botón creamos las ${total} imágenes que tu negocio necesita —logos limpios, foto de perfil, portadas de cada red, íconos del sitio web y encabezado de email— con tu logo, tus colores y tu letra. Listas para descargar y subir.`,
+            `With one button we create the ${total} images your business needs —clean logos, profile picture, a cover for each network, website icons and email header— with your logo, colors and font. Ready to download and upload.`,
           )}
         </p>
       </div>
@@ -177,7 +177,7 @@ export function KitPanel({
           {coverLang === "es" && <input type="hidden" name="en" value={en} />}
           {coverLang === "en" && <input type="hidden" name="es" value={es} />}
           <p className="small muted">
-            {t("Va en las portadas, la imagen para compartir y la tarjeta, junto con tu teléfono y tu sitio web. Corta se lee mejor (3 a 8 palabras). Déjala vacía si no quieres frase.", "It goes on the covers, the share image and the business card, along with your phone and website. Short reads best (3 to 8 words). Leave it empty for no tagline.")}
+            {t("Va en las portadas y la imagen para compartir, junto con tu teléfono y tu sitio web. Corta se lee mejor (3 a 8 palabras). Déjala vacía si no quieres frase.", "It goes on the covers and the share image, along with your phone and website. Short reads best (3 to 8 words). Leave it empty for no tagline.")}
           </p>
           {aiOn && (
             <div className="row" style={{ gap: 8 }}>

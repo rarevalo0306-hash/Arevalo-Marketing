@@ -11,8 +11,9 @@ import { readBrandIdentity } from "@/lib/brand-identity-shape";
 import { db } from "@/lib/db";
 import { composeFrameTrack, falEnabled, falPoll, musicUrlOf, startCompose, startMusic } from "@/lib/fal";
 import { bi, errorText, type UiLang } from "@/lib/i18n";
+import { recordAiMedia } from "@/lib/library";
 import { ensureStoredCopy } from "@/lib/library-files";
-import { scoreItem, usableNow } from "@/lib/library-match";
+import { scoreItem, usableNow, usedToday } from "@/lib/library-match";
 import { readDescription } from "@/lib/library-shape";
 import { businessPlace } from "@/lib/media-formats";
 import { publicMediaUrl, readMedia, storeBuffer, storeRemote, usesSupabaseStorage } from "@/lib/media";
@@ -155,7 +156,8 @@ export async function suggestMedia(businessId: string, idea: string, format: Vid
     orderBy: [{ usedCount: "asc" }, { createdAt: "desc" }, { id: "asc" }],
     take: 400,
   });
-  const usable = rows.filter((r) => usableNow(r) && (r.kind === "photo" ? Boolean(r.url) : true));
+  // Lo que ya se usó hoy no se repite el mismo día.
+  const usable = rows.filter((r) => usableNow(r) && !usedToday(r) && (r.kind === "photo" ? Boolean(r.url) : true));
   const q = { text: idea, keywords: keywords.slice(0, 6), shape: format === "vertical" ? ("vertical" as const) : ("horizontal" as const) };
   return usable
     .map((r) => ({ id: r.id, kind: r.kind, s: scoreItem(r, q) }))
@@ -334,6 +336,8 @@ export async function advanceRender(businessId: string, id: string, lang: UiLang
     const thumb = r.out.thumbnail_url ? await storeRemote(r.out.thumbnail_url, businessId).then((x) => x.url).catch(() => "") : "";
     const next: VideoProject = { ...p, status: "ready", job: null, videoUrl: stored.url, thumbUrl: thumb, error: "" };
     await saveProject(businessId, id, next);
+    // El video terminado también queda en la biblioteca («Hechas con IA») para no perderlo y volver a usarlo.
+    await recordAiMedia(businessId, stored.url, { kind: "video", title: sb.idea || sb.keyword, keywords: [sb.keyword, ...sb.keywords.slice(0, 5), sb.city].filter(Boolean), thumbUrl: thumb, used: false });
     return next;
   } catch (e) {
     return fail(e);

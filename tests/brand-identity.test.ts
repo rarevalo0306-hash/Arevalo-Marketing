@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { brandSlogan, fromAiIdentity, fromAiProposals, identityPrompt, IdentitySchema, ProposalsSchema } from "@/lib/brand-identity";
+import { brandSlogan, fromAiIdentity, fromAiProposals, identityPrompt, IdentitySchema, INDUSTRY_COLOR_RULE, proposalsPrompt, ProposalsSchema } from "@/lib/brand-identity";
 import {
   applyProposal,
   emptyIdentity,
@@ -8,6 +8,7 @@ import {
   identityFromForm,
   mergeFromBook,
   readBrandIdentity,
+  readTones,
   seedNever,
   withSeeds,
 } from "@/lib/brand-identity-shape";
@@ -266,5 +267,32 @@ describe("AI schemas", () => {
   it("export JSON schemas the AI can follow", () => {
     expect(() => IdentitySchema.toJSONSchema()).not.toThrow();
     expect(() => ProposalsSchema.toJSONSchema()).not.toThrow();
+  });
+});
+
+describe("tú o usted y tono que elige el dueño", () => {
+  it("se guardan limpios: solo tú o usted y hasta 3 tonos conocidos", () => {
+    const id = readBrandIdentity({ address: "usted", tones: ["cercano", "experto", "cercano", "gritón", "alegre", "directo"] });
+    expect(id.address).toBe("usted");
+    expect(id.tones).toEqual(["cercano", "experto", "alegre"]);
+    expect(readBrandIdentity({ address: "vos" }).address).toBe("");
+    expect(readTones("cercano")).toEqual([]);
+  });
+
+  it("todo lo que escribe la IA lo sigue", () => {
+    const text = identityPrompt({ brandIdentity: { address: "usted", tones: ["profesional", "tranquilizador"] } });
+    expect(text).toContain(`address customers as "usted" (formal; never "tú")`);
+    expect(text).toContain("Tone the owner chose: professional, reassuring");
+    expect(identityPrompt({ brandIdentity: { address: "tu" } })).toContain(`"tú" (informal; never "usted")`);
+  });
+
+  it("las propuestas eligen colores de la industria y, si hay logo, los del logo", () => {
+    const ctx = { name: "Ricardo Public Adjusters", website: "", aiProfile: "Ajustadores públicos en Miami", study: "", color: "#0b2545", color2: "", color3: "", fontHeading: "montserrat", fontBody: "", brandVoice: "", hashtags: "", identity: readBrandIdentity({ address: "usted" }), logoColors: ["#1569bb", "#3dbdb5"] };
+    const p = proposalsPrompt(ctx, "es");
+    expect(p.system).toContain(INDUSTRY_COLOR_RULE);
+    expect(p.system).toContain("every direction's voice must follow it");
+    expect(p.user).toContain("Logo colors (from the logo image, most used first): #1569bb, #3dbdb5");
+    expect(p.user).toContain(`"usted"`);
+    expect(proposalsPrompt({ ...ctx, logoColors: [] }, "es").user).not.toContain("Logo colors");
   });
 });

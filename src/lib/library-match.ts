@@ -91,6 +91,12 @@ export type MatchQuery = {
 export const MIN_RELEVANCE = 3;
 /** Cuántos días se considera «usada hace poco». */
 export const RECENT_DAYS = 30;
+/** Una foto usada en las últimas 24 horas no se vuelve a elegir: el mismo día, cada publicación lleva otra foto. */
+export const SAME_DAY_HOURS = 24;
+
+/** ¿Se usó en las últimas 24 horas? (no se repite la misma foto el mismo día). */
+export const usedToday = (item: { lastUsedAt: Date | null }, now = new Date()) =>
+  Boolean(item.lastUsedAt) && now.getTime() - item.lastUsedAt!.getTime() < SAME_DAY_HOURS * 3600000;
 
 const PROMO = /\b(oferta|ofertas|promo|promocion|descuento|descuentos|cotiza|cotizacion|cotizaciones|gratis|precio|precios|contrata|offer|offers|deal|deals|discount|discounts|quote|quotes|free|price|prices|hire)\b/;
 
@@ -142,12 +148,15 @@ export function scoreItem(item: MatchItem, q: MatchQuery, now = new Date()): Sco
   return { item, relevance, score };
 }
 
-/** La mejor foto para la publicación, o null si ninguna se parece lo suficiente (entonces la IA crea una). */
+/**
+ * La mejor foto para la publicación, o null si ninguna se parece lo suficiente (entonces la IA crea una). Nunca una que
+ * ya se usó hoy (ver usedToday): mejor otra foto, o una nueva.
+ */
 export function rankLibrary(items: MatchItem[], q: MatchQuery, now = new Date()): MatchItem | null {
   const skip = new Set(q.exclude ?? []);
   let best: Scored | null = null;
   for (const item of items) {
-    if (item.kind !== "photo" || skip.has(item.id) || !canUse(item)) continue;
+    if (item.kind !== "photo" || skip.has(item.id) || !canUse(item) || usedToday(item, now)) continue;
     const s = scoreItem(item, q, now);
     if (s.relevance < MIN_RELEVANCE) continue;
     if (!best || s.score > best.score || (s.score === best.score && s.item.usedCount < best.item.usedCount)) best = s;
@@ -176,8 +185,8 @@ export type LibraryCard = {
   lastUsedAt: string | null;
   /** Subcarpeta de Drive, o la nota del técnico si se subió con el link. */
   folderPath: string;
-  /** De dónde vino: la carpeta de Drive o el link de subida. */
-  source: "drive" | "upload";
+  /** De dónde vino: la carpeta de Drive, el link de subida o la IA de la app. */
+  source: "drive" | "upload" | "ai";
   canUse: boolean;
   needsReview: boolean;
   /** La foto tal como llegó (nunca cambia). `url` es la que se usa en publicaciones (la mejorada si toca). */

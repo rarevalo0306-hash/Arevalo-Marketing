@@ -5,7 +5,9 @@ import { BUILTIN_TEMPLATES, StoredTemplate } from "@/lib/design-shapes";
 import { sloganFrom } from "@/lib/design-layout";
 import { errorText, type T } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
-import { readSidecar } from "@/lib/media";
+import sharp from "sharp";
+import { readMedia, readSidecar } from "@/lib/media";
+import { placementById, placementPlan, previewSize, renderable } from "@/lib/placements";
 
 /**
  * Una foto limpia (sin letras) para la vista previa. La foto de la última publicación suele ser un diseño que ya trae
@@ -30,15 +32,28 @@ const sample = (t: T): Record<string, string> => ({
   "color-solido": t("¿Sabías que puedes pedir una segunda opinión?", "Did you know you can ask for a second opinion?"),
 });
 
+/** La foto de la vista previa en bytes (una dirección guardada o la foto de ejemplo, que viene como data URI). */
+async function photoBytes(url: string): Promise<Buffer> {
+  const m = /^data:image\/[a-z]+;base64,(.+)$/.exec(url);
+  return m ? Buffer.from(m[1], "base64") : readMedia(url);
+}
+
 // Vista previa de una plantilla con la marca del negocio (protegida por el middleware: hay que haber entrado).
-// ?b=negocio&t=plantilla (builtin-N o el id) y, opcional, &s=forma (square, portrait, story, link, google, wide, email).
+// ?b=negocio&t=plantilla (builtin-N o el id) y, opcional, &s=forma (square, portrait, story, link, google, wide, email)
+// o &p=formato de una red (ver src/lib/placements.ts; ej. pinterest.standard_pin). Con &dl=1 sale en su tamaño real
+// para descargar.
 export async function GET(req: Request) {
   const u = new URL(req.url);
   const businessId = u.searchParams.get("b") ?? "";
   const tpl = u.searchParams.get("t") ?? "";
   const s = u.searchParams.get("s") ?? "square";
   const shape: DesignShape = s in DESIGN_SHAPES ? (s as DesignShape) : "square";
+  const pid = u.searchParams.get("p") ?? "";
+  const placement = pid ? placementById(pid) : undefined;
+  const download = u.searchParams.get("dl") === "1";
   const { lang, t } = await getT();
+  if (pid && (!placement || !renderable(placement))) return new Response(t("Ese formato no se dibuja con plantillas.", "That format isn't drawn with templates."), { status: 404 });
+  const size = placement ? (download ? { w: placement.canvas.width, h: placement.canvas.height ?? placement.canvas.width } : previewSize(placement)) : undefined;
   // Solo quien entra a este negocio (src/lib/auth.ts); es una vista previa: no gasta ni guarda nada.
   const access = await businessAccess(businessId, "view");
   if (!access.ok)
@@ -57,7 +72,14 @@ export async function GET(req: Request) {
   }
   if (!spec) return new Response(t("Plantilla no encontrada", "Template not found"), { status: 404 });
   const photoUrl = await cleanPhoto(businessId, b.color);
+  const headers: Record<string, string> = { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=60" };
+  if (placement && size && download) headers["Content-Disposition"] = `attachment; filename="${placement.id.replace(/[^a-z0-9_.-]/gi, "-")}-${size.w}x${size.h}.jpg"`;
   try {
+    // Google Ads responsivo y fotos del Perfil de Negocio: solo la foto, recortada a la medida (el texto va aparte).
+    if (placement && size && placementPlan(placement) === "photo") {
+      const jpg = await sharp(await photoBytes(photoUrl)).rotate().resize(size.w, size.h, { fit: "cover", position: "attention" }).jpeg({ quality: 90, mozjpeg: true }).toBuffer();
+      return new Response(new Uint8Array(jpg), { headers });
+    }
     const jpg = await renderDesign({
       brand: { name: b.name, color: b.color, color2: b.color2, color3: b.color3, logoUrl: b.logoUrl, logoLightUrl: b.logoLightUrl, phone: b.phone, website: b.website, fontHeading: b.fontHeading, fontBody: b.fontBody, slogan: sloganFrom(b.brandIdentity, lang) },
       template: spec,
@@ -65,8 +87,9 @@ export async function GET(req: Request) {
       steps: [t("Toma fotos desde el suelo", "Take photos from the ground"), t("Guarda los recibos", "Keep your receipts"), t("Pide una evaluación", "Ask for an assessment")],
       photoUrl,
       shape,
+      size,
     });
-    return new Response(new Uint8Array(jpg), { headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=60" } });
+    return new Response(new Uint8Array(jpg), { headers });
   } catch (e) {
     return new Response(errorText(e, lang), { status: 500 });
   }
