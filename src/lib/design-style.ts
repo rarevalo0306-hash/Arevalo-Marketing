@@ -36,6 +36,8 @@ export type StyleTokens = {
   headWeight: "semi" | "bold";
   /** Titular en mayúsculas aunque la plantilla no lo pida. */
   upper: boolean;
+  /** Tamaño del titular (1 = el más grande que cabe): menos de 1 deja más aire, que es lo que lo hace verse fino. */
+  headScale: number;
   /** Esquinas de tarjetas, fotos en recuadro y botones (0 = rectas). */
   radius: number;
   /** El botón de la llamada a la acción: rectángulo, pastilla o texto subrayado. */
@@ -51,10 +53,10 @@ export type StyleTokens = {
 };
 
 export const STYLE_TOKENS: Record<DesignStyle, StyleTokens> = {
-  profesional: { headWeight: "bold", upper: false, radius: 6, cta: "boton", rule: { w: 64, h: 5 }, center: false, frame: false, hairline: true },
-  elegante: { headWeight: "semi", upper: false, radius: 0, cta: "texto", rule: { w: 48, h: 2 }, center: true, frame: true, hairline: true },
-  fresco: { headWeight: "bold", upper: false, radius: 28, cta: "pastilla", rule: { w: 56, h: 8 }, center: false, frame: false, hairline: false },
-  audaz: { headWeight: "bold", upper: true, radius: 0, cta: "boton", rule: { w: 96, h: 12 }, center: false, frame: false, hairline: false },
+  profesional: { headWeight: "semi", upper: false, headScale: 0.8, radius: 6, cta: "boton", rule: { w: 64, h: 5 }, center: false, frame: false, hairline: true },
+  elegante: { headWeight: "semi", upper: false, headScale: 0.8, radius: 0, cta: "texto", rule: { w: 48, h: 2 }, center: true, frame: true, hairline: true },
+  fresco: { headWeight: "bold", upper: false, headScale: 0.86, radius: 28, cta: "pastilla", rule: { w: 56, h: 8 }, center: false, frame: false, hairline: false },
+  audaz: { headWeight: "bold", upper: true, headScale: 1, radius: 0, cta: "boton", rule: { w: 96, h: 12 }, center: false, frame: false, hairline: false },
 };
 
 export const styleTokens = (s?: DesignStyle | "") => STYLE_TOKENS[s && s in STYLE_TOKENS ? s : "profesional"];

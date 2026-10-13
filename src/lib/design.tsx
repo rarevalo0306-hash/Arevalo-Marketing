@@ -108,6 +108,8 @@ function measureOf(file: string, f: FontFile, tracking = 0): Measure {
 
 /** Espacio entre letras del titular (en "em"): un poco cerrado en minúsculas, un poco abierto en mayúsculas. */
 const headTracking = (upper: boolean) => (upper ? 0.01 : -0.015);
+/** Espacio entre letras del nombre del negocio cuando no hay logo (en mayúsculas espaciadas, como una firma). */
+const NAME_TRACKING = 0.16;
 /** Alto de línea del titular según la letra. */
 const HEAD_LH: Record<keyof typeof FONTS, number> = { montserrat: 1.1, poppins: 1.1, inter: 1.08, oswald: 1.08, "playfair-display": 1.14 };
 
@@ -118,7 +120,7 @@ async function loadFonts(brand: Brand, upper: boolean) {
   const fonts = await fontFiles(head, hf.name, [hf.semi, hf.bold]);
   const bold = fonts.find((f) => f.weight === hf.bold)!;
   const semi = fonts.find((f) => f.weight === hf.semi)!;
-  const base = { head: hf.name, bold: hf.bold, semi: hf.semi, headLH: HEAD_LH[head], measureHead: measureOf(head, bold, headTracking(upper)), measureHeadSemi: measureOf(head, semi, headTracking(upper)), measureHeadPlain: measureOf(head, bold) };
+  const base = { head: hf.name, bold: hf.bold, semi: hf.semi, headLH: HEAD_LH[head], measureHead: measureOf(head, bold, headTracking(upper)), measureHeadSemi: measureOf(head, semi, headTracking(upper)), measureHeadPlain: measureOf(head, bold), measureNameCaps: measureOf(head, semi, NAME_TRACKING) };
   const bodyId = bodyFontId(brand.fontBody ?? "");
   const body = bodyId ? await fontFiles(bodyId, BODY_FONTS[bodyId].name, [BODY_FONTS[bodyId].regular, BODY_FONTS[bodyId].semi]).catch(() => null) : null;
   if (!bodyId || !body) {
@@ -354,15 +356,17 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
   const plateX = Math.round(logoH * 0.36);
   // Sin logo: el nombre con la letra de los titulares, achicado si hace falta para que quepa entero.
   const nameMaxW = Math.round(w * (story ? 0.7 : wide ? 0.4 : 0.6));
-  const nameBase = Math.round((b.name.length > 22 ? 36 : 44) * u);
-  const nameSize = Math.max(Math.round(22 * u), Math.min(nameBase, Math.floor((nameBase * nameMaxW) / Math.max(1, F.measureHeadPlain(b.name, nameBase)))));
+  // Sin logo, el nombre va en mayúsculas espaciadas y finas (se ve como una firma, no como un titular más).
+  const nameText = b.name.toLocaleUpperCase("es");
+  const nameBase = Math.round((b.name.length > 22 ? 26 : 30) * u);
+  const nameSize = Math.max(Math.round(18 * u), Math.min(nameBase, Math.floor((nameBase * nameMaxW) / Math.max(1, F.measureNameCaps(nameText, nameBase)))));
   /** `scrim`: va en blanco sobre la foto, con un degradado oscuro suave detrás para que se lea. */
   type LogoPick = { pic: Logo | null; plate: string | null; w: number; h: number; textColor: string; scrim?: boolean };
   type Under = { color: string } | { bright: number; darkest: number };
   /** Qué logo usar sobre un fondo (color liso, o la parte clara y oscura de la foto) y si necesita placa. */
   const pickLogo = (bg: Under): LogoPick => {
     const size = (pic: Logo | null) => {
-      if (!pic) return { w: Math.ceil(Math.min(nameMaxW, F.measureHeadPlain(b.name, nameSize))), h: Math.round(nameSize * 1.15) };
+      if (!pic) return { w: Math.ceil(Math.min(nameMaxW, F.measureNameCaps(nameText, nameSize))), h: Math.round(nameSize * 1.3) };
       const lw = Math.min(logoMaxW, Math.round((logoH * pic.w) / pic.h));
       return { w: lw, h: Math.round((lw * pic.h) / pic.w) };
     };
@@ -374,7 +378,7 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
       // Sin logo: el nombre del negocio con la letra de los titulares.
       const s = size(null);
       // Sobre fotos, el nombre siempre en blanco (con degradado detrás si hace falta): oscuro sobre una foto se pierde.
-      if (onPhoto) return { pic: null, plate: null, ...s, textColor: "#ffffff", scrim: !readsOn("#ffffff") };
+      if (onPhoto) return { pic: null, plate: null, ...s, textColor: "#ffffff", scrim: true };
       const ink = pickInk(bg.color, dark);
       if (readsOn(ink)) return { pic: null, plate: null, ...s, textColor: ink };
       return { pic: null, plate: "#ffffff", ...plated(s), textColor: c1 };
@@ -395,7 +399,7 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
       // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
       <img src={pick.pic.uri} width={iw} height={ih} style={{ width: iw, height: ih }} />
     ) : (
-      <div style={{ display: "flex", maxWidth: iw, fontFamily: F.head, fontWeight: F.bold, fontSize: nameSize, lineHeight: 1.15, color: pick.textColor, whiteSpace: "nowrap", overflow: "hidden" }}>{b.name}</div>
+      <div style={{ display: "flex", maxWidth: iw, fontFamily: F.head, fontWeight: F.semi, fontSize: nameSize, letterSpacing: nameSize * NAME_TRACKING, lineHeight: 1.3, color: pick.textColor, whiteSpace: "nowrap", overflow: "hidden" }}>{nameText}</div>
     );
     if (!pick.plate) return inner;
     return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", background: pick.plate, borderRadius: Math.round(logoH * (st.radius ? 0.2 : 0.04)), padding: `${plateY}px ${plateX}px`, boxShadow: "0 4px 16px rgba(0,0,0,0.12)" }}>{inner}</div>;
@@ -505,7 +509,7 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
     const plan = planContact((story ? w - m * 2 : w) - m * 2, true);
     if (!plan) return null;
     const style: React.CSSProperties = story
-      ? { position: "absolute", left: m, width: w - m * 2, top: h - S.bottom - barH, height: barH, borderRadius: Math.round(barH / 2) }
+      ? { position: "absolute", left: m, width: w - m * 2, top: h - S.bottom - barH, height: barH, borderRadius: st.radius >= 20 ? Math.round(barH / 2) : Math.round(st.radius * u) }
       : { position: "absolute", left: 0, width: w, top: h - barH, height: barH };
     return (
       <div style={{ ...style, display: "flex", alignItems: "center", justifyContent: "center", background: barBg }}>
@@ -534,7 +538,7 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
       let rest = maxH - (accent ? accentH + gap : 0) - (cta ? cta.h + gap : 0);
       const subFit = useSub && sub ? fitText({ text: sub, maxW: width, maxH: Math.max(subSize * 1.3, rest * 0.34), max: subSize, min: Math.round(subSize * 0.8), maxLines: 3, lineHeight: 1.3, measure: F.measureBodyReg }) : null;
       if (subFit) rest -= subFit.height + Math.round(gap * 0.7);
-      const max = Math.round(rules.headMax * u * t.headlineScale * (o.capScale ?? 1));
+      const max = Math.round(rules.headMax * u * t.headlineScale * st.headScale * (o.capScale ?? 1));
       const min = Math.round(rules.headMin * u);
       const head = fitText({ text: headline, maxW: width, maxH: Math.max(min * F.headLH, rest), max: Math.max(min, max), min, maxLines: o.maxLines ?? rules.maxLines, hardLines: (o.maxLines ?? rules.maxLines) + 3, lineHeight: F.headLH, measure: measureHead });
       const height = (accent ? accentH + gap : 0) + head.height + (subFit ? subFit.height + Math.round(gap * 0.7) : 0) + (cta ? cta.h + gap : 0);
@@ -620,7 +624,7 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
       const need = scrimAlpha(grayOf(photoLum(ph, band.r, 0.94)), deep, 4.6, band.floor);
       if (need <= 0.01) continue;
       for (let i = 0; i <= steps; i++) {
-        const y = (i / steps) * h;
+        const y = ph.y + (i / steps) * ph.h;
         const y0 = band.r.y - 24 * u;
         const y1 = band.r.y + band.r.h + 24 * u;
         const k = y >= y0 && y <= y1 ? 1 : y < y0 ? Math.max(0, 1 - (y0 - y) / feather) : Math.max(0, 1 - (y - y1) / feather);
@@ -629,7 +633,8 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
     }
     if (alphaAt.every((a) => a <= 0.01)) return;
     const stops = alphaAt.map((a, i) => `${rgba(deep, Math.round(a * 1000) / 1000)} ${((i / steps) * 100).toFixed(2)}%`).join(", ");
-    nodes.splice(at, 0, <Abs key={`scrim-${at}`} r={{ x: ph.x, y: 0, w: ph.w, h }} style={{ backgroundImage: `linear-gradient(to bottom, ${stops})` }} />);
+    // Solo sobre la foto: si la foto ocupa una parte, el degradado no oscurece el bloque de color de al lado.
+    nodes.splice(at, 0, <Abs key={`scrim-${at}`} r={{ x: ph.x, y: ph.y, w: ph.w, h: ph.h }} style={{ backgroundImage: `linear-gradient(to bottom, ${stops})` }} />);
   };
   /** El logo sobre una foto: a color si se lee; si no, en blanco con un degradado suave detrás (que va justo encima de la foto). */
   const logoOnPhoto = (ph: Photo, x: number, y: number, right: boolean, photoAt: number) => {
@@ -726,7 +731,7 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
     // Bloque de color y foto. En formas anchas (y en "mitad" cuadrada) van lado a lado; en verticales, uno arriba del otro.
     // "Mitad" cuadrada: lado a lado, salvo que el titular no quepa en media imagen (entonces uno arriba del otro).
     const halfW = Math.round(w * 0.52) - m * 2;
-    const fitsHalf = () => !planBlock(halfW, h - S.top - logoRow - Math.round(gap * 1.4) - S.bottom - barSpace - Math.round(gap * 1.3) - planFooter(halfW, panelMid, align).h, { capScale: 0.84, maxLines: 5 }).head.truncated;
+    const fitsHalf = () => !planBlock(halfW, h - S.top - logoRow - Math.round(gap * 1.4) - S.bottom - barSpace - Math.round(gap * 1.3) - planFooter(halfW, panelMid, align).h, { capScale: 0.84, maxLines: 4 }).head.truncated;
     const side = wide || (t.layout === "mitad-izquierda" && !tall && fitsHalf());
     const panelFirst = t.layout !== "franja-abajo" && !(t.layout === "mitad-izquierda" && tall);
     if (side) {
@@ -740,7 +745,7 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
       const footer = planFooter(textW, panelMid, align);
       const top = S.top + logoRow + Math.round(gap * 1.4);
       const bottom = h - S.bottom - barSpace - (footer.h ? footer.h + Math.round(gap * 1.3) : 0);
-      const blk = planBlock(textW, bottom - top, { capScale: 0.84, maxLines: 5 });
+      const blk = planBlock(textW, bottom - top, { capScale: 0.84, maxLines: 4 });
       const by = top + (bottom - top - blk.height) / 2;
       nodes.push(<Abs key="block" r={{ x: textX, y: by, w: textW, h: blk.height }}><BlockView p={blk} color={panelInk} bg={panelMid} /></Abs>);
       if (footer.view) nodes.push(<Abs key="foot" r={{ x: textX, y: h - S.bottom - barSpace - footer.h, w: textW, h: footer.h }} style={{ justifyContent: center ? "center" : "flex-start" }}>{footer.view}</Abs>);
@@ -800,7 +805,7 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
     const row = bottomRow(textX, textW, panelMid, () => ({ color: panelMid }));
     const top = S.top + (logoTop ? logoRow + Math.round(gap * 1.6) : 0);
     const bottom = h - S.bottom - barSpace - (row.rowH ? row.rowH + Math.round(gap * 1.4) : 0);
-    const blk = planBlock(textW, bottom - top, { capScale: 1.06 });
+    const blk = planBlock(textW, bottom - top, { capScale: 1.18 });
     const by = top + (t.textPosition === "arriba" ? 0 : t.textPosition === "centro" ? (bottom - top - blk.height) / 2 : bottom - top - blk.height);
     nodes.push(<Abs key="block" r={{ x: textX, y: by, w: textW, h: blk.height }}><BlockView p={blk} color={panelInk} bg={panelMid} /></Abs>);
     row.render();
