@@ -7,6 +7,7 @@
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { bi } from "@/lib/i18n";
+import { isPrivateIp } from "@/lib/net-guard";
 import { checkLlmsTxt, robotsAiCheck, type LlmsTxtState, type RobotsAi } from "@/lib/seo/audit-ai";
 import {
   CATEGORY_LABEL,
@@ -645,21 +646,11 @@ export function scoreFor(issues: Pick<Issue, "id" | "severity" | "count">[], pag
 
 // ---------- Red (con protección básica contra direcciones internas) ----------
 
-/** localhost, .local y direcciones IP privadas o de loopback. */
+/** localhost, .local y direcciones IP privadas, reservadas o de loopback (la misma lista que src/lib/net-guard.ts). */
 export function isPrivateHost(hostname: string): boolean {
   const h = hostname.replace(/^\[|\]$/g, "").toLowerCase().replace(/\.$/, "");
   if (!h || h === "localhost" || /\.(localhost|local|internal|lan|home\.arpa)$/.test(h)) return true;
-  const v = isIP(h);
-  if (v === 4) {
-    const [a, b] = h.split(".").map(Number);
-    return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224;
-  }
-  if (v === 6) {
-    if (h === "::" || h === "::1" || /^f[cd]/.test(h) || /^fe[89ab]/.test(h)) return true;
-    const mapped = h.match(/^::ffff:(.+)$/);
-    if (mapped) return isIP(mapped[1]) === 4 ? isPrivateHost(mapped[1]) : true;
-  }
-  return false;
+  return isIP(h) ? isPrivateIp(h) : false;
 }
 
 type Fetched = { res: Response; url: string; status: number };

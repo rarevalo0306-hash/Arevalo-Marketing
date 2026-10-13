@@ -32,6 +32,14 @@ async function cleanAccess(organizationId: string, raw: { role: string; allBusin
   return { role, allBusinesses: false, businessIds: found.map((b) => b.id) };
 }
 
+/**
+ * Cambios del equipo uno a la vez por organización: dos Administradores que se bajan al mismo tiempo no la dejan sin
+ * ninguno, y dos invitaciones al mismo correo no quedan las dos pendientes.
+ */
+async function lockOrganization(tx: Prisma.TransactionClient, organizationId: string) {
+  await tx.$queryRaw`SELECT id FROM "Organization" WHERE id = ${organizationId} FOR UPDATE`;
+}
+
 // ---------- Ver el equipo ----------
 
 export async function teamOf(organizationId: string) {
@@ -108,15 +116,17 @@ export async function invite(
   if (!looksLikeEmail(email)) throw bi("Ese correo no parece válido.", "That email doesn't look valid.");
   if (isOwnerEmail(email)) throw bi("Ese correo es de un dueño de Matya: ya entra como Administrador, no hace falta invitarlo.", "That email belongs to a Matya owner: they already sign in as Administrator, no invitation needed.");
   const access = await cleanAccess(organizationId, raw);
-  const member = await db.membership.findFirst({ where: { organizationId, user: { email } }, select: { id: true } });
-  if (member) throw bi("Esa persona ya es parte del equipo. Cambia su papel en la lista.", "That person is already on the team. Change their role in the list.");
   const { token, hash } = newLinkToken();
-  await db.$transaction([
-    db.invitation.updateMany({ where: { organizationId, email, acceptedAt: null, canceledAt: null }, data: { canceledAt: new Date() } }),
-    db.invitation.create({
+  // Una invitación pendiente por correo: dos Administradores que invitan a la vez no dejan dos enlaces que sirvan.
+  await db.$transaction(async (tx) => {
+    await lockOrganization(tx, organizationId);
+    const member = await tx.membership.findFirst({ where: { organizationId, user: { email } }, select: { id: true } });
+    if (member) throw bi("Esa persona ya es parte del equipo. Cambia su papel en la lista.", "That person is already on the team. Change their role in the list.");
+    await tx.invitation.updateMany({ where: { organizationId, email, acceptedAt: null, canceledAt: null }, data: { canceledAt: new Date() } });
+    await tx.invitation.create({
       data: { organizationId, email, ...access, tokenHash: hash, invitedById: inviter.id, expiresAt: new Date(Date.now() + INVITE_DAYS * DAY) },
-    }),
-  ]);
+    });
+  });
   const emailed = await sendInvite(email, token, organizationId, access, inviter.name || inviter.email, lang);
   return { link: inviteLink(token), emailed, email };
 }
@@ -203,23 +213,21 @@ export async function acceptInvitation(token: string, rawEmail: string, opts: { 
       if (user._count.memberships > 0) throw bi("Ya tienes una cuenta con ese correo: entra con ella para aceptar.", "You already have an account with that email: sign in with it to accept.");
       // Cuenta sin ninguna organización (la quitaron antes): elige contraseña nueva y se cierran sus sesiones viejas.
       user = await tx.user.update({ where: { id: user.id }, data: { passwordHash, passwordOrgId: inv.organizationId, sessionVersion: { increment: 1 } }, select });
-    } else if (user?.passwordHash && user.passwordOrgId && user.passwordOrgId !== inv.organizationId) {
+    } else if (user) {
+      // Ya está en este equipo (quedó otra invitación pendiente): el enlace queda usado y su papel no cambia.
+      const already = await tx.membership.findUnique({ where: { userId_organizationId: { userId: user.id, organizationId: inv.organizationId } }, select: { id: true } });
+      if (already) return { id: user.id, sessionVersion: user.sessionVersion };
       // Su contraseña salió de un enlace que vio un Administrador de otra organización: deja de servir y se cierran sus
       // sesiones, para que ese Administrador no entre aquí. La vuelve a elegir con «¿Olvidaste tu contraseña?».
-      user = await tx.user.update({ where: { id: user.id }, data: { passwordHash: "", passwordOrgId: "", sessionVersion: { increment: 1 } }, select });
+      if (user.passwordHash && user.passwordOrgId && user.passwordOrgId !== inv.organizationId)
+        user = await tx.user.update({ where: { id: user.id }, data: { passwordHash: "", passwordOrgId: "", sessionVersion: { increment: 1 } }, select });
     }
     user ??= await tx.user.create({ data: { email, name, passwordHash, passwordOrgId: passwordHash ? inv.organizationId : "" }, select });
     // Los enlaces para contraseña nueva que hizo el Administrador de otra organización dejan de servir.
     await tx.passwordReset.updateMany({ where: { userId: user.id, usedAt: null, organizationId: { notIn: ["", inv.organizationId] } }, data: { usedAt: new Date() } });
     const access = { role: inv.role, allBusinesses: inv.role === "admin" || inv.allBusinesses };
     const businessIds = access.allBusinesses ? [] : (await tx.business.findMany({ where: { id: { in: inv.businessIds }, organizationId: inv.organizationId }, select: { id: true } })).map((b) => b.id);
-    const m = await tx.membership.upsert({
-      where: { userId_organizationId: { userId: user.id, organizationId: inv.organizationId } },
-      create: { userId: user.id, organizationId: inv.organizationId, ...access },
-      update: access,
-      select: { id: true },
-    });
-    await tx.membershipBusiness.deleteMany({ where: { membershipId: m.id } });
+    const m = await tx.membership.create({ data: { userId: user.id, organizationId: inv.organizationId, ...access }, select: { id: true } });
     if (businessIds.length) await tx.membershipBusiness.createMany({ data: businessIds.map((businessId) => ({ membershipId: m.id, businessId })) });
     await tx.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date(), ...(name && !user.name && { name }) } });
     return { id: user.id, sessionVersion: user.sessionVersion };
@@ -227,11 +235,6 @@ export async function acceptInvitation(token: string, rawEmail: string, opts: { 
 }
 
 // ---------- Cambiar o quitar ----------
-
-/** Cambios de papel uno a la vez por organización: dos Administradores que se bajan al mismo tiempo no la dejan sin ninguno. */
-async function lockOrganization(tx: Prisma.TransactionClient, organizationId: string) {
-  await tx.$queryRaw`SELECT id FROM "Organization" WHERE id = ${organizationId} FOR UPDATE`;
-}
 
 async function adminsLeftWithout(tx: Prisma.TransactionClient, organizationId: string, membershipId: string) {
   return tx.membership.count({ where: { organizationId, role: "admin", id: { not: membershipId } } });

@@ -207,7 +207,9 @@ describe("scoreFor", () => {
 describe("helpers", () => {
   it("rechaza direcciones internas", () => {
     for (const h of ["localhost", "127.0.0.1", "10.1.2.3", "192.168.0.10", "172.20.0.1", "169.254.169.254", "[::1]", "printer.local", "0.0.0.0"]) expect(isPrivateHost(h)).toBe(true);
-    for (const h of ["example.com", "8.8.8.8", "172.32.0.1"]) expect(isPrivateHost(h)).toBe(false);
+    for (const h of ["example.com", "8.8.8.8", "172.32.0.1", "192.0.77.2", "[2606:4700:4700::1111]"]) expect(isPrivateHost(h)).toBe(false);
+    // IPv6 que esconde una IPv4 interna (mapeada, compatible, NAT64, 6to4, Teredo) y rangos reservados: igual que net-guard.
+    for (const h of ["[::ffff:7f00:1]", "[::7f00:1]", "[64:ff9b::a9fe:a9fe]", "[2002:a9fe:a9fe::]", "[2001:0:a9fe:a9fe::]", "198.18.0.1", "192.0.2.1"]) expect(isPrivateHost(h)).toBe(true);
     expect(() => startUrl("http://localhost:3000")).toThrow();
     expect(() => startUrl("ftp://x.com")).toThrow();
     expect(startUrl("techos.com").href).toBe("https://techos.com/");

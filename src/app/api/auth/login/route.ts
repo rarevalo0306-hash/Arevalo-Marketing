@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { fromOtherSite, safeNext } from "@/lib/access";
-import { checkPassword, isOwnerEmail, loginUser } from "@/lib/accounts";
+import { isOwnerEmail, loginUser, verifyLogin } from "@/lib/accounts";
 import { clearLoginAttempts, countLoginAttempt } from "@/lib/login-attempts";
 import { attemptKey, clientIp, missingTable, waitMinutes } from "@/lib/login-limit";
 import { createSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/session";
@@ -38,8 +38,9 @@ export async function POST(req: Request) {
   if (wait > 0) return back({ e: "locked", m: String(waitMinutes(wait)) });
   let user: Awaited<ReturnType<typeof loginUser>> = null;
   try {
-    if (!(await checkPassword(email, password))) return back({ e: "wrong" });
-    user = await loginUser(email, { owner: isOwnerEmail(email) });
+    const ok = await verifyLogin(email, password);
+    if (!ok) return back({ e: "wrong" });
+    user = await loginUser(email, { owner: isOwnerEmail(email), expectedVersion: ok.sessionVersion });
   } catch (e) {
     console.error("login user unavailable:", e instanceof Error ? e.message : e);
     return back({ e: "check" });

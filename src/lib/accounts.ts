@@ -26,22 +26,36 @@ export async function mainOrganizationId(client: Pick<Prisma.TransactionClient, 
 
 /**
  * Busca o crea a la persona y la deja lista para entrar. Devuelve null si no puede entrar.
- * Un dueño sin organización queda como Administrador de la organización principal (la más antigua: la que creó el SQL
- * con los negocios de Ricardo); si no hay ninguna, se le crea una organización personal. Alguien que no es dueño
- * entra solo si ya es miembro de alguna organización.
+ * Un dueño siempre queda como Administrador (con todas las empresas) de la organización principal (la más antigua: la
+ * que creó el SQL con los negocios de Ricardo); si no hay ninguna, se le crea una organización personal. Si su
+ * contraseña salió de un enlace que vio un Administrador, se borra y se cierran sus otras sesiones. Alguien que no es
+ * dueño entra solo si ya es miembro de alguna organización.
+ * `expectedVersion`: la sessionVersion que vio la revisión de la contraseña (null = la cuenta aún no existía). Si cambió
+ * mientras tanto (se cambió o se borró la contraseña, o la sacaron), no entra: la sesión nunca lleva una versión nueva
+ * con una contraseña vieja.
  */
-export async function loginUser(rawEmail: string, opts: { owner: boolean; name?: string }): Promise<{ id: string; sessionVersion: number } | null> {
+export async function loginUser(rawEmail: string, opts: { owner: boolean; name?: string; expectedVersion?: number | null }): Promise<{ id: string; sessionVersion: number } | null> {
   const email = normalizeEmail(rawEmail);
   if (!looksLikeEmail(email)) return null;
   const name = (opts.name ?? "").trim().slice(0, 120);
   return db.$transaction(async (tx) => {
-    const select = { id: true, name: true, sessionVersion: true, _count: { select: { memberships: true } } } as const;
+    // Una sola cosa a la vez con esta cuenta (una invitación, un enlace de contraseña): ver y decidir van juntos.
+    await tx.$queryRaw`SELECT id FROM "User" WHERE email = ${email} FOR UPDATE`;
+    const select = { id: true, name: true, sessionVersion: true, passwordOrgId: true, _count: { select: { memberships: true } } } as const;
     let user = await tx.user.findUnique({ where: { email }, select });
+    if (opts.expectedVersion !== undefined && (user?.sessionVersion ?? null) !== opts.expectedVersion) return null;
     if (!opts.owner && !user?._count.memberships) return null;
     user ??= await tx.user.create({ data: { email, name }, select });
-    if (user._count.memberships === 0) {
+    if (opts.owner) {
       const organizationId = (await mainOrganizationId(tx)) ?? (await tx.organization.create({ data: { name: name || email, kind: "personal" }, select: { id: true } })).id;
-      await tx.membership.create({ data: { userId: user.id, organizationId, role: "admin" } });
+      const m = await tx.membership.upsert({
+        where: { userId_organizationId: { userId: user.id, organizationId } },
+        create: { userId: user.id, organizationId, role: "admin", allBusinesses: true },
+        update: { role: "admin", allBusinesses: true },
+        select: { id: true },
+      });
+      await tx.membershipBusiness.deleteMany({ where: { membershipId: m.id } });
+      if (user.passwordOrgId) user = await tx.user.update({ where: { id: user.id }, data: { passwordHash: "", passwordOrgId: "", sessionVersion: { increment: 1 } }, select });
     }
     await tx.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date(), ...(name && !user.name && { name }) } });
     return { id: user.id, sessionVersion: user.sessionVersion };
@@ -52,15 +66,24 @@ export async function loginUser(rawEmail: string, opts: { owner: boolean; name?:
  * ¿Correo y contraseña son correctos? Con contraseña propia se revisa esa. Sin contraseña propia, solo un dueño puede
  * entrar con APP_PASSWORD. Siempre hace el mismo trabajo (scrypt) para no delatar qué correos tienen cuenta.
  * Una contraseña elegida con un enlace que vio un Administrador (passwordOrgId) solo sirve mientras la persona esté
- * solo en esa organización: así ese Administrador nunca entra a otra organización con ella.
+ * solo en esa organización y no sea dueño: así ese Administrador nunca entra a otra organización ni a la cuenta de un
+ * dueño con ella. Devuelve la sessionVersion que vio (para loginUser; null si la cuenta aún no existe) o false.
  */
-export async function checkPassword(rawEmail: string, password: string): Promise<boolean> {
+export async function verifyLogin(rawEmail: string, password: string): Promise<{ sessionVersion: number | null } | false> {
   const email = normalizeEmail(rawEmail);
   const user = looksLikeEmail(email)
-    ? await db.user.findUnique({ where: { email }, select: { passwordHash: true, passwordOrgId: true, memberships: { select: { organizationId: true } } } })
+    ? await db.user.findUnique({ where: { email }, select: { sessionVersion: true, passwordHash: true, passwordOrgId: true, memberships: { select: { organizationId: true } } } })
     : null;
   const own = await verifyPassword(password, user?.passwordHash ?? "");
-  if (user?.passwordHash) return own && (!user.passwordOrgId || user.memberships.every((m) => m.organizationId === user.passwordOrgId));
+  const seen = { sessionVersion: user?.sessionVersion ?? null };
+  if (user?.passwordHash) {
+    const tied = user.passwordOrgId;
+    const trusted = !tied || (!isOwnerEmail(email) && user.memberships.length > 0 && user.memberships.every((m) => m.organizationId === tied));
+    return own && trusted ? seen : false;
+  }
   const appPassword = process.env.APP_PASSWORD?.trim() ?? "";
-  return Boolean(appPassword) && isOwnerEmail(email) && safeEqual(password, appPassword);
+  return Boolean(appPassword) && isOwnerEmail(email) && safeEqual(password, appPassword) ? seen : false;
 }
+
+/** ¿Correo y contraseña son correctos? (verifyLogin sin la versión.) */
+export const checkPassword = async (rawEmail: string, password: string) => (await verifyLogin(rawEmail, password)) !== false;

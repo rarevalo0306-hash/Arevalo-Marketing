@@ -9,7 +9,7 @@ vi.mock("@/lib/auth-email", () => ({
   },
 }));
 
-import { checkPassword, loginUser, mainOrganizationId } from "@/lib/accounts";
+import { checkPassword, loginUser, mainOrganizationId, verifyLogin } from "@/lib/accounts";
 import { db } from "@/lib/db";
 import { hashPassword, newLinkToken } from "@/lib/password";
 import {
@@ -211,6 +211,58 @@ describe.skipIf(!safe)("team: invitations, roles and passwords on an isolated Po
     await expect(adminResetLink(ORG, inOrg.id)).rejects.toThrow();
     expect(await removeMember(ORG, inOrg.id)).toBe(owner.id);
     expect(await checkPassword("owner-it@gmail.com", "app-pass-123")).toBe(true);
+  });
+
+  it("a sign-in checked against a password that changed meanwhile gets no session", async () => {
+    const { link } = await invite(ORG, boss, { email: "ana@ejemplo.com", role: "viewer", allBusinesses: true, businessIds: [] }, "es");
+    await acceptInvitation(tokenOf(link), "ana@ejemplo.com", { newPassword: "clave-de-ana-1" });
+    const seen = await verifyLogin("ana@ejemplo.com", "clave-de-ana-1");
+    if (!seen) throw new Error("the password should be accepted");
+    // Entre revisar la contraseña y abrir la sesión, la contraseña se cambia o se borra (sube sessionVersion).
+    await db.user.update({ where: { email: "ana@ejemplo.com" }, data: { sessionVersion: { increment: 1 } } });
+    expect(await loginUser("ana@ejemplo.com", { owner: false, expectedVersion: seen.sessionVersion })).toBeNull();
+    const again = await verifyLogin("ana@ejemplo.com", "clave-de-ana-1");
+    if (!again) throw new Error("the password should still be accepted");
+    expect(await loginUser("ana@ejemplo.com", { owner: false, expectedVersion: again.sessionVersion })).not.toBeNull();
+  });
+
+  it("a password chosen with an admin's link never opens an account that became an owner's; the owner signs in and is made Administrator", async () => {
+    const { link } = await invite(ORG, boss, { email: "ana@ejemplo.com", role: "viewer", allBusinesses: true, businessIds: [] }, "es");
+    const ana = (await acceptInvitation(tokenOf(link), "ana@ejemplo.com", { newPassword: "clave-de-ana-1" }))!;
+    vi.stubEnv("LOGIN_EMAILS", "owner-it@gmail.com,ana@ejemplo.com");
+    expect(await checkPassword("ana@ejemplo.com", "clave-de-ana-1")).toBe(false);
+    await removeMember(ORG, (await db.membership.findFirstOrThrow({ where: { userId: ana.id, organizationId: ORG } })).id);
+    expect(await checkPassword("ana@ejemplo.com", "clave-de-ana-1")).toBe(false);
+    // Entra de verdad (p. ej. con Google): queda Administrador de la principal, y la contraseña y las sesiones viejas se borran.
+    const before = (await db.user.findUniqueOrThrow({ where: { id: ana.id } })).sessionVersion;
+    const signedIn = (await loginUser("ana@ejemplo.com", { owner: true }))!;
+    expect(signedIn.sessionVersion).toBe(before + 1);
+    expect(await db.user.findUniqueOrThrow({ where: { id: ana.id } })).toMatchObject({ passwordHash: "", passwordOrgId: "" });
+    const main = (await mainOrganizationId())!;
+    expect(await db.membership.findMany({ where: { userId: ana.id }, select: { organizationId: true, role: true, allBusinesses: true } })).toEqual([{ organizationId: main, role: "admin", allBusinesses: true }]);
+  });
+
+  it("an owner who already had another role in the main organization is made Administrator when signing in", async () => {
+    const main = (await mainOrganizationId())!;
+    const owner = await db.user.create({ data: { email: "owner-it@gmail.com" } });
+    const m = await db.membership.create({ data: { userId: owner.id, organizationId: main, role: "viewer", allBusinesses: false } });
+    expect(await loginUser("owner-it@gmail.com", { owner: true })).toMatchObject({ id: owner.id });
+    expect(await db.membership.findUniqueOrThrow({ where: { id: m.id } })).toMatchObject({ role: "admin", allBusinesses: true });
+    expect(await db.membership.count({ where: { userId: owner.id } })).toBe(1);
+  });
+
+  it("a leftover invitation never changes the role of someone already on the team, and only one invitation per email stays pending", async () => {
+    const { link } = await invite(ORG, boss, { email: "ana@ejemplo.com", role: "admin", allBusinesses: true, businessIds: [] }, "es");
+    // Otra invitación al mismo correo que quedó pendiente (antes de este cambio, dos Administradores a la vez).
+    const { token, hash } = newLinkToken();
+    await db.invitation.create({ data: { organizationId: ORG, email: "ana@ejemplo.com", role: "viewer", tokenHash: hash, invitedById: boss.id, expiresAt: new Date(Date.now() + 86_400_000) } });
+    const ana = (await acceptInvitation(tokenOf(link), "ana@ejemplo.com", { newPassword: "clave-de-ana-1" }))!;
+    expect(await acceptInvitation(token, "ana@ejemplo.com")).toMatchObject({ id: ana.id, sessionVersion: ana.sessionVersion });
+    expect(await db.membership.findFirstOrThrow({ where: { userId: ana.id, organizationId: ORG } })).toMatchObject({ role: "admin" });
+    expect(await readInvitation(token)).toBeNull();
+    // Dos invitaciones a la vez al mismo correo: queda una sola pendiente.
+    await Promise.all([1, 2].map(() => invite(ORG, boss, { email: "luis@ejemplo.com", role: "viewer", allBusinesses: true, businessIds: [] }, "es")));
+    expect(await db.invitation.count({ where: { organizationId: ORG, email: "luis@ejemplo.com", acceptedAt: null, canceledAt: null } })).toBe(1);
   });
 
   it("two Administrators demoting or removing each other at the same time still leave one", async () => {
