@@ -52,7 +52,8 @@ describe("menú por herramientas", () => {
     // Marca: arriba «Identidad y kit»; al llegar a las plantillas, «Plantillas».
     expect(onKeys(here("/b/biz1/marca"))).toEqual(["marca"]);
     expect(onKeys({ ...here("/b/biz1/marca"), section: "plantillas" })).toEqual(["plantillas"]);
-    expect(sectionItems(ID, here("/b/biz1/marca")).map((x) => x.key)).toEqual(["plantillas"]);
+    expect(sectionItems(ID, here("/b/biz1/marca")).map((x) => x.key)).toEqual(["plantillas", "plantillas-redes"]);
+    expect(onKeys({ ...here("/b/biz1/marca"), section: "plantillas-redes" })).toEqual(["plantillas-redes"]);
     // SEO: la sección solo cuenta en su pestaña.
     expect(onKeys({ ...here("/b/biz1/seo", "google"), section: "palabras" })).toEqual(["seo-palabras"]);
     expect(onKeys({ ...here("/b/biz1/seo", "web"), section: "palabras" })).toEqual(["seo-web"]);

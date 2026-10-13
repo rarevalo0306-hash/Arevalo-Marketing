@@ -84,6 +84,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { key: "marca", label: ["Identidad y kit", "Identity & kit"], path: "marca" },
       { key: "plantillas", label: ["Plantillas", "Templates"], path: "marca", hash: "plantillas" },
+      { key: "plantillas-redes", label: ["Plantillas por red", "Templates by network"], path: "marca", hash: "plantillas-redes" },
       // Las fotos y videos reales del negocio (Drive y link de subida) que la IA usa en las publicaciones.
       { key: "fotos", label: ["Tus fotos y videos", "Your photos & videos"], path: "fotos" },
     ],
