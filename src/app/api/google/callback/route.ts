@@ -149,8 +149,8 @@ export async function GET(req: Request) {
   const { lang, t } = await getT();
   const { purpose, businessId } = googleStatePurpose(readState(url.searchParams.get("state") ?? "") ?? "");
   // El estado firmado no dice quién empezó: antes de cambiar el código por el permiso se revisa que quien vuelve sea
-  // Administrador de ese negocio (src/lib/auth.ts). Sin acceso se responde igual que con un negocio que no existe.
-  const access = businessId ? await businessAccess(businessId, "admin") : null;
+  // Administrador o «Puede conectar» en ese negocio (src/lib/auth.ts). Sin acceso se responde igual que con un negocio que no existe.
+  const access = businessId ? await businessAccess(businessId, "connect") : null;
   if (!access || (!access.ok && access.status === 404))
     return new Response(t("El enlace de conexión venció o no es válido. Vuelve a intentarlo desde Conexiones.", "The connection link expired or isn't valid. Try again from Connections."), { status: 400 });
   if (!access.ok)

@@ -10,8 +10,8 @@ import { GSC_COOKIE, siteLabel, type GscPending } from "@/lib/seo/gsc";
 
 export default async function ElegirSitioSearchConsole({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  // Solo un Administrador elige qué cuenta se conecta (src/lib/auth.ts).
-  await pageBusiness(id, "admin");
+  // Solo el Administrador o quien «Puede conectar» elige qué cuenta se conecta (src/lib/auth.ts).
+  await pageBusiness(id, "connect");
   const { t } = await getT();
   const b = await db.business.findUniqueOrThrow({ where: { id } });
   const raw = (await cookies()).get(GSC_COOKIE)?.value;

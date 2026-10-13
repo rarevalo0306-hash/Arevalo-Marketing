@@ -185,7 +185,7 @@ export async function chooseMetaPage(businessId: string, pageId: string) {
 /** Después de "Conectar con Google", cuando la cuenta administra varios perfiles. */
 export async function chooseGoogleLocation(businessId: string, locationId: string) {
   ensure.text(businessId, locationId);
-  await business(businessId, "admin");
+  await business(businessId, "connect");
   const { t } = await getT();
   const jar = await cookies();
   const raw = jar.get(GOOGLE_COOKIE)?.value;
@@ -201,8 +201,10 @@ export async function chooseGoogleLocation(businessId: string, locationId: strin
 
 export async function deleteConnection(businessId: string, channel: ChannelId) {
   ensure.text(businessId, channel);
-  await requireBusiness(businessId, "admin");
-  if (GOOGLE_CHANNELS.some(c => c === channel)) await disconnectGoogleData(businessId, channel);
+  const google = GOOGLE_CHANNELS.some(c => c === channel);
+  // Las cuentas de Google también las desconecta quien «Puede conectar»; las demás, solo el Administrador.
+  await requireBusiness(businessId, google ? "connect" : "admin");
+  if (google) await disconnectGoogleData(businessId, channel);
   else await db.connection.deleteMany({ where: { businessId, channel } });
   revalidatePath(`/b/${businessId}/conexiones`);
 }
@@ -212,7 +214,9 @@ export type TestResult = { ok: boolean; message: string } | null;
 export async function testConnection(businessId: string, channel: ChannelId): Promise<TestResult> {
   ensure.text(businessId, channel);
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "admin"))) return { ok: false, message: await deniedText(businessId, "admin") };
+  // Como al conectar: Google también quien «Puede conectar»; lo demás, solo el Administrador.
+  const need = GOOGLE_CHANNELS.some(c => c === channel) ? "connect" : "admin";
+  if (!(await hasBusiness(businessId, need))) return { ok: false, message: await deniedText(businessId, need) };
   const conn = await db.connection.findUnique({ where: { businessId_channel: { businessId, channel } } });
   if (!conn) return { ok: false, message: t("Primero guarda los datos de la conexión.", "Save the connection details first.") };
   try {

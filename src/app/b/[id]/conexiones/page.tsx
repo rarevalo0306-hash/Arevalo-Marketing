@@ -15,12 +15,14 @@ import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
 import { GA4_CHANNEL } from "@/lib/ga4-shape";
 import { googleEnabled, googleRedirectUri } from "@/lib/google-oauth";
+import { GOOGLE_PERMISSIONS_URL, legalUrl } from "@/lib/legal";
 import { metaEnabled } from "@/lib/meta-oauth";
 import { connectionsNeedingReconnect } from "@/lib/connection-health";
 import { GSC_CHANNEL } from "@/lib/seo/gsc";
 import { serviceAccountEmail } from "@/lib/google-sa";
 import { libraryCounts } from "@/lib/library-sync";
 import { r2Enabled } from "@/lib/r2";
+import { roleAllows } from "@/lib/roles";
 import { uploadStats } from "@/lib/upload";
 import { businessTzLabel, fmtWhen } from "@/lib/time";
 import { DriveCard } from "./DriveCard";
@@ -42,6 +44,10 @@ export default async function ConexionesPage({
   const { id } = await params;
   // El link privado de los técnicos deja subir a cualquiera que lo tenga: solo lo ve el Administrador.
   const { role } = await pageBusiness(id);
+  // Las cuentas de Google (Perfil de Negocio, YouTube, Search Console y Analytics) las conecta también quien «Puede
+  // conectar»; Facebook, Instagram, Brevo y los datos pegados a mano, solo el Administrador (src/lib/roles.ts).
+  const canGoogle = roleAllows(role, "connect");
+  const canAdmin = role === "admin";
   const q = await searchParams;
   const { lang, t } = await getT();
   const metaUrl = metaEnabled() ? `/api/meta/start?b=${id}` : null;
@@ -91,9 +97,15 @@ export default async function ConexionesPage({
       />
       <p className="note">
         {t("Antes de conectar una cuenta, consulta ", "Before connecting an account, read ")}
-        <a href={`https://matya.app/${lang === "en" ? "en/" : ""}privacidad/`}>{t("Privacidad", "Privacy")}</a>{" · "}
-        <a href={`https://matya.app/${lang === "en" ? "en/" : ""}borrado-de-datos/`}>{t("Borrado de datos", "Data deletion")}</a>.
-        {t(" La IA puede recibir fotos y resúmenes de resultados para las funciones que solicites. Desconectar Google revoca su permiso y borra el reporte de esa conexión; otras conexiones de Google podrían necesitar reconexión.", " AI may receive photos and result summaries for requested features. Disconnecting Google revokes its permission and deletes that connection's report; other Google connections may need reconnection.")}
+        <a href={legalUrl("privacidad", lang)}>{t("Privacidad", "Privacy")}</a>{" · "}
+        <a href={legalUrl("condiciones", lang)}>{t("Condiciones", "Terms")}</a>{" · "}
+        <a href={legalUrl("borrado-de-datos", lang)}>{t("Borrado de datos", "Data deletion")}</a>.
+        {t(" La IA puede recibir fotos y resúmenes de resultados para las funciones que solicites.", " AI may receive photos and result summaries for requested features.")}
+        {t(
+          " Desconectar un servicio de Google revoca su permiso y borra sus datos y lo que Matya creó con ellos. Los datos de YouTube se actualizan o se borran en un plazo de 30 días. Si quitas el acceso de Matya desde tu cuenta de Google, Matya borra los datos de esa conexión en un plazo de 7 días. Puedes quitar el acceso de Matya cuando quieras en ",
+          " Disconnecting a Google service revokes its permission and deletes its data and what Matya built from it. Data from YouTube is refreshed or deleted within 30 days. If you remove Matya's access from your Google account, Matya deletes that connection's data within 7 days. You can remove Matya's access at any time at ",
+        )}
+        <a href={GOOGLE_PERMISSIONS_URL}>myaccount.google.com/permissions</a>.
       </p>
       {q.meta === "ok" && (
         <p className="note ok" role="status">
@@ -255,6 +267,8 @@ export default async function ConexionesPage({
                       brevo={c.id === "email" ? brevo : null}
                       needsReconnect={broken.has(c.id)}
                       account={label && !/^\d+$/.test(label) ? label : undefined}
+                      canConnect={(c.id === "google" || c.id === "youtube") && googleUrl ? canGoogle : canAdmin}
+                      canPaste={canAdmin}
                     />
                   );
                 })}
@@ -266,6 +280,7 @@ export default async function ConexionesPage({
                     enabled={googleEnabled()}
                     hasWebsite={Boolean(b.website.trim())}
                     disconnect={disconnectGscFromConnections.bind(null, id)}
+                    canConnect={canGoogle}
                   />
                 )}
                 {g === "google" && (
@@ -276,6 +291,7 @@ export default async function ConexionesPage({
                     enabled={googleEnabled()}
                     redirectUri={googleRedirectUri()}
                     disconnect={disconnectGa4.bind(null, id)}
+                    canConnect={canGoogle}
                   />
                 )}
               </div>

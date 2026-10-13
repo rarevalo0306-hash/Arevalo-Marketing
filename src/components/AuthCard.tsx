@@ -1,8 +1,9 @@
+import { ConsentLine, LegalLinks } from "@/components/ConsentLine";
 import { LangPicker } from "@/components/I18n";
 
 /**
  * Tarjeta centrada de las páginas públicas para entrar (invitación, contraseña olvidada, contraseña nueva), igual que
- * /login: «Matya» arriba y, abajo, el idioma y los enlaces legales.
+ * /login: «Matya» arriba y, abajo, el aviso de que al continuar acepta las condiciones, el idioma y los enlaces legales.
  */
 export function AuthCard({ children }: { children: React.ReactNode }) {
   return (
@@ -10,8 +11,9 @@ export function AuthCard({ children }: { children: React.ReactNode }) {
       <div className="card">
         <h1 className="login-name">Matya</h1>
         {children}
+        <ConsentLine style={{ textAlign: "center" }} />
         <LangPicker />
-        <p className="note"><a href="https://matya.app/privacidad/">Privacidad / Privacy</a>{" · "}<a href="https://matya.app/condiciones/">Condiciones / Terms</a>{" · "}<a href="https://matya.app/borrado-de-datos/">Borrado de datos / Data deletion</a></p>
+        <LegalLinks />
       </div>
     </main>
   );

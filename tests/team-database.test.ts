@@ -2,9 +2,12 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const sent = vi.hoisted(() => [] as { to: string; href: string }[]);
+// Los datos («Tu papel», «Empresas») del último correo.
+const lastFacts = vi.hoisted(() => ({ value: [] as [string, string][] }));
 vi.mock("@/lib/auth-email", () => ({
-  sendAuthEmail: async (m: { to: string; button: { href: string } }) => {
+  sendAuthEmail: async (m: { to: string; button: { href: string }; facts?: [string, string][] }) => {
     sent.push({ to: m.to, href: m.button.href });
+    lastFacts.value = m.facts ?? [];
     return true;
   },
 }));
@@ -88,6 +91,30 @@ describe.skipIf(!safe)("team: invitations, roles and passwords on an isolated Po
     expect(await acceptInvitation(tokenOf(link), "ana@ejemplo.com")).toBeNull();
     expect(await readInvitation(tokenOf(link))).toBeNull();
     expect(await loginUser("ana@ejemplo.com", { owner: false })).toMatchObject({ id: user!.id });
+  });
+
+  it("a Can connect person can be limited to one business, and can be changed to and from that role", async () => {
+    const { link } = await invite(ORG, boss, { email: "ana@ejemplo.com", role: "manager", allBusinesses: false, businessIds: [B1, BX] }, "en");
+    expect(lastFacts.value).toEqual([["Your role:", "Can connect"], ["Businesses:", "Uno"]]);
+    expect(await readInvitation(tokenOf(link))).toMatchObject({ role: "manager", businessNames: ["Uno"] });
+    const ana = (await acceptInvitation(tokenOf(link), "ana@ejemplo.com", { newPassword: "clave-de-ana-1" }))!;
+    const m = await db.membership.findFirstOrThrow({ where: { userId: ana.id, organizationId: ORG }, include: { businesses: true } });
+    expect(m).toMatchObject({ role: "manager", allBusinesses: false });
+    expect(m.businesses.map((b) => b.businessId)).toEqual([B1]);
+    expect((await teamOf(ORG)).members.find((x) => x.email === "ana@ejemplo.com")).toMatchObject({ role: "manager", allBusinesses: false, businessIds: [B1] });
+    // De «Puede conectar» a «Puede publicar» con las dos empresas, y de vuelta con una sola.
+    await changeMember(ORG, m.id, { role: "publisher", allBusinesses: false, businessIds: [B1, B2] });
+    expect(await db.membership.findUniqueOrThrow({ where: { id: m.id }, include: { businesses: { orderBy: { businessId: "asc" } } } })).toMatchObject({
+      role: "publisher",
+      allBusinesses: false,
+      businesses: [{ businessId: B1 }, { businessId: B2 }],
+    });
+    await changeMember(ORG, m.id, { role: "manager", allBusinesses: false, businessIds: [B2] });
+    const back = await db.membership.findUniqueOrThrow({ where: { id: m.id }, include: { businesses: true } });
+    expect(back).toMatchObject({ role: "manager", allBusinesses: false });
+    expect(back.businesses.map((b) => b.businessId)).toEqual([B2]);
+    // Bajar al único Administrador a «Puede conectar» no se deja.
+    await expect(changeMember(ORG, bossMembership, { role: "manager", allBusinesses: true, businessIds: [] })).rejects.toThrow(/Administrador/);
   });
 
   it("never sets a password on an account that is in use elsewhere, and the email must match", async () => {

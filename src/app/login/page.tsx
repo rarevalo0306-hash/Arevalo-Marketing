@@ -1,3 +1,4 @@
+import { ConsentLine, LegalLinks } from "@/components/ConsentLine";
 import { LangPicker } from "@/components/I18n";
 import { LoginForm } from "@/components/LoginForm";
 import { safeNext } from "@/lib/access";
@@ -69,8 +70,9 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           </>
         )}
         <LoginForm error={passwordError} next={inviteToken ? invitePath : undefined} />
+        <ConsentLine style={{ textAlign: "center" }} />
         <LangPicker />
-        <p className="note"><a href="https://matya.app/privacidad/">Privacidad / Privacy</a>{" · "}<a href="https://matya.app/condiciones/">Condiciones / Terms</a>{" · "}<a href="https://matya.app/borrado-de-datos/">Borrado de datos / Data deletion</a></p>
+        <LegalLinks />
       </div>
     </main>
   );

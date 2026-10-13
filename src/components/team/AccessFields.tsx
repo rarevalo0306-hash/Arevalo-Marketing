@@ -1,7 +1,7 @@
 "use client";
 
 // Papel y empresas de una persona: los usa «Invitar a alguien» y «Cambiar» en la lista. Los nombres de los campos son
-// los que lee src/app/actions-team.ts: role (admin | publisher | viewer), scope (all | some) y businessIds (varios).
+// los que lee src/app/actions-team.ts: role (admin | manager | publisher | viewer), scope (all | some) y businessIds (varios).
 import { useState } from "react";
 import { useT } from "@/components/I18n";
 import { roleLabel, type Role } from "@/lib/roles";
@@ -24,6 +24,13 @@ export function AccessFields({ businesses, role: startRole = "publisher", allBus
   const [picked, setPicked] = useState<string[]>(businessIds);
   const roles: { id: Role; text: string }[] = [
     { id: "admin", text: t("Todo: también conectar cuentas, invitar y borrar.", "Everything: also connect accounts, invite and delete.") },
+    {
+      id: "manager",
+      text: t(
+        "Publica y conecta las cuentas de Google (Perfil de Negocio, Search Console, Analytics y YouTube) de sus empresas.",
+        "Publishes and connects the Google accounts — Business Profile, Search Console, Analytics and YouTube — of their businesses.",
+      ),
+    },
     { id: "publisher", text: t("Crea, publica y usa la IA.", "Creates, publishes and uses the AI.") },
     { id: "viewer", text: t("Mira resultados y reportes.", "Sees results and reports.") },
   ];

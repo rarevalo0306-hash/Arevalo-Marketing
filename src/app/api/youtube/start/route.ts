@@ -10,8 +10,8 @@ export async function GET(req: Request) {
   const businessId = new URL(req.url).searchParams.get("b") ?? "";
   const { t } = await getT();
   if (!googleEnabled()) return new Response(t("Falta configurar GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET.", "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET need to be set up."), { status: 503 });
-  // Conectar cuentas es de un Administrador de este negocio (src/lib/auth.ts).
-  const access = await businessAccess(businessId, "admin");
+  // Conectar las cuentas de Google es del Administrador o de quien «Puede conectar» en este negocio (src/lib/auth.ts).
+  const access = await businessAccess(businessId, "connect");
   if (!access.ok)
     return new Response(
       access.status === 401 ? t("No autorizado", "Unauthorized") : access.status === 403 ? t("Tu papel en esta empresa no permite hacer esto.", "Your role in this business doesn't allow this.") : t("Negocio no encontrado", "Business not found"),

@@ -4,6 +4,7 @@ import { disconnectSearchConsole, refreshSearchConsole } from "@/app/actions-seo
 import { capClass, Fold } from "@/components/seo/Fold";
 import { SearchConsoleButton, SearchConsoleNotice } from "@/components/seo/SearchConsoleButton";
 import { ShowMore } from "@/components/seo/ShowMore";
+import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { googleEnabled } from "@/lib/google-oauth";
 import { intlLocale, type T, type UiLang } from "@/lib/i18n";
@@ -194,10 +195,12 @@ export async function SearchConsolePanel({ businessId }: { businessId: string })
       </section>
     );
 
-  const [business, conn, reports] = await Promise.all([
+  const [business, conn, reports, canConnect] = await Promise.all([
     db.business.findUnique({ where: { id }, select: { website: true } }),
     db.connection.findUnique({ where: { businessId_channel: { businessId: id, channel: GSC_CHANNEL } }, select: { label: true } }),
     latestReports(id, "gsc", 1),
+    // Desconectar: el Administrador o quien «Puede conectar» (src/lib/roles.ts).
+    hasBusiness(id, "connect"),
   ]);
 
   if (!conn)
@@ -415,9 +418,11 @@ export async function SearchConsolePanel({ businessId }: { businessId: string })
         </>
       )}
 
-      <form action={disconnectSearchConsole.bind(null, id)}>
-        <button type="submit" className="btn danger">{t("Desconectar Search Console", "Disconnect Search Console")}</button>
-      </form>
+      {canConnect && (
+        <form action={disconnectSearchConsole.bind(null, id)}>
+          <button type="submit" className="btn danger">{t("Desconectar Search Console", "Disconnect Search Console")}</button>
+        </form>
+      )}
     </section>
   );
 }

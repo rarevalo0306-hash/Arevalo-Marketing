@@ -98,6 +98,27 @@ describe("business access", () => {
     expect(await myBusinessesWhere()).toEqual({ OR: [{ organizationId: { in: [] } }, { id: "bizA", organizationId: "orgA" }] });
   });
 
+  it("a Can connect member limited to bizA connects Google there only, and isn't an Administrator", async () => {
+    mocks.user.mockResolvedValue(person([{ organizationId: "orgA", role: "manager", allBusinesses: false, businessIds: ["bizA"] }]));
+    expect(await businessAccess("bizA", "connect")).toMatchObject({ ok: true, role: "manager" });
+    expect(await businessAccess("bizA", "publish")).toMatchObject({ ok: true, role: "manager" });
+    expect(await businessAccess("bizA2", "connect")).toEqual({ ok: false, status: 404 });
+    expect(await businessAccess("bizB", "view")).toEqual({ ok: false, status: 404 });
+    await expect(requireBusiness("bizA", "admin")).rejects.toMatchObject({ status: 403 });
+    expect(await deniedText("bizA", "admin")).toBe("Only the Administrator can do this.");
+    expect(await myBusinessesWhere()).toEqual({ OR: [{ organizationId: { in: [] } }, { id: "bizA", organizationId: "orgA" }] });
+  });
+
+  it("Can publish and View only can't connect Google accounts, and are told who can", async () => {
+    mocks.user.mockResolvedValue(person([{ organizationId: "orgA", role: "publisher" }]));
+    expect(await businessAccess("bizA", "connect")).toEqual({ ok: false, status: 403 });
+    expect(await deniedText("bizA", "connect")).toBe('Connecting Google accounts is for the Administrator or someone who "Can connect". Ask the Administrator for that access.');
+    mocks.user.mockResolvedValue(person([{ organizationId: "orgA", role: "viewer" }]));
+    expect(await hasBusiness("bizA", "connect")).toBe(false);
+    mocks.user.mockResolvedValue(person([{ organizationId: "orgA", role: "admin" }]));
+    expect(await hasBusiness("bizA2", "connect")).toBe(true);
+  });
+
   it("an Administrator always enters every business of the organization, whatever is stored", async () => {
     mocks.user.mockResolvedValue(person([{ organizationId: "orgA", role: "admin", allBusinesses: false, businessIds: [] }]));
     expect(await businessAccess("bizA2", "admin")).toMatchObject({ ok: true, role: "admin" });
@@ -116,12 +137,16 @@ describe("business access", () => {
     await expect(requireOrgAdmin("orgA")).resolves.toMatchObject({ id: "u1" });
     await expect(requireOrgAdmin("orgB")).rejects.toMatchObject({ status: 403 });
     await expect(requireOrgAdmin("orgZ")).rejects.toMatchObject({ status: 403 });
+    mocks.user.mockResolvedValue(person([{ organizationId: "orgA", role: "manager" }]));
+    await expect(requireOrgAdmin("orgA")).rejects.toMatchObject({ status: 403 });
   });
 
   it("new businesses go to the first organization where the person is Administrator", async () => {
     mocks.user.mockResolvedValue(person([{ organizationId: "orgA", role: "viewer" }, { organizationId: "orgC", role: "admin" }]));
     expect(await newBusinessOrganizationId()).toBe("orgC");
     mocks.user.mockResolvedValue(person([{ organizationId: "orgA", role: "publisher" }]));
+    await expect(newBusinessOrganizationId()).rejects.toMatchObject({ status: 403 });
+    mocks.user.mockResolvedValue(person([{ organizationId: "orgA", role: "manager" }]));
     await expect(newBusinessOrganizationId()).rejects.toMatchObject({ status: 403 });
   });
 });

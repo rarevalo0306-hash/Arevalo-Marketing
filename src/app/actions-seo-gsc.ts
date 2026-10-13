@@ -50,7 +50,7 @@ export async function refreshSearchConsole(businessId: string, _prev: GscResult,
 /** Después de "Conectar Search Console", cuando ningún sitio coincide con la página del negocio. */
 export async function chooseGscSite(businessId: string, siteUrl: string) {
   ensure.text(businessId, siteUrl);
-  await ensureBusiness(businessId, "admin");
+  await ensureBusiness(businessId, "connect");
   const { t } = await getT();
   const jar = await cookies();
   const raw = jar.get(GSC_COOKIE)?.value;

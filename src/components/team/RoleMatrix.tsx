@@ -1,7 +1,7 @@
 "use client";
 
 // «Qué puede hacer cada papel»: lo mismo que revisa src/lib/roles.ts, dicho en palabras sencillas. En el celular cada
-// fila se vuelve una tarjeta con los tres papeles debajo.
+// fila se vuelve una tarjeta con los cuatro papeles debajo.
 import { useT } from "@/components/I18n";
 import { roleLabel, ROLES } from "@/lib/roles";
 import s from "./Team.module.css";
@@ -20,14 +20,15 @@ function Mark({ yes }: { yes: boolean }) {
 
 export function RoleMatrix() {
   const { t } = useT();
-  // [lo que se puede hacer, Administrador, Puede publicar, Solo ver]
-  const rows: [string, boolean, boolean, boolean][] = [
-    [t("Ver resultados y reportes", "See results and reports"), true, true, true],
-    [t("Crear y publicar", "Create and publish"), true, true, false],
-    [t("Usar la IA y gastar créditos", "Use the AI and spend credits"), true, true, false],
-    [t("Conectar Facebook, Instagram y Google", "Connect Facebook, Instagram and Google"), true, false, false],
-    [t("Borrar empresas y cambiar la autonomía de la IA", "Delete businesses and change the AI's autonomy"), true, false, false],
-    [t("Invitar personas y cambiar papeles", "Invite people and change roles"), true, false, false],
+  // [lo que se puede hacer, Administrador, Puede conectar, Puede publicar, Solo ver] (el orden de ROLES)
+  const rows: [string, boolean, boolean, boolean, boolean][] = [
+    [t("Ver resultados y reportes", "See results and reports"), true, true, true, true],
+    [t("Crear y publicar", "Create and publish"), true, true, true, false],
+    [t("Usar la IA y gastar créditos", "Use the AI and spend credits"), true, true, true, false],
+    [t("Conectar Google (Perfil de Negocio, Search Console, Analytics y YouTube)", "Connect Google (Business Profile, Search Console, Analytics and YouTube)"), true, true, false, false],
+    [t("Conectar Facebook, Instagram y las demás cuentas", "Connect Facebook, Instagram and the other accounts"), true, false, false, false],
+    [t("Borrar empresas y cambiar la autonomía de la IA", "Delete businesses and change the AI's autonomy"), true, false, false, false],
+    [t("Invitar personas y cambiar papeles", "Invite people and change roles"), true, false, false, false],
   ];
   const labels = ROLES.map((r) => roleLabel(r, t));
   return (

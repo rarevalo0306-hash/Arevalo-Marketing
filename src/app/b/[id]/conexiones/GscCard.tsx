@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useTransition } from "react";
+import { ConsentLine } from "@/components/ConsentLine";
 import { useT } from "@/components/I18n";
+import { whoConnects } from "@/lib/roles";
 import s from "@/components/ConnectionCard.module.css";
 
 type Props = {
@@ -14,6 +16,8 @@ type Props = {
   enabled: boolean;
   hasWebsite: boolean;
   disconnect: () => Promise<void>;
+  /** Su papel le deja conectar y desconectar las cuentas de Google (Administrador o «Puede conectar»). */
+  canConnect: boolean;
 };
 
 function siteName(site: string) {
@@ -21,7 +25,7 @@ function siteName(site: string) {
 }
 
 /** Google Search Console: con qué búsquedas aparece tu página en Google (solo lectura, gratis). */
-export function GscCard({ businessId, connected, site, enabled, hasWebsite, disconnect }: Props) {
+export function GscCard({ businessId, connected, site, enabled, hasWebsite, disconnect, canConnect }: Props) {
   const { t } = useT();
   const [pending, start] = useTransition();
   const url = `/api/gsc/start?b=${businessId}`;
@@ -51,19 +55,24 @@ export function GscCard({ businessId, connected, site, enabled, hasWebsite, disc
         </p>
       ) : (
         <div className={s.easy}>
-          <a className={connected ? "btn outline" : "btn on"} href={url}>
-            {connected ? t("Volver a conectar con Google", "Reconnect with Google") : t("Conectar Search Console", "Connect Search Console")}
-          </a>
+          {canConnect && (
+            <a className={connected ? "btn outline" : "btn on"} href={url}>
+              {connected ? t("Volver a conectar con Google", "Reconnect with Google") : t("Conectar Search Console", "Connect Search Console")}
+            </a>
+          )}
           <span className={s.easyNote}>
             {connected ? (
               <>
                 {t("Ve tus datos en ", "See your data in ")}
                 <Link href={`/b/${businessId}/seo`}>SEO</Link>.
               </>
-            ) : (
+            ) : canConnect ? (
               t("Solo entra con la cuenta de Google donde tienes tu página en Search Console.", "Just sign in with the Google account where your website is in Search Console.")
+            ) : (
+              whoConnects(true, t)
             )}
           </span>
+          {canConnect && <ConsentLine className={s.hint} />}
         </div>
       )}
 
@@ -105,7 +114,7 @@ export function GscCard({ businessId, connected, site, enabled, hasWebsite, disc
         </div>
       </details>
 
-      {connected && (
+      {connected && canConnect && (
         <div className={s.actions}>
           <button
             className="btn danger"

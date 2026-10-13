@@ -2,7 +2,7 @@ import { createHmac } from "crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isOwnerEmail, looksLikeEmail, normalizeEmail } from "@/lib/accounts";
 import { googleIdentity } from "@/lib/google-login";
-import { asRole, roleAllows } from "@/lib/roles";
+import { asRole, roleAllows, roleLabel, ROLES } from "@/lib/roles";
 import { createSession, readSession } from "@/lib/session";
 
 vi.mock("@/lib/db", () => ({ db: {} }));
@@ -68,10 +68,20 @@ describe("signed session cookie", () => {
 });
 
 describe("roles", () => {
-  it("Administrator can do everything, Can publish creates and spends, View only just looks", () => {
-    expect([roleAllows("admin", "view"), roleAllows("admin", "publish"), roleAllows("admin", "admin")]).toEqual([true, true, true]);
-    expect([roleAllows("publisher", "view"), roleAllows("publisher", "publish"), roleAllows("publisher", "admin")]).toEqual([true, true, false]);
-    expect([roleAllows("viewer", "view"), roleAllows("viewer", "publish"), roleAllows("viewer", "admin")]).toEqual([true, false, false]);
+  it("Administrator can do everything, Can connect also connects Google, Can publish creates and spends, View only just looks", () => {
+    const can = (role: string) => (["view", "publish", "connect", "admin"] as const).map((need) => roleAllows(role, need));
+    expect(can("admin")).toEqual([true, true, true, true]);
+    expect(can("manager")).toEqual([true, true, true, false]);
+    expect(can("publisher")).toEqual([true, true, false, false]);
+    expect(can("viewer")).toEqual([true, false, false, false]);
+  });
+
+  it("every role has a label in both languages", () => {
+    const es = (a: string) => a;
+    const en = (_: string, b: string) => b;
+    expect(ROLES.map((r) => roleLabel(r, es))).toEqual(["Administrador", "Puede conectar", "Puede publicar", "Solo ver"]);
+    expect(ROLES.map((r) => roleLabel(r, en))).toEqual(["Administrator", "Can connect", "Can publish", "View only"]);
+    expect(asRole("manager")).toBe("manager");
   });
 
   it("an unknown role allows nothing", () => {

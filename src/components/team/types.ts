@@ -61,4 +61,4 @@ export const focusLost = () => !document.activeElement || document.activeElement
 export const missingBusiness = (f: FormData) => f.get("role") !== "admin" && f.get("scope") === "some" && f.getAll("businessIds").length === 0;
 
 /** Color de la etiqueta de cada papel. */
-export const ROLE_TONE: Record<Role, string> = { admin: "info", publisher: "draft", viewer: "neutral" };
+export const ROLE_TONE: Record<Role, string> = { admin: "info", manager: "good", publisher: "draft", viewer: "neutral" };

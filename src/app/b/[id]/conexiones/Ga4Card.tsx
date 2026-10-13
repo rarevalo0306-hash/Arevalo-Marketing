@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { useTransition } from "react";
+import { ConsentLine } from "@/components/ConsentLine";
 import { useT } from "@/components/I18n";
 import { Ga4HowTo } from "@/components/seo/Ga4PanelHowTo";
+import { whoConnects } from "@/lib/roles";
 import s from "@/components/ConnectionCard.module.css";
 
 type Props = {
@@ -15,10 +17,12 @@ type Props = {
   enabled: boolean;
   redirectUri: string;
   disconnect: () => Promise<void>;
+  /** Su papel le deja conectar, elegir la propiedad y desconectar (Administrador o «Puede conectar»). */
+  canConnect: boolean;
 };
 
 /** Google Analytics 4: visitas reales de la página web (solo lectura, gratis). */
-export function Ga4Card({ businessId, connected, property, enabled, redirectUri, disconnect }: Props) {
+export function Ga4Card({ businessId, connected, property, enabled, redirectUri, disconnect, canConnect }: Props) {
   const { t } = useT();
   const [pending, start] = useTransition();
   const panel = `/b/${businessId}/seo?tab=web#ga4`;
@@ -51,7 +55,7 @@ export function Ga4Card({ businessId, connected, property, enabled, redirectUri,
         </p>
       ) : (
         <div className={s.easy}>
-          {choose ? (
+          {!canConnect ? null : choose ? (
             <Link className="btn on" href={panel}>{t("Elegir la propiedad", "Pick the property")}</Link>
           ) : (
             <a className={connected ? "btn outline" : "btn on"} href={`/api/ga4/start?b=${businessId}`}>
@@ -64,16 +68,19 @@ export function Ga4Card({ businessId, connected, property, enabled, redirectUri,
                 {t("Ve tus visitas en ", "See your visits in ")}
                 <Link href={panel}>{t("Diagnóstico › Tu página web", "Diagnosis › Your website")}</Link>.
               </>
-            ) : (
+            ) : canConnect ? (
               t("Entra con la cuenta de Google que ve las estadísticas de tu página.", "Sign in with the Google account that sees your website's stats.")
+            ) : (
+              whoConnects(true, t)
             )}
           </span>
+          {canConnect ? <ConsentLine className={s.hint} /> : choose && <span className={s.hint}>{whoConnects(true, t)}</span>}
         </div>
       )}
 
       <Ga4HowTo t={t} redirectUri={redirectUri} />
 
-      {connected && (
+      {connected && canConnect && (
         <div className={s.actions}>
           <button
             className="btn danger"
