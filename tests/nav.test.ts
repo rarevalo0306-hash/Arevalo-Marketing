@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MOBILE_TABS, NAV_GROUPS, SEO_TAB_IDS, isGroupOn, isItemOn, itemHref, seoTabFrom, type NavHere } from "@/components/nav/model";
+import { MOBILE_TABS, NAV_GROUPS, SEO_TAB_IDS, isGroupOn, isItemOn, itemHref, sectionItems, seoTabFrom, type NavHere } from "@/components/nav/model";
 
 const ID = "biz1";
 const here = (pathname: string, tab: string | null = null, mapa: string | null = null): NavHere => ({ pathname, tab, mapa });
@@ -46,6 +46,22 @@ describe("menú por herramientas", () => {
     expect(onKeys(here("/b/biz1/fotos"))).toEqual(["fotos"]);
     expect(onKeys(here("/b/biz1/negocio/"))).toEqual(["negocio"]);
     expect(onKeys(here("/b/otro/inicio"))).toEqual([]);
+  });
+
+  it("al bajar a una sección del menú se marca esa sección y no su página", () => {
+    // Marca: arriba «Identidad y kit»; al llegar a las plantillas, «Plantillas».
+    expect(onKeys(here("/b/biz1/marca"))).toEqual(["marca"]);
+    expect(onKeys({ ...here("/b/biz1/marca"), section: "plantillas" })).toEqual(["plantillas"]);
+    expect(sectionItems(ID, here("/b/biz1/marca")).map((x) => x.key)).toEqual(["plantillas", "plantillas-redes"]);
+    expect(onKeys({ ...here("/b/biz1/marca"), section: "plantillas-redes" })).toEqual(["plantillas-redes"]);
+    // SEO: la sección solo cuenta en su pestaña.
+    expect(onKeys({ ...here("/b/biz1/seo", "google"), section: "palabras" })).toEqual(["seo-palabras"]);
+    expect(onKeys({ ...here("/b/biz1/seo", "web"), section: "palabras" })).toEqual(["seo-web"]);
+    expect(sectionItems(ID, here("/b/biz1/seo", "local")).map((x) => x.key)).toEqual(["local-perfil"]);
+    // Otra página no vigila secciones.
+    expect(sectionItems(ID, here("/b/biz1/fotos"))).toEqual([]);
+    const marca = NAV_GROUPS.find((g) => g.key === "marca")!;
+    expect(isGroupOn(ID, marca, { ...here("/b/biz1/marca"), section: "plantillas" })).toBe(true);
   });
 
   it("grupos y barra del celular", () => {

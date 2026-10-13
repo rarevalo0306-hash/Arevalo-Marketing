@@ -1,5 +1,5 @@
 // Descargas del kit de marca: quién puede bajar qué. Partes sin servidor para poder probarlas.
-import { readBrandAssets, type BrandAsset } from "@/lib/brand-assets";
+import { kitAssets, readBrandAssets, type BrandAsset } from "@/lib/brand-assets";
 
 /** La imagen pedida, solo si es de este negocio (está en su lista guardada). */
 export function ownAsset(raw: unknown, assetId: string): BrandAsset | null {
@@ -8,7 +8,7 @@ export function ownAsset(raw: unknown, assetId: string): BrandAsset | null {
 }
 
 /** Las imágenes del kit de este negocio. */
-export const kitItems = (raw: unknown) => readBrandAssets(raw).items.filter((a) => a.kind === "kit" && a.status === "accepted");
+export const kitItems = (raw: unknown) => kitAssets(readBrandAssets(raw)).filter((a) => a.status === "accepted");
 
 /** Encabezado para que el navegador descargue con ese nombre (con acentos bien escritos). */
 export function attachment(fileName: string): string {

@@ -1,0 +1,5308 @@
+[
+  {
+    "id": "facebook.feed_square",
+    "platform": "facebook",
+    "platformLabel": "Facebook",
+    "label": "Post cuadrado",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1080,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "meta_feed"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Preset de diseño; revisar recomendaciones vigentes de Meta y el conector.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "facebook.feed_portrait",
+    "platform": "facebook",
+    "platformLabel": "Facebook",
+    "label": "Post vertical 4:5",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1350,
+      "unit": "px",
+      "aspectRatio": "4:5"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "meta_feed"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Preset de diseño; revisar recomendaciones vigentes de Meta y el conector.",
+    "designStatus": "reference_same_ratio_review_required",
+    "referenceTemplateIds": [
+      "rpa.reference.photo_emotional.1080x1350",
+      "rpa.reference.real_stories.1080x1350",
+      "rpa.reference.promotion.1080x1350",
+      "rpa.reference.video_testimonial.1080x1350",
+      "rpa.reference.hurricane_season.1080x1350",
+      "rpa.reference.geographic.1080x1350"
+    ]
+  },
+  {
+    "id": "facebook.feed_portrait_hd",
+    "platform": "facebook",
+    "platformLabel": "Facebook",
+    "label": "Post vertical 4:5 — alta resolución",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1440,
+      "height": 1800,
+      "unit": "px",
+      "aspectRatio": "4:5"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "meta_feed"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Preset de diseño; revisar recomendaciones vigentes de Meta y el conector.",
+    "designStatus": "reference_same_ratio_review_required",
+    "referenceTemplateIds": [
+      "rpa.reference.photo_emotional.1080x1350",
+      "rpa.reference.real_stories.1080x1350",
+      "rpa.reference.promotion.1080x1350",
+      "rpa.reference.video_testimonial.1080x1350",
+      "rpa.reference.hurricane_season.1080x1350",
+      "rpa.reference.geographic.1080x1350"
+    ]
+  },
+  {
+    "id": "facebook.feed_landscape",
+    "platform": "facebook",
+    "platformLabel": "Facebook",
+    "label": "Post horizontal",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1200,
+      "height": 630,
+      "unit": "px",
+      "aspectRatio": "40:21"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "meta_feed"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Preset de diseño; revisar recomendaciones vigentes de Meta y el conector.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "facebook.carousel_card",
+    "platform": "facebook",
+    "platformLabel": "Facebook",
+    "label": "Tarjeta de carrusel",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1080,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "meta_feed"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Preset de diseño; revisar recomendaciones vigentes de Meta y el conector.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "facebook.story_image",
+    "platform": "facebook",
+    "platformLabel": "Facebook",
+    "label": "Story — imagen",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1920,
+      "unit": "px",
+      "aspectRatio": "9:16"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "meta_feed"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.14,
+        "right": 0.12,
+        "bottom": 0.24,
+        "left": 0.06
+      },
+      "notes": "Zona conservadora de diseño propia para contenido esencial. Revisar interfaz, captions, CTA y método de publicación; no aplicar como especificación oficial."
+    },
+    "notes": "Preset de diseño; revisar recomendaciones vigentes de Meta y el conector.",
+    "designStatus": "reference_same_ratio_review_required",
+    "referenceTemplateIds": [
+      "rpa.reference.photo_emotional.1080x1920",
+      "rpa.reference.real_stories.1080x1920",
+      "rpa.reference.promotion.1080x1920",
+      "rpa.reference.video_testimonial.1080x1920",
+      "rpa.reference.hurricane_season.1080x1920",
+      "rpa.reference.geographic.1080x1920"
+    ]
+  },
+  {
+    "id": "facebook.reel_cover",
+    "platform": "facebook",
+    "platformLabel": "Facebook",
+    "label": "Portada de reel — arte estático",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1920,
+      "unit": "px",
+      "aspectRatio": "9:16"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "meta_feed"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.14,
+        "right": 0.12,
+        "bottom": 0.24,
+        "left": 0.06
+      },
+      "notes": "La portada puede recortarse u ocultarse por avatar/interfaz. Requiere una vista previa específica del canal."
+    },
+    "notes": "Preset de diseño; revisar recomendaciones vigentes de Meta y el conector.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "facebook.reel_video",
+    "platform": "facebook",
+    "platformLabel": "Facebook",
+    "label": "Reel — video",
+    "mediaKind": "video",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1920,
+      "unit": "px",
+      "aspectRatio": "9:16"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "meta_feed"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "mp4"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.14,
+        "right": 0.12,
+        "bottom": 0.24,
+        "left": 0.06
+      },
+      "notes": "Zona conservadora de diseño propia para contenido esencial. Revisar interfaz, captions, CTA y método de publicación; no aplicar como especificación oficial."
+    },
+    "notes": "No es una imagen PNG. Requiere renderizador de video y comprobar duración, códec y audio.",
+    "designStatus": "video_render_not_included",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "facebook.page_cover",
+    "platform": "facebook",
+    "platformLabel": "Facebook",
+    "label": "Portada de página",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 851,
+      "height": 315,
+      "unit": "px",
+      "aspectRatio": "851:315"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "meta_cover"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "La portada puede recortarse u ocultarse por avatar/interfaz. Requiere una vista previa específica del canal."
+    },
+    "notes": "",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "facebook.group_cover",
+    "platform": "facebook",
+    "platformLabel": "Facebook",
+    "label": "Portada de grupo",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1640,
+      "height": 856,
+      "unit": "px",
+      "aspectRatio": "205:107"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "meta_cover"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "La portada puede recortarse u ocultarse por avatar/interfaz. Requiere una vista previa específica del canal."
+    },
+    "notes": "",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "facebook.event_cover",
+    "platform": "facebook",
+    "platformLabel": "Facebook",
+    "label": "Portada de evento",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1920,
+      "height": 1005,
+      "unit": "px",
+      "aspectRatio": "128:67"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "meta_cover"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "La portada puede recortarse u ocultarse por avatar/interfaz. Requiere una vista previa específica del canal."
+    },
+    "notes": "",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "facebook.profile",
+    "platform": "facebook",
+    "platformLabel": "Facebook",
+    "label": "Avatar de página",
+    "mediaKind": "logo",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1024,
+      "height": 1024,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [],
+      "status": "unverified_working_choice",
+      "checkedAt": null
+    },
+    "delivery": {
+      "formats": [
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Maestro propio; comprobar recorte circular y exportar al destino.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "facebook.ad_feed_square",
+    "platform": "facebook",
+    "platformLabel": "Facebook",
+    "label": "Anuncio Feed cuadrado",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1080,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "meta_feed"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Anuncio pagado: validación específica del placement obligatoria.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "facebook.ad_feed_portrait",
+    "platform": "facebook",
+    "platformLabel": "Facebook",
+    "label": "Anuncio Feed 4:5",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1440,
+      "height": 1800,
+      "unit": "px",
+      "aspectRatio": "4:5"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "meta_feed"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Anuncio pagado: validación específica del placement obligatoria.",
+    "designStatus": "reference_same_ratio_review_required",
+    "referenceTemplateIds": [
+      "rpa.reference.photo_emotional.1080x1350",
+      "rpa.reference.real_stories.1080x1350",
+      "rpa.reference.promotion.1080x1350",
+      "rpa.reference.video_testimonial.1080x1350",
+      "rpa.reference.hurricane_season.1080x1350",
+      "rpa.reference.geographic.1080x1350"
+    ]
+  },
+  {
+    "id": "facebook.ad_feed_landscape",
+    "platform": "facebook",
+    "platformLabel": "Facebook",
+    "label": "Anuncio Feed horizontal",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1200,
+      "height": 628,
+      "unit": "px",
+      "aspectRatio": "300:157"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "meta_feed"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Anuncio pagado: validación específica del placement obligatoria.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "facebook.ad_story",
+    "platform": "facebook",
+    "platformLabel": "Facebook",
+    "label": "Anuncio Story — imagen",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1440,
+      "height": 2560,
+      "unit": "px",
+      "aspectRatio": "9:16"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "meta_feed"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.14,
+        "right": 0.12,
+        "bottom": 0.24,
+        "left": 0.06
+      },
+      "notes": "Zona conservadora de diseño propia para contenido esencial. Revisar interfaz, captions, CTA y método de publicación; no aplicar como especificación oficial."
+    },
+    "notes": "Anuncio pagado: validación específica del placement obligatoria.",
+    "designStatus": "reference_same_ratio_review_required",
+    "referenceTemplateIds": [
+      "rpa.reference.photo_emotional.1080x1920",
+      "rpa.reference.real_stories.1080x1920",
+      "rpa.reference.promotion.1080x1920",
+      "rpa.reference.video_testimonial.1080x1920",
+      "rpa.reference.hurricane_season.1080x1920",
+      "rpa.reference.geographic.1080x1920"
+    ]
+  },
+  {
+    "id": "instagram.feed_square",
+    "platform": "instagram",
+    "platformLabel": "Instagram",
+    "label": "Post cuadrado",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1080,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "instagram_photo",
+        "instagram_api"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "No asumir que la carga nativa y la publicación por API aceptan las mismas proporciones o codificaciones.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "instagram.feed_portrait",
+    "platform": "instagram",
+    "platformLabel": "Instagram",
+    "label": "Post vertical 4:5",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1350,
+      "unit": "px",
+      "aspectRatio": "4:5"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "instagram_photo",
+        "instagram_api"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "No asumir que la carga nativa y la publicación por API aceptan las mismas proporciones o codificaciones.",
+    "designStatus": "reference_same_ratio_review_required",
+    "referenceTemplateIds": [
+      "rpa.reference.photo_emotional.1080x1350",
+      "rpa.reference.real_stories.1080x1350",
+      "rpa.reference.promotion.1080x1350",
+      "rpa.reference.video_testimonial.1080x1350",
+      "rpa.reference.hurricane_season.1080x1350",
+      "rpa.reference.geographic.1080x1350"
+    ]
+  },
+  {
+    "id": "instagram.feed_tall",
+    "platform": "instagram",
+    "platformLabel": "Instagram",
+    "label": "Post vertical 3:4 — experimental",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1440,
+      "unit": "px",
+      "aspectRatio": "3:4"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "instagram_photo",
+        "instagram_api"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "3:4 reservado como variante experimental. No habilitar publicación automática hasta verificar el endpoint concreto.",
+    "designStatus": "preset_only",
+    "experimental": true,
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "instagram.feed_landscape",
+    "platform": "instagram",
+    "platformLabel": "Instagram",
+    "label": "Post horizontal",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 566,
+      "unit": "px",
+      "aspectRatio": "540:283"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "instagram_photo",
+        "instagram_api"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "No asumir que la carga nativa y la publicación por API aceptan las mismas proporciones o codificaciones.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "instagram.carousel_square",
+    "platform": "instagram",
+    "platformLabel": "Instagram",
+    "label": "Carrusel — tarjeta cuadrada",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1080,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "instagram_photo",
+        "instagram_api"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "No asumir que la carga nativa y la publicación por API aceptan las mismas proporciones o codificaciones.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "instagram.carousel_portrait",
+    "platform": "instagram",
+    "platformLabel": "Instagram",
+    "label": "Carrusel — tarjeta 4:5",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1350,
+      "unit": "px",
+      "aspectRatio": "4:5"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "instagram_photo",
+        "instagram_api"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "No asumir que la carga nativa y la publicación por API aceptan las mismas proporciones o codificaciones.",
+    "designStatus": "reference_same_ratio_review_required",
+    "referenceTemplateIds": [
+      "rpa.reference.photo_emotional.1080x1350",
+      "rpa.reference.real_stories.1080x1350",
+      "rpa.reference.promotion.1080x1350",
+      "rpa.reference.video_testimonial.1080x1350",
+      "rpa.reference.hurricane_season.1080x1350",
+      "rpa.reference.geographic.1080x1350"
+    ]
+  },
+  {
+    "id": "instagram.story_image",
+    "platform": "instagram",
+    "platformLabel": "Instagram",
+    "label": "Story — imagen",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1920,
+      "unit": "px",
+      "aspectRatio": "9:16"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "instagram_photo",
+        "instagram_api"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.14,
+        "right": 0.12,
+        "bottom": 0.24,
+        "left": 0.06
+      },
+      "notes": "Zona conservadora de diseño propia para contenido esencial. Revisar interfaz, captions, CTA y método de publicación; no aplicar como especificación oficial."
+    },
+    "notes": "No asumir que la carga nativa y la publicación por API aceptan las mismas proporciones o codificaciones.",
+    "designStatus": "reference_same_ratio_review_required",
+    "referenceTemplateIds": [
+      "rpa.reference.photo_emotional.1080x1920",
+      "rpa.reference.real_stories.1080x1920",
+      "rpa.reference.promotion.1080x1920",
+      "rpa.reference.video_testimonial.1080x1920",
+      "rpa.reference.hurricane_season.1080x1920",
+      "rpa.reference.geographic.1080x1920"
+    ]
+  },
+  {
+    "id": "instagram.reel_cover",
+    "platform": "instagram",
+    "platformLabel": "Instagram",
+    "label": "Portada de reel — arte estático",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1920,
+      "unit": "px",
+      "aspectRatio": "9:16"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "instagram_photo",
+        "instagram_api"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.14,
+        "right": 0.12,
+        "bottom": 0.24,
+        "left": 0.06
+      },
+      "notes": "La portada puede recortarse u ocultarse por avatar/interfaz. Requiere una vista previa específica del canal."
+    },
+    "notes": "No asumir que la carga nativa y la publicación por API aceptan las mismas proporciones o codificaciones.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "instagram.reel_video",
+    "platform": "instagram",
+    "platformLabel": "Instagram",
+    "label": "Reel — video",
+    "mediaKind": "video",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1920,
+      "unit": "px",
+      "aspectRatio": "9:16"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "instagram_api"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "mp4"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.14,
+        "right": 0.12,
+        "bottom": 0.24,
+        "left": 0.06
+      },
+      "notes": "Zona conservadora de diseño propia para contenido esencial. Revisar interfaz, captions, CTA y método de publicación; no aplicar como especificación oficial."
+    },
+    "notes": "",
+    "designStatus": "video_render_not_included",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "instagram.highlight_cover",
+    "platform": "instagram",
+    "platformLabel": "Instagram",
+    "label": "Portada de destacado — imagen",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1080,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [],
+      "status": "unverified_working_choice",
+      "checkedAt": null
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "La portada puede recortarse u ocultarse por avatar/interfaz. Requiere una vista previa específica del canal."
+    },
+    "notes": "Maestro propio; contenido esencial centrado para recorte circular.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "instagram.profile",
+    "platform": "instagram",
+    "platformLabel": "Instagram",
+    "label": "Avatar",
+    "mediaKind": "logo",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1024,
+      "height": 1024,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [],
+      "status": "unverified_working_choice",
+      "checkedAt": null
+    },
+    "delivery": {
+      "formats": [
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Maestro propio; no es una resolución oficial mínima.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "instagram.ad_feed",
+    "platform": "instagram",
+    "platformLabel": "Instagram",
+    "label": "Anuncio Feed 4:5",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1440,
+      "height": 1800,
+      "unit": "px",
+      "aspectRatio": "4:5"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "meta_feed"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "",
+    "designStatus": "reference_same_ratio_review_required",
+    "referenceTemplateIds": [
+      "rpa.reference.photo_emotional.1080x1350",
+      "rpa.reference.real_stories.1080x1350",
+      "rpa.reference.promotion.1080x1350",
+      "rpa.reference.video_testimonial.1080x1350",
+      "rpa.reference.hurricane_season.1080x1350",
+      "rpa.reference.geographic.1080x1350"
+    ]
+  },
+  {
+    "id": "instagram.ad_story",
+    "platform": "instagram",
+    "platformLabel": "Instagram",
+    "label": "Anuncio Story — imagen",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1440,
+      "height": 2560,
+      "unit": "px",
+      "aspectRatio": "9:16"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "meta_feed"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.14,
+        "right": 0.12,
+        "bottom": 0.24,
+        "left": 0.06
+      },
+      "notes": "Zona conservadora de diseño propia para contenido esencial. Revisar interfaz, captions, CTA y método de publicación; no aplicar como especificación oficial."
+    },
+    "notes": "",
+    "designStatus": "reference_same_ratio_review_required",
+    "referenceTemplateIds": [
+      "rpa.reference.photo_emotional.1080x1920",
+      "rpa.reference.real_stories.1080x1920",
+      "rpa.reference.promotion.1080x1920",
+      "rpa.reference.video_testimonial.1080x1920",
+      "rpa.reference.hurricane_season.1080x1920",
+      "rpa.reference.geographic.1080x1920"
+    ]
+  },
+  {
+    "id": "google_business.photo",
+    "platform": "google_business",
+    "platformLabel": "Google Business Profile",
+    "label": "Foto del negocio",
+    "mediaKind": "image_asset",
+    "canvas": {
+      "mode": "fixed",
+      "width": 720,
+      "height": 720,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "official_recommendation",
+    "evidence": {
+      "sourceIds": [
+        "gbp_photos"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 5000000,
+      "minBytes": 10000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "",
+    "designStatus": "preset_only",
+    "minimumDimensions": {
+      "width": 250,
+      "height": 250
+    },
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_business.logo",
+    "platform": "google_business",
+    "platformLabel": "Google Business Profile",
+    "label": "Logotipo",
+    "mediaKind": "logo",
+    "canvas": {
+      "mode": "fixed",
+      "width": 720,
+      "height": 720,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "official_recommendation",
+    "evidence": {
+      "sourceIds": [
+        "gbp_photos"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "png"
+      ],
+      "maxBytes": 5000000,
+      "minBytes": 10000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "",
+    "designStatus": "preset_only",
+    "minimumDimensions": {
+      "width": 250,
+      "height": 250
+    },
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_business.cover",
+    "platform": "google_business",
+    "platformLabel": "Google Business Profile",
+    "label": "Foto de portada — preset panorámico",
+    "mediaKind": "image_asset",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1600,
+      "height": 900,
+      "unit": "px",
+      "aspectRatio": "16:9"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "gbp_photos"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 5000000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "La portada puede recortarse u ocultarse por avatar/interfaz. Requiere una vista previa específica del canal."
+    },
+    "notes": "1600×900 es elección del kit, no medida oficial obligatoria. Foto real representativa; Google no garantiza la primera posición.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_business.post_update",
+    "platform": "google_business",
+    "platformLabel": "Google Business Profile",
+    "label": "Novedad — imagen del post",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1200,
+      "height": 900,
+      "unit": "px",
+      "aspectRatio": "4:3"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "gbp_posts"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "1200×900 es un preset editorial 4:3, no un requisito documentado por Google. Descripción, CTA y fechas se guardan aparte.",
+    "designStatus": "preset_only",
+    "externalFieldsRequired": [
+      "caption",
+      "cta_url"
+    ],
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_business.post_offer",
+    "platform": "google_business",
+    "platformLabel": "Google Business Profile",
+    "label": "Oferta — imagen del post",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1200,
+      "height": 900,
+      "unit": "px",
+      "aspectRatio": "4:3"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "gbp_posts"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "1200×900 es un preset editorial 4:3, no un requisito documentado por Google. Descripción, CTA y fechas se guardan aparte.",
+    "designStatus": "preset_only",
+    "externalFieldsRequired": [
+      "title",
+      "start_date",
+      "end_date"
+    ],
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_business.post_event",
+    "platform": "google_business",
+    "platformLabel": "Google Business Profile",
+    "label": "Evento — imagen del post",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1200,
+      "height": 900,
+      "unit": "px",
+      "aspectRatio": "4:3"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "gbp_posts"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "1200×900 es un preset editorial 4:3, no un requisito documentado por Google. Descripción, CTA y fechas se guardan aparte.",
+    "designStatus": "preset_only",
+    "externalFieldsRequired": [
+      "title",
+      "start_date",
+      "end_date"
+    ],
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.pmax_landscape",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Performance Max — imagen horizontal",
+    "mediaKind": "image_asset",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1200,
+      "height": 628,
+      "unit": "px",
+      "aspectRatio": "300:157"
+    },
+    "dimensionBasis": "official_recommendation",
+    "evidence": {
+      "sourceIds": [
+        "google_pmax"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 5000000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Recursos separados. El logo debe encajar sin deformarse. No usar automáticamente un anuncio de Facebook como foto del asset group.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.pmax_square",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Performance Max — imagen cuadrada",
+    "mediaKind": "image_asset",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1200,
+      "height": 1200,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "official_recommendation",
+    "evidence": {
+      "sourceIds": [
+        "google_pmax"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 5000000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Recursos separados. El logo debe encajar sin deformarse. No usar automáticamente un anuncio de Facebook como foto del asset group.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.pmax_portrait",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Performance Max — imagen 4:5",
+    "mediaKind": "image_asset",
+    "canvas": {
+      "mode": "fixed",
+      "width": 960,
+      "height": 1200,
+      "unit": "px",
+      "aspectRatio": "4:5"
+    },
+    "dimensionBasis": "official_recommendation",
+    "evidence": {
+      "sourceIds": [
+        "google_pmax"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 5000000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Recursos separados. El logo debe encajar sin deformarse. No usar automáticamente un anuncio de Facebook como foto del asset group.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.pmax_logo_square",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Performance Max — logo cuadrado",
+    "mediaKind": "logo",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1200,
+      "height": 1200,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "official_recommendation",
+    "evidence": {
+      "sourceIds": [
+        "google_pmax"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "png"
+      ],
+      "maxBytes": 5000000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Recursos separados. El logo debe encajar sin deformarse. No usar automáticamente un anuncio de Facebook como foto del asset group.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.pmax_logo_wide",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Performance Max — logo horizontal",
+    "mediaKind": "logo",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1200,
+      "height": 300,
+      "unit": "px",
+      "aspectRatio": "4:1"
+    },
+    "dimensionBasis": "official_recommendation",
+    "evidence": {
+      "sourceIds": [
+        "google_pmax"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "png"
+      ],
+      "maxBytes": 5000000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Recursos separados. El logo debe encajar sin deformarse. No usar automáticamente un anuncio de Facebook como foto del asset group.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.rda_landscape",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Display responsivo — foto horizontal",
+    "mediaKind": "image_asset",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1200,
+      "height": 628,
+      "unit": "px",
+      "aspectRatio": "300:157"
+    },
+    "dimensionBasis": "official_recommendation",
+    "evidence": {
+      "sourceIds": [
+        "google_rda"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 5000000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.display_200x200",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Display estático — Small square",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 200,
+      "height": 200,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "official_allowed_size",
+    "evidence": {
+      "sourceIds": [
+        "google_display"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 150000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Banner terminado. 150 KB se valida sobre el archivo exportado; la región no implica disponibilidad de cuenta.",
+    "designStatus": "preset_only",
+    "regionalOnly": null,
+    "layoutClass": "display",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.display_240x400",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Display estático — Vertical rectangle",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 240,
+      "height": 400,
+      "unit": "px",
+      "aspectRatio": "3:5"
+    },
+    "dimensionBasis": "official_allowed_size",
+    "evidence": {
+      "sourceIds": [
+        "google_display"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 150000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Banner terminado. 150 KB se valida sobre el archivo exportado; la región no implica disponibilidad de cuenta.",
+    "designStatus": "preset_only",
+    "regionalOnly": null,
+    "layoutClass": "display",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.display_250x250",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Display estático — Square",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 250,
+      "height": 250,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "official_allowed_size",
+    "evidence": {
+      "sourceIds": [
+        "google_display"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 150000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Banner terminado. 150 KB se valida sobre el archivo exportado; la región no implica disponibilidad de cuenta.",
+    "designStatus": "preset_only",
+    "regionalOnly": null,
+    "layoutClass": "display",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.display_250x360",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Display estático — Triple widescreen",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 250,
+      "height": 360,
+      "unit": "px",
+      "aspectRatio": "25:36"
+    },
+    "dimensionBasis": "official_allowed_size",
+    "evidence": {
+      "sourceIds": [
+        "google_display"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 150000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Banner terminado. 150 KB se valida sobre el archivo exportado; la región no implica disponibilidad de cuenta.",
+    "designStatus": "preset_only",
+    "regionalOnly": "Sweden",
+    "layoutClass": "display",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.display_300x250",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Display estático — Inline rectangle",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 300,
+      "height": 250,
+      "unit": "px",
+      "aspectRatio": "6:5"
+    },
+    "dimensionBasis": "official_allowed_size",
+    "evidence": {
+      "sourceIds": [
+        "google_display"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 150000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Banner terminado. 150 KB se valida sobre el archivo exportado; la región no implica disponibilidad de cuenta.",
+    "designStatus": "preset_only",
+    "regionalOnly": null,
+    "layoutClass": "display",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.display_336x280",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Display estático — Large rectangle",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 336,
+      "height": 280,
+      "unit": "px",
+      "aspectRatio": "6:5"
+    },
+    "dimensionBasis": "official_allowed_size",
+    "evidence": {
+      "sourceIds": [
+        "google_display"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 150000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Banner terminado. 150 KB se valida sobre el archivo exportado; la región no implica disponibilidad de cuenta.",
+    "designStatus": "preset_only",
+    "regionalOnly": null,
+    "layoutClass": "display",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.display_580x400",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Display estático — Netboard",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 580,
+      "height": 400,
+      "unit": "px",
+      "aspectRatio": "29:20"
+    },
+    "dimensionBasis": "official_allowed_size",
+    "evidence": {
+      "sourceIds": [
+        "google_display"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 150000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Banner terminado. 150 KB se valida sobre el archivo exportado; la región no implica disponibilidad de cuenta.",
+    "designStatus": "preset_only",
+    "regionalOnly": "Norway",
+    "layoutClass": "display",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.display_120x600",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Display estático — Skyscraper",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 120,
+      "height": 600,
+      "unit": "px",
+      "aspectRatio": "1:5"
+    },
+    "dimensionBasis": "official_allowed_size",
+    "evidence": {
+      "sourceIds": [
+        "google_display"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 150000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Banner terminado. 150 KB se valida sobre el archivo exportado; la región no implica disponibilidad de cuenta.",
+    "designStatus": "preset_only",
+    "regionalOnly": null,
+    "layoutClass": "display",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.display_160x600",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Display estático — Wide skyscraper",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 160,
+      "height": 600,
+      "unit": "px",
+      "aspectRatio": "4:15"
+    },
+    "dimensionBasis": "official_allowed_size",
+    "evidence": {
+      "sourceIds": [
+        "google_display"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 150000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Banner terminado. 150 KB se valida sobre el archivo exportado; la región no implica disponibilidad de cuenta.",
+    "designStatus": "preset_only",
+    "regionalOnly": null,
+    "layoutClass": "display",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.display_300x600",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Display estático — Half page",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 300,
+      "height": 600,
+      "unit": "px",
+      "aspectRatio": "1:2"
+    },
+    "dimensionBasis": "official_allowed_size",
+    "evidence": {
+      "sourceIds": [
+        "google_display"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 150000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Banner terminado. 150 KB se valida sobre el archivo exportado; la región no implica disponibilidad de cuenta.",
+    "designStatus": "preset_only",
+    "regionalOnly": null,
+    "layoutClass": "display",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.display_300x1050",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Display estático — Portrait",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 300,
+      "height": 1050,
+      "unit": "px",
+      "aspectRatio": "2:7"
+    },
+    "dimensionBasis": "official_allowed_size",
+    "evidence": {
+      "sourceIds": [
+        "google_display"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 150000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Banner terminado. 150 KB se valida sobre el archivo exportado; la región no implica disponibilidad de cuenta.",
+    "designStatus": "preset_only",
+    "regionalOnly": null,
+    "layoutClass": "display",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.display_468x60",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Display estático — Banner",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 468,
+      "height": 60,
+      "unit": "px",
+      "aspectRatio": "39:5"
+    },
+    "dimensionBasis": "official_allowed_size",
+    "evidence": {
+      "sourceIds": [
+        "google_display"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 150000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Banner terminado. 150 KB se valida sobre el archivo exportado; la región no implica disponibilidad de cuenta.",
+    "designStatus": "preset_only",
+    "regionalOnly": null,
+    "layoutClass": "compact_banner",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.display_728x90",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Display estático — Leaderboard",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 728,
+      "height": 90,
+      "unit": "px",
+      "aspectRatio": "364:45"
+    },
+    "dimensionBasis": "official_allowed_size",
+    "evidence": {
+      "sourceIds": [
+        "google_display"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 150000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Banner terminado. 150 KB se valida sobre el archivo exportado; la región no implica disponibilidad de cuenta.",
+    "designStatus": "preset_only",
+    "regionalOnly": null,
+    "layoutClass": "compact_banner",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.display_930x180",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Display estático — Top banner",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 930,
+      "height": 180,
+      "unit": "px",
+      "aspectRatio": "31:6"
+    },
+    "dimensionBasis": "official_allowed_size",
+    "evidence": {
+      "sourceIds": [
+        "google_display"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 150000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Banner terminado. 150 KB se valida sobre el archivo exportado; la región no implica disponibilidad de cuenta.",
+    "designStatus": "preset_only",
+    "regionalOnly": "Denmark",
+    "layoutClass": "compact_banner",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.display_970x90",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Display estático — Large leaderboard",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 970,
+      "height": 90,
+      "unit": "px",
+      "aspectRatio": "97:9"
+    },
+    "dimensionBasis": "official_allowed_size",
+    "evidence": {
+      "sourceIds": [
+        "google_display"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 150000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Banner terminado. 150 KB se valida sobre el archivo exportado; la región no implica disponibilidad de cuenta.",
+    "designStatus": "preset_only",
+    "regionalOnly": null,
+    "layoutClass": "compact_banner",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.display_970x250",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Display estático — Billboard",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 970,
+      "height": 250,
+      "unit": "px",
+      "aspectRatio": "97:25"
+    },
+    "dimensionBasis": "official_allowed_size",
+    "evidence": {
+      "sourceIds": [
+        "google_display"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 150000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Banner terminado. 150 KB se valida sobre el archivo exportado; la región no implica disponibilidad de cuenta.",
+    "designStatus": "preset_only",
+    "regionalOnly": null,
+    "layoutClass": "display",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.display_980x120",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Display estático — Panorama",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 980,
+      "height": 120,
+      "unit": "px",
+      "aspectRatio": "49:6"
+    },
+    "dimensionBasis": "official_allowed_size",
+    "evidence": {
+      "sourceIds": [
+        "google_display"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 150000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Banner terminado. 150 KB se valida sobre el archivo exportado; la región no implica disponibilidad de cuenta.",
+    "designStatus": "preset_only",
+    "regionalOnly": "Sweden",
+    "layoutClass": "compact_banner",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.display_300x50",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Display estático — Mobile banner",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 300,
+      "height": 50,
+      "unit": "px",
+      "aspectRatio": "6:1"
+    },
+    "dimensionBasis": "official_allowed_size",
+    "evidence": {
+      "sourceIds": [
+        "google_display"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 150000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Banner terminado. 150 KB se valida sobre el archivo exportado; la región no implica disponibilidad de cuenta.",
+    "designStatus": "preset_only",
+    "regionalOnly": null,
+    "layoutClass": "compact_banner",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.display_320x50",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Display estático — Mobile banner",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 320,
+      "height": 50,
+      "unit": "px",
+      "aspectRatio": "32:5"
+    },
+    "dimensionBasis": "official_allowed_size",
+    "evidence": {
+      "sourceIds": [
+        "google_display"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 150000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Banner terminado. 150 KB se valida sobre el archivo exportado; la región no implica disponibilidad de cuenta.",
+    "designStatus": "preset_only",
+    "regionalOnly": null,
+    "layoutClass": "compact_banner",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.display_320x100",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Display estático — Large mobile banner",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 320,
+      "height": 100,
+      "unit": "px",
+      "aspectRatio": "16:5"
+    },
+    "dimensionBasis": "official_allowed_size",
+    "evidence": {
+      "sourceIds": [
+        "google_display"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 150000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Banner terminado. 150 KB se valida sobre el archivo exportado; la región no implica disponibilidad de cuenta.",
+    "designStatus": "preset_only",
+    "regionalOnly": null,
+    "layoutClass": "compact_banner",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.display_750x100",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Display estático — PL billboard",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 750,
+      "height": 100,
+      "unit": "px",
+      "aspectRatio": "15:2"
+    },
+    "dimensionBasis": "official_allowed_size",
+    "evidence": {
+      "sourceIds": [
+        "google_display"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 150000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Banner terminado. 150 KB se valida sobre el archivo exportado; la región no implica disponibilidad de cuenta.",
+    "designStatus": "preset_only",
+    "regionalOnly": "Poland",
+    "layoutClass": "compact_banner",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.display_750x200",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Display estático — PL double billboard",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 750,
+      "height": 200,
+      "unit": "px",
+      "aspectRatio": "15:4"
+    },
+    "dimensionBasis": "official_allowed_size",
+    "evidence": {
+      "sourceIds": [
+        "google_display"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 150000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Banner terminado. 150 KB se valida sobre el archivo exportado; la región no implica disponibilidad de cuenta.",
+    "designStatus": "preset_only",
+    "regionalOnly": "Poland",
+    "layoutClass": "display",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "google_ads.display_750x300",
+    "platform": "google_ads",
+    "platformLabel": "Google Ads",
+    "label": "Display estático — PL triple billboard",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 750,
+      "height": 300,
+      "unit": "px",
+      "aspectRatio": "5:2"
+    },
+    "dimensionBasis": "official_allowed_size",
+    "evidence": {
+      "sourceIds": [
+        "google_display"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 150000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Banner terminado. 150 KB se valida sobre el archivo exportado; la región no implica disponibilidad de cuenta.",
+    "designStatus": "preset_only",
+    "regionalOnly": "Poland",
+    "layoutClass": "display",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "email.campaign_600",
+    "platform": "email",
+    "platformLabel": "Email",
+    "label": "Campaña HTML adaptable — 600 CSS px",
+    "mediaKind": "email",
+    "canvas": {
+      "mode": "fluid",
+      "width": 600,
+      "height": null,
+      "unit": "css_px",
+      "aspectRatio": null
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "email_width",
+        "email_images"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "html",
+        "txt"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": null,
+      "notes": "Diseño fluido: altura según contenido; ancho de escritorio expresado en CSS px."
+    },
+    "notes": "Ancho de diseño máximo, altura automática. 660/480 son elecciones del sistema. No son límites universales de clientes de correo.",
+    "designStatus": "html_template_included",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "email.newsletter_660",
+    "platform": "email",
+    "platformLabel": "Email",
+    "label": "Boletín HTML adaptable — 660 CSS px",
+    "mediaKind": "email",
+    "canvas": {
+      "mode": "fluid",
+      "width": 660,
+      "height": null,
+      "unit": "css_px",
+      "aspectRatio": null
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "email_width",
+        "email_images"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "html",
+        "txt"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": null,
+      "notes": "Diseño fluido: altura según contenido; ancho de escritorio expresado en CSS px."
+    },
+    "notes": "Ancho de diseño máximo, altura automática. 660/480 son elecciones del sistema. No son límites universales de clientes de correo.",
+    "designStatus": "html_template_included",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "email.transactional_600",
+    "platform": "email",
+    "platformLabel": "Email",
+    "label": "Comunicación transaccional HTML — 600 CSS px",
+    "mediaKind": "email",
+    "canvas": {
+      "mode": "fluid",
+      "width": 600,
+      "height": null,
+      "unit": "css_px",
+      "aspectRatio": null
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "email_width",
+        "email_images"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "html",
+        "txt"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": null,
+      "notes": "Diseño fluido: altura según contenido; ancho de escritorio expresado en CSS px."
+    },
+    "notes": "Ancho de diseño máximo, altura automática. 660/480 son elecciones del sistema. No son límites universales de clientes de correo.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "email.signature_480",
+    "platform": "email",
+    "platformLabel": "Email",
+    "label": "Firma HTML — máximo 480 CSS px",
+    "mediaKind": "email",
+    "canvas": {
+      "mode": "fluid",
+      "width": 480,
+      "height": null,
+      "unit": "css_px",
+      "aspectRatio": null
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "email_width",
+        "email_images"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "html",
+        "txt"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": null,
+      "notes": "Diseño fluido: altura según contenido; ancho de escritorio expresado en CSS px."
+    },
+    "notes": "Ancho de diseño máximo, altura automática. 660/480 son elecciones del sistema. No son límites universales de clientes de correo.",
+    "designStatus": "html_template_included",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "email.hero_2x",
+    "platform": "email",
+    "platformLabel": "Email",
+    "label": "Imagen principal de email — recurso 2×",
+    "mediaKind": "image_asset",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1200,
+      "height": 600,
+      "unit": "px",
+      "aspectRatio": "2:1"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "email_images"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Se muestra a 600×300 CSS px como máximo; es solo un bloque del email, no el email completo.",
+    "designStatus": "preset_only",
+    "displaySize": {
+      "width": 600,
+      "height": 300,
+      "unit": "css_px"
+    },
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "youtube.thumbnail",
+    "platform": "youtube",
+    "platformLabel": "YouTube",
+    "label": "Miniatura de video — recomendación consultada",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 3840,
+      "height": 2160,
+      "unit": "px",
+      "aspectRatio": "16:9"
+    },
+    "dimensionBasis": "official_recommendation",
+    "evidence": {
+      "sourceIds": [
+        "youtube_thumb"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 2000000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Límite conservador para móvil: 2 MB. La documentación consultada permite 50 MB en escritorio. API debe comprobarse por separado.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "youtube.shorts_thumbnail",
+    "platform": "youtube",
+    "platformLabel": "YouTube",
+    "label": "Miniatura de Short",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 2160,
+      "height": 3840,
+      "unit": "px",
+      "aspectRatio": "9:16"
+    },
+    "dimensionBasis": "official_recommendation",
+    "evidence": {
+      "sourceIds": [
+        "youtube_thumb"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.14,
+        "right": 0.12,
+        "bottom": 0.24,
+        "left": 0.06
+      },
+      "notes": "Zona conservadora de diseño propia para contenido esencial. Revisar interfaz, captions, CTA y método de publicación; no aplicar como especificación oficial."
+    },
+    "notes": "YouTube Studio de escritorio; disponibilidad y API requieren validación.",
+    "designStatus": "reference_same_ratio_review_required",
+    "referenceTemplateIds": [
+      "rpa.reference.photo_emotional.1080x1920",
+      "rpa.reference.real_stories.1080x1920",
+      "rpa.reference.promotion.1080x1920",
+      "rpa.reference.video_testimonial.1080x1920",
+      "rpa.reference.hurricane_season.1080x1920",
+      "rpa.reference.geographic.1080x1920"
+    ]
+  },
+  {
+    "id": "youtube.channel_banner",
+    "platform": "youtube",
+    "platformLabel": "YouTube",
+    "label": "Banner de canal",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 2560,
+      "height": 1440,
+      "unit": "px",
+      "aspectRatio": "16:9"
+    },
+    "dimensionBasis": "official_recommendation",
+    "evidence": {
+      "sourceIds": [
+        "youtube_brand"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 6000000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "derived_from_official_minimum",
+      "referenceCanvas": {
+        "width": 2048,
+        "height": 1152
+      },
+      "referenceCenteredRect": {
+        "width": 1235,
+        "height": 338
+      },
+      "notes": "Escalar proporcionalmente el rectángulo centrado al canvas elegido; no cambiar su proporción. Verificar vista móvil/escritorio/TV."
+    },
+    "notes": "",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "youtube.profile",
+    "platform": "youtube",
+    "platformLabel": "YouTube",
+    "label": "Avatar de canal",
+    "mediaKind": "logo",
+    "canvas": {
+      "mode": "fixed",
+      "width": 800,
+      "height": 800,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "youtube_brand"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "800×800 es un maestro de trabajo; la fuente consultada describe visualización a 98×98.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "youtube.community",
+    "platform": "youtube",
+    "platformLabel": "YouTube",
+    "label": "Post de comunidad — imagen cuadrada",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1080,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [],
+      "status": "unverified_working_choice",
+      "checkedAt": null
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Preset propio; soporte del canal y método de publicación no verificados.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "youtube.video",
+    "platform": "youtube",
+    "platformLabel": "YouTube",
+    "label": "Video horizontal — Full HD",
+    "mediaKind": "video",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1920,
+      "height": 1080,
+      "unit": "px",
+      "aspectRatio": "16:9"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [],
+      "status": "unverified_working_choice",
+      "checkedAt": null
+    },
+    "delivery": {
+      "formats": [
+        "mp4"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Preset de producción; comprobar formato, duración, tamaño y códecs.",
+    "designStatus": "video_render_not_included",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "youtube.short_video",
+    "platform": "youtube",
+    "platformLabel": "YouTube",
+    "label": "Short — video vertical",
+    "mediaKind": "video",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1920,
+      "unit": "px",
+      "aspectRatio": "9:16"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [],
+      "status": "unverified_working_choice",
+      "checkedAt": null
+    },
+    "delivery": {
+      "formats": [
+        "mp4"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.14,
+        "right": 0.12,
+        "bottom": 0.24,
+        "left": 0.06
+      },
+      "notes": "Zona conservadora de diseño propia para contenido esencial. Revisar interfaz, captions, CTA y método de publicación; no aplicar como especificación oficial."
+    },
+    "notes": "Preset de producción; no es miniatura.",
+    "designStatus": "video_render_not_included",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "linkedin.feed_square",
+    "platform": "linkedin",
+    "platformLabel": "LinkedIn",
+    "label": "Publicación — cuadrado",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1200,
+      "height": 1200,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "linkedin_ads"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Preset orgánico basado en el canvas de anuncios; no se impone el límite del anuncio al post orgánico.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "linkedin.feed_portrait",
+    "platform": "linkedin",
+    "platformLabel": "LinkedIn",
+    "label": "Publicación — vertical",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1350,
+      "unit": "px",
+      "aspectRatio": "4:5"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "linkedin_ads"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Escala de trabajo 4:5, elegida por el sistema.",
+    "designStatus": "reference_same_ratio_review_required",
+    "referenceTemplateIds": [
+      "rpa.reference.photo_emotional.1080x1350",
+      "rpa.reference.real_stories.1080x1350",
+      "rpa.reference.promotion.1080x1350",
+      "rpa.reference.video_testimonial.1080x1350",
+      "rpa.reference.hurricane_season.1080x1350",
+      "rpa.reference.geographic.1080x1350"
+    ]
+  },
+  {
+    "id": "linkedin.link_preview",
+    "platform": "linkedin",
+    "platformLabel": "LinkedIn",
+    "label": "Vista previa de enlace de página",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1200,
+      "height": 627,
+      "unit": "px",
+      "aspectRatio": "400:209"
+    },
+    "dimensionBasis": "official_recommendation",
+    "evidence": {
+      "sourceIds": [
+        "linkedin_page"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "linkedin.ad_landscape",
+    "platform": "linkedin",
+    "platformLabel": "LinkedIn",
+    "label": "Anuncio — horizontal",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1200,
+      "height": 628,
+      "unit": "px",
+      "aspectRatio": "300:157"
+    },
+    "dimensionBasis": "official_recommendation",
+    "evidence": {
+      "sourceIds": [
+        "linkedin_ads"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 5000000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "linkedin.ad_square",
+    "platform": "linkedin",
+    "platformLabel": "LinkedIn",
+    "label": "Anuncio — cuadrado",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1200,
+      "height": 1200,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "official_recommendation",
+    "evidence": {
+      "sourceIds": [
+        "linkedin_ads"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 5000000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "linkedin.ad_portrait",
+    "platform": "linkedin",
+    "platformLabel": "LinkedIn",
+    "label": "Anuncio — vertical móvil",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 720,
+      "height": 900,
+      "unit": "px",
+      "aspectRatio": "4:5"
+    },
+    "dimensionBasis": "official_recommendation",
+    "evidence": {
+      "sourceIds": [
+        "linkedin_ads"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 5000000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "La documentación de anuncios indica entrega vertical en móvil; no generalizar a orgánico.",
+    "designStatus": "reference_same_ratio_review_required",
+    "referenceTemplateIds": [
+      "rpa.reference.photo_emotional.1080x1350",
+      "rpa.reference.real_stories.1080x1350",
+      "rpa.reference.promotion.1080x1350",
+      "rpa.reference.video_testimonial.1080x1350",
+      "rpa.reference.hurricane_season.1080x1350",
+      "rpa.reference.geographic.1080x1350"
+    ]
+  },
+  {
+    "id": "linkedin.document_carousel",
+    "platform": "linkedin",
+    "platformLabel": "LinkedIn",
+    "label": "Carrusel documental — página",
+    "mediaKind": "document",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1350,
+      "unit": "px",
+      "aspectRatio": "4:5"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [],
+      "status": "unverified_working_choice",
+      "checkedAt": null
+    },
+    "delivery": {
+      "formats": [
+        "pdf"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Lienzo editorial de cada página; exportar PDF multipágina. No implica que LinkedIn exija píxeles para documentos.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "linkedin.page_cover",
+    "platform": "linkedin",
+    "platformLabel": "LinkedIn",
+    "label": "Portada de empresa",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1512,
+      "height": 256,
+      "unit": "px",
+      "aspectRatio": "189:32"
+    },
+    "dimensionBasis": "official_recommendation",
+    "evidence": {
+      "sourceIds": [
+        "linkedin_page"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 3000000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "La portada puede recortarse u ocultarse por avatar/interfaz. Requiere una vista previa específica del canal."
+    },
+    "notes": "",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "linkedin.page_logo",
+    "platform": "linkedin",
+    "platformLabel": "LinkedIn",
+    "label": "Logotipo de empresa",
+    "mediaKind": "logo",
+    "canvas": {
+      "mode": "fixed",
+      "width": 400,
+      "height": 400,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "official_recommendation",
+    "evidence": {
+      "sourceIds": [
+        "linkedin_page"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "png"
+      ],
+      "maxBytes": 3000000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "linkedin.personal_cover",
+    "platform": "linkedin",
+    "platformLabel": "LinkedIn",
+    "label": "Portada de perfil personal",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1584,
+      "height": 396,
+      "unit": "px",
+      "aspectRatio": "4:1"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "linkedin_profile"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "La portada puede recortarse u ocultarse por avatar/interfaz. Requiere una vista previa específica del canal."
+    },
+    "notes": "Mantener separado de portada de empresa y comprobar en el perfil destino.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "pinterest.standard_pin",
+    "platform": "pinterest",
+    "platformLabel": "Pinterest",
+    "label": "Pin estándar 2:3",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1000,
+      "height": 1500,
+      "unit": "px",
+      "aspectRatio": "2:3"
+    },
+    "dimensionBasis": "official_recommendation",
+    "evidence": {
+      "sourceIds": [
+        "pinterest"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": 20000000
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "pinterest.square_pin",
+    "platform": "pinterest",
+    "platformLabel": "Pinterest",
+    "label": "Pin cuadrado — preset",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1000,
+      "height": 1000,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [
+        "pinterest"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "pinterest.video",
+    "platform": "pinterest",
+    "platformLabel": "Pinterest",
+    "label": "Video vertical",
+    "mediaKind": "video",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1920,
+      "unit": "px",
+      "aspectRatio": "9:16"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [],
+      "status": "unverified_working_choice",
+      "checkedAt": null
+    },
+    "delivery": {
+      "formats": [
+        "mp4"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.14,
+        "right": 0.12,
+        "bottom": 0.24,
+        "left": 0.06
+      },
+      "notes": "Zona conservadora de diseño propia para contenido esencial. Revisar interfaz, captions, CTA y método de publicación; no aplicar como especificación oficial."
+    },
+    "notes": "Preset propio; verificar duración, formato y zonas del Pin específico.",
+    "designStatus": "video_render_not_included",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "pinterest.profile",
+    "platform": "pinterest",
+    "platformLabel": "Pinterest",
+    "label": "Avatar",
+    "mediaKind": "logo",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1024,
+      "height": 1024,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [],
+      "status": "unverified_working_choice",
+      "checkedAt": null
+    },
+    "delivery": {
+      "formats": [
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Maestro propio; recorte y carga a verificar.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "tiktok.video",
+    "platform": "tiktok",
+    "platformLabel": "TikTok",
+    "label": "Video vertical — In-Feed",
+    "mediaKind": "video",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1920,
+      "unit": "px",
+      "aspectRatio": "9:16"
+    },
+    "dimensionBasis": "scaled_from_ratio",
+    "evidence": {
+      "sourceIds": [
+        "tiktok"
+      ],
+      "status": "working_choice_with_context",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "mp4"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.14,
+        "right": 0.12,
+        "bottom": 0.24,
+        "left": 0.06
+      },
+      "notes": "Zona conservadora de diseño propia para contenido esencial. Revisar interfaz, captions, CTA y método de publicación; no aplicar como especificación oficial."
+    },
+    "notes": "1080×1920 escala el ratio 9:16. La fuente de ads documenta mínimo vertical 540×960; no es una validación de la API orgánica.",
+    "designStatus": "video_render_not_included",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "tiktok.cover",
+    "platform": "tiktok",
+    "platformLabel": "TikTok",
+    "label": "Portada de video — arte estático",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1920,
+      "unit": "px",
+      "aspectRatio": "9:16"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [],
+      "status": "unverified_working_choice",
+      "checkedAt": null
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.14,
+        "right": 0.12,
+        "bottom": 0.24,
+        "left": 0.06
+      },
+      "notes": "La portada puede recortarse u ocultarse por avatar/interfaz. Requiere una vista previa específica del canal."
+    },
+    "notes": "No presupone una API de portada independiente. Comprobar recorte en perfil.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "tiktok.photo_carousel",
+    "platform": "tiktok",
+    "platformLabel": "TikTok",
+    "label": "Carrusel fotográfico — preset vertical",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1920,
+      "unit": "px",
+      "aspectRatio": "9:16"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [],
+      "status": "unverified_working_choice",
+      "checkedAt": null
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.14,
+        "right": 0.12,
+        "bottom": 0.24,
+        "left": 0.06
+      },
+      "notes": "Zona conservadora de diseño propia para contenido esencial. Revisar interfaz, captions, CTA y método de publicación; no aplicar como especificación oficial."
+    },
+    "notes": "Preset editorial. Verificar publicación de fotos frente a Ads Carousel, no son contratos equivalentes.",
+    "designStatus": "reference_same_ratio_review_required",
+    "referenceTemplateIds": [
+      "rpa.reference.photo_emotional.1080x1920",
+      "rpa.reference.real_stories.1080x1920",
+      "rpa.reference.promotion.1080x1920",
+      "rpa.reference.video_testimonial.1080x1920",
+      "rpa.reference.hurricane_season.1080x1920",
+      "rpa.reference.geographic.1080x1920"
+    ]
+  },
+  {
+    "id": "tiktok.profile",
+    "platform": "tiktok",
+    "platformLabel": "TikTok",
+    "label": "Avatar",
+    "mediaKind": "logo",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1024,
+      "height": 1024,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [],
+      "status": "unverified_working_choice",
+      "checkedAt": null
+    },
+    "delivery": {
+      "formats": [
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Maestro propio, no dimensión oficial mínima.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "x.post_landscape",
+    "platform": "x",
+    "platformLabel": "X",
+    "label": "Imagen horizontal en post",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1600,
+      "height": 900,
+      "unit": "px",
+      "aspectRatio": "16:9"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [],
+      "status": "unverified_working_choice",
+      "checkedAt": null
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Preset editorial; verificar contrato de subida de medios.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "x.post_square",
+    "platform": "x",
+    "platformLabel": "X",
+    "label": "Imagen cuadrada en post",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1080,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [],
+      "status": "unverified_working_choice",
+      "checkedAt": null
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Preset editorial; verificar contrato de subida de medios.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "x.header",
+    "platform": "x",
+    "platformLabel": "X",
+    "label": "Cabecera",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1500,
+      "height": 500,
+      "unit": "px",
+      "aspectRatio": "3:1"
+    },
+    "dimensionBasis": "official_recommendation",
+    "evidence": {
+      "sourceIds": [
+        "x_profile"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "x.profile",
+    "platform": "x",
+    "platformLabel": "X",
+    "label": "Foto de perfil",
+    "mediaKind": "logo",
+    "canvas": {
+      "mode": "fixed",
+      "width": 400,
+      "height": 400,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "official_recommendation",
+    "evidence": {
+      "sourceIds": [
+        "x_profile"
+      ],
+      "status": "verified_dimension",
+      "checkedAt": "2026-10-09"
+    },
+    "delivery": {
+      "formats": [
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "whatsapp.status",
+    "platform": "whatsapp",
+    "platformLabel": "WhatsApp Business",
+    "label": "Estado — imagen",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1920,
+      "unit": "px",
+      "aspectRatio": "9:16"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [],
+      "status": "unverified_working_choice",
+      "checkedAt": null
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.14,
+        "right": 0.12,
+        "bottom": 0.24,
+        "left": 0.06
+      },
+      "notes": "Zona conservadora de diseño propia para contenido esencial. Revisar interfaz, captions, CTA y método de publicación; no aplicar como especificación oficial."
+    },
+    "notes": "Preset de diseño propio. Requisitos de carga, región, cuenta y conector pendientes de verificar; exportación manual hasta entonces.",
+    "designStatus": "reference_same_ratio_review_required",
+    "referenceTemplateIds": [
+      "rpa.reference.photo_emotional.1080x1920",
+      "rpa.reference.real_stories.1080x1920",
+      "rpa.reference.promotion.1080x1920",
+      "rpa.reference.video_testimonial.1080x1920",
+      "rpa.reference.hurricane_season.1080x1920",
+      "rpa.reference.geographic.1080x1920"
+    ]
+  },
+  {
+    "id": "whatsapp.catalog",
+    "platform": "whatsapp",
+    "platformLabel": "WhatsApp Business",
+    "label": "Catálogo — imagen",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1080,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [],
+      "status": "unverified_working_choice",
+      "checkedAt": null
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Preset de diseño propio. Requisitos de carga, región, cuenta y conector pendientes de verificar; exportación manual hasta entonces.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "whatsapp.profile",
+    "platform": "whatsapp",
+    "platformLabel": "WhatsApp Business",
+    "label": "Foto de perfil",
+    "mediaKind": "logo",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1024,
+      "height": 1024,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [],
+      "status": "unverified_working_choice",
+      "checkedAt": null
+    },
+    "delivery": {
+      "formats": [
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Preset de diseño propio. Requisitos de carga, región, cuenta y conector pendientes de verificar; exportación manual hasta entonces.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "threads.post_square",
+    "platform": "threads",
+    "platformLabel": "Threads",
+    "label": "Post cuadrado",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1080,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [],
+      "status": "unverified_working_choice",
+      "checkedAt": null
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Preset de diseño propio. Requisitos de carga, región, cuenta y conector pendientes de verificar; exportación manual hasta entonces.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "threads.post_portrait",
+    "platform": "threads",
+    "platformLabel": "Threads",
+    "label": "Post vertical",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1350,
+      "unit": "px",
+      "aspectRatio": "4:5"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [],
+      "status": "unverified_working_choice",
+      "checkedAt": null
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Preset de diseño propio. Requisitos de carga, región, cuenta y conector pendientes de verificar; exportación manual hasta entonces.",
+    "designStatus": "reference_same_ratio_review_required",
+    "referenceTemplateIds": [
+      "rpa.reference.photo_emotional.1080x1350",
+      "rpa.reference.real_stories.1080x1350",
+      "rpa.reference.promotion.1080x1350",
+      "rpa.reference.video_testimonial.1080x1350",
+      "rpa.reference.hurricane_season.1080x1350",
+      "rpa.reference.geographic.1080x1350"
+    ]
+  },
+  {
+    "id": "snapchat.image",
+    "platform": "snapchat",
+    "platformLabel": "Snapchat",
+    "label": "Imagen vertical",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1920,
+      "unit": "px",
+      "aspectRatio": "9:16"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [],
+      "status": "unverified_working_choice",
+      "checkedAt": null
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.14,
+        "right": 0.12,
+        "bottom": 0.24,
+        "left": 0.06
+      },
+      "notes": "Zona conservadora de diseño propia para contenido esencial. Revisar interfaz, captions, CTA y método de publicación; no aplicar como especificación oficial."
+    },
+    "notes": "Preset de diseño propio. Requisitos de carga, región, cuenta y conector pendientes de verificar; exportación manual hasta entonces.",
+    "designStatus": "reference_same_ratio_review_required",
+    "referenceTemplateIds": [
+      "rpa.reference.photo_emotional.1080x1920",
+      "rpa.reference.real_stories.1080x1920",
+      "rpa.reference.promotion.1080x1920",
+      "rpa.reference.video_testimonial.1080x1920",
+      "rpa.reference.hurricane_season.1080x1920",
+      "rpa.reference.geographic.1080x1920"
+    ]
+  },
+  {
+    "id": "snapchat.video",
+    "platform": "snapchat",
+    "platformLabel": "Snapchat",
+    "label": "Video vertical",
+    "mediaKind": "video",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1920,
+      "unit": "px",
+      "aspectRatio": "9:16"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [],
+      "status": "unverified_working_choice",
+      "checkedAt": null
+    },
+    "delivery": {
+      "formats": [
+        "mp4"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.14,
+        "right": 0.12,
+        "bottom": 0.24,
+        "left": 0.06
+      },
+      "notes": "Zona conservadora de diseño propia para contenido esencial. Revisar interfaz, captions, CTA y método de publicación; no aplicar como especificación oficial."
+    },
+    "notes": "Preset de diseño propio. Requisitos de carga, región, cuenta y conector pendientes de verificar; exportación manual hasta entonces.",
+    "designStatus": "video_render_not_included",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "bluesky.post_square",
+    "platform": "bluesky",
+    "platformLabel": "Bluesky",
+    "label": "Post cuadrado",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1080,
+      "height": 1080,
+      "unit": "px",
+      "aspectRatio": "1:1"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [],
+      "status": "unverified_working_choice",
+      "checkedAt": null
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Preset de diseño propio. Requisitos de carga, región, cuenta y conector pendientes de verificar; exportación manual hasta entonces.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "bluesky.post_landscape",
+    "platform": "bluesky",
+    "platformLabel": "Bluesky",
+    "label": "Post horizontal",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1600,
+      "height": 900,
+      "unit": "px",
+      "aspectRatio": "16:9"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [],
+      "status": "unverified_working_choice",
+      "checkedAt": null
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "Márgenes editoriales propuestos; no representan una zona oficial ni garantizan el recorte del destino."
+    },
+    "notes": "Preset de diseño propio. Requisitos de carga, región, cuenta y conector pendientes de verificar; exportación manual hasta entonces.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  },
+  {
+    "id": "bluesky.banner",
+    "platform": "bluesky",
+    "platformLabel": "Bluesky",
+    "label": "Cabecera — preset",
+    "mediaKind": "image",
+    "canvas": {
+      "mode": "fixed",
+      "width": 1500,
+      "height": 500,
+      "unit": "px",
+      "aspectRatio": "3:1"
+    },
+    "dimensionBasis": "working_preset",
+    "evidence": {
+      "sourceIds": [],
+      "status": "unverified_working_choice",
+      "checkedAt": null
+    },
+    "delivery": {
+      "formats": [
+        "jpg",
+        "png"
+      ],
+      "maxBytes": null
+    },
+    "publication": {
+      "adapterStatus": "not_validated",
+      "autoPublish": false,
+      "requiresConnectorCheck": true,
+      "notes": "El tamaño del lienzo no demuestra que exista un endpoint o permiso para publicar este recurso."
+    },
+    "safeZone": {
+      "basis": "editorial_proposal",
+      "normalizedInsets": {
+        "top": 0.05,
+        "right": 0.05,
+        "bottom": 0.05,
+        "left": 0.05
+      },
+      "notes": "La portada puede recortarse u ocultarse por avatar/interfaz. Requiere una vista previa específica del canal."
+    },
+    "notes": "Preset de diseño propio. Requisitos de carga, región, cuenta y conector pendientes de verificar; exportación manual hasta entonces.",
+    "designStatus": "preset_only",
+    "referenceTemplateIds": []
+  }
+]

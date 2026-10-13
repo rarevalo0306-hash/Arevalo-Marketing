@@ -19,7 +19,10 @@ export type NavItem = {
   path: string;
   /** Solo para la página de SEO: la pestaña que abre. */
   tab?: SeoTabId;
-  /** Sección dentro de la pestaña (#palabras). Los enlaces con # nunca se marcan como «estás aquí»: lo hace el de su pestaña. */
+  /**
+   * Sección dentro de la página o pestaña (#palabras). Se marca como «estás aquí» cuando esa sección está en pantalla
+   * (ver NavHere.section); mientras tanto se marca el enlace de su página.
+   */
   hash?: string;
   /** Otras rutas que también cuentan como «estás aquí». */
   also?: string[];
@@ -81,6 +84,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { key: "marca", label: ["Identidad y kit", "Identity & kit"], path: "marca" },
       { key: "plantillas", label: ["Plantillas", "Templates"], path: "marca", hash: "plantillas" },
+      { key: "plantillas-redes", label: ["Plantillas por red", "Templates by network"], path: "marca", hash: "plantillas-redes" },
       // Las fotos y videos reales del negocio (Drive y link de subida) que la IA usa en las publicaciones.
       { key: "fotos", label: ["Tus fotos y videos", "Your photos & videos"], path: "fotos" },
     ],
@@ -127,11 +131,26 @@ export type NavHere = {
   pathname: string;
   tab: string | null;
   mapa: string | null;
+  /** La sección del menú (#hash) que está en pantalla en esta página, si hay una (la busca NavLinks al bajar). */
+  section?: string | null;
 };
 
-/** ¿Este enlace es la página (y pestaña) donde está la persona? */
+/** ¿Este enlace es la página (y pestaña) donde está la persona? Los enlaces a una sección, cuando esa sección se ve. */
 export function isItemOn(businessId: string, item: NavItem, here: NavHere): boolean {
-  if (!item.path || item.hash) return false;
+  if (!item.path) return false;
+  if (item.hash) return Boolean(here.section) && here.section === item.hash && isPageOn(businessId, item, here);
+  // Con una sección del menú en pantalla, se marca esa sección y no su página.
+  if (here.section && sectionItems(businessId, here).some((x) => x.hash === here.section)) return false;
+  return isPageOn(businessId, item, here);
+}
+
+/** Los enlaces a secciones (#hash) de la página y pestaña donde está la persona: lo que NavLinks vigila al bajar. */
+export function sectionItems(businessId: string, here: NavHere): NavItem[] {
+  return NAV_GROUPS.flatMap((g) => g.items).filter((x) => x.hash && x.path && isPageOn(businessId, x, here));
+}
+
+/** ¿El enlace lleva a la página (y pestaña) donde está la persona? Sin mirar la sección. */
+function isPageOn(businessId: string, item: NavItem, here: NavHere): boolean {
   const base = `/b/${businessId}/`;
   const path = here.pathname.replace(/\/+$/, "");
   if (item.tab) {

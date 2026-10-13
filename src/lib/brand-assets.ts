@@ -1,8 +1,9 @@
 // Imágenes de la marca guardadas en Business.brandAssets (JSON). Dos orígenes:
 // - "book": lo que la IA encontró en el manual de marca (logos, isotipo, patrones, ejemplos de plantillas).
 //   Llegan como "proposed" y el dueño las acepta o rechaza.
-// - "generated": lo que la app crea con la marca (foto de perfil, portadas, favicon, tarjeta…). Llegan "accepted".
+// - "generated": lo que la app crea con la marca (foto de perfil, portadas, favicon…). Llegan "accepted".
 // Sin servidor ni base de datos: se puede usar en pantalla y en pruebas.
+import { kitFormat } from "@/lib/brand-kit-formats";
 
 export type BrandAssetKind =
   | "logo" // logo completo (símbolo + nombre) para fondos claros
@@ -33,15 +34,52 @@ export type BrandAsset = {
   page?: number;
   /** Solo "kit": qué pieza es (ej. "profile", "fb-cover"). Una por formato: la nueva reemplaza la anterior. */
   format?: string;
-  /** Solo "kit": grupo para mostrar ("social", "web", "email", "print", "logos"). */
+  /** Solo "kit": grupo para mostrar ("social", "web", "email", "logos"). Las piezas del manual usan "social" o "print". */
   group?: string;
   /** Fondo transparente (PNG con alfa). */
   transparent?: boolean;
   createdAt: string;
 };
 
+/** Tipos de logo principal. El isotipo (solo el símbolo) va aparte: sirve para espacios chicos y cuadrados. */
+export const LOGO_TYPES = ["logotipo", "imagotipo", "isologo"] as const;
+export type LogoType = (typeof LOGO_TYPES)[number];
+export const LOGO_SLOTS = ["isotipo", ...LOGO_TYPES] as const;
+export type LogoSlot = (typeof LOGO_SLOTS)[number];
+export type LogoVariant = "color" | "white";
+/** Un tipo de logo: la versión a color (fondos claros) y la blanca (fondos oscuros y fotos). */
+export type LogoFiles = { color?: string; white?: string };
+
+/**
+ * Los logos de la marca por tipo, subidos por el dueño. El logo principal (el que va en los diseños) sigue en
+ * Business.logoUrl / logoLightUrl; aquí se guarda qué tipo es (`mainType`), el isotipo y las otras versiones.
+ */
+export type BrandLogos = { mainType?: LogoType; slots: Partial<Record<LogoSlot, LogoFiles>> };
+
+/** Nombre y explicación corta de cada tipo de logo, con un ejemplo conocido. */
+export const LOGO_INFO: Record<LogoSlot, { name: { es: string; en: string }; what: { es: string; en: string } }> = {
+  logotipo: {
+    name: { es: "Logotipo", en: "Logotype (wordmark)" },
+    what: { es: "Solo texto: el nombre escrito con su letra, sin símbolo. Ej.: Google.", en: "Text only: the name in its lettering, with no symbol. E.g.: Google." },
+  },
+  isotipo: {
+    name: { es: "Isotipo", en: "Isotype (symbol)" },
+    what: { es: "Solo símbolo, sin el nombre. Ej.: el «swoosh» de Nike. Va en la foto de perfil, los íconos del sitio y la esquina de los videos.", en: "Symbol only, without the name. E.g.: the Nike swoosh. It goes on the profile picture, site icons and the corner of videos." },
+  },
+  imagotipo: {
+    name: { es: "Imagotipo", en: "Imagotype (combination mark)" },
+    what: { es: "Texto y símbolo combinados: van juntos pero se pueden separar. Ej.: Rolex (la corona arriba del nombre).", en: "Text and symbol combined: they go together but can be used apart. E.g.: Rolex (the crown above the name)." },
+  },
+  isologo: {
+    name: { es: "Isologo", en: "Isologo (emblem)" },
+    what: { es: "Texto y símbolo como uno solo: no se pueden separar. Ej.: Burger King (el nombre dentro de la hamburguesa).", en: "Text and symbol as one: they can't be separated. E.g.: Burger King (the name inside the burger)." },
+  },
+};
+
 export type BrandAssets = {
   items: BrandAsset[];
+  /** Logos por tipo (ver BrandLogos). */
+  logos?: BrandLogos;
   /** Cuándo se leyó el manual para sacar imágenes, y cuántas páginas tenía. */
   bookReadAt?: string;
   bookPages?: number;
@@ -93,11 +131,44 @@ export function readBrandAssets(raw: unknown): BrandAssets {
   }
   return {
     items,
+    logos: readLogos(o.logos),
     bookReadAt: typeof o.bookReadAt === "string" ? o.bookReadAt : undefined,
     bookPages: typeof o.bookPages === "number" ? o.bookPages : undefined,
     bookName: typeof o.bookName === "string" ? o.bookName.slice(0, 120) : undefined,
     generatedAt: typeof o.generatedAt === "string" ? o.generatedAt : undefined,
   };
+}
+
+/** Solo direcciones de tu almacenamiento o públicas (https): nunca rutas de la computadora ni otras cosas. */
+const logoUrl = (v: unknown): string | undefined => (typeof v === "string" && (/^https:\/\/\S+$/.test(v) || /^\/media\/[\w.-]+$/.test(v)) ? v : undefined);
+
+function readLogos(raw: unknown): BrandLogos | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const o = raw as Record<string, unknown>;
+  const src = o.slots && typeof o.slots === "object" && !Array.isArray(o.slots) ? (o.slots as Record<string, unknown>) : {};
+  const slots: BrandLogos["slots"] = {};
+  for (const slot of LOGO_SLOTS) {
+    const f = src[slot] && typeof src[slot] === "object" ? (src[slot] as Record<string, unknown>) : null;
+    const files: LogoFiles = { color: logoUrl(f?.color), white: logoUrl(f?.white) };
+    if (files.color || files.white) slots[slot] = Object.fromEntries(Object.entries(files).filter(([, v]) => v)) as LogoFiles;
+  }
+  const mainType = LOGO_TYPES.find((x) => x === o.mainType);
+  return mainType || Object.keys(slots).length ? { ...(mainType ? { mainType } : {}), slots } : undefined;
+}
+
+/** Guarda (o quita, con "") una versión de un tipo de logo. */
+export function setLogoSlot(cur: BrandAssets, slot: LogoSlot, variant: LogoVariant, url: string): BrandAssets {
+  const slots = { ...(cur.logos?.slots ?? {}) };
+  const files: LogoFiles = { ...(slots[slot] ?? {}), [variant]: url || undefined };
+  if (files.color || files.white) slots[slot] = Object.fromEntries(Object.entries(files).filter(([, v]) => v)) as LogoFiles;
+  else delete slots[slot];
+  return { ...cur, logos: { ...(cur.logos?.mainType ? { mainType: cur.logos.mainType } : {}), slots } };
+}
+
+/** Qué tipo es el logo principal (el que va en los diseños). */
+export function setMainLogoType(cur: BrandAssets, type: LogoType | null): BrandAssets {
+  const slots = cur.logos?.slots ?? {};
+  return { ...cur, logos: { ...(type ? { mainType: type } : {}), slots } };
 }
 
 /**
@@ -106,7 +177,9 @@ export function readBrandAssets(raw: unknown): BrandAssets {
  */
 export function addBrandAssets(cur: BrandAssets, add: BrandAsset[], opts: { replaceBookProposals?: boolean } = {}): BrandAssets {
   const formats = new Set(add.filter((a) => a.kind === "kit" && a.format).map((a) => a.format));
-  let items = cur.items.filter((a) => !(a.kind === "kit" && a.format && formats.has(a.format)));
+  // Al volver a crear el kit también salen las piezas que ya no existen (ej. la tarjeta de presentación).
+  const newKit = formats.size > 0;
+  let items = cur.items.filter((a) => !(a.kind === "kit" && ((a.format && formats.has(a.format)) || (newKit && !kitFormat(a.format)))));
   if (opts.replaceBookProposals) items = items.filter((a) => !(a.source === "book" && a.status !== "accepted"));
   items = [...items, ...add];
   if (items.length > MAX_BRAND_ASSETS) items = items.slice(items.length - MAX_BRAND_ASSETS);
@@ -124,12 +197,16 @@ export function removeBrandAsset(cur: BrandAssets, id: string): BrandAssets {
 
 export const bookProposals = (b: BrandAssets) => b.items.filter((a) => a.source === "book" && a.status === "proposed");
 export const acceptedBookAssets = (b: BrandAssets) => b.items.filter((a) => a.source === "book" && a.status === "accepted");
-export const kitAssets = (b: BrandAssets) => b.items.filter((a) => a.kind === "kit");
+/** Las piezas del kit que siguen existiendo (las de formatos retirados, como la tarjeta impresa, no se muestran). */
+export const kitAssets = (b: BrandAssets) => b.items.filter((a) => a.kind === "kit" && Boolean(kitFormat(a.format)));
 
-/** El mejor símbolo aceptado para piezas cuadradas chicas (perfil, favicon): isotipo, si no el logo. */
+/**
+ * El mejor símbolo para piezas cuadradas chicas (perfil, favicon): el isotipo que subió el dueño, si no el isotipo
+ * aceptado del manual, si no el logo.
+ */
 export function bestMark(b: BrandAssets, fallbackLogo: string): string {
   const ok = acceptedBookAssets(b);
-  return ok.find((a) => a.kind === "isotype")?.url || ok.find((a) => a.kind === "logo")?.url || fallbackLogo;
+  return b.logos?.slots.isotipo?.color || ok.find((a) => a.kind === "isotype")?.url || ok.find((a) => a.kind === "logo")?.url || fallbackLogo;
 }
 
 export const newAssetId = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);

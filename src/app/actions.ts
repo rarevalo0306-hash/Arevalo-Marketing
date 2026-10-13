@@ -20,7 +20,8 @@ import { BUILTIN_TEMPLATES, FONTS, hexOr, pickTemplate, StoredTemplate } from "@
 import { photoContextFor, photoMetaFor, storeDesign } from "@/lib/media-formats";
 import { createImage, IMAGE_PROVIDERS, imagesEnabled } from "@/lib/imagegen";
 import { ownerFields } from "@/lib/owner";
-import { pickLibraryPhotos } from "@/lib/library";
+import { pickLibraryPhotos, recordAiMedia } from "@/lib/library";
+import { brandLogoColors } from "@/lib/brand-image";
 import { createSignedUpload, isOwnFile, ownMediaPath, saveUpload, storeRemote } from "@/lib/media";
 import { isPublicHttpsUrl } from "@/lib/net-guard";
 import { ALT_MAX, checkPostMedia, postKindFor, readPostMedia } from "@/lib/post-media";
@@ -596,7 +597,8 @@ export async function aiImage(businessId: string, description: string, shape: st
   if (!imagesEnabled()) return { ok: false, error: t("Falta una clave para crear imágenes en la configuración del servidor.", "An image key is missing from the server settings.") };
   if (!description.trim()) return { ok: false, error: t("Describe la imagen que quieres.", "Describe the image you want.") };
   try {
-    return { ok: true, url: await createImage(b.aiImage, description, SHAPES.includes(shape as Shape) ? (shape as Shape) : "square", businessId, photoContextFor(b, { title: description })) };
+    // Queda en la biblioteca («Hechas con IA») aunque no se publique: sin marcarla como usada.
+    return { ok: true, url: await createImage(b.aiImage, description, SHAPES.includes(shape as Shape) ? (shape as Shape) : "square", businessId, photoContextFor(b, { title: description }), { used: false }) };
   } catch (e) {
     return { ok: false, error: errorText(e, lang) };
   }
@@ -630,7 +632,10 @@ export async function aiVideoCheck(businessId: string, job: VideoJob): Promise<V
   try {
     const r = await videoResult(job);
     if (!r.done) return { ok: true, done: false };
-    return { ok: true, done: true, url: (await storeRemote(r.url, businessId, r.headers)).url };
+    const { url } = await storeRemote(r.url, businessId, r.headers);
+    // El video queda en la biblioteca («Hechas con IA») para no perderlo.
+    await recordAiMedia(businessId, url, { kind: "video", used: false });
+    return { ok: true, done: true, url };
   } catch (e) {
     return { ok: false, error: errorText(e, lang) };
   }
@@ -739,7 +744,7 @@ export async function brandFromAi(businessId: string): Promise<BrandKitResult> {
   const { lang, t } = await getT();
   if (!aiEnabled()) return { ok: false, message: t("Falta la clave de la IA en la configuración del servidor.", "The AI key is missing from the server settings.") };
   try {
-    return { ok: true, kit: await suggestBrandKit(b) };
+    return { ok: true, kit: await suggestBrandKit(b, { logoColors: await brandLogoColors(b.logoUrl) }) };
   } catch (e) {
     return { ok: false, message: errorText(e, lang) };
   }

@@ -1,12 +1,14 @@
 import { brandFromAi, brandFromBook, deleteTemplate, getBrandBookUploadUrl, getUploadUrl, proposeTemplates, updateBrandKit } from "@/app/actions";
 import { saveBrandBook } from "@/app/actions-brand-book";
-import { saveBrandLogo } from "@/app/actions-brand";
+import { saveVoicePrefs } from "@/app/actions-brand-identity";
+import { saveBrandLogo, saveLogoSlot, saveMainLogoType, uploadSvgLogo } from "@/app/actions-brand";
 import { BrandKitForm } from "@/components/BrandKitForm";
 import { BookAssetsSection } from "@/components/brand/BookAssetsSection";
 import { IdentitySection } from "@/components/brand/IdentitySection";
 import { BrandKitSection } from "@/components/brand/BrandKitSection";
 import { DesignAiSection } from "@/components/brand/DesignAiSection";
 import { saveCustomTemplate } from "@/app/actions-media";
+import { PlacementsPanel, type PlacementGroup } from "@/components/brand/PlacementsPanel";
 import { PageHead } from "@/components/PageHead";
 import { SizesInfo } from "@/components/SizesInfo";
 import { TemplateUpload } from "@/components/TemplateUpload";
@@ -20,6 +22,7 @@ import { BUILTIN_TEMPLATES, builtinTemplateName, LAYOUTS } from "@/lib/design-sh
 import type { UiLang } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { usesSupabaseStorage } from "@/lib/media";
+import { EVIDENCE_LABEL, PLAN_LABEL, placementGroups, placementPlan, previewSize, sizeText } from "@/lib/placements";
 import s from "./marca.module.css";
 
 // La IA puede tardar en diseñar las plantillas.
@@ -53,8 +56,18 @@ export default async function MarcaPage({ params }: { params: Promise<{ id: stri
   const shown = own.length ? own : BUILTIN_TEMPLATES.map((x, i) => ({ key: `builtin-${i}`, name: builtinTemplateName(x.name, lang), layout: x.layout, own: false, master: "" }));
   const assets = readBrandAssets(b.brandAssets);
   // Al usar una propuesta de identidad cambian colores y letras en el servidor: el formulario se vuelve a pintar con ellos.
-  const appliedAt = readBrandIdentity(b.brandIdentity).appliedAt;
+  const identity = readBrandIdentity(b.brandIdentity);
+  const appliedAt = identity.appliedAt;
   const v = b.createdAt.getTime().toString(36) + (b.templates.at(-1)?.createdAt.getTime().toString(36) ?? "");
+  // Los formatos de cada red (src/data/formatos.json), ya listos para la pantalla (sin mandar el catálogo entero).
+  const placements: PlacementGroup[] = placementGroups().map((g) => ({
+    platform: g.platform,
+    label: g.label,
+    items: g.items.map((p) => {
+      const plan = placementPlan(p);
+      return { id: p.id, label: p.label, size: sizeText(p), ...previewSize(p, 360), plan, planLabel: PLAN_LABEL[plan], evidence: EVIDENCE_LABEL[p.evidence.status], experimental: Boolean(p.experimental) };
+    }),
+  }));
   return (
     <>
       <PageHead
@@ -77,8 +90,13 @@ export default async function MarcaPage({ params }: { params: Promise<{ id: stri
           read: brandFromBook.bind(null, id),
           suggest: aiEnabled() ? brandFromAi.bind(null, id) : null,
           canRead: Boolean(process.env.GEMINI_API_KEY),
+          voice: aiEnabled() ? { address: identity.address, tones: identity.tones, save: saveVoicePrefs.bind(null, id) } : undefined,
         }}
         hasKit={assets.items.some((a) => a.kind === "kit")}
+        logos={assets.logos}
+        saveSlot={saveLogoSlot.bind(null, id)}
+        saveMainType={saveMainLogoType.bind(null, id)}
+        uploadSvg={uploadSvgLogo.bind(null, id)}
       >
         <BookAssetsSection businessId={id} />
       </BrandKitForm>
@@ -121,6 +139,19 @@ export default async function MarcaPage({ params }: { params: Promise<{ id: stri
             </figure>
           ))}
         </div>
+      </section>
+
+      <section className="card" id="plantillas-redes" aria-labelledby="plantillas-redes-title">
+        <div className="stack" style={{ gap: 4 }}>
+          <h2 id="plantillas-redes-title">{t("5. Tus plantillas en cada red", "5. Your templates on every network")}</h2>
+          <p className="small muted">
+            {t(
+              "Cada formato de cada red con tu plantilla, en su medida: el diseño se reacomoda (no se estira). Se hace una sola vez porque tu marca es la misma en todos lados. Las medidas vienen de tu catálogo de formatos; los que todavía no se hacen con plantillas lo dicen.",
+              "Every format of every network with your template, at its size: the design is rearranged (not stretched). It's done once because your brand is the same everywhere. Sizes come from your format catalog; the ones not made with templates yet say so.",
+            )}
+          </p>
+        </div>
+        <PlacementsPanel businessId={id} templates={shown.map((x) => ({ key: x.key, name: x.name }))} groups={placements} version={`${v}-${b.color}${b.fontHeading}`} />
       </section>
     </>
   );

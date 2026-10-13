@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { ChoiceButtons } from "@/components/library/ChoiceButtons";
 import { EnhancePanel } from "@/components/library/EnhancePanel";
+import { VariantButton } from "@/components/library/VariantButton";
 import { translator, type UiLang } from "@/lib/i18n";
 import { fmtDuration, qualityWord, SCENE_LABEL, type LibraryCard } from "@/lib/library-match";
 import { PRIVACY_FLAGS, PRIVACY_LABEL, type PrivacyFlag } from "@/lib/library-shape";
@@ -19,7 +20,8 @@ function StatePill({ c, lang }: { c: LibraryCard; lang: UiLang }) {
   return <span className="pill neutral">{t("La IA no la usa", "AI won't use it")}</span>;
 }
 
-export function LibraryItemCard({ c, businessId, lang }: { c: LibraryCard; businessId: string; lang: UiLang }) {
+/** `variantCents`: precio de «Crear otra versión» (solo fotos hechas con IA), o null si no hay clave para hacerlas. */
+export function LibraryItemCard({ c, businessId, lang, variantCents = null }: { c: LibraryCard; businessId: string; lang: UiLang; variantCents?: number | null }) {
   const t = translator(lang);
   const d = c.description;
   const q = qualityWord(c.quality);
@@ -71,7 +73,7 @@ export function LibraryItemCard({ c, businessId, lang }: { c: LibraryCard; busin
           </div>
         )}
         <p className={s.origin}>
-          <strong>{c.source === "upload" ? t("Subida por link", "Uploaded by link") : t("De Drive", "From Drive")}</strong>
+          <strong>{c.source === "upload" ? t("Subida por link", "Uploaded by link") : c.source === "ai" ? t("Hecha con IA", "Made with AI") : t("De Drive", "From Drive")}</strong>
           {c.folderPath ? ` · ${c.source === "upload" ? `«${c.folderPath}»` : c.folderPath}` : ""}
         </p>
         {c.status === "ready" && (
@@ -102,7 +104,8 @@ export function LibraryItemCard({ c, businessId, lang }: { c: LibraryCard; busin
               {c.kind === "video" ? t("Crear publicación con este video", "Create a post with this video") : t("Crear publicación con esta foto", "Create a post with this photo")}
             </Link>
           )}
-          <EnhancePanel c={c} businessId={businessId} />
+          {c.source === "ai" && c.kind === "photo" && c.status === "ready" && variantCents !== null && <VariantButton businessId={businessId} itemId={c.id} cents={variantCents} />}
+          {c.source !== "ai" && <EnhancePanel c={c} businessId={businessId} />}
           {c.status !== "new" && <ChoiceButtons businessId={businessId} itemId={c.id} choice={c.choice} needsReview={c.needsReview} problem={c.status === "error"} />}
         </div>
       </div>

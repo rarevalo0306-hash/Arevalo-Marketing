@@ -3,9 +3,10 @@
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { BrandKitResult } from "@/app/actions";
-import { BrandMockups } from "@/components/BrandMockups";
 import { bookRunText, startBookRun, useBookRun } from "@/components/brand/BookRun";
 import { useT } from "@/components/I18n";
+import { LOGO_INFO, LOGO_TYPES, type BrandLogos, type LogoSlot, type LogoType, type LogoVariant } from "@/lib/brand-assets";
+import { MAX_TONES, TONE_LABEL, TONES, type Address, type Tone } from "@/lib/brand-identity-shape";
 import { emitBrandSaved } from "@/lib/brand-events";
 import f from "./BrandKitForm.module.css";
 
@@ -51,14 +52,24 @@ type Props = {
     suggest: (() => Promise<BrandKitResult>) | null;
     /** Hay clave de Gemini para sacar logos e imágenes del manual. */
     canRead: boolean;
+    /** Cómo quiere el dueño que hable su marca (tú o usted, y tonos): se pregunta antes de que la IA proponga. */
+    voice?: { address: Address; tones: Tone[]; save: (address: string, tones: string[]) => Promise<{ ok: boolean; message: string }> };
   };
   /** Las imágenes del manual (para aceptar o rechazar): van entre los campos y «Guardar la marca». */
   children?: React.ReactNode;
   /** Ya existe el kit de marca (si no, se crea al guardar aunque no cambien colores ni logos). */
   hasKit: boolean;
+  /** Logos por tipo (isotipo, logotipo, imagotipo, isologo) y qué tipo es el principal. */
+  logos?: BrandLogos;
+  saveSlot?: (slot: LogoSlot, variant: LogoVariant, url: string) => Promise<{ ok: boolean; message: string }>;
+  saveMainType?: (type: string) => Promise<{ ok: boolean; message: string }>;
+  /** Convierte un logo SVG en PNG grande en el servidor y lo guarda. */
+  uploadSvg?: (svg: string) => Promise<{ ok: true; url: string } | { ok: false; message: string }>;
 };
 
 const BOOK_TYPES = ["application/pdf", "image/png", "image/jpeg", "image/webp"];
+/** Lado más largo mínimo (px) para que el logo se vea nítido en las portadas (la de Facebook mide 1640 px). */
+const SMALL_LOGO = 800;
 
 function LogoField({
   label,
@@ -68,6 +79,7 @@ function LogoField({
   upload,
   dark,
   persist,
+  uploadSvg,
 }: {
   label: string;
   help: string;
@@ -76,10 +88,14 @@ function LogoField({
   upload: Props["upload"];
   dark?: boolean;
   persist?: (url: string) => Promise<{ ok: boolean; message: string }>;
+  uploadSvg?: Props["uploadSvg"];
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [stored, setStored] = useState(false);
+  // Medida real del logo: uno chico (ej. recortado de una página del manual) se ve borroso en las portadas.
+  const [size, setSize] = useState<{ url: string; w: number; h: number } | null>(null);
+  const small = size !== null && size.url === value && Math.max(size.w, size.h) < SMALL_LOGO;
   const { t } = useT();
   async function keep(url: string) {
     onChange(url);
@@ -91,8 +107,24 @@ function LogoField({
   }
   async function onFile(f: File | undefined) {
     setError("");
-    if (!f || !upload) return;
-    if (!["image/png", "image/jpeg", "image/webp"].includes(f.type)) return setError(t("Usa PNG (mejor con fondo transparente), JPG o WEBP.", "Use PNG (best with a transparent background), JPG, or WEBP."));
+    if (!f) return;
+    // SVG: el servidor lo limpia y lo convierte en un PNG grande (no hace falta subirlo directo).
+    if (uploadSvg && (f.type === "image/svg+xml" || /\.svg$/i.test(f.name))) {
+      setBusy(true);
+      try {
+        const r = await uploadSvg(await f.text());
+        if (r.ok) await keep(r.url);
+        else setError(r.message);
+      } catch (e) {
+        setError(`${t("No se pudo subir", "Couldn't upload")}: ${(e as Error).message}`);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+    if (!upload) return;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(f.type))
+      return setError(uploadSvg ? t("Usa SVG o PNG (mejor con fondo transparente), JPG o WEBP.", "Use SVG or PNG (best with a transparent background), JPG, or WEBP.") : t("Usa PNG (mejor con fondo transparente), JPG o WEBP.", "Use PNG (best with a transparent background), JPG, or WEBP."));
     setBusy(true);
     try {
       const { uploadUrl, publicUrl } = await upload(f.type);
@@ -110,15 +142,15 @@ function LogoField({
       <span className="lbl">{label}</span>
       <div className="logo-box" style={{ background: dark ? "#0b1220" : "#ffffff" }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        {value ? <img src={value} alt={label} /> : <span className="small" style={{ color: dark ? "#8c9ab3" : "#5d6b7e" }}>{t("Sin logo", "No logo")}</span>}
+        {value ? <img src={value} alt={label} onLoad={(e) => setSize({ url: value, w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })} /> : <span className="small" style={{ color: dark ? "#8c9ab3" : "#5d6b7e" }}>{t("Sin logo", "No logo")}</span>}
       </div>
       <div className="row">
-        {upload ? (
+        {upload || uploadSvg ? (
           <label className="btn" style={{ cursor: "pointer" }}>
             {busy ? t("Subiendo…", "Uploading…") : value ? t("Cambiar", "Change") : t("Subir", "Upload")}
             <input
               type="file"
-              accept="image/png,image/jpeg,image/webp"
+              accept={uploadSvg ? "image/svg+xml,.svg,image/png,image/jpeg,image/webp" : "image/png,image/jpeg,image/webp"}
               className="sr-only"
               onChange={(e) => {
                 // El logo se guarda solo: no cuenta como "cambio sin guardar" del formulario.
@@ -134,6 +166,14 @@ function LogoField({
         {stored && <span className="pill done">{value ? t("Guardado", "Saved") : t("Quitado", "Removed")}</span>}
       </div>
       <span className="small muted">{help}</span>
+      {small && (
+        <p className="note" role="status">
+          {t(
+            `Este logo es chico (${size.w} × ${size.h} px) y se ve borroso en las portadas y los diseños grandes. Sube el archivo original: PNG de ${SMALL_LOGO} px o más, con fondo transparente.`,
+            `This logo is small (${size.w} × ${size.h} px) and looks blurry on covers and large designs. Upload the original file: a PNG of ${SMALL_LOGO} px or more, with a transparent background.`,
+          )}
+        </p>
+      )}
       {error && <p className="note error">{error}</p>}
     </div>
   );
@@ -143,6 +183,63 @@ function LogoField({
 function bookLabel(name: string, url: string, t: (es: string, en: string) => string): string {
   if (name) return name;
   return /\.pdf($|\?)/i.test(url) ? t("Tu manual de marca (PDF)", "Your brand book (PDF)") : t("Tu manual de marca (imagen)", "Your brand book (image)");
+}
+
+/** En qué formato subir el manual para que la IA lo lea bien (y saque logos nítidos). */
+function BookFormatTips() {
+  const { t } = useT();
+  return (
+    <details className={f.tips}>
+      <summary className="small">{t("¿En qué formato lo subo?", "What format should I upload?")}</summary>
+      <ul className="small muted">
+        <li>{t("PDF exportado desde el programa donde se hizo (Canva, Illustrator, InDesign). No escaneado ni fotos del papel: la IA no lee bien las fotos.", "A PDF exported from the program it was made in (Canva, Illustrator, InDesign). Not scanned or photos of paper: the AI can't read photos well.")}</li>
+        <li>{t("Con los códigos de color escritos (por ejemplo #1569BB) y los nombres de las letras.", "With the color codes written out (for example #1569BB) and the font names.")}</li>
+        <li>{t("Hasta 18 MB. De las primeras 60 páginas se sacan logos e imágenes.", "Up to 18 MB. Logos and images are pulled from the first 60 pages.")}</li>
+        <li>{t("Los logos que salen del manual son recortes y pueden verse borrosos. Si tienes los archivos originales (SVG o PNG grande), súbelos en «Logos», más abajo.", "Logos pulled from the book are crops and may look blurry. If you have the original files (SVG or a large PNG), upload them under “Logos” below.")}</li>
+      </ul>
+    </details>
+  );
+}
+
+/** Antes de que la IA proponga: ¿tú o usted? ¿cómo quieres sonar? Se guarda apenas se elige. */
+function VoicePick({ voice }: { voice: NonNullable<Props["brandBook"]["voice"]> }) {
+  const { lang, t } = useT();
+  const L = lang === "en" ? "en" : "es";
+  const [address, setAddress] = useState<Address>(voice.address);
+  const [tones, setTones] = useState<Tone[]>(voice.tones);
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  async function keep(a: Address, list: Tone[]) {
+    setAddress(a);
+    setTones(list);
+    const r = await voice.save(a, list);
+    setNote(r.ok ? { ok: true, text: t("Guardado. La IA lo sigue al proponer y al escribir.", "Saved. The AI follows it when it suggests and writes.") } : { ok: false, text: r.message });
+  }
+  return (
+    <div className={f.voicePick}>
+      <strong>{t("¿Cómo quieres que hable tu marca?", "How do you want your brand to talk?")}</strong>
+      <span className="small muted">{t("Antes de crear tu marca (con o sin manual), dile a la IA cómo le hablas a tus clientes.", "Before creating your brand (with or without a book), tell the AI how you talk to your customers.")}</span>
+      <div className="row" role="radiogroup" aria-label={t("Trato", "Form of address")} style={{ gap: 8 }}>
+        {(["tu", "usted"] as const).map((a) => (
+          <button key={a} type="button" role="radio" aria-checked={address === a} className={address === a ? "btn on" : "btn"} onClick={() => void keep(a, tones)}>
+            {a === "tu" ? t("De «tú» (cercano)", "“Tú” (informal)") : t("De «usted» (formal)", "“Usted” (formal)")}
+          </button>
+        ))}
+      </div>
+      <div className="row" role="group" aria-label={t("Tono", "Tone")} style={{ gap: 8, flexWrap: "wrap" }}>
+        {TONES.map((x) => {
+          const on = tones.includes(x);
+          const full = !on && tones.length >= MAX_TONES;
+          return (
+            <button key={x} type="button" aria-pressed={on} disabled={full} className={on ? "btn on" : "btn"} onClick={() => void keep(address, on ? tones.filter((y) => y !== x) : [...tones, x])}>
+              {TONE_LABEL[x][L]}
+            </button>
+          );
+        })}
+      </div>
+      <span className="small muted">{t(`Elige hasta ${MAX_TONES} tonos.`, `Pick up to ${MAX_TONES} tones.`)}</span>
+      {note && <p className={note.ok ? "note ok" : "note error"} role="status">{note.text}</p>}
+    </div>
+  );
 }
 
 type StepState = "wait" | "run" | "ok" | "err";
@@ -272,6 +369,7 @@ function BrandSource({ brandBook, onKit }: { brandBook: Props["brandBook"]; onKi
           ) : (
             <span className="small muted">{t("Sube tu manual (PDF o imagen). Se guarda aquí para tenerlo siempre a mano.", "Upload your brand book (PDF or image). It's saved here so you always have it handy.")}</span>
           )}
+          <BookFormatTips />
           <div className="row" style={{ gap: 8 }}>
             {hasBook && (
               <button type="button" className="btn on" onClick={createFromBook} disabled={Boolean(busy) || pulling}>
@@ -296,6 +394,7 @@ function BrandSource({ brandBook, onKit }: { brandBook: Props["brandBook"]; onKi
           )}
         </div>
       </div>
+      {brandBook.voice && <VoicePick voice={brandBook.voice} />}
       {error && <p className="note error" role="status">{error}</p>}
 
       {started && (
@@ -307,7 +406,7 @@ function BrandSource({ brandBook, onKit }: { brandBook: Props["brandBook"]; onKi
               {colors.state === "run"
                 ? t(started === "ai" ? "— la IA los está pensando…" : "— la IA los está leyendo del manual…", started === "ai" ? "— the AI is coming up with them…" : "— the AI is reading them from the book…")
                 : colors.state === "ok"
-                  ? `— ${colors.text} ${t("Ya están abajo, en la maqueta y en los campos.", "They're below, in the mockup and the fields.")}`
+                  ? `— ${colors.text} ${t("Ya están abajo, en los campos.", "They're below, in the fields.")}`
                   : colors.text && `— ${colors.text}`}
             </span>
           </li>
@@ -334,7 +433,86 @@ function BrandSource({ brandBook, onKit }: { brandBook: Props["brandBook"]; onKi
   );
 }
 
-export function BrandKitForm({ kit, save, upload, brandBook, saveLogo, children, hasKit }: Props) {
+/** Qué tipo es el logo principal. Se guarda apenas se elige. */
+function MainTypePick({ value, save }: { value: LogoType | ""; save?: Props["saveMainType"] }) {
+  const { lang, t } = useT();
+  const [type, setType] = useState<LogoType | "">(value);
+  const [error, setError] = useState("");
+  const L = lang === "en" ? "en" : "es";
+  async function pick(next: LogoType) {
+    setError("");
+    setType(next);
+    const r = await save?.(next);
+    if (r && !r.ok) setError(r.message);
+  }
+  return (
+    <fieldset className={f.typePick}>
+      <legend className="lbl">{t("¿Qué tipo de logo es?", "What kind of logo is it?")}</legend>
+      <div className={f.typeChips}>
+        {LOGO_TYPES.map((x) => (
+          <label key={x} className={type === x ? "chip on" : "chip"}>
+            <input
+              type="radio"
+              name="mainLogoType"
+              value={x}
+              checked={type === x}
+              onChange={(e) => {
+                // Se guarda solo: no cuenta como "cambio sin guardar" del formulario.
+                e.stopPropagation();
+                void pick(x);
+              }}
+            />
+            <span className="stack" style={{ gap: 0 }}>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>{LOGO_INFO[x].name[L]}</span>
+              <span className="sub">{LOGO_INFO[x].what[L]}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+      {error && <p className="note error">{error}</p>}
+    </fieldset>
+  );
+}
+
+/** Un tipo de logo con su versión a color y la blanca, guardadas apenas se suben. */
+function SlotPair({ slot, files, upload, saveSlot, uploadSvg }: { slot: LogoSlot; files?: { color?: string; white?: string }; upload: Props["upload"]; saveSlot?: Props["saveSlot"]; uploadSvg?: Props["uploadSvg"] }) {
+  const { lang, t } = useT();
+  const L = lang === "en" ? "en" : "es";
+  const [color, setColor] = useState(files?.color ?? "");
+  const [white, setWhite] = useState(files?.white ?? "");
+  const info = LOGO_INFO[slot];
+  return (
+    <div className={f.logoBlock}>
+      <div className="stack" style={{ gap: 2 }}>
+        <h3 className={f.logoTitle}>{info.name[L]}</h3>
+        <span className="small muted">{info.what[L]}</span>
+      </div>
+      <div className="grid-2" style={{ gap: 18 }}>
+        <LogoField
+          label={t("A color", "Color")}
+          help={t("Para fondos claros.", "For light backgrounds.")}
+          value={color}
+          onChange={setColor}
+          upload={upload}
+          uploadSvg={uploadSvg}
+          persist={saveSlot && ((url) => saveSlot(slot, "color", url))}
+        />
+        <LogoField
+          label={t("En blanco (opcional)", "White (optional)")}
+          help={t("Para fondos oscuros y fotos.", "For dark backgrounds and photos.")}
+          value={white}
+          onChange={setWhite}
+          upload={upload}
+          uploadSvg={uploadSvg}
+          dark
+          persist={saveSlot && ((url) => saveSlot(slot, "white", url))}
+        />
+      </div>
+    </div>
+  );
+}
+
+export function BrandKitForm({ kit, save, upload, brandBook, saveLogo, children, hasKit, logos, saveSlot, saveMainType, uploadSvg }: Props) {
   const [logo, setLogo] = useState(kit.logoUrl);
   const [logoLight, setLogoLight] = useState(kit.logoLightUrl);
   const [c1, setC1] = useState(kit.color);
@@ -377,19 +555,16 @@ export function BrandKitForm({ kit, save, upload, brandBook, saveLogo, children,
         setDirty(true);
       }}
     />
-    <section className="card" aria-labelledby="mockups-title">
+    <section className="card" aria-labelledby="revisa-title">
       <div className="stack" style={{ gap: 4 }}>
-        <h2 id="mockups-title">{t("2. Revisa tu marca: así se ve", "2. Review your brand: this is how it looks")}</h2>
+        <h2 id="revisa-title">{t("2. Revisa tu marca", "2. Review your brand")}</h2>
         <p className="small muted">
           {t(
-            "Una maqueta con tus colores, letras y logo. Cambia algo abajo y la maqueta se actualiza al momento.",
-            "A mockup with your colors, fonts and logo. Change something below and the mockup updates right away.",
+            "Tus logos, colores, letras, voz, hashtags y teléfono. Corrige lo que haga falta y guarda al final.",
+            "Your logos, colors, fonts, voice, hashtags and phone. Fix whatever needs it and save at the end.",
           )}
         </p>
       </div>
-      <BrandMockups
-        brand={{ name: kit.name, logo, logoLight, c1, c2, c3, headingCss: fontCss, bodyFont: fontBody, phone, website: kit.website ?? "", hashtags }}
-      />
     </section>
     <form
       id="brand-form"
@@ -420,26 +595,56 @@ export function BrandKitForm({ kit, save, upload, brandBook, saveLogo, children,
       <input type="hidden" name="logoLightUrl" value={logoLight} />
 
       <section className="card" id="logos">
-        <h2>Logos</h2>
-        <div className="grid-2" style={{ gap: 18 }}>
-          <LogoField
-            label={t("Logo principal", "Main logo")}
-            help={t("Para fondos claros. Mejor en PNG con fondo transparente. Se guarda apenas lo subes.", "For light backgrounds. Best as a PNG with a transparent background. It's saved as soon as you upload it.")}
-            value={logo}
-            onChange={setLogo}
-            upload={upload}
-            persist={saveLogo && ((url) => saveLogo("logoUrl", url))}
-          />
-          <LogoField
-            label={t("Logo blanco (opcional)", "White logo (optional)")}
-            help={t("Para fondos oscuros y fotos. Si no lo tienes, se usa el principal en una tarjeta blanca.", "For dark backgrounds and photos. If you don't have one, the main logo is used on a white card.")}
-            value={logoLight}
-            onChange={setLogoLight}
-            upload={upload}
-            dark
-            persist={saveLogo && ((url) => saveLogo("logoLightUrl", url))}
-          />
+        <div className="stack" style={{ gap: 4 }}>
+          <h2>Logos</h2>
+          <p className="small muted">
+            {t(
+              "Sube cada versión que tenga tu marca. Lo mejor es el archivo original: SVG, o PNG de 1200 px o más con fondo transparente. Se guardan apenas los subes.",
+              "Upload every version your brand has. The original file is best: SVG, or a PNG of 1200 px or more with a transparent background. They're saved as soon as you upload them.",
+            )}
+          </p>
         </div>
+        <div className={f.logoBlock}>
+          <div className="stack" style={{ gap: 2 }}>
+            <h3 className={f.logoTitle}>{t("Logo principal: el que va en tus diseños", "Main logo: the one on your designs")}</h3>
+            <span className="small muted">{t("Va en los posts, las portadas y los anuncios.", "It goes on posts, covers and ads.")}</span>
+          </div>
+          {saveMainType && <MainTypePick value={logos?.mainType ?? ""} save={saveMainType} />}
+          <div className="grid-2" style={{ gap: 18 }}>
+            <LogoField
+              label={t("A color", "Color")}
+              help={t("Para fondos claros.", "For light backgrounds.")}
+              value={logo}
+              onChange={setLogo}
+              upload={upload}
+              uploadSvg={uploadSvg}
+              persist={saveLogo && ((url) => saveLogo("logoUrl", url))}
+            />
+            <LogoField
+              label={t("En blanco (opcional)", "White (optional)")}
+              help={t("Para fondos oscuros y fotos. Si no lo tienes, la app pinta de blanco el de color.", "For dark backgrounds and photos. If you don't have one, the app paints the color one white.")}
+              value={logoLight}
+              onChange={setLogoLight}
+              upload={upload}
+              uploadSvg={uploadSvg}
+              dark
+              persist={saveLogo && ((url) => saveLogo("logoLightUrl", url))}
+            />
+          </div>
+        </div>
+        {saveSlot && (
+          <>
+            <SlotPair slot="isotipo" files={logos?.slots.isotipo} upload={upload} saveSlot={saveSlot} uploadSvg={uploadSvg} />
+            <details className={f.more}>
+              <summary>{t("Otras versiones de tu logo (opcional)", "Other versions of your logo (optional)")}</summary>
+              <div className="stack" style={{ gap: 18, marginTop: 14 }}>
+                {LOGO_TYPES.filter((x) => x !== logos?.mainType).map((x) => (
+                  <SlotPair key={x} slot={x} files={logos?.slots[x]} upload={upload} saveSlot={saveSlot} uploadSvg={uploadSvg} />
+                ))}
+              </div>
+            </details>
+          </>
+        )}
       </section>
 
       <section className="card" id="colores">

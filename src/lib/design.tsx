@@ -25,6 +25,7 @@ import {
   fontId,
   hexOr,
   mix,
+  nearestShape,
   needsPhoto,
   rgba,
   customBoxes,
@@ -64,6 +65,8 @@ export type DesignInput = {
   steps?: string[];
   template: StoredTemplate;
   shape?: DesignShape;
+  /** Medida exacta de otra red (ej. 1000 × 1500 de Pinterest). Manda sobre `shape`; el diseño se reacomoda, no se estira. */
+  size?: { w: number; h: number };
   /** Texto corto debajo del titular (opcional). */
   sub?: string;
   /** Llamada a la acción, como un botón (opcional). Ej.: «Pide tu cotización». */
@@ -267,7 +270,7 @@ type BlockPlan = {
 export async function renderDesign(d: DesignInput): Promise<Buffer> {
   if (d.template.custom) return renderCustom(d, d.template.custom);
   const t = d.template;
-  const { w, h } = DESIGN_SHAPES[d.shape ?? "square"];
+  const { w, h } = d.size ?? DESIGN_SHAPES[d.shape ?? "square"];
   const b = d.brand;
   const F = await loadFonts(b, t.uppercase);
   const c1 = hexOr(b.color, "#126BBC");
@@ -793,9 +796,10 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
  * imagen subida; si la red pide otra forma, se centra sobre un fondo desenfocado (sin cortar el diseño).
  */
 async function renderCustom(d: DesignInput, spec: CustomSpec): Promise<Buffer> {
-  const target = DESIGN_SHAPES[d.shape ?? "square"];
-  // Diseños maestros: la variante de la forma que pide la red (si existe). Las plantillas subidas no cambian.
-  const c = customFor(spec, d.shape);
+  const target = d.size ?? DESIGN_SHAPES[d.shape ?? "square"];
+  // Diseños maestros: la variante de la forma que pide la red (si existe), o la de forma más parecida a la medida
+  // pedida. Las plantillas subidas no cambian.
+  const c = customFor(spec, d.size ? nearestShape(d.size.w, d.size.h) : d.shape);
   const F = await loadFonts(d.brand, false);
   const c1 = hexOr(d.brand.color, "#126BBC");
   const deep = mix(c1, "#050a14", 0.8);
