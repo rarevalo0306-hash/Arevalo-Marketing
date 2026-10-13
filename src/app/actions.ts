@@ -119,6 +119,11 @@ export async function saveConnection(businessId: string, channel: ChannelId, f: 
     // Un campo secreto vacío conserva el valor guardado.
     values[field.key] = v || (field.secret ? previous[field.key] ?? "" : "");
   }
+  // Google y YouTube con el cliente de la app: no se guarda copia de su clave (se usa la del servidor, ver googleClient).
+  if ((channel === "google" || channel === "youtube") && (!values.clientId?.trim() || values.clientId.trim() === process.env.GOOGLE_CLIENT_ID?.trim())) {
+    delete values.clientId;
+    delete values.clientSecret;
+  }
   const secret = encryptJson(values);
   // El nombre visible nunca es un dato secreto (va sin cifrar).
   const labelField = def.fields.find((x) => !x.secret);

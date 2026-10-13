@@ -1,14 +1,27 @@
 import { fetchJson, form, required } from "./http";
 import { mediaOf, type Creds, type Publisher } from "./types";
 
-/** Un access token nuevo a partir de las credenciales guardadas de la conexión de Google (refresh token). */
+/**
+ * El cliente OAuth con que se renueva el permiso. «Conectar con Google» usa el de la app (GOOGLE_CLIENT_ID/SECRET del
+ * servidor) y ya no guarda copia. Solo una conexión pegada a mano con su propio cliente (otro client ID) usa el guardado.
+ * Las conexiones viejas que guardaron copia del cliente de la app usan la clave actual del servidor.
+ */
+export function googleClient(creds: Creds): { clientId: string; clientSecret: string } {
+  const appId = process.env.GOOGLE_CLIENT_ID?.trim() ?? "";
+  const ownId = creds.clientId?.trim() ?? "";
+  if (ownId && ownId !== appId) return { clientId: ownId, clientSecret: creds.clientSecret?.trim() ?? "" };
+  return { clientId: appId, clientSecret: process.env.GOOGLE_CLIENT_SECRET?.trim() ?? "" };
+}
+
+/** Un access token nuevo a partir del refresh token de la conexión (Perfil de Negocio y YouTube). */
 export async function googleAccessToken(creds: Creds): Promise<string> {
-  required(creds, ["clientId", "clientSecret", "refreshToken"]);
+  const { clientId, clientSecret } = googleClient(creds);
+  required({ clientId, clientSecret, refreshToken: creds.refreshToken ?? "" }, ["clientId", "clientSecret", "refreshToken"]);
   const t = await fetchJson<{ access_token: string }>("https://oauth2.googleapis.com/token", {
     method: "POST",
     body: form({
-      client_id: creds.clientId,
-      client_secret: creds.clientSecret,
+      client_id: clientId,
+      client_secret: clientSecret,
       refresh_token: creds.refreshToken,
       grant_type: "refresh_token",
     }),

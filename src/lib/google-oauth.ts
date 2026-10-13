@@ -2,7 +2,7 @@
 // sin copiar tokens a mano.
 import { encryptJson } from "@/lib/crypto";
 import { db } from "@/lib/db";
-import { bi } from "@/lib/i18n";
+import { bi, type T } from "@/lib/i18n";
 import { makeState } from "@/lib/meta-oauth";
 import { fetchJson, form } from "@/lib/publishers/http";
 
@@ -12,15 +12,21 @@ export const GOOGLE_SCOPE = "https://www.googleapis.com/auth/business.manage";
 export const GSC_SCOPE = "https://www.googleapis.com/auth/webmasters.readonly";
 /** Google Analytics 4 ("Visitas a tu página"): solo lectura, se pide aparte. */
 export const GA4_SCOPE = "https://www.googleapis.com/auth/analytics.readonly";
-/** YouTube ("Subir videos a tu canal"): solo permiso para subir videos, se pide aparte. */
+/** YouTube ("Subir videos a tu canal"): permiso para subir videos; se pide aparte, junto con YOUTUBE_READ_SCOPE. */
 export const YOUTUBE_SCOPE = "https://www.googleapis.com/auth/youtube.upload";
-/** Para leer el nombre del canal al conectar (solo lectura). */
+/** Para leer el nombre del canal al conectar y las vistas de los videos (solo lectura). */
 export const YOUTUBE_READ_SCOPE = "https://www.googleapis.com/auth/youtube.readonly";
 
 /** Para qué se pide el permiso de Google: publicar en el Perfil de Negocio, leer Search Console, leer Analytics o subir a YouTube. */
 export type GooglePurpose = "profile" | "gsc" | "ga4" | "youtube";
 
-const PURPOSE_SCOPE: Record<GooglePurpose, string> = { profile: GOOGLE_SCOPE, gsc: GSC_SCOPE, ga4: GA4_SCOPE, youtube: `${YOUTUBE_SCOPE} ${YOUTUBE_READ_SCOPE}` };
+/** Los permisos que necesita cada propósito (YouTube: subir videos y ver el canal). */
+export const PURPOSE_SCOPES: Record<GooglePurpose, string[]> = {
+  profile: [GOOGLE_SCOPE],
+  gsc: [GSC_SCOPE],
+  ga4: [GA4_SCOPE],
+  youtube: [YOUTUBE_SCOPE, YOUTUBE_READ_SCOPE],
+};
 
 export const googleEnabled = () => Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 
@@ -32,7 +38,7 @@ export function googleAuthUrl(businessId: string, purpose: GooglePurpose = "prof
     client_id: process.env.GOOGLE_CLIENT_ID!,
     redirect_uri: googleRedirectUri(),
     response_type: "code",
-    scope: PURPOSE_SCOPE[purpose] ?? GOOGLE_SCOPE,
+    scope: (PURPOSE_SCOPES[purpose] ?? [GOOGLE_SCOPE]).join(" "),
     // offline + consent: Google entrega un refresh token que no vence mientras no se revoque.
     access_type: "offline",
     prompt: "consent",
@@ -51,9 +57,9 @@ export function googleStatePurpose(value: string): { purpose: GooglePurpose; bus
   return { purpose: "profile", businessId: value };
 }
 
-/** Cambia el código por un refresh token (para guardar) y un access token (para usar ya). */
-export async function googleExchange(code: string): Promise<{ refreshToken: string; accessToken: string }> {
-  const t = await fetchJson<{ access_token: string; refresh_token?: string }>("https://oauth2.googleapis.com/token", {
+/** Cambia el código por un refresh token (para guardar), un access token (para usar ya) y los permisos que se dieron. */
+export async function googleExchange(code: string): Promise<{ refreshToken: string; accessToken: string; scopes: string[] | null }> {
+  const t = await fetchJson<{ access_token: string; refresh_token?: string; scope?: string }>("https://oauth2.googleapis.com/token", {
     method: "POST",
     body: form({
       code,
@@ -64,7 +70,34 @@ export async function googleExchange(code: string): Promise<{ refreshToken: stri
     }),
   });
   if (!t.refresh_token) throw bi("Google no entregó el permiso permanente. Vuelve a intentarlo.", "Google didn't grant permanent access. Please try again.");
-  return { refreshToken: t.refresh_token, accessToken: t.access_token };
+  // Lo que la persona dejó marcado en la pantalla de Google (puede desmarcar casillas). Sin «scope» = todo lo pedido.
+  const scopes = typeof t.scope === "string" ? t.scope.split(/\s+/).filter(Boolean) : null;
+  return { refreshToken: t.refresh_token, accessToken: t.access_token, scopes };
+}
+
+/** Los permisos de este propósito que la persona desmarcó (vacío = están todos). Con include_granted_scopes pueden venir
+ *  permisos de otros propósitos: no importan. */
+export function missingGoogleScopes(purpose: GooglePurpose, granted: string[] | null): string[] {
+  return granted ? PURPOSE_SCOPES[purpose].filter((s) => !granted.includes(s)) : [];
+}
+
+const SCOPE_NAMES: Record<string, [es: string, en: string]> = {
+  [GOOGLE_SCOPE]: ["administrar tu Perfil de Negocio", "manage your Business Profile"],
+  [GSC_SCOPE]: ["ver tus datos de Search Console", "view your Search Console data"],
+  [GA4_SCOPE]: ["ver tus datos de Google Analytics", "view your Google Analytics data"],
+  [YOUTUBE_SCOPE]: ["subir videos a tu canal de YouTube", "upload videos to your YouTube channel"],
+  [YOUTUBE_READ_SCOPE]: ["ver tu canal de YouTube (su nombre y las vistas de tus videos)", "view your YouTube channel (its name and your videos' views)"],
+};
+
+/** Qué permiso falta, en palabras claras. No se guardó nada: hay que volver a conectar y marcar la casilla. */
+export function missingScopesText(missing: string[], t: T): string {
+  const es = missing.map((s) => SCOPE_NAMES[s]?.[0] ?? s).join(" ni para ");
+  const en = missing.map((s) => SCOPE_NAMES[s]?.[1] ?? s).join(" or to ");
+  const two = missing.length > 1;
+  return t(
+    `No diste el permiso para ${es}, así que no se conectó nada. Vuelve a conectar y, en la pantalla de Google, marca ${two ? "las dos casillas" : "esa casilla"}.`,
+    `You didn't grant permission to ${en}, so nothing was connected. Connect again and, on Google's screen, check ${two ? "both boxes" : "that box"}.`,
+  );
 }
 
 export async function googleAccess(refreshToken: string): Promise<string> {
@@ -110,15 +143,10 @@ export async function listLocations(accessToken: string): Promise<GoogleLocation
   return out;
 }
 
-/** Guarda la ubicación elegida con las mismas credenciales que usa el publicador de Google. */
+/** Guarda la ubicación elegida y el refresh token. Sin copia del cliente: se renueva con el cliente de la app del servidor
+ *  (googleClient en publishers/google.ts). */
 export async function saveGoogleLocation(businessId: string, refreshToken: string, loc: GoogleLocation) {
-  const secret = encryptJson({
-    accountId: loc.accountId,
-    locationId: loc.locationId,
-    clientId: process.env.GOOGLE_CLIENT_ID!,
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-    refreshToken,
-  });
+  const secret = encryptJson({ accountId: loc.accountId, locationId: loc.locationId, refreshToken });
   await db.connection.upsert({
     where: { businessId_channel: { businessId, channel: "google" } },
     create: { businessId, channel: "google", secret, label: loc.title },
@@ -139,14 +167,10 @@ export async function youtubeChannel(accessToken: string): Promise<YoutubeChanne
   return ch ? { id: ch.id, title: ch.snippet?.title?.trim() || ch.id } : null;
 }
 
-/** Guarda la conexión de YouTube con las mismas credenciales que usa el publicador de YouTube. */
+/** Guarda la conexión de YouTube (refresh token y canal). Sin copia del cliente: se renueva con el cliente de la app del
+ *  servidor (googleClient en publishers/google.ts). */
 export async function saveYoutubeChannel(businessId: string, refreshToken: string, channel: YoutubeChannel) {
-  const secret = encryptJson({
-    clientId: process.env.GOOGLE_CLIENT_ID!,
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-    refreshToken,
-    channelId: channel.id,
-  });
+  const secret = encryptJson({ refreshToken, channelId: channel.id });
   await db.connection.upsert({
     where: { businessId_channel: { businessId, channel: "youtube" } },
     create: { businessId, channel: "youtube", secret, label: channel.title },

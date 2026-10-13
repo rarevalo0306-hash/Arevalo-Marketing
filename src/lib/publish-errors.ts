@@ -49,7 +49,7 @@ const META_AUTH =
   /impersonat|permission\(s\) must be granted|pages_(?:read_engagement|manage_posts|manage_metadata|show_list|read_user_content)|instagram_content_publish|\(#(?:10|190|200)\)|error validating access token|session has (?:expired|been invalidated)|has not authorized application|invalid oauth|access token .*(?:expired|invalid)|cannot parse access token|OAuthException/i;
 // Google, Brevo/Resend, Twilio, GitHub, TikTok: claves vencidas o revocadas.
 const GENERIC_AUTH =
-  /^401\b|^403: (?:bad credentials|unauthorized|forbidden)|invalid_grant|token has been expired or revoked|invalid[_ ](?:api[_ ])?key|key not found|unauthorized|bad credentials|access_token_invalid|authenticat(?:e|ion) (?:failed|required)/i;
+  /^401\b|^403: (?:bad credentials|unauthorized|forbidden)|invalid_grant|token has been expired or revoked|invalid[_ ](?:api[_ ])?key|key not found|unauthorized|bad credentials|access_token_invalid|authenticat(?:e|ion) (?:failed|required)|insufficient authentication scopes|ACCESS_TOKEN_SCOPE_INSUFFICIENT/i;
 const TEMPORARY =
   /^5\d\d\b|fetch failed|ETIMEDOUT|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up|timed? ?out|temporarily|try again later|rate limit|too many|\(#(?:1|2|4|17|32|341|368)\)|^429\b/i;
 

@@ -12,6 +12,7 @@ import type { Prisma } from "@prisma/client";
 import { decryptJson } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import { oauthHeader } from "@/lib/publish-x";
+import { googleClient } from "@/lib/publishers/google";
 import { fetchJson, form } from "@/lib/publishers/http";
 import type { Creds } from "@/lib/publishers/types";
 import {
@@ -101,10 +102,9 @@ export async function fetchInstagram(externalId: string, creds: Creds): Promise<
   return { ok: true, values: parseInstagram(fields, insights), raw };
 }
 
-/** Un access token de YouTube (igual que al publicar: la conexión o las claves de la app). */
+/** Un access token de YouTube (igual que al publicar: el cliente de la app, o el propio si se pegó a mano). */
 async function youtubeToken(creds: Creds): Promise<string> {
-  const clientId = creds.clientId?.trim() || process.env.GOOGLE_CLIENT_ID || "";
-  const clientSecret = creds.clientSecret?.trim() || process.env.GOOGLE_CLIENT_SECRET || "";
+  const { clientId, clientSecret } = googleClient(creds);
   if (!clientId || !clientSecret || !creds.refreshToken?.trim()) throw new Error("token: faltan datos de la conexión de YouTube");
   const t = await fetchJson<{ access_token: string }>("https://oauth2.googleapis.com/token", {
     method: "POST",

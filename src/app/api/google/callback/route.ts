@@ -4,7 +4,7 @@ import { encryptJson } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import { listGa4Properties, readGa4Connection, refreshGa4, writeGa4Connection } from "@/lib/ga4";
 import { autoPick, explainGa4Error } from "@/lib/ga4-shape";
-import { GOOGLE_COOKIE, googleExchange, googleStatePurpose, listLocations, saveGoogleLocation, saveYoutubeChannel, youtubeChannel } from "@/lib/google-oauth";
+import { GOOGLE_COOKIE, googleExchange, googleStatePurpose, listLocations, missingGoogleScopes, missingScopesText, saveGoogleLocation, saveYoutubeChannel, youtubeChannel } from "@/lib/google-oauth";
 import { errorText, type T, type UiLang } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { readState } from "@/lib/meta-oauth";
@@ -44,7 +44,11 @@ async function searchConsole(url: URL, businessId: string, lang: UiLang, t: T) {
       ),
     });
   try {
-    const { refreshToken, accessToken } = await googleExchange(url.searchParams.get("code") ?? "");
+    const { refreshToken, accessToken, scopes } = await googleExchange(url.searchParams.get("code") ?? "");
+    // Si la persona desmarcó la casilla en Google, no se guarda nada. El permiso no se revoca: con include_granted_scopes
+    // es el mismo de sus otras conexiones de Google.
+    const missing = missingGoogleScopes("gsc", scopes);
+    if (missing.length) return seo({ gsc: "error", msg: missingScopesText(missing, t) });
     const sites = await listGscSites(accessToken);
     if (!sites.length)
       return seo({
@@ -89,7 +93,10 @@ async function analytics(url: URL, businessId: string, lang: UiLang, t: T) {
       ),
     });
   try {
-    const { refreshToken, accessToken } = await googleExchange(url.searchParams.get("code") ?? "");
+    const { refreshToken, accessToken, scopes } = await googleExchange(url.searchParams.get("code") ?? "");
+    // Casilla desmarcada: no se guarda nada (ni se revoca, ver searchConsole).
+    const missing = missingGoogleScopes("ga4", scopes);
+    if (missing.length) return go({ ga4: "error", msg: missingScopesText(missing, t) });
     const properties = await listGa4Properties(accessToken);
     if (!properties.length)
       return go({
@@ -116,9 +123,12 @@ async function analytics(url: URL, businessId: string, lang: UiLang, t: T) {
 async function youtube(url: URL, businessId: string, lang: UiLang, t: T) {
   const go = (params: Record<string, string>) => back(businessId, params);
   if (url.searchParams.get("error"))
-    return go({ youtube: "error", msg: t("No se dio el permiso para subir videos a YouTube (o cancelaste). Vuelve a intentarlo y acepta el permiso.", "Permission to upload videos to YouTube wasn't granted (or you canceled). Try again and accept the permission.") });
+    return go({ youtube: "error", msg: t("No se dio el permiso para YouTube (o cancelaste). Vuelve a intentarlo y acepta los dos permisos: subir videos y ver tu canal.", "Permission for YouTube wasn't granted (or you canceled). Try again and accept both permissions: upload videos and view your channel.") });
   try {
-    const { refreshToken, accessToken } = await googleExchange(url.searchParams.get("code") ?? "");
+    const { refreshToken, accessToken, scopes } = await googleExchange(url.searchParams.get("code") ?? "");
+    // Hacen falta los dos permisos (subir videos y ver el canal); con uno solo no se guarda nada (ni se revoca).
+    const missing = missingGoogleScopes("youtube", scopes);
+    if (missing.length) return go({ youtube: "error", msg: missingScopesText(missing, t) });
     const channel = await youtubeChannel(accessToken);
     if (!channel)
       return go({ youtube: "error", msg: t("Esa cuenta de Google no tiene canal de YouTube. Créalo gratis en youtube.com y vuelve a conectar.", "That Google account doesn't have a YouTube channel. Create one for free at youtube.com and connect again.") });
@@ -153,7 +163,10 @@ export async function GET(req: Request) {
   if (url.searchParams.get("error")) return back(businessId, { google: "error", msg: t("Cancelaste la conexión con Google.", "You canceled the Google connection.") });
 
   try {
-    const { refreshToken, accessToken } = await googleExchange(url.searchParams.get("code") ?? "");
+    const { refreshToken, accessToken, scopes } = await googleExchange(url.searchParams.get("code") ?? "");
+    // Casilla desmarcada: no se guarda nada ni se deja la cookie (y no se revoca, ver searchConsole).
+    const missing = missingGoogleScopes("profile", scopes);
+    if (missing.length) return back(businessId, { google: "error", msg: missingScopesText(missing, t) });
     const locations = await listLocations(accessToken);
     if (!locations.length)
       return back(businessId, { google: "error", msg: t("Esa cuenta de Google no administra ningún Perfil de Negocio. Entra con la cuenta dueña del perfil.", "That Google account doesn't manage any Business Profile. Sign in with the account that owns the profile.") });

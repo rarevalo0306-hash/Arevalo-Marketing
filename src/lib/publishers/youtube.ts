@@ -3,28 +3,17 @@
 //   etiquetas ≤ 500 caracteres con las palabras clave del negocio.
 // - Los verticales cortos se ven como Shorts (YouTube los reconoce solo; el título y la descripción llevan #Shorts).
 // - Público y «no es para niños» (selfDeclaredMadeForKids: false).
-// La conexión guarda clientId, clientSecret y refreshToken (con «Conectar con Google» o pegados a mano).
+// Permisos: youtube.upload y youtube.readonly. La conexión guarda el refreshToken (y clientId/clientSecret solo si se pegó a mano con un cliente propio, ver googleClient).
 import { fetchMedia } from "@/lib/media";
 import { fitTags } from "@/lib/video-plan";
-import { fetchJson, form, PublishError, required } from "./http";
-import type { Creds, PublishInput, Publisher } from "./types";
+import { googleAccessToken } from "./google";
+import { fetchJson, PublishError } from "./http";
+import type { PublishInput, Publisher } from "./types";
 
-const TOKEN = "https://oauth2.googleapis.com/token";
 const API = "https://www.googleapis.com/youtube/v3";
 const UPLOAD = "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status";
 /** 22 = «Gente y blogs» (la categoría más general); se puede cambiar con YOUTUBE_CATEGORY_ID. */
 const CATEGORY = () => (/^\d{1,3}$/.test(process.env.YOUTUBE_CATEGORY_ID ?? "") ? process.env.YOUTUBE_CATEGORY_ID! : "22");
-
-async function accessToken(creds: Creds): Promise<string> {
-  const clientId = creds.clientId?.trim() || process.env.GOOGLE_CLIENT_ID || "";
-  const clientSecret = creds.clientSecret?.trim() || process.env.GOOGLE_CLIENT_SECRET || "";
-  required({ clientId, clientSecret, refreshToken: creds.refreshToken ?? "" }, ["clientId", "clientSecret", "refreshToken"]);
-  const t = await fetchJson<{ access_token: string }>(TOKEN, {
-    method: "POST",
-    body: form({ client_id: clientId, client_secret: clientSecret, refresh_token: creds.refreshToken, grant_type: "refresh_token" }),
-  });
-  return t.access_token;
-}
 
 const noAngles = (s: string) => s.replace(/[<>]/g, "");
 const firstLine = (s: string) =>
@@ -88,7 +77,7 @@ async function apiError(res: Response): Promise<PublishError> {
 export const youtube: Publisher = {
   async publish(input, creds) {
     if (input.mediaType !== "video" || !input.mediaUrl) throw new PublishError("YouTube necesita un video.");
-    const token = await accessToken(creds);
+    const token = await googleAccessToken(creds);
     // Solo archivos propios o direcciones públicas de internet (también en cada redirección): nunca la red interna.
     const file = await fetchMedia(input.mediaUrl, { cache: "no-store" });
     if (!file.ok) throw new PublishError(`No se pudo leer el video para subirlo (${file.status}).`);
@@ -112,7 +101,7 @@ export const youtube: Publisher = {
     };
   },
   async test(creds) {
-    const token = await accessToken(creds);
+    const token = await googleAccessToken(creds);
     let r: { items?: { id: string; snippet?: { title?: string } }[] };
     try {
       r = await fetchJson(`${API}/channels?part=snippet&mine=true`, { headers: { Authorization: `Bearer ${token}` } });

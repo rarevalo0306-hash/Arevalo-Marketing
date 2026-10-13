@@ -112,7 +112,7 @@ export const CHANNELS: ChannelDef[] = [
     fields: [
       { key: "accountId", label: "ID de la cuenta", placeholder: "accounts/123… → solo el número" },
       { key: "locationId", label: "ID de la ubicación", placeholder: "solo el número" },
-      { key: "clientId", label: "OAuth client ID" },
+      { key: "clientId", label: "OAuth client ID", placeholder: "Vacío si conectaste con Google" },
       { key: "clientSecret", label: "OAuth client secret", secret: true },
       { key: "refreshToken", label: "Refresh token", secret: true },
     ],
@@ -174,17 +174,17 @@ export const CHANNELS: ChannelDef[] = [
     easy: [
       "Necesitas un canal de YouTube para tu negocio (se crea gratis en youtube.com con tu cuenta de Google).",
       "Presiona «Conectar con Google» y entra con la cuenta de Google dueña del canal.",
-      "Acepta el permiso para subir videos. ¡Listo!",
+      "Marca los dos permisos que pide Google: subir videos y ver tu canal (para mostrar su nombre y las vistas de tus videos). ¡Listo!",
     ],
     steps: [
       "En console.cloud.google.com activa la «YouTube Data API v3» en el mismo proyecto de la app.",
       "Crea (o usa) un OAuth client ID de tipo «Aplicación web».",
-      "Genera un Refresh token con el permiso https://www.googleapis.com/auth/youtube.upload para la cuenta dueña del canal.",
+      "Genera un Refresh token con los permisos https://www.googleapis.com/auth/youtube.upload y https://www.googleapis.com/auth/youtube.readonly para la cuenta dueña del canal.",
       "Pega los tres datos aquí y presiona «Guardar y probar».",
     ],
     cost: "Gratis. YouTube permite unas 100 subidas al día por app. Si la app de Google todavía está «en pruebas», agrega la cuenta dueña del canal como usuario de prueba (Google Cloud → Pantalla de consentimiento de OAuth).",
     fields: [
-      { key: "clientId", label: "OAuth client ID" },
+      { key: "clientId", label: "OAuth client ID", placeholder: "Vacío si conectaste con Google" },
       { key: "clientSecret", label: "OAuth client secret", secret: true },
       { key: "refreshToken", label: "Refresh token", secret: true },
     ],
@@ -350,15 +350,16 @@ const CHANNELS_EN: Record<ChannelId, ChannelTextEn> = {
     easy: [
       "You need a YouTube channel for your business (create one for free at youtube.com with your Google account).",
       "Click \"Connect with Google\" and sign in with the Google account that owns the channel.",
-      "Accept the permission to upload videos. Done!",
+      "Check both permissions Google asks for: upload videos and view your channel (to show its name and your videos' views). Done!",
     ],
     steps: [
       "On console.cloud.google.com, turn on the \"YouTube Data API v3\" in the same project as the app.",
       "Create (or reuse) an OAuth client ID of type \"Web application\".",
-      "Generate a Refresh token with the https://www.googleapis.com/auth/youtube.upload permission for the account that owns the channel.",
+      "Generate a Refresh token with the https://www.googleapis.com/auth/youtube.upload and https://www.googleapis.com/auth/youtube.readonly permissions for the account that owns the channel.",
       "Paste the three details here and click \"Save and test\".",
     ],
     cost: "Free. YouTube allows about 100 uploads a day per app. If the Google app is still \"in testing\", add the account that owns the channel as a test user (Google Cloud → OAuth consent screen).",
+    fields: { clientId: { placeholder: "Leave empty if you connected with Google" } },
   },
   linkedin: {
     kind: "Post",
@@ -408,6 +409,7 @@ const CHANNELS_EN: Record<ChannelId, ChannelTextEn> = {
     fields: {
       accountId: { label: "Account ID", placeholder: "accounts/123… → just the number" },
       locationId: { label: "Location ID", placeholder: "just the number" },
+      clientId: { placeholder: "Leave empty if you connected with Google" },
     },
   },
   seo: {
