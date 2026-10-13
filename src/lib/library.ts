@@ -12,7 +12,7 @@ export { libraryPhotoUrl } from "@/lib/photo-enhance-shape";
 
 // ---------- Filtros de la página ----------
 
-export const LIBRARY_FILTERS = ["todas", "listas", "revisar", "no-usar", "problemas", "videos"] as const;
+export const LIBRARY_FILTERS = ["todas", "listas", "revisar", "no-usar", "problemas", "videos", "ia"] as const;
 export type LibraryFilter = (typeof LIBRARY_FILTERS)[number];
 
 export const asLibraryFilter = (v: string | undefined | null): LibraryFilter =>
@@ -32,6 +32,8 @@ export function filterWhere(businessId: string, f: LibraryFilter): Prisma.Librar
       return { ...base, status: "error" };
     case "videos":
       return { ...base, kind: "video" };
+    case "ia":
+      return { ...base, source: "ai" };
     default:
       return base;
   }
@@ -95,7 +97,7 @@ export function toCard(r: CardRow): LibraryCard {
     usedCount: r.usedCount,
     lastUsedAt: r.lastUsedAt ? r.lastUsedAt.toISOString() : null,
     folderPath: r.folderPath,
-    source: r.source === "upload" ? "upload" : "drive",
+    source: r.source === "upload" ? "upload" : r.source === "ai" ? "ai" : "drive",
     canUse: usableNow(r),
     needsReview: needsReview(r),
     originalUrl: r.url,
@@ -125,7 +127,7 @@ export async function loadLibrary(businessId: string, f: LibraryFilter, limit = 
 export async function libraryCounts(businessId: string): Promise<Record<LibraryFilter, number>> {
   const rows = await db.libraryItem.findMany({
     where: { businessId, status: { not: "gone" } },
-    select: { kind: true, url: true, status: true, usable: true, quality: true, privacy: true, choice: true },
+    select: { kind: true, url: true, status: true, usable: true, quality: true, privacy: true, choice: true, source: true },
   });
   return {
     todas: rows.length,
@@ -134,7 +136,82 @@ export async function libraryCounts(businessId: string): Promise<Record<LibraryF
     "no-usar": rows.filter((r) => r.choice === "skip").length,
     problemas: rows.filter((r) => r.status === "error").length,
     videos: rows.filter((r) => r.kind === "video").length,
+    ia: rows.filter((r) => r.source === "ai").length,
   };
+}
+
+// ---------- Lo que crea la IA ----------
+
+/** Lo que se sabe de una foto o video que creó la IA (para encontrarla después y volver a usarla). */
+export type AiMediaInfo = {
+  kind: "photo" | "video";
+  /** Título o titular del post, en el idioma del negocio. */
+  title?: string;
+  /** Lo que se le pidió a la IA (en inglés). */
+  prompt?: string;
+  keywords?: string[];
+  /** De qué foto de la biblioteca salió (variantes y videos hechos de una foto). */
+  parentId?: string;
+  width?: number;
+  height?: number;
+  /** Miniatura (videos). */
+  thumbUrl?: string;
+  /** false cuando todavía no se usó en una publicación (ej. la creó el compositor). */
+  used?: boolean;
+};
+
+/** Los datos de la biblioteca para un archivo creado por la IA (sin base de datos, para probarlo). */
+export function aiLibraryData(businessId: string, url: string, info: AiMediaInfo, now = new Date()): Prisma.LibraryItemUncheckedCreateInput {
+  const words = (info.keywords ?? []).map((k) => k.trim().toLowerCase()).filter(Boolean);
+  const topics = [...new Set(words)].slice(0, 12);
+  const title = (info.title ?? "").trim().slice(0, 200);
+  const prompt = (info.prompt ?? "").trim().slice(0, 600);
+  const ext = /\.(\w+)(?:$|\?)/.exec(url)?.[1]?.toLowerCase() ?? "";
+  const mime = info.kind === "video" ? "video/mp4" : ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
+  return {
+    businessId,
+    source: "ai",
+    externalId: `ai:${url}`.slice(0, 1000),
+    name: (title || prompt || (info.kind === "video" ? "Video con IA" : "Foto con IA")).slice(0, 120),
+    folderPath: info.parentId ? "IA / variantes" : "IA",
+    mimeType: mime,
+    kind: info.kind,
+    url,
+    thumbUrl: info.thumbUrl ?? "",
+    width: info.width ?? 0,
+    height: info.height ?? 0,
+    description: { es: title || prompt, en: prompt || title, scene: "other", topics },
+    tags: topics,
+    // Las de IA salen limpias y sin personas reconocibles: se pueden usar sin revisar.
+    quality: 4,
+    usable: true,
+    privacy: [],
+    status: "ready",
+    usedCount: info.used === false ? 0 : 1,
+    lastUsedAt: info.used === false ? null : now,
+    modifiedAt: now,
+  };
+}
+
+/**
+ * Guarda en la biblioteca («Tus fotos y videos», filtro «Hechas con IA») una foto o video que creó la IA, para no
+ * perderlo y volver a usarlo. Nunca falla: si la base de datos no responde, el archivo igual queda guardado.
+ */
+export async function recordAiMedia(businessId: string, url: string, info: AiMediaInfo): Promise<string | null> {
+  if (!businessId || !url) return null;
+  try {
+    const data = aiLibraryData(businessId, url, info);
+    const row = await db.libraryItem.upsert({
+      where: { businessId_externalId: { businessId, externalId: data.externalId } },
+      create: data,
+      update: info.used === false ? {} : { usedCount: { increment: 1 }, lastUsedAt: new Date() },
+      select: { id: true },
+    });
+    return row.id;
+  } catch (e) {
+    console.error(`[library] no se pudo guardar lo creado por la IA (${businessId}):`, e);
+    return null;
+  }
 }
 
 /** Para el selector del compositor: todo lo que se puede usar (fotos y videos), los menos usados primero. */

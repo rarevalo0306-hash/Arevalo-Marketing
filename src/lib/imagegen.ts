@@ -1,6 +1,8 @@
 // Fotos con IA: FLUX (fal.ai, la más barata), ChatGPT (OpenAI) o Google Gemini.
+import sharp from "sharp";
 import { generateImage as fluxImage, PHOTO_STYLE, type Shape } from "@/lib/fal";
 import { bi } from "@/lib/i18n";
+import { recordAiMedia } from "@/lib/library";
 import { storeAiPhoto } from "@/lib/media-formats";
 import type { PhotoMeta } from "@/lib/photo-meta";
 
@@ -107,8 +109,16 @@ async function geminiImage(description: string, shape: Shape): Promise<{ data: B
 /**
  * Crea la foto con la IA elegida y la guarda en tu almacenamiento con los datos del negocio
  * (autor, lugar, palabras clave). Las marcas de "hecho con IA" del proveedor se conservan. Devuelve la dirección pública.
+ * `folder` es el id del negocio: la foto también queda en su biblioteca («Hechas con IA») para volver a usarla.
+ * `used: false` cuando todavía no va en una publicación (ej. el compositor la crea para que el dueño decida).
  */
-export async function createImage(pref: string, description: string, shape: Shape, folder: string, ctx: PhotoContext = {}): Promise<string> {
+export async function createImage(pref: string, description: string, shape: Shape, folder: string, ctx: PhotoContext = {}, opts: { used?: boolean } = {}): Promise<string> {
+  const url = await createImageFile(pref, description, shape, folder, ctx);
+  await recordAiMedia(folder, url, { kind: "photo", title: ctx.meta?.title, prompt: description, keywords: ctx.meta?.keywords, used: opts.used });
+  return url;
+}
+
+async function createImageFile(pref: string, description: string, shape: Shape, folder: string, ctx: PhotoContext): Promise<string> {
   const provider = pickImage(pref);
   const d = photoPrompt(description.trim().slice(0, 1000), ctx);
   if (provider === "flux") {
@@ -123,4 +133,62 @@ export async function createImage(pref: string, description: string, shape: Shap
     return storeAiPhoto(img.data, img.type, folder, ctx.meta);
   }
   throw bi("Falta una clave para crear imágenes (FAL_KEY, OPENAI_API_KEY o GEMINI_API_KEY).", "An image key is missing (FAL_KEY, OPENAI_API_KEY or GEMINI_API_KEY).");
+}
+
+// ---------- Otra versión de una foto ----------
+
+/** Qué se le pide a la IA para hacer otra versión de una foto que ella misma creó. */
+export const variantPrompt = () =>
+  "Create a new, different photograph of the same kind of scene as this image, for the next social media post: same subject, setting and style, " +
+  "but a clearly different camera angle, framing and moment, so it doesn't look like the same photo. Keep it photorealistic and believable. " +
+  PHOTO_STYLE;
+
+/** Se puede hacer otra versión: con la clave de Gemini (lo más simple) o de fal.ai (Nano Banana). */
+export const variantsEnabled = () => Boolean(process.env.GEMINI_API_KEY || process.env.FAL_KEY);
+/** Precio aproximado de una versión (Gemini 2.5 Flash Image y Nano Banana en fal.ai: unos 4 centavos). */
+export const VARIANT_CENTS = 4;
+
+/**
+ * Otra versión de una foto: mismo tema, lugar y estilo, otro ángulo y otro momento. `url` es la dirección pública de la
+ * foto (la necesita fal.ai); `data` la foto en sí (la recibe Gemini). Devuelve la imagen nueva.
+ */
+export async function photoVariant(src: { data: Buffer; url: string }): Promise<{ data: Buffer; type: string }> {
+  if (process.env.GEMINI_API_KEY) {
+    // Más chica para que la petición sea liviana (la IA no necesita más para entender la escena).
+    const jpg = await sharp(src.data).rotate().resize({ width: 1536, height: 1536, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 88 }).toBuffer();
+    const model = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: "POST",
+      headers: { "x-goog-api-key": process.env.GEMINI_API_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ inlineData: { mimeType: "image/jpeg", data: jpg.toString("base64") } }, { text: variantPrompt() }] }],
+        generationConfig: { responseModalities: ["IMAGE"] },
+      }),
+    });
+    const body = await res.text();
+    if (!res.ok) {
+      if (res.status === 429) throw bi("Gemini llegó a su límite para imágenes. Activa la facturación en Google AI Studio.", "Gemini has hit its image limit. Turn on billing in Google AI Studio.");
+      throw bi(`Gemini respondió ${res.status}: ${body.slice(0, 300)}`, `Gemini responded ${res.status}: ${body.slice(0, 300)}`);
+    }
+    const parts = (JSON.parse(body) as { candidates?: { content?: { parts?: { inlineData?: { data: string; mimeType: string } }[] } }[] }).candidates?.[0]?.content?.parts ?? [];
+    const img = parts.find((x) => x.inlineData)?.inlineData;
+    if (!img) throw bi("Gemini no pudo hacer otra versión de esa foto. Intenta de nuevo.", "Gemini couldn't make another version of that photo. Please try again.");
+    return { data: Buffer.from(img.data, "base64"), type: img.mimeType };
+  }
+  if (process.env.FAL_KEY) {
+    if (!/^https:\/\//.test(src.url)) throw bi("La foto tiene que estar guardada en internet para hacer otra versión.", "The photo must be stored online to make another version.");
+    const res = await fetch("https://fal.run/fal-ai/nano-banana/edit", {
+      method: "POST",
+      headers: { Authorization: `Key ${process.env.FAL_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: variantPrompt(), image_urls: [src.url], num_images: 1, output_format: "jpeg" }),
+    });
+    const body = await res.text();
+    if (!res.ok) throw bi(`fal.ai respondió ${res.status}: ${body.slice(0, 300)}`, `fal.ai responded ${res.status}: ${body.slice(0, 300)}`);
+    const url = (JSON.parse(body) as { images?: { url?: string }[] }).images?.[0]?.url;
+    if (!url) throw bi("La IA no pudo hacer otra versión de esa foto. Intenta de nuevo.", "The AI couldn't make another version of that photo. Please try again.");
+    const img = await fetch(url);
+    if (!img.ok) throw bi(`No se pudo descargar la foto nueva (${img.status}).`, `Couldn't download the new photo (${img.status}).`);
+    return { data: Buffer.from(await img.arrayBuffer()), type: (img.headers.get("content-type") || "image/jpeg").split(";")[0].trim() };
+  }
+  throw bi("Para hacer otra versión hace falta la clave de Gemini (GEMINI_API_KEY) o de fal.ai (FAL_KEY).", "Making another version needs the Gemini key (GEMINI_API_KEY) or the fal.ai key (FAL_KEY).");
 }

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { PageHead } from "@/components/PageHead";
 import { EnhanceAll } from "@/components/library/EnhanceAll";
 import { LibraryItemCard } from "@/components/library/LibraryItemCard";
+import { VARIANT_CENTS, variantsEnabled } from "@/lib/imagegen";
 import { ReviewNow } from "@/components/library/ReviewNow";
 import { UploadLinkCard } from "@/components/library/UploadLinkCard";
 import s from "@/components/library/Library.module.css";
@@ -70,6 +71,7 @@ export default async function FotosPage({ params, searchParams }: { params: Prom
     "no-usar": t("No usar", "Don't use"),
     problemas: t("Con problemas", "With problems"),
     videos: t("Videos", "Videos"),
+    ia: t("Hechas con IA", "Made with AI"),
   };
   const photos = counts.todas - counts.videos;
 
@@ -81,8 +83,8 @@ export default async function FotosPage({ params, searchParams }: { params: Prom
         section={t("Tus fotos", "Your photos")}
         title={t("Tus fotos y videos", "Your photos and videos")}
         subtitle={t(
-          "Las fotos y videos reales de tu negocio. Cuando la IA prepara una publicación, primero busca aquí una foto que vaya con el tema, y solo crea una nueva si no encuentra.",
-          "Your business's real photos and videos. When the AI prepares a post, it first looks here for a photo that fits the topic, and only creates a new one if none fits.",
+          "Las fotos y videos de tu negocio: los reales y los que crea la IA (se guardan aquí para volver a usarlos). Cuando la IA prepara una publicación, primero busca aquí una foto que vaya con el tema, nunca repite la misma foto el mismo día, y solo crea una nueva si no encuentra.",
+          "Your business's photos and videos: the real ones and the ones the AI makes (they're kept here to reuse). When the AI prepares a post, it first looks here for a photo that fits the topic, never repeats the same photo on the same day, and only creates a new one if none fits.",
         )}
         aside={
           <>
@@ -222,7 +224,7 @@ export default async function FotosPage({ params, searchParams }: { params: Prom
             <>
               <div className={s.grid}>
                 {page.items.map((c) => (
-                  <LibraryItemCard key={c.id} c={c} businessId={id} lang={lang} />
+                  <LibraryItemCard key={c.id} c={c} businessId={id} lang={lang} variantCents={variantsEnabled() ? VARIANT_CENTS : null} />
                 ))}
               </div>
               {page.more && (
