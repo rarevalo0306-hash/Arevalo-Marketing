@@ -1,6 +1,6 @@
 // Kit de marca: dibuja en el servidor todas las imágenes que necesita un negocio (logos limpios, foto de perfil,
-// portadas de cada red, imagen para compartir enlaces, íconos del sitio, encabezado de email y tarjeta de
-// presentación) con su logo, sus colores y su letra. Las medidas y los textos de cada pieza están en
+// portadas de cada red, imagen para compartir enlaces, íconos del sitio y encabezado de email) con su logo, sus
+// colores y su letra. Las medidas y los textos de cada pieza están en
 // brand-kit-formats.ts. Se dibuja con next/og (gratis, sin IA) y sale en PNG.
 import { readFile } from "fs/promises";
 import path from "path";
@@ -21,6 +21,7 @@ import {
   toneInk,
   KIT_FORMATS,
   logoFor,
+  mainInks,
   pool,
   type CoverText,
   type KitFormat,
@@ -121,9 +122,9 @@ async function uri(p: Pic, maxSide: number): Promise<Uri> {
   const { data, info } = await sharp(p.buf).resize({ width: maxSide, height: maxSide, fit: "inside", withoutEnlargement: true }).png().toBuffer({ resolveWithObject: true });
   return { uri: `data:image/png;base64,${data.toString("base64")}`, w: info.width, h: info.height };
 }
-async function rawInk(buf: Buffer): Promise<{ ink: string | null; multi: boolean }> {
+async function rawInk(buf: Buffer): Promise<{ ink: string | null; inks: string[]; multi: boolean }> {
   const { data } = await sharp(buf).resize(128, 128, { fit: "inside" }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  return { ink: averageInk(data, 1), multi: isMultiColor(data) };
+  return { ink: averageInk(data, 1), inks: mainInks(data), multi: isMultiColor(data) };
 }
 
 /** Pinta el logo de un solo color: liso si es de un color, con tonos si es de varios (ver toneInk). */
@@ -175,7 +176,8 @@ type Logos = {
   /** El logo tal cual, con fondo transparente si se pudo. */
   color: Pic;
   colorTransparent: boolean;
-  colorInk: string | null;
+  /** Colores principales del logo a color (el más usado primero), para decidir si se lee sobre un fondo. */
+  colorInks: string[];
   /** Blanco (para fondos oscuros) y de un solo color oscuro. null si el logo tiene un fondo que no se pudo quitar. */
   light: Pic | null;
   dark: Pic | null;
@@ -254,7 +256,8 @@ async function prepareLogos(b: KitBrand, F: Fonts, c1: string): Promise<Logos> {
     const ink = contrast(c1, "#ffffff") >= 2.2 ? c1 : mix(c1, "#000000", 0.5);
     [color, light, dark] = await Promise.all([wordmark(b.name, ink, F), wordmark(b.name, "#ffffff", F), wordmark(b.name, DARK_INK, F)]);
   }
-  const { ink: colorInk } = await rawInk(color.buf);
+  const { ink: colorInk, inks } = await rawInk(color.buf);
+  const colorInks = inks.length ? inks : colorInk ? [colorInk] : [];
 
   // Símbolo: el isotipo aceptado del manual; si no, el símbolo que va al lado del nombre en el logo; si no, el logo
   // entero si es más o menos cuadrado; si no, las iniciales.
@@ -291,7 +294,7 @@ async function prepareLogos(b: KitBrand, F: Fonts, c1: string): Promise<Logos> {
     monogramUsed = true;
   }
   const mi = await rawInk(mark.buf);
-  return { color, colorTransparent, colorInk, light, dark, mark, markLight, markInk: mi.ink, markMulti: mi.multi, wordmark: wordmarkUsed, monogram: monogramUsed };
+  return { color, colorTransparent, colorInks, light, dark, mark, markLight, markInk: mi.ink, markMulti: mi.multi, wordmark: wordmarkUsed, monogram: monogramUsed };
 }
 
 // ---------- Piezas ----------
@@ -345,7 +348,7 @@ ${dots.join("")}
 
 /** Qué logo va sobre un fondo (y su versión para dibujar). */
 function logoOn(c: Ctx, bg: string): Pic {
-  const v = logoFor(bg, c.L.colorTransparent ? c.L.colorInk : null);
+  const v = logoFor(bg, c.L.colorTransparent ? c.L.colorInks : null);
   if (v === "light" && c.L.light) return c.L.light;
   if (v === "dark" && c.L.dark) return c.L.dark;
   return c.L.color;
@@ -557,45 +560,6 @@ async function logoFile(p: Pic, f: KitFormat): Promise<Buffer> {
   return finish(buf, true);
 }
 
-/** Tarjeta: frente con el logo sobre el color de la marca; reverso blanco con los datos. */
-async function cardFront(c: Ctx, f: KitFormat): Promise<Buffer> {
-  return cover(c, f, { contact: false, tagline: c.lines.length > 0 });
-}
-async function cardBack(c: Ctx, f: KitFormat): Promise<Buffer> {
-  const { w, h } = f;
-  const safe = f.safe!;
-  const left = Math.round((w - safe.w) / 2);
-  const top = Math.round((h - safe.h) / 2);
-  const band = Math.round(w * 0.2);
-  const textW = safe.w - band - 30;
-  const logoPic = logoOn(c, "#ffffff");
-  const logoBox = fitInside(logoPic.w / logoPic.h, textW * 0.62, safe.h * 0.3);
-  const logo = await c.uri(logoPic, Math.max(logoBox.w, logoBox.h) * 2);
-  const main = c.lines[0] ?? "";
-  const size = main ? fitText(main, textW, 2, 40, 22, c.F.em) : 0;
-  let contactSize = 34;
-  while (contactSize > 18 && Math.max(c.phone.length, c.site.length) * contactSize * 0.58 + contactSize * 1.6 > textW) contactSize--;
-  const png = await draw(
-    <div style={{ width: w, height: h, display: "flex", position: "relative", background: "#ffffff" }}>
-      {/* eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text */}
-      <img src={decor(c, band, h, "brand")} width={band} height={h} style={{ position: "absolute", right: 0, top: 0, width: band, height: h }} />
-      <div style={{ position: "absolute", right: band, top: 0, width: 10, height: h, display: "flex", background: c.accent }} />
-      <div style={{ position: "absolute", left, top, width: textW, height: safe.h, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
-          {/* eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text */}
-          <img src={logo.uri} width={logoBox.w} height={logoBox.h} style={{ width: logoBox.w, height: logoBox.h }} />
-          {main && <div style={{ display: "flex", width: textW, fontFamily: c.F.head, fontWeight: c.F.semi, fontSize: size, lineHeight: 1.2, color: mix("#0f172a", c.c1, 0.2) }}>{main}</div>}
-        </div>
-        <Contact c={c} size={contactSize} color="#1f2937" iconColor={c.c1} column />
-      </div>
-    </div>,
-    w,
-    h,
-    c.F,
-  );
-  return finish(png, false);
-}
-
 // ---------- Todo el kit ----------
 
 export async function renderKit(b: KitBrand, opts: { only?: string[] } = {}): Promise<{ pieces: KitPiece[]; wordmark: boolean }> {
@@ -658,12 +622,6 @@ export async function renderKit(b: KitBrand, opts: { only?: string[] } = {}): Pr
         break;
       case "email-header":
         data = await cover(c, f, { style: "light" });
-        break;
-      case "card-front":
-        data = await cardFront(c, f);
-        break;
-      case "card-back":
-        data = await cardBack(c, f);
         break;
       case "x-header":
         // La foto de perfil tapa la esquina de abajo a la izquierda: todo un poco a la derecha.

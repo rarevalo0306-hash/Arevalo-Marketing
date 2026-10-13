@@ -11,7 +11,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-/** Todo el kit en un ZIP, en carpetas por grupo (Logos, Redes sociales, Sitio web, Email, Impresos). */
+/** Todo el kit en un ZIP, en carpetas por grupo (Logos, Redes sociales, Sitio web, Email). */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const u = new URL(req.url).searchParams;

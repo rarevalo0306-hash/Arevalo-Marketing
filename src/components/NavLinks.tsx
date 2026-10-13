@@ -6,7 +6,7 @@ import { Suspense, useCallback, useEffect, useId, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import { useT } from "@/components/I18n";
 import { NavIcon } from "@/components/nav/NavIcon";
-import { MOBILE_TABS, isGroupOn, isItemOn, itemHref, visibleGroups, type NavGroup, type NavHere, type NavItem } from "@/components/nav/model";
+import { MOBILE_TABS, isGroupOn, isItemOn, itemHref, sectionItems, visibleGroups, type NavGroup, type NavHere, type NavItem } from "@/components/nav/model";
 import s from "@/components/nav/Nav.module.css";
 
 const OPEN_KEY = "am-nav-open";
@@ -45,7 +45,8 @@ function NavWithParams({ businessId, badges, hide }: { businessId: string; badge
 
 function Nav({ businessId, tab, mapa, badges, hide }: { businessId: string; tab: string | null; mapa: string | null; badges?: Badges; hide?: string[] }) {
   const pathname = usePathname();
-  const here: NavHere = { pathname, tab, mapa };
+  const section = useSection(businessId, { pathname, tab, mapa });
+  const here: NavHere = { pathname, tab, mapa, section };
   const groups = visibleGroups(hide);
   return (
     <>
@@ -53,6 +54,56 @@ function Nav({ businessId, tab, mapa, badges, hide }: { businessId: string; tab:
       <MobileNav businessId={businessId} here={here} badges={badges} groups={groups} />
     </>
   );
+}
+
+/**
+ * La sección del menú que está en pantalla (ej. «Plantillas» al bajar en Marca): la última cuyo comienzo ya pasó el
+ * primer tercio de la pantalla, o la última que se ve si ya no se puede bajar más. null arriba de todo.
+ */
+function useSection(businessId: string, page: NavHere): string | null {
+  const hashes = sectionItems(businessId, page)
+    .map((x) => x.hash ?? "")
+    .join(" ");
+  const [section, setSection] = useState<string | null>(null);
+  useEffect(() => {
+    const list = hashes ? hashes.split(" ") : [];
+    setSection(null);
+    if (!list.length) return;
+    let frame = 0;
+    const check = () => {
+      frame = 0;
+      const view = window.innerHeight;
+      const atEnd = view + window.scrollY >= document.documentElement.scrollHeight - 4;
+      let best: string | null = null;
+      let bestTop = -Infinity;
+      for (const h of list) {
+        const top = document.getElementById(h)?.getBoundingClientRect().top;
+        if (top === undefined || !(top <= view * 0.33 || (atEnd && top < view))) continue;
+        if (top > bestTop) {
+          best = h;
+          bestTop = top;
+        }
+      }
+      setSection(best);
+    };
+    const later = () => {
+      if (!frame) frame = requestAnimationFrame(check);
+    };
+    check();
+    window.addEventListener("scroll", later, { passive: true });
+    window.addEventListener("resize", later);
+    window.addEventListener("hashchange", later);
+    // Las secciones que llegan después (con Suspense) también cuentan.
+    const t = window.setTimeout(check, 800);
+    return () => {
+      window.removeEventListener("scroll", later);
+      window.removeEventListener("resize", later);
+      window.removeEventListener("hashchange", later);
+      window.clearTimeout(t);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [hashes]);
+  return section;
 }
 
 /** El numerito turquesa (lo que espera tu aprobación). */

@@ -1,8 +1,9 @@
 // Imágenes de la marca guardadas en Business.brandAssets (JSON). Dos orígenes:
 // - "book": lo que la IA encontró en el manual de marca (logos, isotipo, patrones, ejemplos de plantillas).
 //   Llegan como "proposed" y el dueño las acepta o rechaza.
-// - "generated": lo que la app crea con la marca (foto de perfil, portadas, favicon, tarjeta…). Llegan "accepted".
+// - "generated": lo que la app crea con la marca (foto de perfil, portadas, favicon…). Llegan "accepted".
 // Sin servidor ni base de datos: se puede usar en pantalla y en pruebas.
+import { kitFormat } from "@/lib/brand-kit-formats";
 
 export type BrandAssetKind =
   | "logo" // logo completo (símbolo + nombre) para fondos claros
@@ -33,7 +34,7 @@ export type BrandAsset = {
   page?: number;
   /** Solo "kit": qué pieza es (ej. "profile", "fb-cover"). Una por formato: la nueva reemplaza la anterior. */
   format?: string;
-  /** Solo "kit": grupo para mostrar ("social", "web", "email", "print", "logos"). */
+  /** Solo "kit": grupo para mostrar ("social", "web", "email", "logos"). Las piezas del manual usan "social" o "print". */
   group?: string;
   /** Fondo transparente (PNG con alfa). */
   transparent?: boolean;
@@ -106,7 +107,9 @@ export function readBrandAssets(raw: unknown): BrandAssets {
  */
 export function addBrandAssets(cur: BrandAssets, add: BrandAsset[], opts: { replaceBookProposals?: boolean } = {}): BrandAssets {
   const formats = new Set(add.filter((a) => a.kind === "kit" && a.format).map((a) => a.format));
-  let items = cur.items.filter((a) => !(a.kind === "kit" && a.format && formats.has(a.format)));
+  // Al volver a crear el kit también salen las piezas que ya no existen (ej. la tarjeta de presentación).
+  const newKit = formats.size > 0;
+  let items = cur.items.filter((a) => !(a.kind === "kit" && ((a.format && formats.has(a.format)) || (newKit && !kitFormat(a.format)))));
   if (opts.replaceBookProposals) items = items.filter((a) => !(a.source === "book" && a.status !== "accepted"));
   items = [...items, ...add];
   if (items.length > MAX_BRAND_ASSETS) items = items.slice(items.length - MAX_BRAND_ASSETS);
@@ -124,7 +127,8 @@ export function removeBrandAsset(cur: BrandAssets, id: string): BrandAssets {
 
 export const bookProposals = (b: BrandAssets) => b.items.filter((a) => a.source === "book" && a.status === "proposed");
 export const acceptedBookAssets = (b: BrandAssets) => b.items.filter((a) => a.source === "book" && a.status === "accepted");
-export const kitAssets = (b: BrandAssets) => b.items.filter((a) => a.kind === "kit");
+/** Las piezas del kit que siguen existiendo (las de formatos retirados, como la tarjeta impresa, no se muestran). */
+export const kitAssets = (b: BrandAssets) => b.items.filter((a) => a.kind === "kit" && Boolean(kitFormat(a.format)));
 
 /** El mejor símbolo aceptado para piezas cuadradas chicas (perfil, favicon): isotipo, si no el logo. */
 export function bestMark(b: BrandAssets, fallbackLogo: string): string {

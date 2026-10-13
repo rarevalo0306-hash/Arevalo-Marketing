@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { attachment, kitItems, ownAsset } from "@/app/api/brand-kit/access";
+import { addBrandAssets, readBrandAssets } from "@/lib/brand-assets";
 import {
   averageInk,
   cleanTagline,
@@ -15,6 +16,7 @@ import {
   KIT_GROUPS,
   kitFileName,
   logoFor,
+  mainInks,
   pool,
   signatureHtml,
   signatureText,
@@ -61,7 +63,6 @@ describe("kit de marca: lista de piezas", () => {
     expect(size("linkedin-cover")).toMatchObject({ w: 1128, h: 191 });
     expect(size("og")).toMatchObject({ w: 1200, h: 630 });
     expect(size("email-header")).toMatchObject({ w: 1200, h: 400 });
-    expect(size("card-front")).toMatchObject({ w: 1125, h: 675 });
     for (const [k, s] of [["favicon-32", 32], ["favicon-180", 180], ["favicon-192", 192], ["favicon-512", 512]] as const) expect(size(k)).toMatchObject({ w: s, h: s });
     // La foto de perfil se usa en todas las redes: cada una con sus pasos.
     expect(size("profile")!.places.map((p) => p.name.en).join(" ")).toMatch(/Facebook.*Instagram.*LinkedIn.*X.*TikTok.*YouTube.*WhatsApp.*Google/);
@@ -81,6 +82,26 @@ describe("kit de marca: colores y logo", () => {
     expect(logoFor("#F4D35E", "#F6D860")).toBe("dark");
     // Sin color medio conocido (el logo tiene un fondo que no se pudo quitar): según el fondo.
     expect(logoFor("#005DB4", null)).toBe("light");
+  });
+
+  it("un logo de varios colores va en blanco si alguno de sus colores no se distingue del fondo", () => {
+    // Logo de RicardoPA: azul, turquesa y gris. Sobre azul marino, el azul casi no se lee (2.8:1).
+    const ricardo = ["#1569bb", "#3dbdb5", "#58595b"];
+    expect(logoFor("#0b2545", ricardo)).toBe("light");
+    // Sobre blanco va a color: está hecho para fondos claros, aunque el turquesa sea suave.
+    expect(logoFor("#ffffff", ricardo)).toBe("color");
+    expect(logoFor("#fbfcfd", ricardo)).toBe("color");
+    // Un logo blanco y amarillo sí se lee sobre azul marino.
+    expect(logoFor("#0b2545", ["#ffffff", "#f5c542"])).toBe("color");
+  });
+
+  it("colores principales del logo, del más usado al menos usado", () => {
+    const px = (rgb: number[][]) => Uint8Array.from(rgb.flatMap((c) => [...c, 255]));
+    const inks = mainInks(px([...Array(6).fill([21, 105, 187]), ...Array(3).fill([61, 189, 181]), [88, 89, 91]]));
+    expect(inks).toEqual(["#1569bb", "#3dbdb5", "#58595b"]);
+    // Lo transparente no cuenta y lo que ocupa menos del 10% tampoco.
+    expect(mainInks(Uint8Array.from([0, 0, 0, 0]))).toEqual([]);
+    expect(mainInks(px([...Array(19).fill([0, 0, 255]), [255, 0, 0]]))).toEqual(["#0000ff"]);
   });
 
   it("oscurece un color claro para que el texto blanco de las portadas se lea", () => {
@@ -182,6 +203,17 @@ describe("kit de marca: descargas", () => {
     expect(ownAsset(raw, "../etc/passwd")).toBeNull();
     expect(ownAsset(null, "abc123xyz")).toBeNull();
     expect(kitItems(raw).map((a) => a.id)).toEqual(["abc123xyz", "def456uvw"]);
+  });
+
+  it("las tarjetas impresas de antes ya no se muestran y salen al volver a crear el kit", () => {
+    const card = { id: "card12345", kind: "kit", url: "/media/d.png", w: 1, h: 1, source: "generated", status: "accepted", label: { es: "x", en: "x" }, format: "card-front", group: "print", createdAt: "" };
+    const old = readBrandAssets({ items: [...raw.items, card] });
+    expect(kitItems(old).map((a) => a.id)).toEqual(["abc123xyz", "def456uvw"]);
+    const fresh = { ...old.items[0], id: "new123456" };
+    const next = addBrandAssets(old, [fresh]);
+    expect(next.items.map((a) => a.id)).toEqual(["def456uvw", "ghi789rst", "new123456"]);
+    // Sin piezas nuevas del kit (ej. imágenes del manual), no se toca nada.
+    expect(addBrandAssets(old, []).items).toHaveLength(4);
   });
 
   it("ZIP en carpetas por grupo, en orden y sin nombres repetidos", () => {

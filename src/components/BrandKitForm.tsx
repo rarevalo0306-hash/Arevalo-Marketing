@@ -3,7 +3,6 @@
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { BrandKitResult } from "@/app/actions";
-import { BrandMockups } from "@/components/BrandMockups";
 import { bookRunText, startBookRun, useBookRun } from "@/components/brand/BookRun";
 import { useT } from "@/components/I18n";
 import { emitBrandSaved } from "@/lib/brand-events";
@@ -59,6 +58,8 @@ type Props = {
 };
 
 const BOOK_TYPES = ["application/pdf", "image/png", "image/jpeg", "image/webp"];
+/** Lado más largo mínimo (px) para que el logo se vea nítido en las portadas (la de Facebook mide 1640 px). */
+const SMALL_LOGO = 800;
 
 function LogoField({
   label,
@@ -80,6 +81,9 @@ function LogoField({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [stored, setStored] = useState(false);
+  // Medida real del logo: uno chico (ej. recortado de una página del manual) se ve borroso en las portadas.
+  const [size, setSize] = useState<{ url: string; w: number; h: number } | null>(null);
+  const small = size !== null && size.url === value && Math.max(size.w, size.h) < SMALL_LOGO;
   const { t } = useT();
   async function keep(url: string) {
     onChange(url);
@@ -110,7 +114,7 @@ function LogoField({
       <span className="lbl">{label}</span>
       <div className="logo-box" style={{ background: dark ? "#0b1220" : "#ffffff" }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        {value ? <img src={value} alt={label} /> : <span className="small" style={{ color: dark ? "#8c9ab3" : "#5d6b7e" }}>{t("Sin logo", "No logo")}</span>}
+        {value ? <img src={value} alt={label} onLoad={(e) => setSize({ url: value, w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })} /> : <span className="small" style={{ color: dark ? "#8c9ab3" : "#5d6b7e" }}>{t("Sin logo", "No logo")}</span>}
       </div>
       <div className="row">
         {upload ? (
@@ -134,6 +138,14 @@ function LogoField({
         {stored && <span className="pill done">{value ? t("Guardado", "Saved") : t("Quitado", "Removed")}</span>}
       </div>
       <span className="small muted">{help}</span>
+      {small && (
+        <p className="note" role="status">
+          {t(
+            `Este logo es chico (${size.w} × ${size.h} px) y se ve borroso en las portadas y los diseños grandes. Sube el archivo original: PNG de ${SMALL_LOGO} px o más, con fondo transparente.`,
+            `This logo is small (${size.w} × ${size.h} px) and looks blurry on covers and large designs. Upload the original file: a PNG of ${SMALL_LOGO} px or more, with a transparent background.`,
+          )}
+        </p>
+      )}
       {error && <p className="note error">{error}</p>}
     </div>
   );
@@ -307,7 +319,7 @@ function BrandSource({ brandBook, onKit }: { brandBook: Props["brandBook"]; onKi
               {colors.state === "run"
                 ? t(started === "ai" ? "— la IA los está pensando…" : "— la IA los está leyendo del manual…", started === "ai" ? "— the AI is coming up with them…" : "— the AI is reading them from the book…")
                 : colors.state === "ok"
-                  ? `— ${colors.text} ${t("Ya están abajo, en la maqueta y en los campos.", "They're below, in the mockup and the fields.")}`
+                  ? `— ${colors.text} ${t("Ya están abajo, en los campos.", "They're below, in the fields.")}`
                   : colors.text && `— ${colors.text}`}
             </span>
           </li>
@@ -377,19 +389,16 @@ export function BrandKitForm({ kit, save, upload, brandBook, saveLogo, children,
         setDirty(true);
       }}
     />
-    <section className="card" aria-labelledby="mockups-title">
+    <section className="card" aria-labelledby="revisa-title">
       <div className="stack" style={{ gap: 4 }}>
-        <h2 id="mockups-title">{t("2. Revisa tu marca: así se ve", "2. Review your brand: this is how it looks")}</h2>
+        <h2 id="revisa-title">{t("2. Revisa tu marca", "2. Review your brand")}</h2>
         <p className="small muted">
           {t(
-            "Una maqueta con tus colores, letras y logo. Cambia algo abajo y la maqueta se actualiza al momento.",
-            "A mockup with your colors, fonts and logo. Change something below and the mockup updates right away.",
+            "Tus logos, colores, letras, voz, hashtags y teléfono. Corrige lo que haga falta y guarda al final.",
+            "Your logos, colors, fonts, voice, hashtags and phone. Fix whatever needs it and save at the end.",
           )}
         </p>
       </div>
-      <BrandMockups
-        brand={{ name: kit.name, logo, logoLight, c1, c2, c3, headingCss: fontCss, bodyFont: fontBody, phone, website: kit.website ?? "", hashtags }}
-      />
     </section>
     <form
       id="brand-form"
