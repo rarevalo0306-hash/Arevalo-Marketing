@@ -2,6 +2,7 @@
 // que se generan en console.x.com y no vencen). Fotos con POST /2/media/upload; videos por partes
 // (initialize → append → finalize → status). X cobra por uso (pay-per-use): hay que tener créditos.
 import { createHmac, randomBytes } from "node:crypto";
+import { fetchMedia } from "@/lib/media";
 import { PublishError, required, sleep } from "@/lib/publishers/http";
 import { mediaOf, type Creds, type PublishInput, type Publisher } from "@/lib/publishers/types";
 
@@ -87,7 +88,8 @@ async function xFetch<T>(method: "GET" | "POST", url: string, creds: Creds, body
 }
 
 async function download(url: string): Promise<{ data: Blob; type: string; size: number }> {
-  const res = await fetch(url, { cache: "no-store" });
+  // Archivos propios del disco, o solo direcciones públicas de internet (cada redirección se revisa).
+  const res = await fetchMedia(url, { cache: "no-store" });
   if (!res.ok) throw new PublishError(`No se pudo descargar el archivo para X (${res.status}).`);
   const data = await res.blob();
   return { data, type: (res.headers.get("content-type") || data.type || "").split(";")[0], size: data.size };

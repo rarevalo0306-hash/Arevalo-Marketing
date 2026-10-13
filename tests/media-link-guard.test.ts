@@ -57,4 +57,16 @@ describe("a post's typed media link is never an internal address", () => {
     await expect(createPost("biz1", form({ kind: "carousel", mediaType: "photo", media: JSON.stringify([{ url: OWN }, { url: "https://inside.example.com/b.jpg" }]) }))).rejects.toThrow("direcciones públicas de internet");
     expect(db.post.create).not.toHaveBeenCalled();
   });
+
+  it("accepts the app's own saved files in local development (no storage service: /media on this server)", async () => {
+    vi.stubEnv("SUPABASE_URL", "");
+    vi.stubEnv("PUBLIC_BASE_URL", "http://localhost:3000");
+    const own = "http://localhost:3000/media/a1b2c3d4e5f6a1b2c3d4e5f6.jpg";
+    const cases: Record<string, string>[] = [{ mediaType: "photo", mediaLink: own }, { kind: "carousel", mediaType: "photo", media: JSON.stringify([{ url: own }, { url: own }]) }];
+    for (const fields of cases) {
+      const err = await createPost("biz1", form(fields)).then(() => null, (e: unknown) => e);
+      expect(String(err ?? "")).not.toMatch(/direcci(ón|ones) públicas? de internet/);
+    }
+    expect(lookup).not.toHaveBeenCalled();
+  });
 });

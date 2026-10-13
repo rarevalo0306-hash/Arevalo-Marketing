@@ -21,7 +21,7 @@ import { photoContextFor, photoMetaFor, storeDesign } from "@/lib/media-formats"
 import { createImage, IMAGE_PROVIDERS, imagesEnabled } from "@/lib/imagegen";
 import { ownerFields } from "@/lib/owner";
 import { pickLibraryPhotos } from "@/lib/library";
-import { createSignedUpload, isOwnFile, saveUpload, storeRemote } from "@/lib/media";
+import { createSignedUpload, isOwnFile, ownMediaPath, saveUpload, storeRemote } from "@/lib/media";
 import { isPublicHttpsUrl } from "@/lib/net-guard";
 import { ALT_MAX, checkPostMedia, postKindFor, readPostMedia } from "@/lib/post-media";
 import { altTexts, focusForUrl } from "@/lib/post-seo";
@@ -279,7 +279,7 @@ export async function getUploadUrl(businessId: string, contentType: string) {
 
 // El servidor y las redes descargan después la foto o el video de un enlace: solo archivos propios o direcciones
 // públicas de internet (https), nunca la red interna. Igual que el logo del kit de marca (safeLogoUrl).
-const ownOrPublicUrl = async (url: string, businessId: string) => isOwnFile(url, businessId) || (await isPublicHttpsUrl(url));
+const ownOrPublicUrl = async (url: string, businessId: string) => isOwnFile(url, businessId) || ownMediaPath(url) !== null || (await isPublicHttpsUrl(url));
 
 export async function createPost(businessId: string, f: FormData) {
   ensure.text(businessId);
