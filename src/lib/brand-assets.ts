@@ -60,19 +60,19 @@ export type BrandLogos = { mainType?: LogoType; slots: Partial<Record<LogoSlot, 
 export const LOGO_INFO: Record<LogoSlot, { name: { es: string; en: string }; what: { es: string; en: string } }> = {
   logotipo: {
     name: { es: "Logotipo", en: "Logotype (wordmark)" },
-    what: { es: "Solo el nombre, escrito con su letra, sin símbolo. Ej.: Google, Coca-Cola.", en: "Just the name, in its lettering, with no symbol. E.g.: Google, Coca-Cola." },
+    what: { es: "Solo texto: el nombre escrito con su letra, sin símbolo. Ej.: Google.", en: "Text only: the name in its lettering, with no symbol. E.g.: Google." },
   },
   isotipo: {
     name: { es: "Isotipo", en: "Isotype (symbol)" },
-    what: { es: "Solo el símbolo, sin el nombre. Ej.: la manzana de Apple. Va en la foto de perfil, los íconos del sitio y la esquina de los videos.", en: "Just the symbol, without the name. E.g.: Apple's apple. It goes on the profile picture, site icons and the corner of videos." },
+    what: { es: "Solo símbolo, sin el nombre. Ej.: el «swoosh» de Nike. Va en la foto de perfil, los íconos del sitio y la esquina de los videos.", en: "Symbol only, without the name. E.g.: the Nike swoosh. It goes on the profile picture, site icons and the corner of videos." },
   },
   imagotipo: {
     name: { es: "Imagotipo", en: "Imagotype (combination mark)" },
-    what: { es: "Símbolo y nombre juntos, pero se pueden separar. Ej.: Nike (el «swoosh» y la palabra).", en: "Symbol and name together, but they can be used apart. E.g.: Nike (the swoosh and the word)." },
+    what: { es: "Texto y símbolo combinados: van juntos pero se pueden separar. Ej.: Rolex (la corona arriba del nombre).", en: "Text and symbol combined: they go together but can be used apart. E.g.: Rolex (the crown above the name)." },
   },
   isologo: {
     name: { es: "Isologo", en: "Isologo (emblem)" },
-    what: { es: "Símbolo y nombre fundidos: no se pueden separar. Ej.: Burger King, Starbucks.", en: "Symbol and name fused: they can't be separated. E.g.: Burger King, Starbucks." },
+    what: { es: "Texto y símbolo como uno solo: no se pueden separar. Ej.: Burger King (el nombre dentro de la hamburguesa).", en: "Text and symbol as one: they can't be separated. E.g.: Burger King (the name inside the burger)." },
   },
 };
 
