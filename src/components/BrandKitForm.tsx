@@ -63,6 +63,8 @@ type Props = {
   logos?: BrandLogos;
   saveSlot?: (slot: LogoSlot, variant: LogoVariant, url: string) => Promise<{ ok: boolean; message: string }>;
   saveMainType?: (type: string) => Promise<{ ok: boolean; message: string }>;
+  /** La IA mira el logo principal y dice qué tipo es (para los logos subidos antes, sin tipo). */
+  detectLogoType?: () => Promise<LogoType | null>;
   /** Convierte un logo SVG en PNG grande en el servidor y lo guarda. */
   uploadSvg?: (svg: string) => Promise<{ ok: true; url: string } | { ok: false; message: string }>;
 };
@@ -433,42 +435,95 @@ function BrandSource({ brandBook, onKit }: { brandBook: Props["brandBook"]; onKi
   );
 }
 
-/** Qué tipo es el logo principal. Se guarda apenas se elige. */
-function MainTypePick({ value, save }: { value: LogoType | ""; save?: Props["saveMainType"] }) {
+/**
+ * Qué tipo es el logo principal. Lo dice la IA al mirar el logo (sin preguntarle al dueño); el dueño solo lo cambia si
+ * la IA se equivocó. Sin IA, se pregunta. Se guarda apenas se elige.
+ */
+function MainTypePick({ value, by, hasLogo, save, detect }: { value: LogoType | ""; by?: "ai" | "owner"; hasLogo: boolean; save?: Props["saveMainType"]; detect?: Props["detectLogoType"] }) {
   const { lang, t } = useT();
   const [type, setType] = useState<LogoType | "">(value);
+  const [who, setWho] = useState(by);
+  const [open, setOpen] = useState(false);
+  const [looking, setLooking] = useState(false);
   const [error, setError] = useState("");
   const L = lang === "en" ? "en" : "es";
+  // Cuando la IA mira un logo nuevo (al subirlo), la página trae el tipo nuevo.
+  useEffect(() => {
+    setType(value);
+    setWho(by);
+  }, [value, by]);
+  // Logos subidos antes: si todavía no tienen tipo, la IA los mira una vez.
+  const asked = useRef(false);
+  useEffect(() => {
+    if (!detect || !hasLogo || value || asked.current) return;
+    asked.current = true;
+    setLooking(true);
+    detect()
+      .then((r) => {
+        if (r) {
+          setType(r);
+          setWho("ai");
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => setLooking(false));
+  }, [detect, hasLogo, value]);
   async function pick(next: LogoType) {
     setError("");
     setType(next);
+    setWho("owner");
+    setOpen(false);
     const r = await save?.(next);
     if (r && !r.ok) setError(r.message);
   }
+  if (!hasLogo && !type) return null;
+  const known = type ? LOGO_INFO[type] : null;
   return (
     <fieldset className={f.typePick}>
-      <legend className="lbl">{t("¿Qué tipo de logo es?", "What kind of logo is it?")}</legend>
-      <div className={f.typeChips}>
-        {LOGO_TYPES.map((x) => (
-          <label key={x} className={type === x ? "chip on" : "chip"}>
-            <input
-              type="radio"
-              name="mainLogoType"
-              value={x}
-              checked={type === x}
-              onChange={(e) => {
-                // Se guarda solo: no cuenta como "cambio sin guardar" del formulario.
-                e.stopPropagation();
-                void pick(x);
-              }}
-            />
-            <span className="stack" style={{ gap: 0 }}>
-              <span style={{ fontWeight: 600, fontSize: 14 }}>{LOGO_INFO[x].name[L]}</span>
-              <span className="sub">{LOGO_INFO[x].what[L]}</span>
+      <legend className="lbl">{t("Tu logo es", "Your logo is")}</legend>
+      {looking && <span className="small muted">{t("✦ La IA está mirando tu logo…", "✦ The AI is looking at your logo…")}</span>}
+      {known && !open && (
+        <div className={f.typeKnown}>
+          <span className="stack" style={{ gap: 0 }}>
+            <strong>{known.plain[L]}</strong>
+            <span className="small muted">
+              {who === "ai" ? t("La IA lo vio así. ", "The AI saw it this way. ") : ""}
+              {t("Se llama", "It's called")} <strong>{known.name[L]}</strong>. {known.what[L]}
             </span>
-          </label>
-        ))}
-      </div>
+          </span>
+          <button type="button" className="btn link" onClick={() => setOpen(true)}>
+            {t("¿No es así? Cambiar", "Not right? Change")}
+          </button>
+        </div>
+      )}
+      {(open || (!known && !looking)) && (
+        <>
+          <span className="small muted">{t("Marca la que se parezca a tu logo. Si no estás seguro, déjalo sin marcar: no cambia tus diseños.", "Pick the one that looks like your logo. If you're not sure, leave it unmarked: it doesn't change your designs.")}</span>
+          <div className={f.typeChips}>
+            {LOGO_TYPES.map((x) => (
+              <label key={x} className={type === x ? "chip on" : "chip"}>
+                <input
+                  type="radio"
+                  name="mainLogoType"
+                  value={x}
+                  checked={type === x}
+                  onChange={(e) => {
+                    // Se guarda solo: no cuenta como "cambio sin guardar" del formulario.
+                    e.stopPropagation();
+                    void pick(x);
+                  }}
+                />
+                <span className="stack" style={{ gap: 0 }}>
+                  <span style={{ fontWeight: 600, fontSize: 14 }}>{LOGO_INFO[x].plain[L]}</span>
+                  <span className="sub">
+                    {t("Se llama", "It's called")} <strong>{LOGO_INFO[x].name[L]}</strong>. {LOGO_INFO[x].what[L]}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </>
+      )}
       {error && <p className="note error">{error}</p>}
     </fieldset>
   );
@@ -484,7 +539,9 @@ function SlotPair({ slot, files, upload, saveSlot, uploadSvg }: { slot: LogoSlot
   return (
     <div className={f.logoBlock}>
       <div className="stack" style={{ gap: 2 }}>
-        <h3 className={f.logoTitle}>{info.name[L]}</h3>
+        <h3 className={f.logoTitle}>
+          {info.name[L]}: {info.plain[L].charAt(0).toLowerCase() + info.plain[L].slice(1)}
+        </h3>
         <span className="small muted">{info.what[L]}</span>
       </div>
       <div className="grid-2" style={{ gap: 18 }}>
@@ -512,7 +569,7 @@ function SlotPair({ slot, files, upload, saveSlot, uploadSvg }: { slot: LogoSlot
   );
 }
 
-export function BrandKitForm({ kit, save, upload, brandBook, saveLogo, children, hasKit, logos, saveSlot, saveMainType, uploadSvg }: Props) {
+export function BrandKitForm({ kit, save, upload, brandBook, saveLogo, children, hasKit, logos, saveSlot, saveMainType, uploadSvg, detectLogoType }: Props) {
   const [logo, setLogo] = useState(kit.logoUrl);
   const [logoLight, setLogoLight] = useState(kit.logoLightUrl);
   const [c1, setC1] = useState(kit.color);
@@ -609,7 +666,7 @@ export function BrandKitForm({ kit, save, upload, brandBook, saveLogo, children,
             <h3 className={f.logoTitle}>{t("Logo principal: el que va en tus diseños", "Main logo: the one on your designs")}</h3>
             <span className="small muted">{t("Va en los posts, las portadas y los anuncios.", "It goes on posts, covers and ads.")}</span>
           </div>
-          {saveMainType && <MainTypePick value={logos?.mainType ?? ""} save={saveMainType} />}
+          {saveMainType && <MainTypePick value={logos?.mainType ?? ""} by={logos?.mainTypeBy} hasLogo={Boolean(logo)} save={saveMainType} detect={detectLogoType} />}
           <div className="grid-2" style={{ gap: 18 }}>
             <LogoField
               label={t("A color", "Color")}

@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import { bestMark, readBrandAssets, setLogoSlot, setMainLogoType } from "@/lib/brand-assets";
+import { bestMark, LOGO_INFO, readBrandAssets, setLogoSlot, setMainLogoType } from "@/lib/brand-assets";
 import { cleanSvg, svgToPng } from "@/lib/svg-logo";
 
 const LOGO = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 400 100" width="400" height="100">
@@ -71,7 +71,7 @@ describe("logos por tipo", () => {
         },
       },
     });
-    expect(a.logos).toEqual({ mainType: "isologo", slots: { isotipo: { color: "https://x.supabase.co/a.png" }, imagotipo: { white: "/media/aaaaaaaaaaaaaaaaaaaaaaaa.png" } } });
+    expect(a.logos).toEqual({ mainType: "isologo", mainTypeBy: "owner", slots: { isotipo: { color: "https://x.supabase.co/a.png" }, imagotipo: { white: "/media/aaaaaaaaaaaaaaaaaaaaaaaa.png" } } });
     expect(readBrandAssets({ items: [], logos: { mainType: "nada", slots: {} } }).logos).toBeUndefined();
   });
 
@@ -80,11 +80,26 @@ describe("logos por tipo", () => {
     a = setLogoSlot(a, "isotipo", "color", "https://x.supabase.co/a.png");
     a = setLogoSlot(a, "isotipo", "white", "https://x.supabase.co/b.png");
     a = setMainLogoType(a, "imagotipo");
-    expect(a.logos).toEqual({ mainType: "imagotipo", slots: { isotipo: { color: "https://x.supabase.co/a.png", white: "https://x.supabase.co/b.png" } } });
+    expect(a.logos).toEqual({ mainType: "imagotipo", mainTypeBy: "owner", slots: { isotipo: { color: "https://x.supabase.co/a.png", white: "https://x.supabase.co/b.png" } } });
     a = setLogoSlot(a, "isotipo", "color", "");
     a = setLogoSlot(a, "isotipo", "white", "");
-    expect(a.logos).toEqual({ mainType: "imagotipo", slots: {} });
+    expect(a.logos).toEqual({ mainType: "imagotipo", mainTypeBy: "owner", slots: {} });
     expect(setMainLogoType(a, null).logos).toEqual({ slots: {} });
+  });
+
+  it("recuerda si el tipo lo dijo la IA o el dueño", () => {
+    let a = setMainLogoType(readBrandAssets({ items: [] }), "isologo", "ai");
+    expect(a.logos).toEqual({ mainType: "isologo", mainTypeBy: "ai", slots: {} });
+    // Subir otra versión no borra quién lo dijo; se lee igual de la base de datos.
+    a = setLogoSlot(a, "isotipo", "color", "https://x.supabase.co/a.png");
+    expect(a.logos?.mainTypeBy).toBe("ai");
+    expect(readBrandAssets(JSON.parse(JSON.stringify(a))).logos?.mainTypeBy).toBe("ai");
+    expect(setMainLogoType(a, "imagotipo").logos?.mainTypeBy).toBe("owner");
+    expect(readBrandAssets({ items: [], logos: { mainType: "isologo", mainTypeBy: "otro", slots: {} } }).logos?.mainTypeBy).toBe("owner");
+  });
+
+  it("cada tipo se explica en palabras simples", () => {
+    for (const x of Object.values(LOGO_INFO)) expect(x.plain.es).toMatch(/nombre|dibujo/);
   });
 
   it("el isotipo que subió el dueño va primero en la foto de perfil y los íconos", () => {

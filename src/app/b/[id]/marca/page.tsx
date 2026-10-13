@@ -1,7 +1,7 @@
 import { brandFromAi, brandFromBook, deleteTemplate, getBrandBookUploadUrl, getUploadUrl, proposeTemplates, updateBrandKit } from "@/app/actions";
 import { saveBrandBook } from "@/app/actions-brand-book";
 import { saveVoicePrefs } from "@/app/actions-brand-identity";
-import { saveBrandLogo, saveLogoSlot, saveMainLogoType, uploadSvgLogo } from "@/app/actions-brand";
+import { detectMainLogoType, saveBrandLogo, saveLogoSlot, saveMainLogoType, uploadSvgLogo } from "@/app/actions-brand";
 import { BrandKitForm } from "@/components/BrandKitForm";
 import { BookAssetsSection } from "@/components/brand/BookAssetsSection";
 import { IdentitySection } from "@/components/brand/IdentitySection";
@@ -21,6 +21,7 @@ import { db } from "@/lib/db";
 import { BUILTIN_TEMPLATES, builtinTemplateName, LAYOUTS } from "@/lib/design-shapes";
 import type { UiLang } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
+import { logoTypeEnabled } from "@/lib/logo-type";
 import { usesSupabaseStorage } from "@/lib/media";
 import { EVIDENCE_LABEL, PLAN_LABEL, placementGroups, placementPlan, previewSize, sizeText } from "@/lib/placements";
 import s from "./marca.module.css";
@@ -96,6 +97,7 @@ export default async function MarcaPage({ params }: { params: Promise<{ id: stri
         logos={assets.logos}
         saveSlot={saveLogoSlot.bind(null, id)}
         saveMainType={saveMainLogoType.bind(null, id)}
+        detectLogoType={logoTypeEnabled() ? detectMainLogoType.bind(null, id) : undefined}
         uploadSvg={uploadSvgLogo.bind(null, id)}
       >
         <BookAssetsSection businessId={id} />
