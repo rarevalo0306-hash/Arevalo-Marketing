@@ -50,6 +50,7 @@ export default async function CampaignPage({ params, searchParams }: { params: P
   const closed = c.status === "stopped" || c.status === "ended";
   const drafts = count(["draft"]);
   const ctx = wizardContext(b, lang);
+  const failed = draft && msg ? posts.find((p) => p.id === draft && p.status === "draft") : undefined;
 
   const stats: [number | string, string][] = [
     [count(["done", "partial"]), t("Publicadas", "Published")],
@@ -73,6 +74,13 @@ export default async function CampaignPage({ params, searchParams }: { params: P
         }
       />
       <div className="stack" style={{ gap: 16 }}>
+        {failed && (
+          // Por qué no se aprobó un borrador (vuelve de approveCampaignDraft): arriba, porque al volver la página no baja
+          // sola hasta él, y solo mientras siga sin aprobar.
+          <p className="note error" role="alert" style={{ margin: 0 }}>
+            {msg!.slice(0, 300)} <a href={`#draft-${failed.id}`}>{t("Ver el borrador", "See the draft")}</a>
+          </p>
+        )}
         {nueva && (
           <p className="note ok" style={{ margin: 0 }}>
             {c.mode === "manual"
@@ -153,7 +161,7 @@ export default async function CampaignPage({ params, searchParams }: { params: P
                 {t(`${drafts} borrador(es) esperan tu aprobación. Nada sale sin que lo apruebes.`, `${drafts} draft(s) are waiting for your approval. Nothing goes out until you approve it.`)}
               </p>
             )}
-            <CampaignTimeline posts={posts} upcoming={upcoming} businessId={id} campaignId={c.id} cancelled={closed} lang={lang} businessName={b.name} keywords={youtubeKeywords(b.study)} notice={draft && msg ? { postId: draft, msg: msg.slice(0, 300) } : undefined} />
+            <CampaignTimeline posts={posts} upcoming={upcoming} businessId={id} campaignId={c.id} cancelled={closed} lang={lang} businessName={b.name} keywords={youtubeKeywords(b.study)} />
           </div>
           <div className="stack" style={{ gap: 16 }}>
             <div className="card" style={{ gap: 8 }}>

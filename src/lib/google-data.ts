@@ -22,8 +22,12 @@ import { googleEnabled, youtubeChannel } from "@/lib/google-oauth";
 import { googleAccessToken } from "@/lib/publishers/google";
 import type { Creds } from "@/lib/publishers/types";
 
-/** Revisiones (o borrados) como mucho por vuelta. */
-export const CHECK_MAX = 50;
+/**
+ * Revisiones (o borrados) como mucho por vuelta. Cada revisión es un solo pedido a Google: con el presupuesto del cron
+ * (60 s) alcanzan para revisar cada día unas 250 conexiones aunque solo corra el cron diario; si hay más, se turnan
+ * (las menos recientes primero) y queda un aviso en el registro.
+ */
+export const CHECK_MAX = 300;
 /** La hora (UTC) del cron diario de Vercel (vercel.json): ahí se borra lo viejo. */
 export const PRUNE_HOUR_UTC = 13;
 /**
@@ -72,7 +76,11 @@ export async function checkGoogleConnections(now: Date, opts: { budgetMs: number
   // el cron corra una sola vez al día y haya más conexiones que el máximo por vuelta, todas se van revisando por turno.
   const purge = purgeOn() ? items.filter((x) => shouldPurgeRevoked(x.s, now)) : [];
   const lastCheck = (x: { s: Secret }) => Date.parse(x.s.checkedAt ?? "") || 0;
-  const due = items.filter((x) => !purge.includes(x) && googleCheckDue(x.s, now)).sort((a, b) => lastCheck(a) - lastCheck(b));
+  // Las que ya se marcaron sin permiso esperan su borrado: no se vuelven a revisar (no ocupan lugar).
+  const due = items
+    .filter((x) => !purge.includes(x) && !(purgeOn() && x.s.revokedAt) && googleCheckDue(x.s, now))
+    .sort((a, b) => lastCheck(a) - lastCheck(b));
+  if (purge.length + due.length > max) console.warn("[google-datos] más conexiones por revisar que el máximo por vuelta:", purge.length + due.length);
   let work = 0;
   for (const x of purge) {
     if (work >= max || Date.now() - started >= opts.budgetMs) return sum;

@@ -424,7 +424,7 @@ export async function SearchConsolePanel({ businessId }: { businessId: string })
         <Ga4ConfirmButton
           action={disconnectSearchConsole.bind(null, id)}
           label={t("Desconectar Search Console", "Disconnect Search Console")}
-          question={t("¿Desconectar Search Console? Se borran sus reportes, «Páginas para actualizar», «Páginas que compiten entre sí», las palabras clave que sugirió y las tareas del plan que salieron de ellos.", "Disconnect Search Console? Its reports, “Pages to refresh”, “Pages competing with each other”, the keywords it suggested and the plan tasks built from them are deleted.")}
+          question={t("¿Desconectar Search Console? Se borran sus reportes, «Páginas para actualizar», las revisiones de «Páginas que compiten entre sí» hechas con sus datos, las palabras clave que sugirió y las tareas del plan que salieron de ellos.", "Disconnect Search Console? Its reports, “Pages to refresh”, the “Pages competing with each other” reviews built from its data, the keywords it suggested and the plan tasks built from them are deleted.")}
         />
       )}
     </section>

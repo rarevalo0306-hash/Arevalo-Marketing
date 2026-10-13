@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@/lib/auth', () => ({ requireBusiness: async () => ({ user: { id: 'u1' }, role: 'admin' }) }));
 const mocks = vi.hoisted(() => ({
-  findUnique: vi.fn(), findMany: vi.fn(), connectionDelete: vi.fn(), connectionCount: vi.fn(), reportDelete: vi.fn(), reportFind: vi.fn(), reportUpdate: vi.fn(), reportFindFirst: vi.fn(), reportUpdateOne: vi.fn(),
+  findUnique: vi.fn(), findMany: vi.fn(), taskFind: vi.fn(), connectionDelete: vi.fn(), connectionCount: vi.fn(), reportDelete: vi.fn(), reportFind: vi.fn(), reportUpdate: vi.fn(), reportFindFirst: vi.fn(), reportUpdateOne: vi.fn(),
   taskDelete: vi.fn(), proposalDelete: vi.fn(), metricDelete: vi.fn(), businessDelete: vi.fn(), libraryCount:vi.fn(), transaction: vi.fn(),
   decrypt: vi.fn(), revoke: vi.fn(), media: vi.fn(), r2: vi.fn(),
 }));
 vi.mock('@/lib/db', () => ({ db: {
   connection: { findUnique: mocks.findUnique, findMany: mocks.findMany, deleteMany: mocks.connectionDelete, count: mocks.connectionCount },
   seoReport: { deleteMany: mocks.reportDelete, findMany: mocks.reportFind, updateMany: mocks.reportUpdate, findFirst: mocks.reportFindFirst, update: mocks.reportUpdateOne },
-  actionTask: { deleteMany: mocks.taskDelete }, aiProposal: { deleteMany: mocks.proposalDelete }, postMetric: { deleteMany: mocks.metricDelete },
+  actionTask: { deleteMany: mocks.taskDelete, findMany: mocks.taskFind }, aiProposal: { deleteMany: mocks.proposalDelete }, postMetric: { deleteMany: mocks.metricDelete },
   business: { delete: mocks.businessDelete }, libraryItem:{count:mocks.libraryCount}, $transaction: mocks.transaction,
 } }));
 vi.mock('@/lib/crypto', () => ({ decryptJson: mocks.decrypt }));
@@ -17,15 +17,19 @@ vi.mock('@/lib/media', () => ({ deleteBusinessMedia: mocks.media }));
 vi.mock('@/lib/r2', () => ({ deleteBusinessR2Files: mocks.r2, r2Enabled:()=>true }));
 import { disconnectGoogleData, eraseBusinessData, purgeGoogleChannelData } from '@/lib/data-deletion';
 import { rememberVolumes } from '@/lib/seo/setup';
+import { norm } from '@/lib/seo/writer';
 // Each db call returns a tag, so the transaction shows which operations ran and in what order.
 const tag = (op: string) => (args: unknown) => ({ op, args });
 beforeEach(() => {
   process.env.APP_PASSWORD='test';process.env.APP_SECRET='test';vi.resetAllMocks(); mocks.findMany.mockResolvedValue([]); mocks.findUnique.mockResolvedValue(null); mocks.revoke.mockResolvedValue(undefined); mocks.media.mockResolvedValue(undefined); mocks.r2.mockResolvedValue(undefined);
-  mocks.reportFind.mockResolvedValue([]); mocks.connectionCount.mockResolvedValue(1); mocks.transaction.mockResolvedValue([]);
+  mocks.reportFind.mockResolvedValue([]); mocks.taskFind.mockResolvedValue([]); mocks.connectionCount.mockResolvedValue(1); mocks.transaction.mockResolvedValue([]);
   mocks.connectionDelete.mockImplementation(tag('connection.deleteMany')); mocks.reportDelete.mockImplementation(tag('seoReport.deleteMany')); mocks.reportUpdate.mockImplementation(tag('seoReport.updateMany'));
   mocks.taskDelete.mockImplementation(tag('actionTask.deleteMany')); mocks.proposalDelete.mockImplementation(tag('aiProposal.deleteMany')); mocks.metricDelete.mockImplementation(tag('postMetric.deleteMany'));
 });
 const ops = () => (mocks.transaction.mock.calls[0][0] as { op: string; args: unknown }[]);
+/** seoReport.findMany: on-page/setup rows, or the Search Console competing-pages reviews. */
+const reports = (r: { onpage: unknown[]; cannibal: unknown[] }) =>
+  mocks.reportFind.mockImplementation(async (a: { where: { kind: unknown } }) => (a.where.kind === 'cannibal' ? r.cannibal : r.onpage));
 describe('data erasure sequencing', () => {
  it('keeps relational data when external storage fails so cleanup can be retried', async () => {
   mocks.media.mockRejectedValue(new Error('Storage unavailable'));
@@ -98,15 +102,18 @@ const setupRow = { id: 'st1', kind: 'setup', data: { version: 1, hash: 'h', reje
 
 describe('purgeGoogleChannelData', () => {
  it('Search Console: deletes its reports, derived tasks and proposals, and scrubs onpage and setup rows', async () => {
-  mocks.reportFind.mockResolvedValue([onpageRow, setupRow, { id: 'old', kind: 'onpage', data: { pages: 'x' } }]);
-  mocks.reportFindFirst.mockResolvedValue({ data: { source: 'gsc', issues: [] } });
+  const cannibalRow = { data: { source: 'gsc', issues: [{ query: 'Techos  Miami', source: 'gsc' }, { query: 'pintura', source: 'rank' }] } };
+  reports({ onpage: [onpageRow, setupRow, { id: 'old', kind: 'onpage', data: { pages: 'x' } }], cannibal: [cannibalRow] });
   expect(await purgeGoogleChannelData('biz1', 'gsc')).toBe(true);
+  expect(mocks.reportFind).toHaveBeenCalledWith({ where: { businessId: 'biz1', kind: 'cannibal', data: { path: ['source'], equals: 'gsc' } }, select: { data: true } });
   expect(mocks.reportFind).toHaveBeenCalledWith({ where: { businessId: 'biz1', kind: { in: ['onpage', 'setup'] } }, orderBy: { createdAt: 'desc' }, select: { id: true, kind: true, data: true } });
   expect(mocks.reportDelete).toHaveBeenCalledWith({ where: { businessId: 'biz1', kind: { in: ['gsc', 'decay'] } } });
   expect(mocks.reportDelete).toHaveBeenCalledWith({ where: { businessId: 'biz1', kind: 'cannibal', data: { path: ['source'], equals: 'gsc' } } });
   expect(mocks.taskDelete).toHaveBeenCalledWith({ where: { businessId: 'biz1', OR: [
-    { source: 'gsc', key: { not: 'setup:gsc' } }, { key: { startsWith: 'decay:' } }, { key: { startsWith: 'cannibal:' } }, { key: { startsWith: 'onpage:empresa.com/techos:' } },
+    { source: 'gsc', key: { not: 'setup:gsc' } }, { key: { startsWith: 'decay:' } }, { key: { in: [`cannibal:${norm('Techos  Miami')}`] } }, { key: { startsWith: 'onpage:empresa.com/techos:' } },
   ] } });
+  // The rank-based issue of that review keeps its task.
+  expect(JSON.stringify(mocks.taskDelete.mock.calls[0][0])).not.toContain('pintura');
   expect(mocks.proposalDelete).toHaveBeenCalledWith({ where: { businessId: 'biz1', evidence: { path: ['rule'], equals: 'gsc-query' } } });
   // Only the two rows with Search Console data are rewritten; the unreadable old row is left alone.
   expect(mocks.reportUpdate).toHaveBeenCalledTimes(2);
@@ -122,14 +129,17 @@ describe('purgeGoogleChannelData', () => {
   expect(mocks.metricDelete).not.toHaveBeenCalled();
  });
 
- it('Search Console: keeps plan tasks (and the owner\'s done/dismissed choices) that did not come from Search Console', async () => {
-  // Newest on-page review: the owner's own keyword; an older one still had a Search Console keyword (it is scrubbed).
+ it('Search Console: from older reviews, deletes only the tasks that quote its keyword (the owner\'s other choices stay)', async () => {
+  // Newest on-page review: the owner's own keyword; an older one still had the Search Console keyword (it is scrubbed).
   const newest = { id: 'op2', kind: 'onpage', data: { pages: [{ ...onpageRow.data.pages[0], keyword: 'techos', keywordSource: 'owner' }], overrides: {} } };
-  mocks.reportFind.mockResolvedValue([newest, onpageRow]);
-  mocks.reportFindFirst.mockResolvedValue({ data: { source: 'rank', issues: [] } });
+  reports({ onpage: [newest, onpageRow], cannibal: [] });
+  mocks.taskFind.mockResolvedValue([
+    { id: 't1', key: 'onpage:empresa.com/techos:title-keyword', title: { es: 'Pon «techos miami» en el título', en: 'Put “techos miami” in the title' }, detail: null },
+    { id: 't2', key: 'onpage:empresa.com/techos:length', title: { es: 'Alarga la página', en: 'Make the page longer' }, detail: { en: 'This page competes for “techos”' } },
+  ]);
   await purgeGoogleChannelData('biz1', 'gsc');
-  expect(mocks.reportFindFirst).toHaveBeenCalledWith({ where: { businessId: 'biz1', kind: 'cannibal' }, orderBy: { createdAt: 'desc' }, select: { data: true } });
-  expect(mocks.taskDelete).toHaveBeenCalledWith({ where: { businessId: 'biz1', OR: [{ source: 'gsc', key: { not: 'setup:gsc' } }, { key: { startsWith: 'decay:' } }] } });
+  expect(mocks.taskFind).toHaveBeenCalledWith({ where: { businessId: 'biz1', OR: [{ key: { startsWith: 'onpage:empresa.com/techos:' } }] }, select: { id: true, key: true, title: true, detail: true } });
+  expect(mocks.taskDelete).toHaveBeenCalledWith({ where: { businessId: 'biz1', OR: [{ source: 'gsc', key: { not: 'setup:gsc' } }, { key: { startsWith: 'decay:' } }, { id: { in: ['t1'] } }] } });
   expect(mocks.reportUpdate).toHaveBeenCalledTimes(1);
   expect(mocks.reportUpdate.mock.calls[0][0]).toMatchObject({ where: { id: 'op1' } });
  });

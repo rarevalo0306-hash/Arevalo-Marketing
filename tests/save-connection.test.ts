@@ -54,6 +54,15 @@ describe("guardar a mano Google o YouTube con el cliente de la app: sin copia de
     expect(saved()).toEqual(m.previous);
   });
 
+  it("con el mismo permiso conserva de qué cuenta de Google es (para poder revocarlo al desconectar); con otro token, no", async () => {
+    m.previous = { refreshToken: "RT", channelId: "UC1", googleUser: "g-1" };
+    await saveConnection("biz1", "youtube", form({ clientId: "", clientSecret: "", refreshToken: "" }));
+    expect(saved()).toEqual({ refreshToken: "RT", googleUser: "g-1" });
+    m.upsert.mockReset();
+    await saveConnection("biz1", "youtube", form({ clientId: "", clientSecret: "", refreshToken: "RT-pegado" }));
+    expect(saved()).toEqual({ refreshToken: "RT-pegado" });
+  });
+
   it("otros canales no cambian", async () => {
     await saveConnection("biz1", "tiktok", form({ clientKey: "k", clientSecret: "s", refreshToken: "RT" }));
     expect(saved()).toEqual({ clientKey: "k", clientSecret: "s", refreshToken: "RT" });

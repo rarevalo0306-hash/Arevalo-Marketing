@@ -3,11 +3,12 @@ import type { Prisma } from '@prisma/client';
 import { requireBusiness } from '@/lib/auth';
 import { decryptJson } from '@/lib/crypto';
 import { db } from '@/lib/db';
-import { canRevokeAlone, scrubOnPageGsc, scrubPostedReplies, scrubSetupGsc } from '@/lib/google-data-shape';
+import { canRevokeAlone, gscCannibalQueries, scrubOnPageGsc, scrubPostedReplies, scrubSetupGsc } from '@/lib/google-data-shape';
 import { deleteBusinessMedia } from '@/lib/media';
 import { deleteBusinessR2Files, r2Enabled } from '@/lib/r2';
 import { revokeGoogleToken } from '@/lib/google-oauth';
 import { urlKey } from '@/lib/seo/onpage';
+import { norm } from '@/lib/seo/writer';
 
 export const GOOGLE_CHANNELS = ['google', 'gsc', 'ga4', 'youtube'] as const;
 export type GoogleChannel = (typeof GOOGLE_CHANNELS)[number];
@@ -56,14 +57,17 @@ export async function purgeGoogleChannelData(businessId: string, channel: Google
   if (channel === 'gsc') {
     // Search Console keywords inside the on-page review and the SEO setup proposal (every row is scrubbed).
     const rows = await db.seoReport.findMany({ where: { businessId, kind: { in: ['onpage', 'setup'] } }, orderBy: { createdAt: 'desc' }, select: { id: true, kind: true, data: true } });
-    // Plan tasks come only from the newest on-page review (onpageTasks): only its Search Console pages lose their tasks,
-    // so the owner's done/dismissed choices on pages whose keyword came from elsewhere are kept.
+    // Plan tasks: every task of a page whose keyword came from Search Console in the newest on-page review (the one the
+    // plan reads), and, from older reviews, the tasks that quote that Search Console keyword. Tasks built from the owner's
+    // or another keyword keep their done/dismissed state.
     const urls = new Set<string>();
+    const older: { url: string; keyword: string }[] = [];
     let newestOnpage = true;
     for (const r of rows) {
       if (r.kind === 'onpage') {
         const s = scrubOnPageGsc(r.data);
         if (s && newestOnpage) s.urls.forEach(u => urls.add(urlKey(u)));
+        else if (s) older.push(...s.keywords.map(k => ({ url: urlKey(k.url), keyword: k.keyword })));
         newestOnpage = false;
         if (s) rewrite(r.id, s.data);
       } else {
@@ -71,10 +75,17 @@ export async function purgeGoogleChannelData(businessId: string, channel: Google
         if (s) rewrite(r.id, s);
       }
     }
-    // "decay" is all Search Console. A competing-pages review counts only when it was built from Search Console (others
-    // come from rank or audit data); its plan tasks come from the newest review, so they go only if that one used it.
-    const newestCannibal = await db.seoReport.findFirst({ where: { businessId, kind: 'cannibal' }, orderBy: { createdAt: 'desc' }, select: { data: true } });
-    const cannibalFromGsc = !!newestCannibal && (newestCannibal.data as { source?: unknown } | null)?.source === 'gsc';
+    const quoting = older.filter(o => !urls.has(o.url));
+    const onpageTasks = quoting.length
+      ? await db.actionTask.findMany({ where: { businessId, OR: [...new Set(quoting.map(o => o.url))].map(u => ({ key: { startsWith: `onpage:${u}:` } })) }, select: { id: true, key: true, title: true, detail: true } })
+      : [];
+    const quoted = onpageTasks
+      .filter(t => quoting.some(o => t.key.startsWith(`onpage:${o.url}:`) && JSON.stringify([t.title, t.detail]).includes(o.keyword)))
+      .map(t => t.id);
+    // "decay" is all Search Console. Competing-pages reviews count only when built from Search Console (others come from
+    // rank or audit data); the plan tasks of their Search Console searches go, from any of those reviews.
+    const cannibal = await db.seoReport.findMany({ where: { businessId, kind: 'cannibal', data: { path: ['source'], equals: 'gsc' } }, select: { data: true } });
+    const cannibalKeys = [...new Set(cannibal.flatMap(r => gscCannibalQueries(r.data)).map(q => `cannibal:${norm(q)}`))];
     ops.push(db.seoReport.deleteMany({ where: { businessId, kind: { in: ['gsc', 'decay'] } } }));
     ops.push(db.seoReport.deleteMany({ where: { businessId, kind: 'cannibal', data: { path: ['source'], equals: 'gsc' } } }));
     ops.push(db.actionTask.deleteMany({
@@ -83,8 +94,9 @@ export async function purgeGoogleChannelData(businessId: string, channel: Google
         OR: [
           { source: 'gsc', key: { not: 'setup:gsc' } },
           { key: { startsWith: 'decay:' } },
-          ...(cannibalFromGsc ? [{ key: { startsWith: 'cannibal:' } }] : []),
+          ...(cannibalKeys.length ? [{ key: { in: cannibalKeys } }] : []),
           ...[...urls].map(u => ({ key: { startsWith: `onpage:${u}:` } })),
+          ...(quoted.length ? [{ id: { in: quoted } }] : []),
         ],
       },
     }));

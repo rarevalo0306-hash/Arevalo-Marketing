@@ -61,14 +61,18 @@ const isObj = (v: unknown): v is Json => !!v && typeof v === "object" && !Array.
  * Se conservan las palabras que eligió el dueño (overrides). Devuelve también las direcciones limpiadas (sus tareas
  * del plan "onpage:<url>:…" se borran).
  */
-export function scrubOnPageGsc(data: unknown): { data: Json; urls: string[] } | null {
+export function scrubOnPageGsc(data: unknown): { data: Json; urls: string[]; keywords: { url: string; keyword: string }[] } | null {
   if (!isObj(data) || !Array.isArray(data.pages)) return null;
   const urls: string[] = [];
+  const keywords: { url: string; keyword: string }[] = [];
   let changed = false;
   const pages = data.pages.map((p) => {
     if (!isObj(p) || p.keywordSource !== "gsc") return p;
     changed = true;
-    if (typeof p.url === "string") urls.push(p.url);
+    if (typeof p.url === "string") {
+      urls.push(p.url);
+      if (typeof p.keyword === "string" && p.keyword.trim()) keywords.push({ url: p.url, keyword: p.keyword.trim() });
+    }
     const rest: Json = { ...p };
     for (const k of ["suggestion", "error", "skipped"]) delete rest[k];
     return {
@@ -83,7 +87,13 @@ export function scrubOnPageGsc(data: unknown): { data: Json; urls: string[] } | 
       ...(isObj(p.stats) ? { stats: { ...p.stats, targetWords: null, position: null } } : {}),
     };
   });
-  return changed ? { data: { ...data, pages }, urls } : null;
+  return changed ? { data: { ...data, pages }, urls, keywords } : null;
+}
+
+/** Las búsquedas de Search Console de una revisión de páginas que compiten ("cannibal" con source "gsc"). */
+export function gscCannibalQueries(data: unknown): string[] {
+  if (!isObj(data) || data.source !== "gsc" || !Array.isArray(data.issues)) return [];
+  return data.issues.flatMap((i) => (isObj(i) && i.source === "gsc" && typeof i.query === "string" && i.query.trim() ? [i.query] : []));
 }
 
 /** Propuesta de Ajustes SEO ("setup"): quita las palabras que salieron de Search Console. Se conservan las rechazadas y la huella. */

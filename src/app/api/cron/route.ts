@@ -82,9 +82,9 @@ export async function GET(req: Request) {
       console.error("[resultados] error:", e instanceof Error ? e.message : e);
     }
     // Datos de Google: revisa que cada conexión siga con permiso (si el dueño lo quitó en su cuenta de Google, a los
-    // 3 días se borran la conexión y sus datos) y, a la hora del cron diario, borra lo viejo. Como mucho 30 s.
+    // 3 días se borran la conexión y sus datos) y, a la hora del cron diario, borra lo viejo. Como mucho 60 s.
     try {
-      const g = await runGoogleDataMaintenance(new Date(), { budgetMs: 30_000 });
+      const g = await runGoogleDataMaintenance(new Date(), { budgetMs: 60_000 });
       if (Object.values(g).some(Boolean)) console.log("[google-datos]", JSON.stringify(g));
     } catch (e) {
       console.error("[google-datos] error:", e instanceof Error ? e.message : e);

@@ -128,7 +128,16 @@ describe("checkGoogleConnections", () => {
     expect(w.secret.okAt).toBeUndefined();
   });
 
-  it("si ya estaba marcada, conserva la primera fecha de revokedAt", async () => {
+  it("ya marcada y con el borrado encendido: espera su borrado sin volver a revisarse (no ocupa lugar)", async () => {
+    const calls = mockGoogle();
+    m.conns = [conn("a", "gsc", { refreshToken: "revoked", checkedAt: ago(21 * H), revokedAt: ago(DAY_MS) })];
+    expect(await checkGoogleConnections(now, { budgetMs: 30_000 })).toEqual({ checked: 0, revoked: 0, purged: 0, errors: 0 });
+    expect(calls).toEqual([]);
+    expect(m.purge).not.toHaveBeenCalled();
+  });
+
+  it("con el borrado apagado se sigue revisando y conserva la primera fecha de revokedAt", async () => {
+    process.env.GOOGLE_REVOKED_PURGE = "off";
     mockGoogle();
     const first = ago(DAY_MS);
     m.conns = [conn("a", "gsc", { refreshToken: "revoked", checkedAt: ago(21 * H), revokedAt: first })];
@@ -172,6 +181,8 @@ describe("checkGoogleConnections", () => {
   });
 
   it("si el permiso sirve: borra revokedAt, guarda okAt y vuelve a leer el nombre del canal de YouTube", async () => {
+    // Con el borrado apagado, una marcada se vuelve a revisar (si el permiso volvió a servir, se le quita la marca).
+    process.env.GOOGLE_REVOKED_PURGE = "off";
     const calls = mockGoogle();
     m.conns = [conn("y", "youtube", { refreshToken: "ok", channelId: "UC1", revokedAt: ago(DAY_MS), checkedAt: ago(21 * H) }, { label: "Canal viejo" })];
     const sum = await checkGoogleConnections(now, { budgetMs: 30_000 });

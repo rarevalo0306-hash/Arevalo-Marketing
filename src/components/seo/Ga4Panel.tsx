@@ -456,7 +456,7 @@ export async function Ga4Panel({ businessId }: { businessId: string }) {
     <Ga4ConfirmButton
       action={disconnectGa4.bind(null, id)}
       label={t("Desconectar Google Analytics", "Disconnect Google Analytics")}
-      question={t("¿Desconectar Google Analytics? Se borran sus reportes y las tareas del plan que salieron de ellos, y se quita su permiso en Google (si ninguna otra conexión usa esa cuenta de Google).", "Disconnect Google Analytics? Its reports and the plan tasks built from them are deleted, and its access is removed in Google (unless another connection uses that Google account).")}
+      question={t("¿Desconectar Google Analytics? Se borran sus reportes y las tareas del plan que salieron de ellos. Matya también quita su permiso en Google cuando sabe que ninguna otra conexión usa esa cuenta.", "Disconnect Google Analytics? Its reports and the plan tasks built from them are deleted. Matya also removes its access in Google when it knows no other connection uses that account.")}
     />
   );
 

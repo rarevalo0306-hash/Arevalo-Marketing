@@ -135,7 +135,7 @@ export function GscCard({ businessId, connected, site, enabled, hasWebsite, revo
             type="button"
             disabled={pending}
             onClick={() => {
-              if (confirm(t("¿Desconectar Search Console? Se borran sus reportes, «Páginas para actualizar», «Páginas que compiten entre sí», las palabras clave que sugirió y las tareas del plan que salieron de ellos.", "Disconnect Search Console? Its reports, “Pages to refresh”, “Pages competing with each other”, the keywords it suggested and the plan tasks built from them are deleted."))) start(() => disconnect());
+              if (confirm(t("¿Desconectar Search Console? Se borran sus reportes, «Páginas para actualizar», las revisiones de «Páginas que compiten entre sí» hechas con sus datos, las palabras clave que sugirió y las tareas del plan que salieron de ellos.", "Disconnect Search Console? Its reports, “Pages to refresh”, the “Pages competing with each other” reviews built from its data, the keywords it suggested and the plan tasks built from them are deleted."))) start(() => disconnect());
             }}
           >
             {pending ? t("Desconectando…", "Disconnecting…") : t("Desconectar", "Disconnect")}

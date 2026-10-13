@@ -124,6 +124,9 @@ export async function saveConnection(businessId: string, channel: ChannelId, f: 
   if ((channel === "google" || channel === "youtube") && (!values.clientId?.trim() || values.clientId.trim() === process.env.GOOGLE_CLIENT_ID?.trim())) {
     delete values.clientId;
     delete values.clientSecret;
+    // Mismo permiso de antes (mismo refresh token, cliente de la app): se conserva de qué cuenta de Google es, para poder
+    // revocarlo al desconectar (canRevokeAlone). Un token pegado distinto ya no se sabe de quién es.
+    if (previous.googleUser && values.refreshToken === previous.refreshToken) values.googleUser = previous.googleUser;
   }
   const secret = encryptJson(values);
   // El nombre visible nunca es un dato secreto (va sin cifrar).

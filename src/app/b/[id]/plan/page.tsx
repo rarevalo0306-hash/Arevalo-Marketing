@@ -35,6 +35,8 @@ export default async function PlanPage({ params, searchParams }: { params: Promi
   const nowLocal = `${today}T${new Date().toLocaleTimeString("en-GB", { timeZone: BUSINESS_TZ, hour: "2-digit", minute: "2-digit" })}`;
   const channelList = CHANNELS.map((c) => ({ id: c.id, name: channelName(c.id, lang), connected: connected.has(c.id) }));
   const keywords = youtubeKeywords(b.study);
+  // El aviso solo mientras ese borrador siga sin aprobar.
+  const failed = notice.draft && notice.msg ? drafts.find((d) => d.id === notice.draft) : undefined;
 
   return (
     <>
@@ -59,6 +61,12 @@ export default async function PlanPage({ params, searchParams }: { params: Promi
               {t("para que la IA sepa qué anunciar y a quién. Así no escribe cosas genéricas.", "so the AI knows what to promote and to whom. That way it doesn't write generic stuff.")}
             </p>
           )}
+          {failed && (
+            // Arriba de todo: al volver de la acción la página no baja sola hasta el borrador.
+            <p className="note error" role="alert">
+              {notice.msg!.slice(0, 300)} <a href={`#draft-${failed.id}`}>{t("Ver el borrador", "See the draft")}</a>
+            </p>
+          )}
           <PlanForm
             action={generatePlan.bind(null, id)}
             channels={channelList}
@@ -81,11 +89,6 @@ export default async function PlanPage({ params, searchParams }: { params: Promi
             const rendering = video && !p.mediaUrl;
             return (
               <article key={p.id} className="card" id={`draft-${p.id}`}>
-                {notice?.draft === p.id && notice.msg && (
-                  <p className="note error" role="alert">
-                    {notice.msg.slice(0, 300)}
-                  </p>
-                )}
                 <form action={approvePlanDraft.bind(null, id, p.id)} className="stack" style={{ gap: 12 }}>
                   <div className="row between">
                     <div className="row">

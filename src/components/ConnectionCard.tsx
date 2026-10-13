@@ -182,8 +182,8 @@ export function ConnectionCard({ channel: def, connected, values, secretSet, sav
                   const google = def.id === "google" || def.id === "youtube";
                   const question = google
                     ? t(
-                        `¿Desconectar ${channel.name}? Matya borra los datos que trajo de ${channel.name} y quita su permiso en Google (si ninguna otra conexión usa esa cuenta de Google).`,
-                        `Disconnect ${channel.name}? Matya deletes the data it brought in from ${channel.name} and removes its access in Google (unless another connection uses that Google account).`,
+                        `¿Desconectar ${channel.name}? Matya borra los datos que trajo de ${channel.name} y deja de usar esta conexión. También quita su permiso en Google cuando sabe que ninguna otra conexión usa esa cuenta; tú puedes quitarlo siempre en myaccount.google.com/permissions.`,
+                        `Disconnect ${channel.name}? Matya deletes the data it brought in from ${channel.name} and stops using this connection. It also removes its access in Google when it knows no other connection uses that account; you can always remove it at myaccount.google.com/permissions.`,
                       )
                     : t(`¿Desconectar ${channel.name}?`, `Disconnect ${channel.name}?`);
                   if (confirm(question)) start(async () => { await remove(); setResult(null); });
