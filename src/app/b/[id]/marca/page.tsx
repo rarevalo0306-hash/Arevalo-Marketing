@@ -1,5 +1,6 @@
 import { brandFromAi, brandFromBook, deleteTemplate, getBrandBookUploadUrl, getUploadUrl, proposeTemplates, updateBrandKit } from "@/app/actions";
 import { saveBrandBook } from "@/app/actions-brand-book";
+import { saveVoicePrefs } from "@/app/actions-brand-identity";
 import { saveBrandLogo, saveLogoSlot, saveMainLogoType, uploadSvgLogo } from "@/app/actions-brand";
 import { BrandKitForm } from "@/components/BrandKitForm";
 import { BookAssetsSection } from "@/components/brand/BookAssetsSection";
@@ -53,7 +54,8 @@ export default async function MarcaPage({ params }: { params: Promise<{ id: stri
   const shown = own.length ? own : BUILTIN_TEMPLATES.map((x, i) => ({ key: `builtin-${i}`, name: builtinTemplateName(x.name, lang), layout: x.layout, own: false, master: "" }));
   const assets = readBrandAssets(b.brandAssets);
   // Al usar una propuesta de identidad cambian colores y letras en el servidor: el formulario se vuelve a pintar con ellos.
-  const appliedAt = readBrandIdentity(b.brandIdentity).appliedAt;
+  const identity = readBrandIdentity(b.brandIdentity);
+  const appliedAt = identity.appliedAt;
   const v = b.createdAt.getTime().toString(36) + (b.templates.at(-1)?.createdAt.getTime().toString(36) ?? "");
   return (
     <>
@@ -77,6 +79,7 @@ export default async function MarcaPage({ params }: { params: Promise<{ id: stri
           read: brandFromBook.bind(null, id),
           suggest: aiEnabled() ? brandFromAi.bind(null, id) : null,
           canRead: Boolean(process.env.GEMINI_API_KEY),
+          voice: aiEnabled() ? { address: identity.address, tones: identity.tones, save: saveVoicePrefs.bind(null, id) } : undefined,
         }}
         hasKit={assets.items.some((a) => a.kind === "kit")}
         logos={assets.logos}

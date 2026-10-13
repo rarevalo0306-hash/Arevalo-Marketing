@@ -21,6 +21,7 @@ import { photoContextFor, photoMetaFor, storeDesign } from "@/lib/media-formats"
 import { createImage, IMAGE_PROVIDERS, imagesEnabled } from "@/lib/imagegen";
 import { ownerFields } from "@/lib/owner";
 import { pickLibraryPhotos } from "@/lib/library";
+import { brandLogoColors } from "@/lib/brand-image";
 import { createSignedUpload, isOwnFile, ownMediaPath, saveUpload, storeRemote } from "@/lib/media";
 import { isPublicHttpsUrl } from "@/lib/net-guard";
 import { ALT_MAX, checkPostMedia, postKindFor, readPostMedia } from "@/lib/post-media";
@@ -739,7 +740,7 @@ export async function brandFromAi(businessId: string): Promise<BrandKitResult> {
   const { lang, t } = await getT();
   if (!aiEnabled()) return { ok: false, message: t("Falta la clave de la IA en la configuración del servidor.", "The AI key is missing from the server settings.") };
   try {
-    return { ok: true, kit: await suggestBrandKit(b) };
+    return { ok: true, kit: await suggestBrandKit(b, { logoColors: await brandLogoColors(b.logoUrl) }) };
   } catch (e) {
     return { ok: false, message: errorText(e, lang) };
   }

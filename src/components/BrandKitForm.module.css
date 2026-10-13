@@ -101,3 +101,27 @@
   padding-top: 16px;
   border-top: 1px solid var(--line);
 }
+
+/* Guía de formato del manual */
+.tips > summary {
+  cursor: pointer;
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.tips ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ¿Cómo quieres que hable tu marca? */
+.voicePick {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}

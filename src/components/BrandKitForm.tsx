@@ -6,6 +6,7 @@ import type { BrandKitResult } from "@/app/actions";
 import { bookRunText, startBookRun, useBookRun } from "@/components/brand/BookRun";
 import { useT } from "@/components/I18n";
 import { LOGO_INFO, LOGO_TYPES, type BrandLogos, type LogoSlot, type LogoType, type LogoVariant } from "@/lib/brand-assets";
+import { MAX_TONES, TONE_LABEL, TONES, type Address, type Tone } from "@/lib/brand-identity-shape";
 import { emitBrandSaved } from "@/lib/brand-events";
 import f from "./BrandKitForm.module.css";
 
@@ -51,6 +52,8 @@ type Props = {
     suggest: (() => Promise<BrandKitResult>) | null;
     /** Hay clave de Gemini para sacar logos e imágenes del manual. */
     canRead: boolean;
+    /** Cómo quiere el dueño que hable su marca (tú o usted, y tonos): se pregunta antes de que la IA proponga. */
+    voice?: { address: Address; tones: Tone[]; save: (address: string, tones: string[]) => Promise<{ ok: boolean; message: string }> };
   };
   /** Las imágenes del manual (para aceptar o rechazar): van entre los campos y «Guardar la marca». */
   children?: React.ReactNode;
@@ -182,6 +185,63 @@ function bookLabel(name: string, url: string, t: (es: string, en: string) => str
   return /\.pdf($|\?)/i.test(url) ? t("Tu manual de marca (PDF)", "Your brand book (PDF)") : t("Tu manual de marca (imagen)", "Your brand book (image)");
 }
 
+/** En qué formato subir el manual para que la IA lo lea bien (y saque logos nítidos). */
+function BookFormatTips() {
+  const { t } = useT();
+  return (
+    <details className={f.tips}>
+      <summary className="small">{t("¿En qué formato lo subo?", "What format should I upload?")}</summary>
+      <ul className="small muted">
+        <li>{t("PDF exportado desde el programa donde se hizo (Canva, Illustrator, InDesign). No escaneado ni fotos del papel: la IA no lee bien las fotos.", "A PDF exported from the program it was made in (Canva, Illustrator, InDesign). Not scanned or photos of paper: the AI can't read photos well.")}</li>
+        <li>{t("Con los códigos de color escritos (por ejemplo #1569BB) y los nombres de las letras.", "With the color codes written out (for example #1569BB) and the font names.")}</li>
+        <li>{t("Hasta 18 MB. De las primeras 60 páginas se sacan logos e imágenes.", "Up to 18 MB. Logos and images are pulled from the first 60 pages.")}</li>
+        <li>{t("Los logos que salen del manual son recortes y pueden verse borrosos. Si tienes los archivos originales (SVG o PNG grande), súbelos en «Logos», más abajo.", "Logos pulled from the book are crops and may look blurry. If you have the original files (SVG or a large PNG), upload them under “Logos” below.")}</li>
+      </ul>
+    </details>
+  );
+}
+
+/** Antes de que la IA proponga: ¿tú o usted? ¿cómo quieres sonar? Se guarda apenas se elige. */
+function VoicePick({ voice }: { voice: NonNullable<Props["brandBook"]["voice"]> }) {
+  const { lang, t } = useT();
+  const L = lang === "en" ? "en" : "es";
+  const [address, setAddress] = useState<Address>(voice.address);
+  const [tones, setTones] = useState<Tone[]>(voice.tones);
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  async function keep(a: Address, list: Tone[]) {
+    setAddress(a);
+    setTones(list);
+    const r = await voice.save(a, list);
+    setNote(r.ok ? { ok: true, text: t("Guardado. La IA lo sigue al proponer y al escribir.", "Saved. The AI follows it when it suggests and writes.") } : { ok: false, text: r.message });
+  }
+  return (
+    <div className={f.voicePick}>
+      <strong>{t("¿Cómo quieres que hable tu marca?", "How do you want your brand to talk?")}</strong>
+      <span className="small muted">{t("Antes de crear tu marca (con o sin manual), dile a la IA cómo le hablas a tus clientes.", "Before creating your brand (with or without a book), tell the AI how you talk to your customers.")}</span>
+      <div className="row" role="radiogroup" aria-label={t("Trato", "Form of address")} style={{ gap: 8 }}>
+        {(["tu", "usted"] as const).map((a) => (
+          <button key={a} type="button" role="radio" aria-checked={address === a} className={address === a ? "btn on" : "btn"} onClick={() => void keep(a, tones)}>
+            {a === "tu" ? t("De «tú» (cercano)", "“Tú” (informal)") : t("De «usted» (formal)", "“Usted” (formal)")}
+          </button>
+        ))}
+      </div>
+      <div className="row" role="group" aria-label={t("Tono", "Tone")} style={{ gap: 8, flexWrap: "wrap" }}>
+        {TONES.map((x) => {
+          const on = tones.includes(x);
+          const full = !on && tones.length >= MAX_TONES;
+          return (
+            <button key={x} type="button" aria-pressed={on} disabled={full} className={on ? "btn on" : "btn"} onClick={() => void keep(address, on ? tones.filter((y) => y !== x) : [...tones, x])}>
+              {TONE_LABEL[x][L]}
+            </button>
+          );
+        })}
+      </div>
+      <span className="small muted">{t(`Elige hasta ${MAX_TONES} tonos.`, `Pick up to ${MAX_TONES} tones.`)}</span>
+      {note && <p className={note.ok ? "note ok" : "note error"} role="status">{note.text}</p>}
+    </div>
+  );
+}
+
 type StepState = "wait" | "run" | "ok" | "err";
 
 /**
@@ -309,6 +369,7 @@ function BrandSource({ brandBook, onKit }: { brandBook: Props["brandBook"]; onKi
           ) : (
             <span className="small muted">{t("Sube tu manual (PDF o imagen). Se guarda aquí para tenerlo siempre a mano.", "Upload your brand book (PDF or image). It's saved here so you always have it handy.")}</span>
           )}
+          <BookFormatTips />
           <div className="row" style={{ gap: 8 }}>
             {hasBook && (
               <button type="button" className="btn on" onClick={createFromBook} disabled={Boolean(busy) || pulling}>
@@ -333,6 +394,7 @@ function BrandSource({ brandBook, onKit }: { brandBook: Props["brandBook"]; onKi
           )}
         </div>
       </div>
+      {brandBook.voice && <VoicePick voice={brandBook.voice} />}
       {error && <p className="note error" role="status">{error}</p>}
 
       {started && (

@@ -4,7 +4,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import type { ChannelId } from "@/lib/channels";
-import { identityPrompt } from "@/lib/brand-identity";
+import { identityPrompt, INDUSTRY_COLOR_RULE } from "@/lib/brand-identity";
+import { readBrandIdentity, TONE_LABEL } from "@/lib/brand-identity-shape";
 import { FONTS, TemplateSpec } from "@/lib/design-shapes";
 import { bi, errorText, type UiLang } from "@/lib/i18n";
 import { finishReply, firstName, type GbpReview, replyLanguage, replySignature } from "@/lib/seo/gbp-shared";
@@ -375,12 +376,21 @@ export async function readBrandBook(business: BusinessAi, file: { mimeType: stri
   return cleanKit(kit);
 }
 
-/** Propone una identidad de marca completa a partir de lo que el negocio contó de sí mismo. */
-export async function suggestBrandKit(business: BusinessAi): Promise<BrandKitSuggestion> {
+/**
+ * Propone una identidad de marca completa a partir de lo que el negocio contó de sí mismo: colores de su industria (o
+ * los de su logo, si ya tiene) y la voz con el trato y el tono que eligió el dueño.
+ */
+export async function suggestBrandKit(business: BusinessAi, opts: { logoColors?: string[] } = {}): Promise<BrandKitSuggestion> {
+  const id = readBrandIdentity(business.brandIdentity);
+  const owner = [
+    id.address && `The owner wants the brand to address customers as "${id.address === "usted" ? "usted" : "tú"}" in Spanish: the brand voice must say so.`,
+    id.tones.length > 0 && `The owner wants it to sound: ${id.tones.map((x) => TONE_LABEL[x].en.toLowerCase()).join(", ")}.`,
+  ].filter(Boolean);
   const system = `You are a senior brand designer creating a brand identity for "${business.name}"${business.website ? ` (${business.website})` : ""}.
 About the business: ${business.aiProfile.trim().slice(0, 2000) || "(no profile)"}
-Rules:
+${opts.logoColors?.length ? `Logo colors (from the logo image, most used first): ${opts.logoColors.join(", ")}\n` : ""}${owner.length ? `${owner.join("\n")}\n` : ""}Rules:
 - Colors must look professional and trustworthy for this kind of business, with strong contrast for white text on the main color.
+${INDUSTRY_COLOR_RULE}
 - The voice must fit the business and its customers; for public adjusters or insurance: never promise results or money.
 - Spanish text must use correct accents.`;
   return cleanKit(await ask(business.aiText ?? "", BrandKitSchema, system, "Create the brand identity.", 4000));

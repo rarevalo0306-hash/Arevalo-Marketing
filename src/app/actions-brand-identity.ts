@@ -7,8 +7,9 @@ import { revalidatePath } from "next/cache";
 import type { z } from "zod";
 import { aiEnabled, ask, askGemini, type GeminiPart } from "@/lib/ai";
 import { deniedText, hasBusiness } from "@/lib/auth";
+import { brandLogoColors } from "@/lib/brand-image";
 import { fromAiIdentity, fromAiProposals, type IdentityContext, identityPromptFor, IdentitySchema, proposalsPrompt, ProposalsSchema } from "@/lib/brand-identity";
-import { applyProposal, type BrandIdentity, fillEmpty, hasIdentity, identityFromForm, mergeFromBook, readBrandIdentity, withSeeds } from "@/lib/brand-identity-shape";
+import { applyProposal, type BrandIdentity, fillEmpty, hasIdentity, identityFromForm, mergeFromBook, readBrandIdentity, readTones, withSeeds } from "@/lib/brand-identity-shape";
 import { db } from "@/lib/db";
 import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
@@ -54,6 +55,7 @@ async function contextOf(b: Biz, identity: BrandIdentity): Promise<IdentityConte
     brandVoice: b.brandVoice,
     hashtags: b.hashtags,
     identity,
+    logoColors: await brandLogoColors(b.logoUrl),
   };
 }
 
@@ -174,4 +176,20 @@ export async function saveIdentity(businessId: string, _prev: IdentityResult, f:
   } catch (e) {
     return { ok: false, at: Date.now(), message: `${t("Guardamos lo que escribiste.", "We saved what you wrote.")} ${aiFailed(e, lang, t)}` };
   }
+}
+
+/**
+ * Lo que el dueño elige antes de que la IA proponga: tú o usted, y hasta 3 tonos. Se guarda apenas lo elige y lo
+ * siguen las propuestas, la marca creada con IA y todo lo que escribe la IA (identityPrompt).
+ */
+export async function saveVoicePrefs(businessId: string, address: string, tones: string[]): Promise<{ ok: boolean; message: string }> {
+  ensure.text(businessId, address);
+  ensure.texts(tones);
+  const { t } = await getT();
+  const b = await load(businessId, "publish");
+  if (!b) return { ok: false, message: await deniedText(businessId, "publish") };
+  const cur = readBrandIdentity(b.brandIdentity);
+  const next: BrandIdentity = { ...cur, address: address === "tu" || address === "usted" ? address : "", tones: readTones(tones), updatedAt: new Date().toISOString() };
+  await store(businessId, next);
+  return { ok: true, message: t("Guardado.", "Saved.") };
 }

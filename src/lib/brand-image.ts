@@ -1,6 +1,8 @@
 // Arreglos de imagen para logos con sharp: quitar un fondo liso, pintar el logo de un solo color (blanco para
 // fondos oscuros), recortar lo que sobra y saber si ya tiene partes transparentes.
 import sharp from "sharp";
+import { mainInks } from "@/lib/brand-kit-formats";
+import { readMedia } from "@/lib/media";
 
 type Raw = { data: Buffer; width: number; height: number };
 
@@ -120,4 +122,44 @@ export async function transparentLogo(input: Buffer, opts: { holes?: boolean } =
   if (await hasTransparency(input)) return { data: await trimTransparent(await sharp(input).png().toBuffer()), transparent: true };
   const cut = await removeFlatBackground(input, opts);
   return cut ? { data: cut, transparent: true } : { data: await sharp(input).png().toBuffer(), transparent: false };
+}
+
+/**
+ * Los colores principales de un logo (#rrggbb, el más usado primero), sin su fondo ni el blanco o el negro casi puros
+ * que suelen ser fondo o contorno. Sirve para que la IA proponga una paleta que vaya con el logo.
+ */
+export async function logoColors(input: Buffer): Promise<string[]> {
+  const t = await transparentLogo(input);
+  if (!t.transparent) return [];
+  const { data } = await sharp(t.data).resize(160, 160, { fit: "inside" }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const rgb = (hex: string) => {
+    const n = parseInt(hex.slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  };
+  const plain = (hex: string) => {
+    const [r, g, b] = rgb(hex);
+    return Math.min(r, g, b) > 235 || Math.max(r, g, b) < 20;
+  };
+  // Los acentos ocupan poco (el turquesa de un logo azul): desde el 3%. Los tonos casi iguales cuentan como uno.
+  const out: string[] = [];
+  for (const ink of mainInks(data, 0.03)) {
+    if (plain(ink)) continue;
+    const [r, g, b] = rgb(ink);
+    if (out.some((x) => {
+      const [r2, g2, b2] = rgb(x);
+      return Math.abs(r - r2) + Math.abs(g - g2) + Math.abs(b - b2) < 60;
+    })) continue;
+    out.push(ink);
+  }
+  return out.slice(0, 4);
+}
+
+/** Los colores del logo guardado del negocio, o [] si no hay logo o no se pudo leer. */
+export async function brandLogoColors(logoUrl: string): Promise<string[]> {
+  if (!logoUrl) return [];
+  try {
+    return await logoColors(await readMedia(logoUrl));
+  } catch {
+    return [];
+  }
 }
