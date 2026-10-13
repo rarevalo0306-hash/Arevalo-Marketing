@@ -8,9 +8,10 @@ import { db } from "@/lib/db";
 import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
-import { isOwnFile, storeBuffer } from "@/lib/media";
+import { isOwnFile, readMedia, storeBuffer } from "@/lib/media";
 import { detectLogoType } from "@/lib/logo-type";
 import { isPublicHttpsUrl } from "@/lib/net-guard";
+import { removeFlatBackground } from "@/lib/photo-tools";
 import { svgToPng } from "@/lib/svg-logo";
 
 /**
@@ -87,5 +88,25 @@ export async function uploadSvgLogo(businessId: string, svg: string): Promise<{ 
     return { ok: true, url };
   } catch (e) {
     return { ok: false, message: t(`No se pudo usar el SVG: ${errorText(e, lang)}`, `Couldn't use the SVG: ${errorText(e, lang)}`) };
+  }
+}
+
+/**
+ * Quita el fondo liso (blanco o de un color) de un logo ya subido: lo guarda como PNG transparente y devuelve su
+ * dirección (quien llama lo guarda en su lugar, como si se hubiera subido). Sin IA y sin costo; el dibujo no se toca.
+ */
+export async function removeLogoBackground(businessId: string, url: string): Promise<{ ok: true; url: string } | { ok: false; message: string }> {
+  ensure.text(businessId, url);
+  const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
+  // Solo logos guardados en el almacenamiento de este negocio (o una copia local).
+  if (!isOwnFile(url, businessId) && !/^\/media\/[^/]+$/.test(url)) return { ok: false, message: t("Ese logo no es de este negocio.", "That logo doesn't belong to this business.") };
+  try {
+    const png = await removeFlatBackground(await readMedia(url));
+    if (!png) return { ok: false, message: t("No encontré un fondo liso para quitar: tu logo ya es transparente o el fondo tiene varios colores.", "I couldn't find a plain background to remove: your logo is already transparent or the background has several colors.") };
+    const stored = await storeBuffer(png, "image/png", businessId);
+    return { ok: true, url: stored.url };
+  } catch (e) {
+    return { ok: false, message: t(`No se pudo quitar el fondo: ${errorText(e, lang)}`, `Couldn't remove the background: ${errorText(e, lang)}`) };
   }
 }

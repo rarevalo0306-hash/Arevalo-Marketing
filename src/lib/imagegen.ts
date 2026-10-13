@@ -1,9 +1,11 @@
 // Fotos con IA: FLUX (fal.ai, la más barata), ChatGPT (OpenAI) o Google Gemini.
-import sharp from "sharp";
 import { generateImage as fluxImage, PHOTO_STYLE, type Shape } from "@/lib/fal";
 import { bi } from "@/lib/i18n";
 import { recordAiMedia } from "@/lib/library";
+import { logAiAction } from "@/lib/ai-actions";
 import { storeAiPhoto } from "@/lib/media-formats";
+import { publicMediaUrl, readMedia } from "@/lib/media";
+import { aiImageEdit, aiPhotoProblems, FIX_CENTS, fixAiPhoto, fixEnabled } from "@/lib/photo-tools";
 import type { PhotoMeta } from "@/lib/photo-meta";
 
 export const IMAGE_PROVIDERS = [
@@ -113,9 +115,29 @@ async function geminiImage(description: string, shape: Shape): Promise<{ data: B
  * `used: false` cuando todavía no va en una publicación (ej. el compositor la crea para que el dueño decida).
  */
 export async function createImage(pref: string, description: string, shape: Shape, folder: string, ctx: PhotoContext = {}, opts: { used?: boolean } = {}): Promise<string> {
-  const url = await createImageFile(pref, description, shape, folder, ctx);
+  const url = await reviewAiPhoto(await createImageFile(pref, description, shape, folder, ctx), folder, ctx.meta);
   await recordAiMedia(folder, url, { kind: "photo", title: ctx.meta?.title, prompt: description, keywords: ctx.meta?.keywords, used: opts.used });
   return url;
+}
+
+/**
+ * Antes de usar una foto que hizo la IA, la IA la revisa (manos raras, letras mal escritas, objetos derretidos) y, si
+ * ve algo, la arregla una vez. Nunca falla: si no se puede revisar o arreglar, queda la foto como salió.
+ */
+async function reviewAiPhoto(url: string, folder: string, meta?: PhotoMeta): Promise<string> {
+  if (!fixEnabled()) return url;
+  try {
+    const data = await readMedia(url);
+    const problems = await aiPhotoProblems(data);
+    if (!problems.length) return url;
+    const out = await fixAiPhoto({ data, url: publicMediaUrl(url) }, problems);
+    const fixed = await storeAiPhoto(out.data, out.type, folder, meta);
+    await logAiAction({ businessId: folder, kind: "photo.fix", actor: "auto", costCents: FIX_CENTS, summary: { es: "Foto de IA arreglada antes de usarla", en: "AI photo fixed before using it" }, detail: { problems: problems.join("; ") } });
+    return fixed;
+  } catch (e) {
+    console.error("[photo-fix]", e instanceof Error ? e.message : e);
+    return url;
+  }
 }
 
 async function createImageFile(pref: string, description: string, shape: Shape, folder: string, ctx: PhotoContext): Promise<string> {
@@ -152,43 +174,5 @@ export const VARIANT_CENTS = 4;
  * Otra versión de una foto: mismo tema, lugar y estilo, otro ángulo y otro momento. `url` es la dirección pública de la
  * foto (la necesita fal.ai); `data` la foto en sí (la recibe Gemini). Devuelve la imagen nueva.
  */
-export async function photoVariant(src: { data: Buffer; url: string }): Promise<{ data: Buffer; type: string }> {
-  if (process.env.GEMINI_API_KEY) {
-    // Más chica para que la petición sea liviana (la IA no necesita más para entender la escena).
-    const jpg = await sharp(src.data).rotate().resize({ width: 1536, height: 1536, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 88 }).toBuffer();
-    const model = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-      method: "POST",
-      headers: { "x-goog-api-key": process.env.GEMINI_API_KEY, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ inlineData: { mimeType: "image/jpeg", data: jpg.toString("base64") } }, { text: variantPrompt() }] }],
-        generationConfig: { responseModalities: ["IMAGE"] },
-      }),
-    });
-    const body = await res.text();
-    if (!res.ok) {
-      if (res.status === 429) throw bi("Gemini llegó a su límite para imágenes. Activa la facturación en Google AI Studio.", "Gemini has hit its image limit. Turn on billing in Google AI Studio.");
-      throw bi(`Gemini respondió ${res.status}: ${body.slice(0, 300)}`, `Gemini responded ${res.status}: ${body.slice(0, 300)}`);
-    }
-    const parts = (JSON.parse(body) as { candidates?: { content?: { parts?: { inlineData?: { data: string; mimeType: string } }[] } }[] }).candidates?.[0]?.content?.parts ?? [];
-    const img = parts.find((x) => x.inlineData)?.inlineData;
-    if (!img) throw bi("Gemini no pudo hacer otra versión de esa foto. Intenta de nuevo.", "Gemini couldn't make another version of that photo. Please try again.");
-    return { data: Buffer.from(img.data, "base64"), type: img.mimeType };
-  }
-  if (process.env.FAL_KEY) {
-    if (!/^https:\/\//.test(src.url)) throw bi("La foto tiene que estar guardada en internet para hacer otra versión.", "The photo must be stored online to make another version.");
-    const res = await fetch("https://fal.run/fal-ai/nano-banana/edit", {
-      method: "POST",
-      headers: { Authorization: `Key ${process.env.FAL_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt: variantPrompt(), image_urls: [src.url], num_images: 1, output_format: "jpeg" }),
-    });
-    const body = await res.text();
-    if (!res.ok) throw bi(`fal.ai respondió ${res.status}: ${body.slice(0, 300)}`, `fal.ai responded ${res.status}: ${body.slice(0, 300)}`);
-    const url = (JSON.parse(body) as { images?: { url?: string }[] }).images?.[0]?.url;
-    if (!url) throw bi("La IA no pudo hacer otra versión de esa foto. Intenta de nuevo.", "The AI couldn't make another version of that photo. Please try again.");
-    const img = await fetch(url);
-    if (!img.ok) throw bi(`No se pudo descargar la foto nueva (${img.status}).`, `Couldn't download the new photo (${img.status}).`);
-    return { data: Buffer.from(await img.arrayBuffer()), type: (img.headers.get("content-type") || "image/jpeg").split(";")[0].trim() };
-  }
-  throw bi("Para hacer otra versión hace falta la clave de Gemini (GEMINI_API_KEY) o de fal.ai (FAL_KEY).", "Making another version needs the Gemini key (GEMINI_API_KEY) or the fal.ai key (FAL_KEY).");
-}
+export const photoVariant = (src: { data: Buffer; url: string }) => aiImageEdit(src, variantPrompt());
+

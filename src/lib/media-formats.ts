@@ -184,6 +184,19 @@ export async function storeAiPhoto(data: Buffer, contentType: string, folder: st
   return url;
 }
 
+/**
+ * Guarda una foto editada con IA (recortada, agrandada o arreglada) y anota que la IA la editó: al publicarla va
+ * marcada como «real con partes de IA», o como «hecha con IA» si la original ya lo era.
+ */
+export async function storeEditedPhoto(data: Buffer, contentType: string, folder: string, o: { fullyAi: boolean; tool: string; meta?: PhotoMeta }): Promise<string> {
+  const provenance = { digitalSourceType: `http://cv.iptc.org/newscodes/digitalsourcetype/${o.fullyAi ? "trainedAlgorithmicMedia" : "compositeWithTrainedAlgorithmicMedia"}`, creatorTool: o.tool };
+  const file = o.meta ? writePhotoMeta(data, o.meta, provenance) : data;
+  const ext = EXT[contentType];
+  const { url } = await storeBuffer(file, contentType, folder, ext ? seoNameFor(o.meta, ext) : undefined);
+  await writeSidecar(url, { v: 1, kind: "photo", ai: o.fullyAi, provenance } satisfies Sidecar).catch(() => {});
+  return url;
+}
+
 /** Dibuja un diseño con la marca, le pone los datos del negocio, lo guarda y anota cómo se hizo. */
 export async function storeDesign(input: DesignInput, folder: string, meta?: PhotoMeta): Promise<string> {
   // El eslogan de la marca (sección Marca) va en el pie si quien llama no lo pasó.

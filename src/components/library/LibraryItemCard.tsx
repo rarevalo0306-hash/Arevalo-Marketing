@@ -2,10 +2,13 @@
 import Link from "next/link";
 import { ChoiceButtons } from "@/components/library/ChoiceButtons";
 import { EnhancePanel } from "@/components/library/EnhancePanel";
+import { PhotoAiTools } from "@/components/library/PhotoAiTools";
 import { VariantButton } from "@/components/library/VariantButton";
 import { translator, type UiLang } from "@/lib/i18n";
+import { editedByAi } from "@/lib/library";
 import { fmtDuration, qualityWord, SCENE_LABEL, type LibraryCard } from "@/lib/library-match";
 import { PRIVACY_FLAGS, PRIVACY_LABEL, type PrivacyFlag } from "@/lib/library-shape";
+import { canUpscale, CUTOUT_CENTS, FIX_CENTS, UPSCALE_CENTS } from "@/lib/photo-tools";
 import e from "./Enhance.module.css";
 import s from "./Library.module.css";
 
@@ -20,8 +23,11 @@ function StatePill({ c, lang }: { c: LibraryCard; lang: UiLang }) {
   return <span className="pill neutral">{t("La IA no la usa", "AI won't use it")}</span>;
 }
 
-/** `variantCents`: precio de «Crear otra versión» (solo fotos hechas con IA), o null si no hay clave para hacerlas. */
-export function LibraryItemCard({ c, businessId, lang, variantCents = null }: { c: LibraryCard; businessId: string; lang: UiLang; variantCents?: number | null }) {
+/**
+ * `variantCents`: precio de «Crear otra versión» (solo fotos hechas con IA), o null si no hay clave para hacerlas.
+ * `aiTools`: qué herramientas de «Editar con IA» hay (según las claves del servidor).
+ */
+export function LibraryItemCard({ c, businessId, lang, variantCents = null, aiTools = { fal: false, fix: false } }: { c: LibraryCard; businessId: string; lang: UiLang; variantCents?: number | null; aiTools?: { fal: boolean; fix: boolean } }) {
   const t = translator(lang);
   const d = c.description;
   const q = qualityWord(c.quality);
@@ -35,6 +41,16 @@ export function LibraryItemCard({ c, businessId, lang, variantCents = null }: { 
         ? t(c.kind === "video" ? "Usado 1 vez" : "Usada 1 vez", "Used once")
         : t(`${c.kind === "video" ? "Usado" : "Usada"} ${c.usedCount} veces`, `Used ${c.usedCount} times`);
   const alt = d ? d[lang] : c.name;
+  // Una foto real recortada o agrandada con IA sigue siendo real: dice «Editada con IA» y no se le hacen versiones.
+  const edited = c.source === "ai" && editedByAi(c.folderPath);
+  const photoReady = c.kind === "photo" && c.status === "ready";
+  const tools = photoReady
+    ? [
+        ...(aiTools.fal ? [{ tool: "cutout" as const, cents: CUTOUT_CENTS }] : []),
+        ...(aiTools.fal && canUpscale(c.width, c.height) ? [{ tool: "upscale" as const, cents: UPSCALE_CENTS }] : []),
+        ...(aiTools.fix && c.source === "ai" && !edited ? [{ tool: "fix" as const, cents: FIX_CENTS }] : []),
+      ]
+    : [];
   return (
     <article className={`${s.item} ${c.choice === "skip" ? s.itemSkip : ""}`}>
       <div className={s.media}>
@@ -73,7 +89,7 @@ export function LibraryItemCard({ c, businessId, lang, variantCents = null }: { 
           </div>
         )}
         <p className={s.origin}>
-          <strong>{c.source === "upload" ? t("Subida por link", "Uploaded by link") : c.source === "ai" ? t("Hecha con IA", "Made with AI") : t("De Drive", "From Drive")}</strong>
+          <strong>{c.source === "upload" ? t("Subida por link", "Uploaded by link") : edited ? t("Editada con IA", "Edited with AI") : c.source === "ai" ? t("Hecha con IA", "Made with AI") : t("De Drive", "From Drive")}</strong>
           {c.folderPath ? ` · ${c.source === "upload" ? `«${c.folderPath}»` : c.folderPath}` : ""}
         </p>
         {c.status === "ready" && (
@@ -104,7 +120,8 @@ export function LibraryItemCard({ c, businessId, lang, variantCents = null }: { 
               {c.kind === "video" ? t("Crear publicación con este video", "Create a post with this video") : t("Crear publicación con esta foto", "Create a post with this photo")}
             </Link>
           )}
-          {c.source === "ai" && c.kind === "photo" && c.status === "ready" && variantCents !== null && <VariantButton businessId={businessId} itemId={c.id} cents={variantCents} />}
+          {c.source === "ai" && !edited && photoReady && variantCents !== null && <VariantButton businessId={businessId} itemId={c.id} cents={variantCents} />}
+          <PhotoAiTools businessId={businessId} itemId={c.id} tools={tools} />
           {c.source !== "ai" && <EnhancePanel c={c} businessId={businessId} />}
           {c.status !== "new" && <ChoiceButtons businessId={businessId} itemId={c.id} choice={c.choice} needsReview={c.needsReview} problem={c.status === "error"} />}
         </div>

@@ -67,6 +67,8 @@ type Props = {
   detectLogoType?: () => Promise<LogoType | null>;
   /** Convierte un logo SVG en PNG grande en el servidor y lo guarda. */
   uploadSvg?: (svg: string) => Promise<{ ok: true; url: string } | { ok: false; message: string }>;
+  /** Quita el fondo liso (blanco o de un color) de un logo ya subido. */
+  removeBg?: (url: string) => Promise<{ ok: true; url: string } | { ok: false; message: string }>;
 };
 
 const BOOK_TYPES = ["application/pdf", "image/png", "image/jpeg", "image/webp"];
@@ -82,6 +84,7 @@ function LogoField({
   dark,
   persist,
   uploadSvg,
+  removeBg,
 }: {
   label: string;
   help: string;
@@ -91,6 +94,7 @@ function LogoField({
   dark?: boolean;
   persist?: (url: string) => Promise<{ ok: boolean; message: string }>;
   uploadSvg?: Props["uploadSvg"];
+  removeBg?: Props["removeBg"];
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -106,6 +110,18 @@ function LogoField({
     const r = await persist(url);
     if (r.ok) setStored(true);
     else setError(r.message);
+  }
+  async function clearBg() {
+    if (!removeBg || !value) return;
+    setError("");
+    setBusy(true);
+    try {
+      const r = await removeBg(value);
+      if (r.ok) await keep(r.url);
+      else setError(r.message);
+    } finally {
+      setBusy(false);
+    }
   }
   async function onFile(f: File | undefined) {
     setError("");
@@ -165,6 +181,11 @@ function LogoField({
           <span className="small muted">{t("Subir logos necesita Supabase Storage.", "Uploading logos requires Supabase Storage.")}</span>
         )}
         {value && <button type="button" className="btn link" onClick={() => keep("")}>{t("Quitar", "Remove")}</button>}
+        {value && removeBg && (
+          <button type="button" className="btn link" disabled={busy} onClick={() => void clearBg()} title={t("Quita el fondo blanco (o de un solo color) del logo. Gratis; el dibujo no cambia.", "Removes the white (or single-color) background from the logo. Free; the drawing doesn't change.")}>
+            {t("Quitar el fondo", "Remove the background")}
+          </button>
+        )}
         {stored && <span className="pill done">{value ? t("Guardado", "Saved") : t("Quitado", "Removed")}</span>}
       </div>
       <span className="small muted">{help}</span>
@@ -530,7 +551,7 @@ function MainTypePick({ value, by, hasLogo, save, detect }: { value: LogoType | 
 }
 
 /** Un tipo de logo con su versión a color y la blanca, guardadas apenas se suben. */
-function SlotPair({ slot, files, upload, saveSlot, uploadSvg }: { slot: LogoSlot; files?: { color?: string; white?: string }; upload: Props["upload"]; saveSlot?: Props["saveSlot"]; uploadSvg?: Props["uploadSvg"] }) {
+function SlotPair({ slot, files, upload, saveSlot, uploadSvg, removeBg }: { slot: LogoSlot; files?: { color?: string; white?: string }; upload: Props["upload"]; saveSlot?: Props["saveSlot"]; uploadSvg?: Props["uploadSvg"]; removeBg?: Props["removeBg"] }) {
   const { lang, t } = useT();
   const L = lang === "en" ? "en" : "es";
   const [color, setColor] = useState(files?.color ?? "");
@@ -552,6 +573,7 @@ function SlotPair({ slot, files, upload, saveSlot, uploadSvg }: { slot: LogoSlot
           onChange={setColor}
           upload={upload}
           uploadSvg={uploadSvg}
+          removeBg={removeBg}
           persist={saveSlot && ((url) => saveSlot(slot, "color", url))}
         />
         <LogoField
@@ -561,6 +583,7 @@ function SlotPair({ slot, files, upload, saveSlot, uploadSvg }: { slot: LogoSlot
           onChange={setWhite}
           upload={upload}
           uploadSvg={uploadSvg}
+          removeBg={removeBg}
           dark
           persist={saveSlot && ((url) => saveSlot(slot, "white", url))}
         />
@@ -569,7 +592,7 @@ function SlotPair({ slot, files, upload, saveSlot, uploadSvg }: { slot: LogoSlot
   );
 }
 
-export function BrandKitForm({ kit, save, upload, brandBook, saveLogo, children, hasKit, logos, saveSlot, saveMainType, uploadSvg, detectLogoType }: Props) {
+export function BrandKitForm({ kit, save, upload, brandBook, saveLogo, children, hasKit, logos, saveSlot, saveMainType, uploadSvg, detectLogoType, removeBg }: Props) {
   const [logo, setLogo] = useState(kit.logoUrl);
   const [logoLight, setLogoLight] = useState(kit.logoLightUrl);
   const [c1, setC1] = useState(kit.color);
@@ -675,6 +698,7 @@ export function BrandKitForm({ kit, save, upload, brandBook, saveLogo, children,
               onChange={setLogo}
               upload={upload}
               uploadSvg={uploadSvg}
+              removeBg={removeBg}
               persist={saveLogo && ((url) => saveLogo("logoUrl", url))}
             />
             <LogoField
@@ -684,6 +708,7 @@ export function BrandKitForm({ kit, save, upload, brandBook, saveLogo, children,
               onChange={setLogoLight}
               upload={upload}
               uploadSvg={uploadSvg}
+              removeBg={removeBg}
               dark
               persist={saveLogo && ((url) => saveLogo("logoLightUrl", url))}
             />
@@ -691,12 +716,12 @@ export function BrandKitForm({ kit, save, upload, brandBook, saveLogo, children,
         </div>
         {saveSlot && (
           <>
-            <SlotPair slot="isotipo" files={logos?.slots.isotipo} upload={upload} saveSlot={saveSlot} uploadSvg={uploadSvg} />
+            <SlotPair slot="isotipo" files={logos?.slots.isotipo} upload={upload} saveSlot={saveSlot} uploadSvg={uploadSvg} removeBg={removeBg} />
             <details className={f.more}>
               <summary>{t("Otras versiones de tu logo (opcional)", "Other versions of your logo (optional)")}</summary>
               <div className="stack" style={{ gap: 18, marginTop: 14 }}>
                 {LOGO_TYPES.filter((x) => x !== logos?.mainType).map((x) => (
-                  <SlotPair key={x} slot={x} files={logos?.slots[x]} upload={upload} saveSlot={saveSlot} uploadSvg={uploadSvg} />
+                  <SlotPair key={x} slot={x} files={logos?.slots[x]} upload={upload} saveSlot={saveSlot} uploadSvg={uploadSvg} removeBg={removeBg} />
                 ))}
               </div>
             </details>

@@ -1,7 +1,7 @@
 import { brandFromAi, brandFromBook, deleteTemplate, getBrandBookUploadUrl, getUploadUrl, proposeTemplates, updateBrandKit } from "@/app/actions";
 import { saveBrandBook } from "@/app/actions-brand-book";
 import { saveDesignStyle, saveVoicePrefs } from "@/app/actions-brand-identity";
-import { detectMainLogoType, saveBrandLogo, saveLogoSlot, saveMainLogoType, uploadSvgLogo } from "@/app/actions-brand";
+import { detectMainLogoType, removeLogoBackground, saveBrandLogo, saveLogoSlot, saveMainLogoType, uploadSvgLogo } from "@/app/actions-brand";
 import { BrandKitForm } from "@/components/BrandKitForm";
 import { BookAssetsSection } from "@/components/brand/BookAssetsSection";
 import { IdentitySection } from "@/components/brand/IdentitySection";
@@ -104,6 +104,7 @@ export default async function MarcaPage({ params }: { params: Promise<{ id: stri
         saveMainType={saveMainLogoType.bind(null, id)}
         detectLogoType={logoTypeEnabled() ? detectMainLogoType.bind(null, id) : undefined}
         uploadSvg={uploadSvgLogo.bind(null, id)}
+        removeBg={removeLogoBackground.bind(null, id)}
       >
         <BookAssetsSection businessId={id} />
       </BrandKitForm>

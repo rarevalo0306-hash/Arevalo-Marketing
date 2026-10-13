@@ -1,7 +1,7 @@
 // Biblioteca de fotos y videos reales del negocio (tabla LibraryItem): leerla para la página «Tus fotos» y el
 // compositor, y elegir la foto real que mejor va con una publicación antes de crear una con IA.
 // Las reglas para elegir (sin base de datos) están en library-match.ts.
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { rankLibrary, usableNow, type LibraryCard, type MatchItem, type MatchQuery } from "@/lib/library-match";
 import { needsReview, readDescription } from "@/lib/library-shape";
@@ -87,6 +87,8 @@ export function toCard(r: CardRow): LibraryCard {
     // La que va en las publicaciones: la mejorada si existe y el dueño no eligió la original.
     url: r.kind === "photo" ? libraryPhotoUrl(r) : r.url,
     durationSec: r.durationSec,
+    width: r.width,
+    height: r.height,
     description: readDescription(r.description),
     tags: r.tags,
     quality: r.quality,
@@ -210,6 +212,61 @@ export async function recordAiMedia(businessId: string, url: string, info: AiMed
     return row.id;
   } catch (e) {
     console.error(`[library] no se pudo guardar lo creado por la IA (${businessId}):`, e);
+    return null;
+  }
+}
+
+// ---------- Fotos editadas con IA ----------
+
+/** Dónde quedan las ediciones con IA de una foto de la biblioteca. */
+export const EDIT_FOLDER = { cutout: "IA / recortes", upscale: "IA / agrandadas", fix: "IA / arregladas" } as const;
+export type PhotoEdit = keyof typeof EDIT_FOLDER;
+const EDIT_NAME: Record<PhotoEdit, string> = { cutout: "Recortada", upscale: "Agrandada", fix: "Arreglada" };
+
+/** Una foto real editada con IA (recortada o agrandada). Las arregladas siguen siendo «hechas con IA». */
+export const editedByAi = (folderPath: string) => folderPath === EDIT_FOLDER.cutout || folderPath === EDIT_FOLDER.upscale;
+
+/** Lo que se copia de la foto original a su edición. */
+export type EditSource = Pick<Prisma.LibraryItemGetPayload<object>, "name" | "description" | "tags" | "quality" | "privacy" | "choice" | "usable">;
+
+/**
+ * Los datos de la biblioteca para una foto editada con IA a partir de otra (sin base de datos, para probarlo). Hereda
+ * lo que la IA vio y lo que eligió el dueño en la original (avisos de privacidad, «usar» o «no usar»): editar nunca se
+ * salta una revisión pendiente. Los recortes (fondo transparente) la IA no los usa sola: se usan a mano.
+ */
+export function editedLibraryData(businessId: string, url: string, from: EditSource, edit: PhotoEdit, size: { width: number; height: number }, now = new Date()): Prisma.LibraryItemUncheckedCreateInput {
+  return {
+    businessId,
+    source: "ai",
+    externalId: `ai:${url}`.slice(0, 1000),
+    name: `${EDIT_NAME[edit]}: ${from.name}`.slice(0, 120),
+    folderPath: EDIT_FOLDER[edit],
+    mimeType: /\.png(?:$|\?)/i.test(url) ? "image/png" : "image/jpeg",
+    kind: "photo",
+    url,
+    thumbUrl: "",
+    width: size.width,
+    height: size.height,
+    description: from.description ?? Prisma.JsonNull,
+    tags: from.tags,
+    quality: from.quality,
+    usable: edit === "cutout" ? false : from.usable,
+    privacy: from.privacy,
+    choice: from.choice,
+    status: "ready",
+    usedCount: 0,
+    modifiedAt: now,
+  };
+}
+
+/** Guarda la foto editada en la biblioteca. Devuelve su id (null si la base de datos no respondió). */
+export async function recordEditedPhoto(businessId: string, url: string, from: EditSource, edit: PhotoEdit, size: { width: number; height: number }): Promise<string | null> {
+  try {
+    const data = editedLibraryData(businessId, url, from, edit, size);
+    const row = await db.libraryItem.upsert({ where: { businessId_externalId: { businessId, externalId: data.externalId } }, create: data, update: {}, select: { id: true } });
+    return row.id;
+  } catch (e) {
+    console.error(`[library] no se pudo guardar la foto editada (${businessId}):`, e);
     return null;
   }
 }
