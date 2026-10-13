@@ -3,7 +3,7 @@
 // «Posts (fotos y diseños)»: el texto alternativo de las fotos (con palabras clave y la ciudad), escrito por la IA
 // (una llamada barata) o con la plantilla, y lo que se sabe de una foto de «Tus fotos».
 import { logAiAction } from "@/lib/ai-actions";
-import { hasBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
@@ -20,7 +20,7 @@ export type AltResult = { ok: true; alts: string[]; fromAi: boolean; note?: stri
 export async function postAltTexts(businessId: string, items: { url: string; what?: string }[], text: string, ai: boolean): Promise<AltResult> {
   ensure.text(businessId, text); ensure.flag(ai);
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: await deniedText(businessId, "publish") };
   try {
     const b = await db.business.findUnique({ where: { id: businessId } });
     if (!b) return { ok: false, error: t("Negocio no encontrado", "Business not found") };

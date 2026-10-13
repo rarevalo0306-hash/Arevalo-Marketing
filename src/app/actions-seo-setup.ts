@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { runRankCheck } from "@/app/actions-seo-rank";
-import { hasBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
@@ -17,9 +17,9 @@ export type ProposalResult = { ok: true; proposal: SetupProposal; rejected: stri
 /** Prepara (o lee la guardada) la propuesta de zonas, idioma y palabras clave del negocio. Usa la IA, no DataForSEO. */
 export async function proposeSeoSetup(businessId: string, force = false): Promise<ProposalResult> {
   ensure.text(businessId); ensure.optionalFlag(force);
-  const { lang, t } = await getT();
+  const { lang } = await getT();
   // Puede llamar a la IA (gasta): hace falta poder publicar.
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: await deniedText(businessId, "publish") };
   try {
     const proposal = await buildProposal(businessId, { force });
     const { rejected } = await setupState(businessId);
@@ -38,7 +38,7 @@ export async function measureSeoKeywords(businessId: string, keywords: string[],
   if (!dataForSeoEnabled()) return { ok: false, error: t("Falta conectar DataForSEO.", "DataForSEO isn't connected yet.") };
   const list = [...new Set(keywords.map(normKeyword).filter(Boolean))].slice(0, 40);
   if (!list.length || !Number.isInteger(zone.code) || zone.code <= 0) return { ok: false, error: t("Elige al menos una zona y una palabra.", "Pick at least one area and one keyword.") };
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: await deniedText(businessId, "publish") };
   try {
     const report = await keywordReport({ keywords: list, seeds: [], locationCode: zone.code, locationName: zone.name, language: language === "en" ? "en" : "es", ideas: false });
     const volumes = new Map(report.keywords.map((r) => [normKeyword(r.keyword), r.volume]));
@@ -65,7 +65,7 @@ export async function acceptSeoSetup(businessId: string, _prev: AcceptResult, f:
   ensure.text(businessId);
   const { lang, t } = await getT();
   // También cambia cada cuánto se revisan solas las posiciones (DataForSEO, pagado): solo el Administrador.
-  if (!(await hasBusiness(businessId, "admin"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "admin"))) return { ok: false, message: await deniedText(businessId, "admin") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { id: true, website: true } });
   if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   try {

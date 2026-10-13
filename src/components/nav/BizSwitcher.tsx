@@ -10,9 +10,9 @@ type Biz = { id: string; name: string; color: string };
 
 /**
  * Computadora: el negocio activo en un control blanco redondeado (con línea fina). Al tocarlo se abre la lista de
- * negocios y «Agregar negocio» debajo, dentro de la barra. Sin negocio activo la lista se ve abierta.
+ * negocios y «Agregar negocio» debajo (solo para el Administrador), dentro de la barra. Sin negocio activo la lista se ve abierta.
  */
-export function BizSwitcher({ businesses, activeId }: { businesses: Biz[]; activeId?: string }) {
+export function BizSwitcher({ businesses, activeId, canAdd }: { businesses: Biz[]; activeId?: string; canAdd: boolean }) {
   const { t } = useT();
   const path = usePathname();
   const id = useId();
@@ -51,12 +51,14 @@ export function BizSwitcher({ businesses, activeId }: { businesses: Biz[]; activ
             <span className={s.text}>{b.name}</span>
           </Link>
         ))}
-        <Link href="/negocios/nuevo" className={s.row}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" style={{ margin: "0 3px" }}>
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          <span className={s.text}>{t("Agregar negocio", "Add business")}</span>
-        </Link>
+        {canAdd && (
+          <Link href="/negocios/nuevo" className={s.row}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" style={{ margin: "0 3px" }}>
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            <span className={s.text}>{t("Agregar negocio", "Add business")}</span>
+          </Link>
+        )}
       </div>
     </div>
   );

@@ -2,7 +2,7 @@
 
 // Carpeta de Google Drive del negocio: conectar, revisar ahora y desconectar.
 import { revalidatePath } from "next/cache";
-import { hasBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getFolder } from "@/lib/drive";
 import { ensure } from "@/lib/ensure";
@@ -23,7 +23,7 @@ function refresh(businessId: string) {
 export async function syncDriveNow(businessId: string): Promise<DriveResult> {
   ensure.text(businessId);
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   try {
     const b = await db.business.findUnique({
       where: { id: businessId },
@@ -52,7 +52,7 @@ export async function saveDriveFolder(businessId: string, link: string): Promise
   ensure.text(businessId, link);
   const { lang, t } = await getT();
   // Conectar la carpeta es una conexión: solo el Administrador.
-  if (!(await hasBusiness(businessId, "admin"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  if (!(await hasBusiness(businessId, "admin"))) return { ok: false, message: await deniedText(businessId, "admin") };
   if (!serviceAccountEnabled()) {
     return {
       ok: false,
@@ -120,7 +120,7 @@ export async function saveDriveFolder(businessId: string, link: string): Promise
 export async function disconnectDrive(businessId: string): Promise<DriveResult> {
   ensure.text(businessId);
   const { t } = await getT();
-  if (!(await hasBusiness(businessId, "admin"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  if (!(await hasBusiness(businessId, "admin"))) return { ok: false, message: await deniedText(businessId, "admin") };
   await db.business.update({
     where: { id: businessId },
     data: {

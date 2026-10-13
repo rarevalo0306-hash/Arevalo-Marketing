@@ -1,7 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { lookup } from "dns/promises";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { rankEveryDays, rankIsDue } from "@/lib/seo/rank";
-import { guessCountry, plainKeywords } from "@/lib/seo/setup";
+import { guessCountry, plainKeywords, websiteText } from "@/lib/seo/setup";
 import { asFrequency, checkCost, keywordExample, monthlyRankCost, normKeyword, usd, zoneCountry, zoneTypeLabel } from "@/lib/seo/setup-shared";
+
+// DNS de mentira (sin red): "inside.example.com" apunta a la red interna, todo lo demás a internet.
+vi.mock("dns/promises", () => ({
+  lookup: vi.fn(async (host: string) => [{ address: host === "inside.example.com" ? "10.0.0.5" : "93.184.215.14", family: 4 }]),
+}));
 
 const H = 3600_000;
 const D = 24 * H;
@@ -85,5 +91,30 @@ describe("palabras propuestas sin IA", () => {
     expect(keywordExample(["public adjuster miami"], "en")).toBe("public adjuster miami");
     expect(keywordExample([], "es")).toBe("tu servicio + tu ciudad");
     expect(normKeyword("  Public   Adjuster MIAMI ")).toBe("public adjuster miami");
+  });
+});
+
+describe("texto de la página web para la propuesta", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const html = (body: string) => new Response(`<html><body>${body}</body></html>`, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+
+  it("lee la página de inicio (como mucho 4000 caracteres)", async () => {
+    const fetchMock = vi.fn(async () => html(`<p>Portones enrollables en Managua.</p><p>${"palabra ".repeat(1000)}</p>`));
+    vi.stubGlobal("fetch", fetchMock);
+    const text = await websiteText("fameseg.com");
+    expect(text).toContain("Portones enrollables en Managua.");
+    expect(text.length).toBeLessThanOrEqual(4000);
+    expect(String((fetchMock.mock.calls[0] as unknown[])[0])).toBe("https://fameseg.com/");
+    expect(lookup).toHaveBeenCalledWith("fameseg.com", expect.anything());
+  });
+
+  it("nunca visita la red interna, ni siguiendo una redirección: devuelve vacío", async () => {
+    const fetchMock = vi.fn(async () => html("secreto"));
+    vi.stubGlobal("fetch", fetchMock);
+    for (const site of ["http://169.254.169.254/", "http://localhost:3000", "inside.example.com", "http://[::ffff:a9fe:a9fe]/"]) expect(await websiteText(site), site).toBe("");
+    expect(fetchMock).not.toHaveBeenCalled();
+    fetchMock.mockImplementation(async () => new Response(null, { status: 301, headers: { Location: "http://169.254.169.254/latest/meta-data" } }));
+    expect(await websiteText("https://fameseg.com")).toBe("");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

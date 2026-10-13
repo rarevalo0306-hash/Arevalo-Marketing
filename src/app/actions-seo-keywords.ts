@@ -2,7 +2,7 @@
 
 import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
-import { hasBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
@@ -24,7 +24,7 @@ export async function refreshKeywords(businessId: string, _prev: KeywordsResult,
   void _prev;
   void _f;
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   if (!dataForSeoEnabled())
     return { ok: false, message: t("Falta conectar DataForSEO (DATAFORSEO_LOGIN y DATAFORSEO_PASSWORD en Vercel).", "DataForSEO isn't connected yet (DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD in Vercel).") };
   const b = await db.business.findUnique({
@@ -92,7 +92,7 @@ export async function refreshKeywords(businessId: string, _prev: KeywordsResult,
 export async function trackKeyword(businessId: string, keyword: string): Promise<{ ok: boolean; message: string }> {
   ensure.text(businessId, keyword);
   const { t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   const k = cleanKeyword(String(keyword ?? ""));
   if (!k) return { ok: false, message: t("Palabra clave vacía.", "Empty keyword.") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { seoKeywords: true } });

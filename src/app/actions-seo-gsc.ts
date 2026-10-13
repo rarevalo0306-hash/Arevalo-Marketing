@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { hasBusiness, requireBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness, requireBusiness } from "@/lib/auth";
 import { decryptJson } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import { disconnectGoogleData } from "@/lib/data-deletion";
@@ -26,7 +26,7 @@ export async function refreshSearchConsole(businessId: string, _prev: GscResult,
   void _prev;
   void _f;
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   try {
     const conn = await db.connection.findUnique({ where: { businessId_channel: { businessId, channel: GSC_CHANNEL } } });
     if (!conn) return { ok: false, message: t("Primero conecta Search Console.", "Connect Search Console first.") };

@@ -2,7 +2,7 @@
 
 import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
-import { hasBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensure } from "@/lib/ensure";
 import { errorText, intlLocale } from "@/lib/i18n";
@@ -33,7 +33,7 @@ export async function findMapPlace(businessId: string, query: string): Promise<M
   ensure.text(businessId, query);
   const { lang, t } = await getT();
   if (!dataForSeoEnabled()) return { ok: false, error: notConnected(t) };
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, error: await deniedText(businessId, "publish") };
   const b = await db.business.findUnique({
     where: { id: businessId },
     select: { name: true, website: true, seoLocations: true, seoLocationCode: true, seoLocationName: true, seoLanguage: true },
@@ -57,7 +57,7 @@ export async function saveMapPlace(businessId: string, place: unknown): Promise<
   const { t } = await getT();
   const p = readMapPlace(place);
   if (!p) return { ok: false, message: t("Ese negocio no tiene ubicación en Google Maps. Elige otro.", "That business has no location on Google Maps. Pick another one.") };
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   await db.business.update({ where: { id: businessId }, data: { seoMapPlace: toMapPlace(p) as unknown as Prisma.InputJsonValue } });
   revalidatePath(`/b/${businessId}/seo`);
   return { ok: true, message: t(`Listo: tu negocio en Google Maps es «${p.title}».`, `Done: your business on Google Maps is “${p.title}”.`) };
@@ -71,7 +71,7 @@ export async function runMapRank(businessId: string, _prev: MapRankResult, f: Fo
   void _prev;
   const { lang, t } = await getT();
   if (!dataForSeoEnabled()) return { ok: false, message: notConnected(t) };
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { website: true, seoLanguage: true, seoMapPlace: true } });
   if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   const place = readMapPlace(b.seoMapPlace);

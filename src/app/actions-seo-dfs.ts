@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { ensure } from "@/lib/ensure";
 import { searchLocations, type DfsLocation } from "@/lib/seo/dataforseo";
-import { hasBusiness, requireUser } from "@/lib/auth";
+import { deniedText, hasBusiness, requireUser } from "@/lib/auth";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { locationChildren, searchCountry } from "@/lib/seo/locations";
@@ -62,7 +62,7 @@ export async function saveSeoSettings(businessId: string, _prev: SeoSettingsResu
   ensure.text(businessId);
   const { t } = await getT();
   // También cambia cada cuánto se revisan solas las posiciones (DataForSEO, pagado): solo el Administrador.
-  if (!(await hasBusiness(businessId, "admin"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "admin"))) return { ok: false, message: await deniedText(businessId, "admin") };
   const { zones, keywords } = await applySettingsForm(businessId, f);
   revalidatePath(`/b/${businessId}/seo`);
   return {

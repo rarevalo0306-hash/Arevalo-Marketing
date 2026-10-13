@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { aiEnabled, designTemplates, planWeek, readBrandBook, stormPlan, suggestBrandKit, type BrandKitSuggestion, TEXT_PROVIDERS, toPostFields, writePost, type AiPost, type AiPostOut, type Lang } from "@/lib/ai";
-import { hasBusiness, newBusinessOrganizationId, requireBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness, newBusinessOrganizationId, requireBusiness } from "@/lib/auth";
 import { recentOpenings } from "@/lib/content-ideas";
 import { brevoDomains, brevoEnvKey } from "@/lib/brevo";
 import { CHANNEL_IDS, channelDef, type ChannelId } from "@/lib/channels";
@@ -21,7 +21,8 @@ import { photoContextFor, photoMetaFor, storeDesign } from "@/lib/media-formats"
 import { createImage, IMAGE_PROVIDERS, imagesEnabled } from "@/lib/imagegen";
 import { ownerFields } from "@/lib/owner";
 import { pickLibraryPhotos } from "@/lib/library";
-import { createSignedUpload, isOwnFile, saveUpload, storeRemote } from "@/lib/media";
+import { createSignedUpload, isOwnFile, ownMediaPath, saveUpload, storeRemote } from "@/lib/media";
+import { isPublicHttpsUrl } from "@/lib/net-guard";
 import { ALT_MAX, checkPostMedia, postKindFor, readPostMedia } from "@/lib/post-media";
 import { altTexts, focusForUrl } from "@/lib/post-seo";
 import { GOOGLE_COOKIE, saveGoogleLocation, type GoogleLocation } from "@/lib/google-oauth";
@@ -206,7 +207,7 @@ export type TestResult = { ok: boolean; message: string } | null;
 export async function testConnection(businessId: string, channel: ChannelId): Promise<TestResult> {
   ensure.text(businessId, channel);
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "admin"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "admin"))) return { ok: false, message: await deniedText(businessId, "admin") };
   const conn = await db.connection.findUnique({ where: { businessId_channel: { businessId, channel } } });
   if (!conn) return { ok: false, message: t("Primero guarda los datos de la conexión.", "Save the connection details first.") };
   try {
@@ -276,6 +277,10 @@ export async function getUploadUrl(businessId: string, contentType: string) {
   return createSignedUpload(contentType, businessId);
 }
 
+// El servidor y las redes descargan después la foto o el video de un enlace: solo archivos propios o direcciones
+// públicas de internet (https), nunca la red interna. Igual que el logo del kit de marca (safeLogoUrl).
+const ownOrPublicUrl = async (url: string, businessId: string) => isOwnFile(url, businessId) || ownMediaPath(url) !== null || (await isPublicHttpsUrl(url));
+
 export async function createPost(businessId: string, f: FormData) {
   ensure.text(businessId);
   const biz = await business(businessId, "publish");
@@ -294,6 +299,7 @@ export async function createPost(businessId: string, f: FormData) {
     mediaType = saved.type;
   } else if (mediaType !== "none" && /^https?:\/\//i.test(str(f, "mediaLink"))) {
     mediaUrl = str(f, "mediaLink");
+    if (!(await ownOrPublicUrl(mediaUrl, businessId))) throw new Error(t("El enlace de la foto o el video debe ser una dirección pública de internet (https).", "The photo or video link must be a public web address (https)."));
   } else {
     mediaType = "none";
   }
@@ -304,6 +310,7 @@ export async function createPost(businessId: string, f: FormData) {
   let items = readPostMedia(safeJson(str(f, "media")));
   if (kind === "carousel") {
     items = items.filter((i) => /^https?:\/\//i.test(i.url));
+    if (!(await Promise.all(items.map((i) => ownOrPublicUrl(i.url, businessId)))).every(Boolean)) throw new Error(t("Las fotos del carrusel deben estar en direcciones públicas de internet (https).", "The carousel photos must be at public web addresses (https)."));
     if (items[0]) {
       mediaUrl = items[0].url;
       mediaType = "photo";
@@ -604,6 +611,8 @@ export async function aiVideoStart(businessId: string, imageUrl: string, motion:
   const { lang, t } = await getT();
   if (!videoEnabled()) return { ok: false, error: t("Falta la clave para videos (FAL_KEY o GEMINI_API_KEY) en la configuración del servidor.", "The video key (FAL_KEY or GEMINI_API_KEY) is missing from the server settings.") };
   if (!/^https:\/\//.test(imageUrl)) return { ok: false, error: t("Primero crea o sube una foto para el video.", "First create or upload a photo for the video.") };
+  // La foto la descarga el servidor (Veo) o fal.ai: solo archivos propios o direcciones públicas de internet.
+  if (!(await ownOrPublicUrl(imageUrl, businessId))) return { ok: false, error: t("La foto del video debe estar en una dirección pública de internet.", "The video's photo must be at a public web address.") };
   try {
     return { ok: true, job: await startVideo(imageUrl, motion.slice(0, 500)) };
   } catch (e) {
@@ -666,18 +675,21 @@ export async function aiDesign(businessId: string, photoUrl: string, headline: s
   }
 }
 
-const safeUrl = (v: string) => (/^https:\/\//.test(v) || v === "" ? v : undefined);
+// El servidor descarga el logo después (kit de marca): solo archivos propios o direcciones públicas de internet.
+// Si no vale, el logo guardado no cambia.
+const safeLogoUrl = async (v: string, businessId: string) => (v === "" || isOwnFile(v, businessId) || (await isPublicHttpsUrl(v)) ? v : undefined);
 
 /** Kit de marca: logos, colores, letras, tono de voz, hashtags, teléfono y diseño automático. */
 export async function updateBrandKit(businessId: string, f: FormData) {
   ensure.text(businessId);
   const b = await business(businessId, "publish");
   const font = str(f, "fontHeading");
+  const [logoUrl, logoLightUrl] = await Promise.all([safeLogoUrl(str(f, "logoUrl"), businessId), safeLogoUrl(str(f, "logoLightUrl"), businessId)]);
   await db.business.update({
     where: { id: businessId },
     data: {
-      logoUrl: safeUrl(str(f, "logoUrl")),
-      logoLightUrl: safeUrl(str(f, "logoLightUrl")),
+      logoUrl,
+      logoLightUrl,
       color: hexOr(str(f, "color"), b.color),
       color2: str(f, "color2") === "" ? "" : hexOr(str(f, "color2"), b.color2),
       color3: str(f, "color3") === "" ? "" : hexOr(str(f, "color3"), b.color3),

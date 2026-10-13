@@ -1,6 +1,7 @@
 // LinkedIn: publica con la Posts API (/rest/posts), en el perfil de la persona (w_member_social)
 // o en la página de una empresa (w_organization_social, requiere que LinkedIn apruebe la app).
 // El token se genera a mano en el portal de desarrolladores y dura 60 días.
+import { fetchMedia } from "@/lib/media";
 import { PublishError, required } from "@/lib/publishers/http";
 import { mediaOf, type Creds, type PublishInput, type Publisher } from "@/lib/publishers/types";
 
@@ -67,7 +68,8 @@ export async function linkedinAuthor(creds: Creds): Promise<string> {
 }
 
 async function download(url: string): Promise<{ data: ArrayBuffer; type: string }> {
-  const res = await fetch(url, { cache: "no-store" });
+  // Archivos propios del disco, o solo direcciones públicas de internet (cada redirección se revisa).
+  const res = await fetchMedia(url, { cache: "no-store" });
   if (!res.ok) throw new PublishError(`No se pudo descargar el archivo para LinkedIn (${res.status}).`);
   return { data: await res.arrayBuffer(), type: (res.headers.get("content-type") || "").split(";")[0] };
 }

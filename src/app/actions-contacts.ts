@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { hasBusiness, requireBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness, requireBusiness } from "@/lib/auth";
 import { cleanLists, normalizePhone, parseContactsCsv } from "@/lib/contacts";
 import { db } from "@/lib/db";
 import { ensure } from "@/lib/ensure";
@@ -27,7 +27,7 @@ export async function addContactWithLists(businessId: string, _prev: ContactResu
   ensure.text(businessId);
   void _prev;
   const { t } = await getT();
-  if (!(await exists(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await exists(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   const email = str(f, "email");
   const phone = normalizePhone(str(f, "phone"));
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, message: t("Ese email no parece válido.", "That email doesn't look valid.") };
@@ -54,7 +54,7 @@ export async function importContactsToList(businessId: string, _prev: ContactRes
   ensure.text(businessId);
   void _prev;
   const { t } = await getT();
-  if (!(await exists(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await exists(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   const rows = parseContactsCsv(str(f, "csv"), { emailOptIn: f.get("emailOptIn") === "on", smsOptIn: f.get("smsOptIn") === "on" });
   if (!rows.length)
     return {

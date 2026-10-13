@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import sharp from "sharp";
 import { saveBrandLogo } from "@/app/actions-brand";
 import { saveDesignMaster, startBookConvert } from "@/app/actions-design-ai";
-import { hasBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness } from "@/lib/auth";
 import { acceptedBookAssets, addBrandAssets, type BrandAsset, type BrandAssetStatus, bookProposals, newAssetId, removeBrandAsset, setBrandAssetStatus } from "@/lib/brand-assets";
 import { loadBrandAssets, updateBrandAssets } from "@/lib/brand-assets-db";
 import {
@@ -93,7 +93,7 @@ export async function readBookPages(businessId: string, f: FormData): Promise<Bo
   ensure.text(businessId);
   const { lang, t } = await getT();
   // La IA lee las páginas (gasta) y guarda propuestas en la marca.
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("No encontramos este negocio.", "We couldn't find this business.") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { id: true, name: true } });
   if (!b) return { ok: false, message: t("No encontramos este negocio.", "We couldn't find this business.") };
   if (!process.env.GEMINI_API_KEY) {
@@ -222,7 +222,7 @@ const LOGO_FOR_LIGHT = new Set(["logo", "logo-dark"]);
 export async function decideBookAsset(businessId: string, assetId: string, status: BrandAssetStatus): Promise<BookActionResult> {
   ensure.text(businessId, assetId, status);
   const { t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("No encontramos este negocio.", "We couldn't find this business.") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   if (!["accepted", "rejected", "proposed"].includes(status)) return { ok: false, message: t("Opción no válida.", "Invalid option.") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { logoUrl: true, logoLightUrl: true } });
   if (!b) return { ok: false, message: t("No encontramos este negocio.", "We couldn't find this business.") };
@@ -246,7 +246,7 @@ export async function decideBookAsset(businessId: string, assetId: string, statu
 export async function acceptAllBookAssets(businessId: string): Promise<BookActionResult> {
   ensure.text(businessId);
   const { t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("No encontramos este negocio.", "We couldn't find this business.") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { logoUrl: true, logoLightUrl: true } });
   if (!b) return { ok: false, message: t("No encontramos este negocio.", "We couldn't find this business.") };
   const pending = bookProposals(await loadBrandAssets(businessId));
@@ -280,7 +280,7 @@ export async function acceptAllBookAssets(businessId: string): Promise<BookActio
 export async function applyBookAsset(businessId: string, assetId: string, use: "logo" | "logoLight" | "template"): Promise<BookActionResult> {
   ensure.text(businessId, assetId, use);
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("No encontramos este negocio.", "We couldn't find this business.") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   const a = (await loadBrandAssets(businessId)).items.find((x) => x.id === assetId && x.source === "book");
   if (!a) return { ok: false, message: t("Esa imagen ya no está. Recarga la página.", "That image is gone. Reload the page.") };
 
@@ -311,7 +311,7 @@ export async function applyBookAsset(businessId: string, assetId: string, use: "
 export async function saveBrandBook(businessId: string, url: string, name: string): Promise<BookActionResult> {
   ensure.text(businessId, url, name);
   const { t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   if (!isOwnFile(url, businessId)) return { ok: false, message: t("El archivo no es de este negocio.", "That file doesn't belong to this business.") };
   await db.business.update({ where: { id: businessId }, data: { brandBookUrl: url } });
   await updateBrandAssets(businessId, (cur) => ({ ...cur, bookName: name.trim().slice(0, 120) || undefined }));

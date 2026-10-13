@@ -3,7 +3,7 @@
 // «Tus fotos»: la copia mejorada de cada foto (luz, color, nitidez, enderezada, datos privados tapados).
 // La original nunca se toca; el dueño elige cuál va en sus publicaciones.
 import { revalidatePath } from "next/cache";
-import { hasBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
@@ -14,8 +14,7 @@ import type { Need } from "@/lib/roles";
 // Primero el permiso del negocio (src/lib/auth.ts); después, que la foto sea de ese negocio.
 async function ownPhoto(businessId: string, itemId: string, need: Need) {
   if (!(await hasBusiness(businessId, need))) {
-    const { t } = await getT();
-    throw new Error(t("Negocio no encontrado.", "Business not found."));
+    throw new Error(await deniedText(businessId, need));
   }
   const item = await db.libraryItem.findFirst({ where: { id: itemId, businessId }, select: { id: true, kind: true } });
   if (!item) {
@@ -51,8 +50,8 @@ export type EnhanceAllStep = { ok: boolean; done: number; failed: number; left: 
  */
 export async function enhanceAllStep(businessId: string): Promise<EnhanceAllStep> {
   ensure.text(businessId);
-  const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, done: 0, failed: 0, left: 0, aiCalls: 0, message: t("Negocio no encontrado.", "Business not found.") };
+  const { lang } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, done: 0, failed: 0, left: 0, aiCalls: 0, message: await deniedText(businessId, "publish") };
   try {
     const r = await enhancePending(businessId, { lang, budgetMs: 40_000, limit: 4, askAi: true, preferOriginal: true });
     if (r.done || r.failed) revalidatePath(`/b/${businessId}/fotos`);

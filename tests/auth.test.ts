@@ -13,18 +13,24 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/i18n-server", () => ({ getT: async () => ({ lang: "en", t: (_es: string, en: string) => en }) }));
 vi.mock("@/lib/db", () => ({ db: { user: { findUnique: mocks.user }, business: { findUnique: mocks.business } } }));
 
-import { AccessError, businessAccess, hasBusiness, myBusinessesWhere, newBusinessOrganizationId, pageBusiness, requireBusiness } from "@/lib/auth";
+import { AccessError, businessAccess, deniedText, hasBusiness, myBusinessesWhere, newBusinessOrganizationId, pageBusiness, requireBusiness, requireOrgAdmin } from "@/lib/auth";
 import { createSession } from "@/lib/session";
 
 const org = (id: string) => ({ id, name: id, kind: "personal" });
-const person = (memberships: { organizationId: string; role: string }[], sessionVersion = 0) => ({
+const person = (memberships: { organizationId: string; role: string; allBusinesses?: boolean; businessIds?: string[] }[], sessionVersion = 0) => ({
   id: "u1",
   email: "ana@gmail.com",
   name: "Ana",
   sessionVersion,
-  memberships: memberships.map((m) => ({ ...m, organization: org(m.organizationId) })),
+  memberships: memberships.map((m) => ({
+    organizationId: m.organizationId,
+    role: m.role,
+    allBusinesses: m.allBusinesses ?? true,
+    businesses: (m.businessIds ?? []).map((businessId) => ({ businessId })),
+    organization: org(m.organizationId),
+  })),
 });
-const businesses: Record<string, string> = { bizA: "orgA", bizB: "orgB" };
+const businesses: Record<string, string> = { bizA: "orgA", bizA2: "orgA", bizB: "orgB" };
 
 beforeEach(async () => {
   vi.stubEnv("APP_PASSWORD", "pass");
@@ -82,7 +88,34 @@ describe("business access", () => {
 
   it("lists only the businesses of the person's organizations", async () => {
     mocks.user.mockResolvedValue(person([{ organizationId: "orgA", role: "viewer" }, { organizationId: "orgC", role: "admin" }]));
-    expect(await myBusinessesWhere()).toEqual({ organizationId: { in: ["orgA", "orgC"] } });
+    expect(await myBusinessesWhere()).toEqual({ OR: [{ organizationId: { in: ["orgA", "orgC"] } }] });
+  });
+
+  it("a member limited to some businesses only enters those", async () => {
+    mocks.user.mockResolvedValue(person([{ organizationId: "orgA", role: "publisher", allBusinesses: false, businessIds: ["bizA"] }]));
+    expect(await businessAccess("bizA", "publish")).toMatchObject({ ok: true, role: "publisher" });
+    expect(await businessAccess("bizA2", "view")).toEqual({ ok: false, status: 404 });
+    expect(await myBusinessesWhere()).toEqual({ OR: [{ organizationId: { in: [] } }, { id: "bizA", organizationId: "orgA" }] });
+  });
+
+  it("an Administrator always enters every business of the organization, whatever is stored", async () => {
+    mocks.user.mockResolvedValue(person([{ organizationId: "orgA", role: "admin", allBusinesses: false, businessIds: [] }]));
+    expect(await businessAccess("bizA2", "admin")).toMatchObject({ ok: true, role: "admin" });
+  });
+
+  it("explains a role that falls short instead of saying the business doesn't exist", async () => {
+    mocks.user.mockResolvedValue(person([{ organizationId: "orgA", role: "viewer" }]));
+    expect(await deniedText("bizA", "publish")).toContain("View only");
+    expect(await deniedText("bizA", "admin")).toBe("Only the Administrator can do this.");
+    expect(await deniedText("bizB", "view")).toBe("Business not found");
+    expect(await deniedText("bizA", "view")).toBe("");
+  });
+
+  it("only an Administrator of that organization manages its team", async () => {
+    mocks.user.mockResolvedValue(person([{ organizationId: "orgA", role: "admin" }, { organizationId: "orgB", role: "publisher" }]));
+    await expect(requireOrgAdmin("orgA")).resolves.toMatchObject({ id: "u1" });
+    await expect(requireOrgAdmin("orgB")).rejects.toMatchObject({ status: 403 });
+    await expect(requireOrgAdmin("orgZ")).rejects.toMatchObject({ status: 403 });
   });
 
   it("new businesses go to the first organization where the person is Administrator", async () => {

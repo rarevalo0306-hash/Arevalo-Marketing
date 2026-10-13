@@ -25,16 +25,19 @@ export const googleLoginEnabled = () => Boolean(process.env.GOOGLE_CLIENT_ID && 
 export const appBase = () => (process.env.PUBLIC_BASE_URL || "http://localhost:3000").replace(/\/+$/, "");
 export const googleLoginRedirectUri = () => `${appBase()}${GOOGLE_LOGIN_PATH}/callback`;
 
-/** Un intento nuevo: state contra quien falsifique la respuesta, nonce contra un id_token reutilizado. */
-export function newLoginFlow(): { state: string; nonce: string; cookie: string } {
+/** Un intento nuevo: state contra quien falsifique la respuesta, nonce contra un id_token reutilizado. Si viene de una
+ *  invitación, su enlace va también en la cookie (solo viaja a /api/auth/google) para aceptarla al volver. */
+export function newLoginFlow(invite?: string): { state: string; nonce: string; cookie: string } {
   const state = randomBytes(18).toString("base64url");
   const nonce = randomBytes(18).toString("base64url");
-  return { state, nonce, cookie: `${state}.${nonce}` };
+  return { state, nonce, cookie: invite && /^[A-Za-z0-9_-]{43}$/.test(invite) ? `${state}.${nonce}.${invite}` : `${state}.${nonce}` };
 }
 
-export function readLoginFlow(cookie: string | undefined): { state: string; nonce: string } | null {
-  const [state, nonce, extra] = (cookie ?? "").split(".");
-  return state && nonce && extra === undefined ? { state, nonce } : null;
+export function readLoginFlow(cookie: string | undefined): { state: string; nonce: string; invite?: string } | null {
+  const [state, nonce, invite, extra] = (cookie ?? "").split(".");
+  if (!state || !nonce || extra !== undefined) return null;
+  if (invite === undefined) return { state, nonce };
+  return /^[A-Za-z0-9_-]{43}$/.test(invite) ? { state, nonce, invite } : null;
 }
 
 export function googleLoginUrl(state: string, nonce: string): string {

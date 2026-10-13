@@ -10,7 +10,7 @@ const ROOT = join(__dirname, "..");
 const APP = join(ROOT, "src/app");
 
 /** Revisan el permiso de un negocio (o crean uno en la organización de la persona). */
-const BUSINESS_GUARDS = ["requireBusiness", "hasBusiness", "businessAccess", "pageBusiness", "newBusinessOrganizationId", "requireAgentOwner", "eraseBusinessData", "disconnectGoogleData"];
+const BUSINESS_GUARDS = ["requireBusiness", "hasBusiness", "businessAccess", "pageBusiness", "newBusinessOrganizationId", "requireOrgAdmin", "requireAgentOwner", "eraseBusinessData", "disconnectGoogleData"];
 /** Solo revisan que haya alguien (para lo que no es de un negocio). */
 const USER_GUARDS = ["requireUser", "myBusinessesWhere", "getSessionUser"];
 
@@ -20,11 +20,16 @@ const ACTIONS_WITHOUT_BUSINESS: Record<string, string> = {
   "actions-seo-dfs.ts#searchSeoLocations": "lista de zonas de Google (gratis y guardada), sin datos de ningún negocio; pide sesión",
   "actions-seo-dfs.ts#seoLocationChildren": "lista de zonas de Google (gratis y guardada), sin datos de ningún negocio; pide sesión",
   "actions-seo-dfs.ts#searchSeoPlaces": "búsqueda de lugares de Google (gratis y guardada), sin datos de ningún negocio; pide sesión",
+  "actions-team.ts#acceptInvitationAction": "acepta una invitación para el correo de la sesión (src/lib/team.ts revisa el correo); pide sesión",
+  "actions-team.ts#signOutForInvitation": "solo borra la cookie de la sesión y vuelve a la invitación; pide sesión",
 };
 
 /** Rutas públicas que revisan su propio permiso (src/lib/access.ts). */
 const PUBLIC_ROUTES: Record<string, string> = {
   "api/auth/login/route.ts": "entrar con correo y contraseña",
+  "api/auth/olvide/route.ts": "pedir un enlace para una contraseña nueva (límite de intentos, no dice si el correo existe)",
+  "api/auth/clave/route.ts": "guardar la contraseña nueva con el enlace de un solo uso",
+  "api/auth/invitacion/route.ts": "aceptar una invitación creando la cuenta, con el enlace de un solo uso",
   "api/auth/google/start/route.ts": "empieza «Entrar con Google»",
   "api/auth/google/callback/route.ts": "regreso de «Entrar con Google»",
   "api/cron/route.ts": "el publicador automático, con su propia clave",
@@ -35,7 +40,7 @@ const PUBLIC_ROUTES: Record<string, string> = {
 };
 
 /** Páginas que no son de un negocio pero sí necesitan sesión. */
-const PUBLIC_PAGES = new Set(["login/page.tsx", "subir/[token]/page.tsx"]);
+const PUBLIC_PAGES = new Set(["login/page.tsx", "subir/[token]/page.tsx", "olvide/page.tsx", "clave/[token]/page.tsx", "invitacion/[token]/page.tsx"]);
 
 function files(dir: string, keep: (path: string) => boolean): string[] {
   return readdirSync(dir).flatMap((name) => {

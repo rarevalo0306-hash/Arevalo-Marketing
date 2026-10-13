@@ -7,6 +7,7 @@
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { bi } from "@/lib/i18n";
+import { isPrivateIp } from "@/lib/net-guard";
 import { checkLlmsTxt, robotsAiCheck, type LlmsTxtState, type RobotsAi } from "@/lib/seo/audit-ai";
 import {
   CATEGORY_LABEL,
@@ -645,21 +646,11 @@ export function scoreFor(issues: Pick<Issue, "id" | "severity" | "count">[], pag
 
 // ---------- Red (con protección básica contra direcciones internas) ----------
 
-/** localhost, .local y direcciones IP privadas o de loopback. */
+/** localhost, .local y direcciones IP privadas, reservadas o de loopback (la misma lista que src/lib/net-guard.ts). */
 export function isPrivateHost(hostname: string): boolean {
   const h = hostname.replace(/^\[|\]$/g, "").toLowerCase().replace(/\.$/, "");
   if (!h || h === "localhost" || /\.(localhost|local|internal|lan|home\.arpa)$/.test(h)) return true;
-  const v = isIP(h);
-  if (v === 4) {
-    const [a, b] = h.split(".").map(Number);
-    return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224;
-  }
-  if (v === 6) {
-    if (h === "::" || h === "::1" || /^f[cd]/.test(h) || /^fe[89ab]/.test(h)) return true;
-    const mapped = h.match(/^::ffff:(.+)$/);
-    if (mapped) return isIP(mapped[1]) === 4 ? isPrivateHost(mapped[1]) : true;
-  }
-  return false;
+  return isIP(h) ? isPrivateIp(h) : false;
 }
 
 type Fetched = { res: Response; url: string; status: number };
@@ -671,10 +662,14 @@ function makeFetcher() {
     if (isIP(host.replace(/^\[|\]$/g, ""))) return Promise.resolve(false);
     let p = dns.get(host);
     if (!p) {
-      // Si el nombre apunta a una IP interna, no se visita. Si la consulta falla, fetch dará su propio error.
+      // Si el nombre apunta a una IP interna, no se visita. Si la consulta falla, tampoco (falla cerrado), pero no se
+      // guarda: el siguiente intento vuelve a preguntar, y el mensaje dice que no se encontró (no que es interna).
       p = lookup(host, { all: true })
         .then((list) => list.some((a) => isPrivateHost(a.address)))
-        .catch(() => false);
+        .catch(() => {
+          dns.delete(host);
+          throw Object.assign(bi(`no se encontró ${host}`, `couldn't find ${host}`), { lookup: true });
+        });
       dns.set(host, p);
     }
     return p;
@@ -840,7 +835,10 @@ export async function runAudit(website: string): Promise<AuditReport> {
   const left = (until: number) => until - Date.now();
   const net = makeFetcher();
   const start = startUrl(website);
-  await net.guard(start);
+  // Una dirección interna se rechaza ya; si el nombre no se encontró, lo vuelve a intentar la visita de la portada.
+  await net.guard(start).catch((e) => {
+    if (!(e as { lookup?: boolean }).lookup) throw e;
+  });
   /** Como net.get, pero si la conexión se corta (no por tiempo) se intenta hasta dos veces más. */
   const getRetry = async (url: string, method: "GET" | "HEAD", until: number): Promise<Fetched> => {
     for (const wait of [400, 1200]) {

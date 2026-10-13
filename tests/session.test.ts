@@ -1,3 +1,4 @@
+import { createHmac } from "crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isOwnerEmail, looksLikeEmail, normalizeEmail } from "@/lib/accounts";
 import { googleIdentity } from "@/lib/google-login";
@@ -41,15 +42,23 @@ describe("signed session cookie", () => {
   });
 
   it("never accepts the old shared-password cookie or junk", async () => {
-    for (const junk of [undefined, "", "a".repeat(64), "v2.a.b.c.d", "v1.ckuser123.0.1900000000.sig", "v2.ck.user.0.1900000000.sig", "v2..0.1900000000.sig"]) {
+    for (const junk of [undefined, "", "a".repeat(64), "v3.a.b.c.d", "v1.ckuser123.0.1900000000.sig", "v3.ck.user.0.1900000000.sig", "v3..0.1900000000.sig"]) {
       expect(await readSession(junk, NOW)).toBeNull();
     }
+  });
+
+  it("never accepts a stage-1 (v2) cookie, even one signed with the right secrets", async () => {
+    // Así, volver a la etapa 1 (que no conoce los permisos por empresa) no deja a nadie adentro con una sesión de la etapa 2, y al revés.
+    const payload = `v2.ckuser123.0.${NOW + 86400}`;
+    const sig = createHmac("sha256", "matya-session:v2:pass:secret").update(payload).digest("base64url");
+    expect(await readSession(`${payload}.${sig}`, NOW)).toBeNull();
+    expect((await createSession("ckuser123", 0, NOW)).startsWith("v3.")).toBe(true);
   });
 
   it("does not sign without both secrets", async () => {
     vi.stubEnv("APP_SECRET", "");
     await expect(createSession("ckuser123", 0, NOW)).rejects.toThrow();
-    expect(await readSession("v2.ckuser123.0.1900000000.sig", NOW)).toBeNull();
+    expect(await readSession("v3.ckuser123.0.1900000000.sig", NOW)).toBeNull();
   });
 
   it("refuses ids that could break the cookie format", async () => {

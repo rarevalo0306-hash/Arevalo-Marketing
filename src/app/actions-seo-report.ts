@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { hasBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensure } from "@/lib/ensure";
 import { asLang, errorText } from "@/lib/i18n";
@@ -22,7 +22,7 @@ const on = (v: string | null) => v === "1" || v === "on";
 export async function emailReport(businessId: string, _prev: ReportResult, f: FormData): Promise<ReportResult> {
   ensure.text(businessId);
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { id: true } });
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   try {
@@ -49,7 +49,7 @@ export async function saveMonthlyReport(businessId: string, _prev: ReportResult,
   ensure.text(businessId);
   const { lang, t } = await getT();
   // Manda datos del negocio solo, cada mes: lo decide un Administrador.
-  if (!(await hasBusiness(businessId, "admin"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  if (!(await hasBusiness(businessId, "admin"))) return { ok: false, message: await deniedText(businessId, "admin") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { seoAlertEmail: true } });
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   const monthly = f.get("monthly") === "on";

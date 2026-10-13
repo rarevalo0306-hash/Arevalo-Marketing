@@ -4,6 +4,7 @@
 // - Los verticales cortos se ven como Shorts (YouTube los reconoce solo; el título y la descripción llevan #Shorts).
 // - Público y «no es para niños» (selfDeclaredMadeForKids: false).
 // La conexión guarda clientId, clientSecret y refreshToken (con «Conectar con Google» o pegados a mano).
+import { fetchMedia } from "@/lib/media";
 import { fitTags } from "@/lib/video-plan";
 import { fetchJson, form, PublishError, required } from "./http";
 import type { Creds, PublishInput, Publisher } from "./types";
@@ -88,7 +89,8 @@ export const youtube: Publisher = {
   async publish(input, creds) {
     if (input.mediaType !== "video" || !input.mediaUrl) throw new PublishError("YouTube necesita un video.");
     const token = await accessToken(creds);
-    const file = await fetch(input.mediaUrl, { cache: "no-store" });
+    // Solo archivos propios o direcciones públicas de internet (también en cada redirección): nunca la red interna.
+    const file = await fetchMedia(input.mediaUrl, { cache: "no-store" });
     if (!file.ok) throw new PublishError(`No se pudo leer el video para subirlo (${file.status}).`);
     const data = new Uint8Array(await file.arrayBuffer());
     const type = (file.headers.get("content-type") || "video/mp4").split(";")[0].trim();

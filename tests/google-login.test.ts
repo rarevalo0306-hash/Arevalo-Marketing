@@ -51,6 +51,11 @@ describe("sign in with Google", () => {
     expect(readLoginFlow(undefined)).toBeNull();
     expect(readLoginFlow("only")).toBeNull();
     expect(readLoginFlow("a.b.c")).toBeNull();
+    const tok = "A".repeat(43);
+    const inv = newLoginFlow(tok);
+    expect(readLoginFlow(inv.cookie)).toEqual({ state: inv.state, nonce: inv.nonce, invite: tok });
+    expect(newLoginFlow("bad.token").cookie.split(".")).toHaveLength(2);
+    expect(readLoginFlow(`a.b.${tok}.d`)).toBeNull();
   });
 
   it("reads the id_token claims", () => {

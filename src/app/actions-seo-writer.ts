@@ -3,7 +3,7 @@
 import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { aiEnabled, improveSeoArticle, pickText, writeSeoArticle } from "@/lib/ai";
-import { hasBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
@@ -65,7 +65,7 @@ export async function writeArticle(businessId: string, _prev: WriterResult, f: F
   ensure.text(businessId);
   void _prev;
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   const keyword = cleanKeyword(String(f.get("keyword") ?? ""));
   const language: WriterLang = f.get("language") === "en" ? "en" : "es";
   if (keyword.length < 2) return { ok: false, message: t("Escribe la búsqueda para la que quieres salir en Google.", "Enter the search you want to show up for on Google.") };
@@ -127,7 +127,7 @@ export async function improveArticle(businessId: string, reportId: string, _prev
   void _prev;
   void _f;
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   if (!aiEnabled())
     return { ok: false, message: t("Falta la clave de la IA (GEMINI_API_KEY, ANTHROPIC_API_KEY u OPENAI_API_KEY) en Vercel.", "The AI key (GEMINI_API_KEY, ANTHROPIC_API_KEY or OPENAI_API_KEY) is missing in Vercel.") };
   const [b, row] = await Promise.all([

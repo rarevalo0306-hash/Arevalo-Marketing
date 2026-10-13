@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { appOrigin } from "@/lib/app-origin";
-import { hasBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness } from "@/lib/auth";
 import { businessTz, isValidTz, yesterday } from "@/lib/business-tz";
 import { dailyRecipients, saveReportSettings, sendDailyReport, sendRangeReport } from "@/lib/daily-report";
 import { db } from "@/lib/db";
@@ -21,7 +21,7 @@ export async function saveDailySettings(businessId: string, _prev: ReportActionR
   ensure.text(businessId);
   const { t } = await getT();
   // Decide a quién se mandan solos los datos del negocio: solo el Administrador.
-  if (!(await hasBusiness(businessId, "admin"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  if (!(await hasBusiness(businessId, "admin"))) return { ok: false, message: await deniedText(businessId, "admin") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { ownerEmail: true } });
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   const daily = f.get("daily") === "on";
@@ -67,7 +67,7 @@ export async function saveDailySettings(businessId: string, _prev: ReportActionR
 export async function sendYesterdayNow(businessId: string, _prev: ReportActionResult): Promise<ReportActionResult> {
   ensure.text(businessId);
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { timezone: true } });
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   const day = yesterday(businessTz(b));
@@ -92,7 +92,7 @@ export async function sendYesterdayNow(businessId: string, _prev: ReportActionRe
 export async function emailRangeReport(businessId: string, _prev: ReportActionResult, f: FormData): Promise<ReportActionResult> {
   ensure.text(businessId);
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { timezone: true } });
   if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
   const period = parseRange({ desde: get(f, "desde"), hasta: get(f, "hasta") }, businessTz(b));

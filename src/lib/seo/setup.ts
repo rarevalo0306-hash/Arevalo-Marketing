@@ -8,6 +8,7 @@ import { z } from "zod";
 import { aiEnabled, ask } from "@/lib/ai";
 import { db } from "@/lib/db";
 import { BiError, errorText } from "@/lib/i18n";
+import { fetchPublicHtml, startUrl } from "@/lib/seo/audit";
 import { asGscReport } from "@/lib/seo/gsc";
 import { readKeywordsReport } from "@/lib/seo/keywords";
 import { findPlace } from "@/lib/seo/locations";
@@ -236,13 +237,13 @@ Places: the Google areas where the business's customers are, as the owner descri
 Language: the language customers mostly use when typing in Google. If customers use two languages, pick the main one for the area.
 Keywords: 12 to 15 phrases real customers type when they need what this business sells, in the language(s) they actually use in that area (you may mix languages if the profile says customers speak both). Mostly local and commercial intent: service + city/county, problem-based searches, "near me" style. Only services the business really offers. No brand names (not this business's, not competitors'). Prefer phrases from the "already known" lists when they fit. No duplicates or near-duplicates.`;
 
-async function websiteText(website: string): Promise<string> {
+/** Texto de la página de inicio del sitio ("" si no se puede leer). Nunca visita direcciones internas o privadas. */
+export async function websiteText(website: string): Promise<string> {
   if (!/^https?:\/\//i.test(website) && !website.includes(".")) return "";
   try {
-    const url = /^https?:\/\//i.test(website) ? website : `https://${website}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000), headers: { "User-Agent": "Mozilla/5.0 (compatible; Matya/1.0)" } });
-    if (!res.ok) return "";
-    return htmlToText(await res.text(), 4000);
+    // Mismas protecciones que la auditoría: cada salto se revisa, 8 s como mucho.
+    const { html } = await fetchPublicHtml(startUrl(website).href, 8000);
+    return htmlToText(html, 4000);
   } catch {
     return "";
   }

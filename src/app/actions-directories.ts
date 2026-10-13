@@ -8,7 +8,7 @@ import { z } from "zod";
 import { refreshActionPlan } from "@/lib/action-plan";
 import { askGemini } from "@/lib/ai";
 import { logAiAction, recentAiActions } from "@/lib/ai-actions";
-import { hasBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness } from "@/lib/auth";
 import { brandSlogan, identityPrompt } from "@/lib/brand-identity";
 import { decryptJson } from "@/lib/crypto";
 import { db } from "@/lib/db";
@@ -67,7 +67,7 @@ export async function saveListing(businessId: string, _prev: DirResult, f: FormD
   const notes = str(f, "notes", 1000);
   const nap = str(f, "napOk", 5);
   const napOk = nap === "yes" ? true : nap === "no" ? false : null;
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   // Si pega el enlace de su ficha sin marcar el estado, ya está en ese directorio.
   const data = { status: status === "todo" && url ? "listed" : status, url, notes, napOk, checkedAt: new Date() };
   await db.directoryListing.upsert({ where: { businessId_directory: { businessId, directory } }, create: { businessId, directory, ...data }, update: data });
@@ -80,7 +80,7 @@ export async function setListingStatus(businessId: string, directory: string, st
   ensure.text(businessId, directory, status);
   const { t } = await getT();
   if (!ALL_DIRECTORY_IDS.includes(directory) || !isListingStatus(status)) return { ok: false, message: t("No se pudo guardar.", "Couldn't save.") };
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   await db.directoryListing.upsert({
     where: { businessId_directory: { businessId, directory } },
     create: { businessId, directory, status, checkedAt: new Date() },
@@ -109,7 +109,7 @@ export async function writeDescriptions(businessId: string, _prev: DescResult, f
   void _prev;
   void f;
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   const b = await db.business.findUnique({
     where: { id: businessId },
     select: { name: true, aiProfile: true, brandVoice: true, brandIdentity: true, study: true, seoKeywords: true },
@@ -193,7 +193,7 @@ const TemplateSchema = z.object({
 export async function writeReviewTemplate(businessId: string, reqLang: "es" | "en"): Promise<{ ok: boolean; message: string; template: ReqTemplate }> {
   ensure.text(businessId, reqLang);
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found"), template: defaultTemplate(reqLang, { name: "", slogan: "" }) };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish"), template: defaultTemplate(reqLang, { name: "", slogan: "" }) };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { name: true, aiProfile: true, brandVoice: true, brandIdentity: true, ownerName: true } });
   const base = defaultTemplate(reqLang, { name: b?.name ?? "", slogan: b ? brandSlogan(b, reqLang) : "", signer: b?.ownerName });
   if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found"), template: base };
@@ -234,7 +234,7 @@ export async function sendReviewRequests(businessId: string, _prev: DirResult, f
   void _prev;
   const { lang, t } = await getT();
   // Manda mensajes con la conexión del negocio; los contactos se buscan con este businessId.
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   const channel: ReqChannel = str(f, "channel", 10) === "sms" ? "sms" : "email";
   const reqLang = str(f, "lang", 5) === "en" ? "en" : "es";
   const subject = str(f, "subject", 120);

@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { isOwnerEmail, loginUser } from "@/lib/accounts";
+import { acceptInvitation } from "@/lib/team";
 import {
   appBase,
   GOOGLE_LOGIN_COOKIE,
@@ -22,7 +23,8 @@ export async function GET(req: Request) {
   const jar = await cookies();
   const flow = readLoginFlow(jar.get(GOOGLE_LOGIN_COOKIE)?.value);
   jar.delete({ name: GOOGLE_LOGIN_COOKIE, path: GOOGLE_LOGIN_PATH });
-  const fail = (why: string) => Response.redirect(`${appBase()}/login?google=${why}`, 302);
+  // Si venía de una invitación, vuelve a ella para probar con otra cuenta.
+  const fail = (why: string) => Response.redirect(`${appBase()}/login?google=${why}${flow?.invite ? `&next=${encodeURIComponent(`/invitacion/${flow.invite}`)}` : ""}`, 302);
 
   if (url.searchParams.get("error")) return fail("cancel");
   const code = url.searchParams.get("code") ?? "";
@@ -56,7 +58,10 @@ export async function GET(req: Request) {
 
   let user: Awaited<ReturnType<typeof loginUser>> = null;
   try {
-    user = await loginUser(who.email, { owner: isOwnerEmail(who.email), name: who.name });
+    // Viene de una invitación: se acepta si el correo de Google es el invitado; si no, entra como siempre. Un dueño
+    // nunca acepta invitaciones: entra como siempre (Administrador de la organización principal).
+    if (flow.invite && !isOwnerEmail(who.email)) user = await acceptInvitation(flow.invite, who.email, { name: who.name });
+    user ??= await loginUser(who.email, { owner: isOwnerEmail(who.email), name: who.name });
   } catch (e) {
     console.error("google login user unavailable:", e instanceof Error ? e.message : e);
     return fail("error");

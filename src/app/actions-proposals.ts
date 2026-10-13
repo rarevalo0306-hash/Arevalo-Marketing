@@ -7,7 +7,7 @@ import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { logAiAction } from "@/lib/ai-actions";
-import { hasBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness } from "@/lib/auth";
 import { readEngine, readRules, rulesJson } from "@/lib/campaign-shape";
 import { db } from "@/lib/db";
 import { errorText } from "@/lib/i18n";
@@ -36,7 +36,7 @@ async function run(f: FormData, done: Done, fn: (businessId: string, id: string)
   const businessId = str(f, "businessId");
   const id = str(f, "proposalId");
   // La propuesta se busca con ese businessId (acceptProposal/rejectProposal/undoProposal lo comparan).
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   // Cambiar los límites de una campaña 100% IA es del Administrador (igual que «Editar límites»), también por una propuesta.
   if (done !== "rechazada" && !(await hasBusiness(businessId, "admin"))) {
     const p = await db.aiProposal.findFirst({ where: { id, businessId }, select: { action: true } });
@@ -74,7 +74,7 @@ export async function proposeNowAction(_prev: ProposalActionState, f: FormData):
   const { lang, t } = await getT();
   const businessId = str(f, "businessId");
   // Gasta en la IA y puede aplicar propuestas de bajo riesgo (si el Administrador lo permitió en la campaña).
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   try {
     const r = await proposeNow(businessId);
     refresh(businessId);
@@ -99,7 +99,7 @@ export async function setAutoApplyAction(_prev: ProposalActionState, f: FormData
   const businessId = str(f, "businessId");
   const campaignId = str(f, "campaignId");
   const on = str(f, "on") === "1";
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   // Encenderlo deja que la IA actúe sola: solo un Administrador. Apagarlo puede quien publica.
   if (on && !(await hasBusiness(businessId, "admin")))
     return { ok: false, message: t("Solo un Administrador puede dejar que la IA aplique propuestas sola.", "Only an Administrator can let the AI apply proposals on its own.") };

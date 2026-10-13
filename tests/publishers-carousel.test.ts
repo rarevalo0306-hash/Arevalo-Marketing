@@ -5,6 +5,9 @@ import { x } from "@/lib/publish-x";
 import { google } from "@/lib/publishers/google";
 import { mediaOf, type PublishInput } from "@/lib/publishers/types";
 
+// DNS de mentira (sin red): las fotos se descargan solo de direcciones públicas (src/lib/net-guard.ts).
+vi.mock("dns/promises", () => ({ lookup: vi.fn(async () => [{ address: "93.184.215.14", family: 4 }]) }));
+
 type Call = { url: string; method: string; body: string; form: URLSearchParams | null; json: unknown };
 
 /** fetch falso: responde según la dirección (nunca se llama a las APIs de verdad). */
@@ -187,6 +190,15 @@ describe("X", () => {
     await x.publish({ ...base, media: PHOTOS }, creds);
     expect(calls.filter((c) => c.url === "https://api.x.com/2/media/upload")).toHaveLength(1);
   });
+  it("never downloads a photo that redirects to the internal network", async () => {
+    const calls = mockFetch((url) => {
+      if (url.startsWith("https://cdn.test/")) return new Response(null, { status: 302, headers: { Location: "http://169.254.169.254/latest/meta-data/" } });
+      return { data: { id: "T3" } };
+    });
+    await expect(x.publish({ ...base, media: PHOTOS }, creds)).rejects.toThrow();
+    expect(calls.some((c) => c.url.includes("169.254.169.254"))).toBe(false);
+    expect(calls.some((c) => c.url === "https://api.x.com/2/tweets")).toBe(false);
+  });
 });
 
 describe("LinkedIn y Google", () => {
@@ -210,6 +222,16 @@ describe("LinkedIn y Google", () => {
     expect(post.content.multiImage.images.map((i) => i.id)).toEqual(["urn:li:image:1", "urn:li:image:2", "urn:li:image:3"]);
     expect(post.content.multiImage.images[0].altText).toBe(PHOTOS[0].alt);
     expect(r.detail).toMatch(/3 fotos/);
+  });
+  it("LinkedIn never downloads a photo that redirects to the internal network", async () => {
+    const calls = mockFetch((url) => {
+      if (url.includes("/rest/images?action=initializeUpload")) return { value: { uploadUrl: "https://up.test/1", image: "urn:li:image:1" } };
+      if (url.startsWith("https://cdn.test/")) return new Response(null, { status: 302, headers: { Location: "http://10.0.0.5/secret" } });
+      return new Response("", { status: 201 });
+    });
+    await expect(linkedin.publish({ ...base, kind: "carousel", media: PHOTOS }, { accessToken: "tok", author: "urn:li:organization:5" })).rejects.toThrow();
+    expect(calls.some((c) => c.url.includes("10.0.0.5"))).toBe(false);
+    expect(calls.some((c) => c.url.endsWith("/rest/posts"))).toBe(false);
   });
   it("Google: solo la primera foto", async () => {
     const calls = mockFetch((url) => (url.includes("oauth2") ? { access_token: "g" } : { searchUrl: "https://g.co/x" }));

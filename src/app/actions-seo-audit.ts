@@ -2,7 +2,7 @@
 
 import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
-import { hasBusiness } from "@/lib/auth";
+import { deniedText, hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
@@ -18,7 +18,7 @@ export async function runSiteAudit(businessId: string, _prev: AuditResult, _f: F
   void _prev;
   void _f;
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
   const b = await db.business.findUnique({ where: { id: businessId }, select: { website: true } });
   if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
   if (!b.website.trim())
