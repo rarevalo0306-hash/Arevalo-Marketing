@@ -96,9 +96,8 @@ export function scrubSetupGsc(data: unknown): Json | null {
 }
 
 /**
- * Reseñas ("reviews", datos públicos de DataForSEO): quita la marca «publicada desde Matya» (postedAt). Si la respuesta
- * guardada es la que escribió Matya y Google todavía no la mostraba (ownerTimestamp igual a postedAt), también se
- * borra su texto. Las respuestas que DataForSEO trajo de Google se quedan.
+ * Reseñas ("reviews", datos públicos de DataForSEO): solo quita la marca «publicada desde Matya» (postedAt). El texto de
+ * la respuesta lo escribió el dueño (no viene de Google) y sigue publicado en Google, así que se queda.
  */
 export function scrubPostedReplies(data: unknown): Json | null {
   if (!isObj(data) || !Array.isArray(data.reviews)) return null;
@@ -108,11 +107,19 @@ export function scrubPostedReplies(data: unknown): Json | null {
     changed = true;
     const rest: Json = { ...r };
     delete rest.postedAt;
-    const posted = msOf(typeof r.postedAt === "string" ? r.postedAt : undefined);
-    const answered = msOf(typeof r.ownerTimestamp === "string" ? r.ownerTimestamp : undefined);
-    return posted !== null && posted === answered ? { ...rest, ownerAnswer: "", ownerTimestamp: "" } : rest;
+    return rest;
   });
   return changed ? { ...data, reviews } : null;
+}
+
+/**
+ * Revocar en Google quita el permiso de TODAS las conexiones hechas con esa cuenta de Google (es un solo permiso por cuenta,
+ * con include_granted_scopes), también las de otros negocios, y el cron las tomaría por «el dueño quitó el acceso» y las
+ * borraría. Solo se revoca cuando se sabe de qué cuenta es la conexión y ninguna otra usa, o podría usar (cuenta
+ * desconocida, conexiones de antes), la misma. Si no, Matya solo borra su copia y sus datos.
+ */
+export function canRevokeAlone(user: string | undefined | null, others: (string | undefined | null)[]): boolean {
+  return !!user && others.every((o) => !!o && o !== user);
 }
 
 // ---------- Cuánto se guardan los reportes de Google ----------

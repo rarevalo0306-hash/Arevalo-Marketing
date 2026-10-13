@@ -27,12 +27,12 @@ afterEach(() => {
 });
 
 describe("permisos que pide cada propósito", () => {
-  it("el enlace a Google pide lo mismo de siempre (YouTube: subir y ver, en ese orden)", () => {
+  it("el enlace a Google pide «openid» (para saber qué cuenta dio el permiso) y los de cada propósito (YouTube: subir y ver)", () => {
     const scope = (purpose: "profile" | "gsc" | "ga4" | "youtube") => new URL(googleAuthUrl("biz1", purpose)).searchParams.get("scope");
-    expect(scope("youtube")).toBe(`${YOUTUBE_SCOPE} ${YOUTUBE_READ_SCOPE}`);
-    expect(scope("profile")).toBe(GOOGLE_SCOPE);
-    expect(scope("gsc")).toBe(GSC_SCOPE);
-    expect(scope("ga4")).toBe(GA4_SCOPE);
+    expect(scope("youtube")).toBe(`openid ${YOUTUBE_SCOPE} ${YOUTUBE_READ_SCOPE}`);
+    expect(scope("profile")).toBe(`openid ${GOOGLE_SCOPE}`);
+    expect(scope("gsc")).toBe(`openid ${GSC_SCOPE}`);
+    expect(scope("ga4")).toBe(`openid ${GA4_SCOPE}`);
     expect(PURPOSE_SCOPES.youtube).toEqual([YOUTUBE_SCOPE, YOUTUBE_READ_SCOPE]);
   });
 });
@@ -96,12 +96,22 @@ describe("googleExchange devuelve los permisos que se dieron", () => {
   };
   it("lee el campo «scope» (separado por espacios)", async () => {
     const fetchMock = token({ access_token: "AT", refresh_token: "RT", scope: `${YOUTUBE_SCOPE}  ${GA4_SCOPE}` });
-    await expect(googleExchange("code1")).resolves.toEqual({ refreshToken: "RT", accessToken: "AT", scopes: [YOUTUBE_SCOPE, GA4_SCOPE] });
+    await expect(googleExchange("code1")).resolves.toEqual({ refreshToken: "RT", accessToken: "AT", scopes: [YOUTUBE_SCOPE, GA4_SCOPE], googleUser: null });
     expect(String((fetchMock.mock.calls[0] as unknown[])[0])).toBe("https://oauth2.googleapis.com/token");
   });
   it("sin «scope»: null (todo lo pedido)", async () => {
     token({ access_token: "AT", refresh_token: "RT" });
-    await expect(googleExchange("code1")).resolves.toEqual({ refreshToken: "RT", accessToken: "AT", scopes: null });
+    await expect(googleExchange("code1")).resolves.toEqual({ refreshToken: "RT", accessToken: "AT", scopes: null, googleUser: null });
+  });
+  it("lee la cuenta de Google del id_token («sub»), solo si es para esta app", async () => {
+    const jwt = (p: unknown) => `h.${Buffer.from(JSON.stringify(p)).toString("base64url")}.sig`;
+    vi.stubEnv("GOOGLE_CLIENT_ID", "cid.apps.googleusercontent.com");
+    token({ access_token: "AT", refresh_token: "RT", id_token: jwt({ sub: "1234567890", aud: "cid.apps.googleusercontent.com", iss: "https://accounts.google.com" }) });
+    expect((await googleExchange("code1")).googleUser).toBe("1234567890");
+    token({ access_token: "AT", refresh_token: "RT", id_token: jwt({ sub: "1234567890", aud: "otra-app" }) });
+    expect((await googleExchange("code1")).googleUser).toBeNull();
+    token({ access_token: "AT", refresh_token: "RT", id_token: "basura" });
+    expect((await googleExchange("code1")).googleUser).toBeNull();
   });
   it("sin refresh token sigue fallando", async () => {
     token({ access_token: "AT", scope: YOUTUBE_SCOPE });

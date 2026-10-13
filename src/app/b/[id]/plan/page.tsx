@@ -16,7 +16,9 @@ import { readYoutubeApproval, youtubeKeywords, youtubeTags, youtubeTitleFor } fr
 // La IA puede tardar en escribir una semana completa.
 export const maxDuration = 300;
 
-export default async function PlanPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PlanPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ draft?: string; msg?: string }> }) {
+  // Por qué no se aprobó un borrador (vuelve de approvePlanDraft).
+  const notice = await searchParams;
   const { id } = await params;
   await pageBusiness(id);
   const { lang, t } = await getT();
@@ -78,7 +80,12 @@ export default async function PlanPage({ params }: { params: Promise<{ id: strin
             const agent = p.id.startsWith("agent-");
             const rendering = video && !p.mediaUrl;
             return (
-              <article key={p.id} className="card">
+              <article key={p.id} className="card" id={`draft-${p.id}`}>
+                {notice?.draft === p.id && notice.msg && (
+                  <p className="note error" role="alert">
+                    {notice.msg.slice(0, 300)}
+                  </p>
+                )}
                 <form action={approvePlanDraft.bind(null, id, p.id)} className="stack" style={{ gap: 12 }}>
                   <div className="row between">
                     <div className="row">

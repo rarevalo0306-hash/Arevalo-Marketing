@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canRevokeAlone,
   DAY_MS,
   GOOGLE_CHECK_EVERY_MS,
   GOOGLE_REVOKED_GRACE_MS,
@@ -183,7 +184,7 @@ describe("scrubPostedReplies", () => {
     createdAt: "2026-10-06T00:00:00.000Z",
     stats: { count: 3, answered: 2 },
     reviews: [
-      // Publicada desde Matya y Google todavía no la mostraba: se borra el texto también.
+      // Publicada desde Matya y Google todavía no la mostraba: se quita la marca y el texto del dueño se queda.
       { id: "a", name: "Ana", rating: 5, text: "Excelente", timestamp: "2026-10-04T00:00:00.000Z", ownerAnswer: "¡Gracias Ana!", ownerTimestamp: at, postedAt: at },
       // DataForSEO ya trajo la respuesta pública de Google: solo se quita la marca.
       { id: "b", name: "Beto", rating: 4, text: "Bien", timestamp: "2026-10-01T00:00:00.000Z", ownerAnswer: "Gracias Beto", ownerTimestamp: "2026-10-03T08:00:00.000Z", postedAt: "2026-10-02T09:00:00.000Z" },
@@ -191,22 +192,16 @@ describe("scrubPostedReplies", () => {
     ],
   });
 
-  it("quita postedAt, borra la respuesta solo si la escribió Matya y Google no la mostraba", () => {
+  it("quita solo la marca postedAt: el texto de la respuesta es del dueño y sigue publicado en Google", () => {
     const raw = reviews();
     const out = scrubPostedReplies(raw)!;
     const [a, b, c] = out.reviews as Record<string, unknown>[];
-    expect(a).toMatchObject({ id: "a", ownerAnswer: "", ownerTimestamp: "", text: "Excelente" });
+    expect(a).toMatchObject({ id: "a", ownerAnswer: raw.reviews[0].ownerAnswer, ownerTimestamp: raw.reviews[0].ownerTimestamp, text: "Excelente" });
     expect(a).not.toHaveProperty("postedAt");
     expect(b).toMatchObject({ id: "b", ownerAnswer: "Gracias Beto", ownerTimestamp: "2026-10-03T08:00:00.000Z" });
     expect(b).not.toHaveProperty("postedAt");
     expect(c).toBe(raw.reviews[2]);
     expect(out.total).toBe(3);
-  });
-
-  it("compara las fechas como instantes (no como texto)", () => {
-    const raw = reviews();
-    raw.reviews[0].ownerTimestamp = "2026-10-05T10:00:00Z";
-    expect((scrubPostedReplies(raw)!.reviews as Record<string, unknown>[])[0].ownerAnswer).toBe("");
   });
 
   it("devuelve null si no hay respuestas publicadas desde Matya", () => {
@@ -221,6 +216,18 @@ describe("scrubPostedReplies", () => {
     expect(r.reviews.map((x) => x.id)).toEqual(["a", "b", "c"]);
     expect(r.reviews.every((x) => x.postedAt === undefined)).toBe(true);
     expect(r.reviews[2].draft).toBe("Lo sentimos");
-    expect(r.stats).toMatchObject({ count: 3, answered: 1, unanswered: 2 });
+    expect(r.stats).toMatchObject({ count: 3, answered: 2, unanswered: 1 });
+  });
+});
+
+describe("canRevokeAlone", () => {
+  it("revoca solo si se sabe la cuenta y ninguna otra conexión usa, o podría usar, la misma", () => {
+    expect(canRevokeAlone("g1", [])).toBe(true);
+    expect(canRevokeAlone("g1", ["g2", "g3"])).toBe(true);
+    expect(canRevokeAlone("g1", ["g2", "g1"])).toBe(false);
+    expect(canRevokeAlone("g1", ["g2", undefined])).toBe(false);
+    expect(canRevokeAlone("g1", [""])).toBe(false);
+    expect(canRevokeAlone(undefined, [])).toBe(false);
+    expect(canRevokeAlone(null, ["g2"])).toBe(false);
   });
 });

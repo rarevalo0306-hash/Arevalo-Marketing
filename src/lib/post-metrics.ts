@@ -173,9 +173,15 @@ export async function dueJobs(now: Date, limit = MAX_PER_RUN): Promise<MetricJob
     orderBy: { sentAt: "desc" },
     take: 1000,
   });
+  // YouTube sin conexión en ese negocio: no se lee ni se guarda nada (sus datos se borraron al desconectar), así que esas
+  // publicaciones se quedan fuera aquí y no ocupan los lugares de la vuelta.
+  const ytBiz = targets.some((t) => t.channel === "youtube")
+    ? new Set((await db.connection.findMany({ where: { channel: "youtube" }, select: { businessId: true } })).map((c) => c.businessId))
+    : new Set<string>();
   const jobs: MetricJob[] = [];
   for (const t of targets) {
     if (!t.sentAt) continue;
+    if (t.channel === "youtube" && !ytBiz.has(t.post.businessId)) continue;
     const checkpoint = dueCheckpoint(t.sentAt, t.metrics[0]?.fetchedAt ?? null, now);
     if (checkpoint === null) continue;
     let externalId = t.externalId;

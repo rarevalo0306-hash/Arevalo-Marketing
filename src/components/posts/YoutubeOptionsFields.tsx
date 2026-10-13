@@ -57,7 +57,7 @@ export function YoutubeOptionsFields({
 
       <div className={s.field}>
         <label htmlFor={id("title")} className={s.lbl}>{t("Título", "Title")}</label>
-        <input id={id("title")} name="yt_title" className="field" maxLength={YT_TITLE_MAX} required {...text("title", title)} />
+        <input id={id("title")} name="yt_title" className="field" maxLength={YT_TITLE_MAX} required pattern=".*[^\s<>].*" {...text("title", title)} />
       </div>
       {description !== undefined && (
         <div className={s.field}>

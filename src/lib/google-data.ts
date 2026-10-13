@@ -54,35 +54,38 @@ export async function checkGoogleConnections(now: Date, opts: { budgetMs: number
   const started = Date.now();
   const max = opts.max ?? CHECK_MAX;
   const iso = now.toISOString();
-  // Solo canales de Google (la tabla también guarda report_settings, meta_ads…). Las más viejas primero.
+  // Solo canales de Google (la tabla también guarda report_settings, meta_ads…). Son pocas filas: se leen todas.
   const rows: Row[] = await db.connection.findMany({
     where: { channel: { in: [...GOOGLE_CHANNELS] } },
     select: { id: true, businessId: true, channel: true, secret: true, updatedAt: true },
-    orderBy: { updatedAt: "asc" },
-    take: 1000,
   });
-  let work = 0;
+  const items: { c: Row; s: Secret }[] = [];
   for (const c of rows) {
-    if (work >= max || Date.now() - started >= opts.budgetMs) break;
-    let s: Secret;
     try {
-      s = decryptJson<Secret>(c.secret);
+      const s = decryptJson<Secret>(c.secret);
+      if (s.refreshToken) items.push({ c, s });
     } catch {
       sum.errors++;
-      continue;
     }
-    if (!s.refreshToken) continue;
-    if (shouldPurgeRevoked(s, now) && purgeOn()) {
-      work++;
-      try {
-        if (await purgeGoogleChannelData(c.businessId, c.channel as GoogleChannel, { id: c.id, updatedAt: c.updatedAt })) sum.purged++;
-      } catch (e) {
-        sum.errors++;
-        console.error("[google-datos] no se pudo borrar", c.channel, c.businessId, errText(e));
-      }
-      continue;
+  }
+  // Primero lo que ya toca borrar; después lo que lleva más tiempo sin revisar (lo nunca revisado va primero). Así, aunque
+  // el cron corra una sola vez al día y haya más conexiones que el máximo por vuelta, todas se van revisando por turno.
+  const purge = purgeOn() ? items.filter((x) => shouldPurgeRevoked(x.s, now)) : [];
+  const lastCheck = (x: { s: Secret }) => Date.parse(x.s.checkedAt ?? "") || 0;
+  const due = items.filter((x) => !purge.includes(x) && googleCheckDue(x.s, now)).sort((a, b) => lastCheck(a) - lastCheck(b));
+  let work = 0;
+  for (const x of purge) {
+    if (work >= max || Date.now() - started >= opts.budgetMs) return sum;
+    work++;
+    try {
+      if (await purgeGoogleChannelData(x.c.businessId, x.c.channel as GoogleChannel, { id: x.c.id, updatedAt: x.c.updatedAt })) sum.purged++;
+    } catch (e) {
+      sum.errors++;
+      console.error("[google-datos] no se pudo borrar", x.c.channel, x.c.businessId, errText(e));
     }
-    if (!googleCheckDue(s, now)) continue;
+  }
+  for (const { c, s } of due) {
+    if (work >= max || Date.now() - started >= opts.budgetMs) break;
     work++;
     sum.checked++;
     try {

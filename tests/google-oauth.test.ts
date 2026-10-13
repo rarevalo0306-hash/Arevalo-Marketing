@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { googleAuthUrl, googleStatePurpose } from "@/lib/google-oauth";
-import { readState } from "@/lib/meta-oauth";
+import { metaStatePurpose, readState } from "@/lib/meta-oauth";
 
 describe("googleAuthUrl", () => {
   beforeEach(() => {
@@ -13,11 +13,13 @@ describe("googleAuthUrl", () => {
   it("pide permiso permanente para el Perfil de Negocio y vuelve a la app", () => {
     const u = new URL(googleAuthUrl("biz123"));
     expect(u.origin + u.pathname).toBe("https://accounts.google.com/o/oauth2/v2/auth");
-    expect(u.searchParams.get("scope")).toBe("https://www.googleapis.com/auth/business.manage");
+    expect(u.searchParams.get("scope")).toBe("openid https://www.googleapis.com/auth/business.manage");
     expect(u.searchParams.get("access_type")).toBe("offline");
     expect(u.searchParams.get("prompt")).toBe("consent");
     expect(u.searchParams.get("redirect_uri")).toBe("https://app.example.com/api/google/callback");
-    expect(readState(u.searchParams.get("state")!)).toBe("biz123");
+    expect(readState(u.searchParams.get("state")!)).toBe("google:profile:biz123");
+    // El regreso de Facebook no acepta un state de Google (aunque la firma sea la misma).
+    expect(metaStatePurpose(readState(u.searchParams.get("state")!)!)).toEqual({ purpose: "page", businessId: "" });
   });
 });
 
@@ -31,7 +33,7 @@ describe("googleAuthUrl para Search Console", () => {
 
   it("pide solo lectura de Search Console, usa el mismo regreso y marca el propósito en el state", () => {
     const u = new URL(googleAuthUrl("biz123", "gsc"));
-    expect(u.searchParams.get("scope")).toBe("https://www.googleapis.com/auth/webmasters.readonly");
+    expect(u.searchParams.get("scope")).toBe("openid https://www.googleapis.com/auth/webmasters.readonly");
     expect(u.searchParams.get("redirect_uri")).toBe("https://app.example.com/api/google/callback");
     expect(u.searchParams.get("access_type")).toBe("offline");
     const state = readState(u.searchParams.get("state")!)!;

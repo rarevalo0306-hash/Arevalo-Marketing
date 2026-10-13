@@ -255,6 +255,9 @@ async function pollVideos(c: Campaign, pending: PendingVideo[], now: Date): Prom
         keep.push(v);
         continue;
       }
+      // Sin video ya no es una publicación de video: queda como borrador normal (sin «El video se está creando»), que se
+      // puede aprobar para sus otras redes. YouTube no sale sin video (needsVideo).
+      await db.post.updateMany({ where: { id: post.id, status: "draft", mediaUrl: "" }, data: { kind: "post", mediaType: "none" } });
       await logAiAction({
         businessId: c.businessId,
         campaignId: c.id,

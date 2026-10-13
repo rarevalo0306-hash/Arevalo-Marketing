@@ -82,6 +82,26 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("checkGoogleConnections", () => {
+  it("con un solo cron al día y más conexiones que el máximo, todas se revisan por turno (las menos recientes primero)", async () => {
+    mockGoogle();
+    // 60 conexiones con el mismo updatedAt; la 55 perdió el permiso. Cada «día» se guarda lo que escribió la revisión.
+    m.conns = Array.from({ length: 60 }, (_, i) => conn(`c${i + 1}`, "gsc", { refreshToken: i + 1 === 55 ? "revoked" : "ok" }));
+    const apply = () => {
+      for (const w of writes()) {
+        const row = m.conns.find((c) => (c as { id: string }).id === w.where.id) as { secret: string };
+        row.secret = JSON.stringify(w.secret);
+      }
+      m.connUpdate.mockClear();
+    };
+    const day1 = await checkGoogleConnections(now, { budgetMs: 30_000, max: 50 });
+    expect(day1.checked).toBe(50);
+    apply();
+    const day2 = await checkGoogleConnections(new Date(now.getTime() + DAY_MS), { budgetMs: 30_000, max: 50 });
+    // Primero las 10 que faltaban (nunca revisadas), entre ellas la 55.
+    expect(day2.revoked).toBe(1);
+    expect(writes().slice(0, 10).map((w) => w.where.id).sort()).toEqual(Array.from({ length: 10 }, (_, i) => `c${i + 51}`).sort());
+  });
+
   it("solo mira canales de Google y no hace nada sin el cliente de Google de la app", async () => {
     const calls = mockGoogle();
     m.conns = [conn("a", "gsc", { refreshToken: "ok" })];

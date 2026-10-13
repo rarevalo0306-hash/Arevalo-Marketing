@@ -53,6 +53,7 @@ export function CampaignTimeline({
   lang,
   businessName,
   keywords,
+  notice,
 }: {
   posts: TimelinePost[];
   upcoming: Date[];
@@ -64,6 +65,8 @@ export function CampaignTimeline({
   /** Para sugerir el título y las etiquetas de YouTube de los videos por aprobar. */
   businessName: string;
   keywords: string[];
+  /** Por qué no se aprobó un borrador (vuelve de approveCampaignDraft). */
+  notice?: { postId: string; msg: string };
 }) {
   const t = translator(lang);
   type Entry = { at: Date; post?: TimelinePost };
@@ -83,7 +86,7 @@ export function CampaignTimeline({
           <div className={s.dayHead}>{new Intl.DateTimeFormat(lang === "en" ? "en-US" : "es", { weekday: "long", timeZone: "UTC" }).format(new Date(`${day}T12:00:00Z`))} · {fmtDate(list[0].at, lang)}</div>
           {list.map((e, i) =>
             e.post ? (
-              <PostItem key={e.post.id} p={e.post} businessId={businessId} campaignId={campaignId} cancelled={cancelled} lang={lang} businessName={businessName} keywords={keywords} />
+              <PostItem key={e.post.id} p={e.post} businessId={businessId} campaignId={campaignId} cancelled={cancelled} lang={lang} businessName={businessName} keywords={keywords} error={notice?.postId === e.post.id ? notice.msg : undefined} />
             ) : (
               <div key={`u${i}`} className={`${s.item} ${s.ghost}`}>
                 <div className={s.itemMeta}>
@@ -107,6 +110,7 @@ function PostItem({
   lang,
   businessName,
   keywords,
+  error,
 }: {
   p: TimelinePost;
   businessId: string;
@@ -115,6 +119,7 @@ function PostItem({
   lang: UiLang;
   businessName: string;
   keywords: string[];
+  error?: string;
 }) {
   const t = translator(lang);
   const variants = (p.variants && typeof p.variants === "object" ? p.variants : {}) as Record<string, unknown>;
@@ -129,7 +134,7 @@ function PostItem({
   const agent = p.id.startsWith("agent-");
   const ytText = textOf("youtube") || p.text;
   return (
-    <article className={s.item}>
+    <article className={s.item} id={`draft-${p.id}`}>
       {p.mediaUrl && p.mediaType === "photo" ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img className={s.thumb} src={p.mediaUrl} alt={p.altText || t("Foto de la publicación", "Post photo")} loading="lazy" />
@@ -137,6 +142,11 @@ function PostItem({
         <div className={s.thumbEmpty}>{p.kind === "video" ? (p.mediaUrl ? "▶" : t("Video…", "Video…")) : t("Solo texto", "Text only")}</div>
       )}
       <div className={s.itemBody}>
+        {error && (
+          <p className="note error" role="alert">
+            {error}
+          </p>
+        )}
         <div className={s.itemMeta}>
           <span className={`pill ${PILL[p.status] ?? "neutral"}`}>{statusText(p.status, cancelled, lang)}</span>
           <span>{fmtTime(p.scheduledAt, lang)}</span>

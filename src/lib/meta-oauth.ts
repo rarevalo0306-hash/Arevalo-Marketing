@@ -72,6 +72,8 @@ export function authUrl(businessId: string, purpose: MetaPurpose = "page"): stri
 
 /** Separa el propósito del negocio en lo que devuelve readState (sin prefijo = página de Facebook, como siempre). */
 export function metaStatePurpose(value: string): { purpose: MetaPurpose; businessId: string } {
+  // Un state de Google (misma firma) nunca sirve aquí.
+  if (value.startsWith("google:")) return { purpose: "page", businessId: "" };
   if (value.startsWith("ads:")) return { purpose: "ads", businessId: value.slice(4) };
   return { purpose: "page", businessId: value };
 }

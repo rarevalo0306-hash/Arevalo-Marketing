@@ -45,7 +45,7 @@ vi.mock("@/lib/video-jobs", () => ({
 }));
 vi.mock("dns/promises", () => ({ lookup: vi.fn(async () => [{ address: "93.184.215.14", family: 4 }]) }));
 
-import { approveDraft, createPost } from "@/app/actions";
+import { approveDraft, approveDraftChecked, approvePlanDraft, createPost } from "@/app/actions";
 import { approveCampaignDraft } from "@/app/actions-campaign";
 import { publishVideo } from "@/app/actions-video";
 import { logAiAction } from "@/lib/ai-actions";
@@ -169,12 +169,38 @@ describe("Aprobar un borrador (Plan y Campañas)", () => {
     expect(db.$transaction).not.toHaveBeenCalled();
   });
 
-  it("Campañas solo anota «aprobado» si de verdad se aprobó", async () => {
+  it("Campañas solo anota «aprobado» si de verdad se aprobó; si no, vuelve a la campaña con el motivo junto al borrador", async () => {
     mem.draft = draft();
-    await approveCampaignDraft("biz1", "c1", "d1", form({}));
+    await expect(approveCampaignDraft("biz1", "c1", "d1", form({}))).rejects.toThrow(
+      /^redirect:\/b\/biz1\/campanas\/c1\?draft=d1&msg=Elige\+qui.*#draft-d1$/,
+    );
     expect(logAiAction).not.toHaveBeenCalled();
     await approveCampaignDraft("biz1", "c1", "d1", form(ytFields));
     expect(logAiAction).toHaveBeenCalledWith(expect.objectContaining({ kind: "post.approved", actor: "owner", postId: "d1" }));
+  });
+});
+
+describe("Aprobar: el motivo cuando no se aprueba, y la hora", () => {
+  const draft = (extra: Record<string, unknown> = {}) => ({
+    id: "d1", businessId: "biz1", status: "draft", kind: "video", mediaType: "video", mediaUrl: VIDEO, text: "Texto", subject: "", campaignId: "c1",
+    variants: { youtube: "Desc", facebook: "FB" }, scheduledAt: new Date(Date.now() - 3600_000), targets: [{ channel: "youtube" }, { channel: "facebook" }], ...extra,
+  });
+  beforeEach(() => vi.clearAllMocks());
+  it("el Plan vuelve con el motivo junto a ese borrador (por ejemplo, un título solo con espacios)", async () => {
+    mem.draft = draft();
+    await expect(approvePlanDraft("biz1", "d1", form({ yt_title: "   ", yt_privacy: "unlisted", yt_kids: "no" }))).rejects.toThrow(
+      /^redirect:\/b\/biz1\/plan\?draft=d1&msg=Escribe\+el\+t%C3%ADtulo.*#draft-d1$/,
+    );
+    expect(db.post.update).not.toHaveBeenCalled();
+  });
+  it("si su hora ya pasó, pasa a la próxima hora en el mismo guardado de la aprobación (nunca antes)", async () => {
+    mem.draft = draft({ kind: "post", mediaType: "none", mediaUrl: "", targets: [{ channel: "facebook" }] });
+    const r = await approveDraftChecked("biz1", "d1", form({ v_facebook: "FB" }), true);
+    expect(r).toEqual({ ok: true });
+    const data = (vi.mocked(db.post.update).mock.calls[0] as unknown as [{ data: { status: string; scheduledAt?: Date } }])[0].data;
+    expect(data.status).toBe("scheduled");
+    expect(data.scheduledAt!.getTime()).toBeGreaterThan(Date.now() + 50 * 60_000);
+    expect(await approveDraftChecked("biz1", "agent-1", form({}))).toMatchObject({ ok: false, error: { en: "This draft belongs to MATYA: approve it in MATYA." } });
   });
 });
 

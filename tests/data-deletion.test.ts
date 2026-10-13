@@ -33,23 +33,57 @@ describe('data erasure sequencing', () => {
   expect(mocks.businessDelete).not.toHaveBeenCalled();
  });
  it('revokes duplicate tokens once and removes rows only after both storage providers succeed', async () => {
-  mocks.findMany.mockResolvedValue([{ secret: 'a' }, { secret: 'b' }]);mocks.decrypt.mockReturnValue({ refreshToken: 'same' });
+  mocks.findMany.mockResolvedValueOnce([{ secret: 'a' }, { secret: 'b' }]).mockResolvedValueOnce([]);mocks.decrypt.mockReturnValue({ refreshToken: 'same', googleUser: 'g1' });
   await eraseBusinessData('biz123');
+  expect(mocks.findMany).toHaveBeenLastCalledWith({ where: { channel: { in: ['google', 'gsc', 'ga4', 'youtube'] }, businessId: { not: 'biz123' } }, select: { secret: true } });
   expect(mocks.revoke).toHaveBeenCalledTimes(1);expect(mocks.media).toHaveBeenCalledWith('biz123');expect(mocks.r2).toHaveBeenCalledWith('biz123');
   expect(mocks.businessDelete.mock.invocationCallOrder[0]).toBeGreaterThan(mocks.r2.mock.invocationCallOrder[0]);
   expect(mocks.businessDelete).toHaveBeenCalledWith({ where: { id: 'biz123' } });
  });
  it('does not discard credentials or reports when revocation fails', async () => {
-  mocks.findUnique.mockResolvedValue({ secret: 'a' });mocks.decrypt.mockReturnValue({ refreshToken: 'refresh' });mocks.revoke.mockRejectedValue(new Error('Google unavailable'));
+  mocks.findUnique.mockResolvedValue({ id: 'c1', secret: 'a' });mocks.decrypt.mockReturnValue({ refreshToken: 'refresh', googleUser: 'g1' });mocks.revoke.mockRejectedValue(new Error('Google unavailable'));
   await expect(disconnectGoogleData('biz123','ga4')).rejects.toThrow();expect(mocks.transaction).not.toHaveBeenCalled();expect(mocks.connectionDelete).not.toHaveBeenCalled();
  });
  it('revokes first, then deletes the connection last and scoped to the selected business and integration', async () => {
-  mocks.findUnique.mockResolvedValue({ secret: 'a' });mocks.decrypt.mockReturnValue({ refreshToken: 'refresh' });
+  mocks.findUnique.mockResolvedValue({ id: 'c1', secret: 'a' });mocks.decrypt.mockReturnValue({ refreshToken: 'refresh', googleUser: 'g1' });
   await disconnectGoogleData('biz123','gsc');
+  expect(mocks.findMany).toHaveBeenCalledWith({ where: { channel: { in: ['google', 'gsc', 'ga4', 'youtube'] }, NOT: { id: 'c1' } }, select: { secret: true } });
   expect(mocks.revoke.mock.invocationCallOrder[0]).toBeLessThan(mocks.transaction.mock.invocationCallOrder[0]);
   const list = ops();
   expect(list.at(-1)).toEqual({ op: 'connection.deleteMany', args: { where: { businessId:'biz123',channel:'gsc' } } });
   expect(list.every(o => JSON.stringify(o.args).includes('"businessId":"biz123"') || o.op === 'seoReport.updateMany')).toBe(true);
+ });
+});
+
+describe('revoking at Google never cuts other connections of the same Google account', () => {
+ const secrets: Record<string, unknown> = { mine: { refreshToken: 'r-mine', googleUser: 'g1' }, same: { refreshToken: 'r-same', googleUser: 'g1' }, other: { refreshToken: 'r-o', googleUser: 'g2' }, old: { refreshToken: 'r-old' } };
+ beforeEach(() => { mocks.decrypt.mockImplementation((s: string) => secrets[s]); mocks.findUnique.mockResolvedValue({ id: 'c1', secret: 'mine' }); });
+ it('revokes when every other connection belongs to another known account', async () => {
+  mocks.findMany.mockResolvedValue([{ secret: 'other' }]);
+  await disconnectGoogleData('bizA', 'gsc');
+  expect(mocks.revoke).toHaveBeenCalledWith('r-mine');
+ });
+ it('only deletes locally when another connection (any business) uses the same account', async () => {
+  mocks.findMany.mockResolvedValue([{ secret: 'other' }, { secret: 'same' }]);
+  await disconnectGoogleData('bizA', 'gsc');
+  expect(mocks.revoke).not.toHaveBeenCalled();
+  expect(ops().at(-1)).toEqual({ op: 'connection.deleteMany', args: { where: { businessId: 'bizA', channel: 'gsc' } } });
+ });
+ it('only deletes locally when another connection may share it (account unknown, older connection) or its own account is unknown', async () => {
+  mocks.findMany.mockResolvedValue([{ secret: 'old' }]);
+  await disconnectGoogleData('bizA', 'gsc');
+  mocks.findUnique.mockResolvedValue({ id: 'c2', secret: 'old' });
+  mocks.findMany.mockResolvedValue([]);
+  await disconnectGoogleData('bizA', 'ga4');
+  expect(mocks.revoke).not.toHaveBeenCalled();
+  expect(mocks.transaction).toHaveBeenCalledTimes(2);
+ });
+ it('erasing a business keeps the Google access another business still uses', async () => {
+  mocks.findMany.mockResolvedValueOnce([{ secret: 'mine' }, { secret: 'other' }]).mockResolvedValueOnce([{ secret: 'same' }]);
+  await eraseBusinessData('bizA');
+  expect(mocks.revoke).toHaveBeenCalledTimes(1);
+  expect(mocks.revoke).toHaveBeenCalledWith('r-o');
+  expect(mocks.businessDelete).toHaveBeenCalledWith({ where: { id: 'bizA' } });
  });
 });
 
@@ -65,9 +99,11 @@ const setupRow = { id: 'st1', kind: 'setup', data: { version: 1, hash: 'h', reje
 describe('purgeGoogleChannelData', () => {
  it('Search Console: deletes its reports, derived tasks and proposals, and scrubs onpage and setup rows', async () => {
   mocks.reportFind.mockResolvedValue([onpageRow, setupRow, { id: 'old', kind: 'onpage', data: { pages: 'x' } }]);
+  mocks.reportFindFirst.mockResolvedValue({ data: { source: 'gsc', issues: [] } });
   expect(await purgeGoogleChannelData('biz1', 'gsc')).toBe(true);
-  expect(mocks.reportFind).toHaveBeenCalledWith({ where: { businessId: 'biz1', kind: { in: ['onpage', 'setup'] } }, select: { id: true, kind: true, data: true } });
-  expect(mocks.reportDelete).toHaveBeenCalledWith({ where: { businessId: 'biz1', kind: { in: ['gsc', 'decay', 'cannibal'] } } });
+  expect(mocks.reportFind).toHaveBeenCalledWith({ where: { businessId: 'biz1', kind: { in: ['onpage', 'setup'] } }, orderBy: { createdAt: 'desc' }, select: { id: true, kind: true, data: true } });
+  expect(mocks.reportDelete).toHaveBeenCalledWith({ where: { businessId: 'biz1', kind: { in: ['gsc', 'decay'] } } });
+  expect(mocks.reportDelete).toHaveBeenCalledWith({ where: { businessId: 'biz1', kind: 'cannibal', data: { path: ['source'], equals: 'gsc' } } });
   expect(mocks.taskDelete).toHaveBeenCalledWith({ where: { businessId: 'biz1', OR: [
     { source: 'gsc', key: { not: 'setup:gsc' } }, { key: { startsWith: 'decay:' } }, { key: { startsWith: 'cannibal:' } }, { key: { startsWith: 'onpage:empresa.com/techos:' } },
   ] } });
@@ -82,8 +118,20 @@ describe('purgeGoogleChannelData', () => {
   expect(setup.where).toEqual({ id: 'st1' });
   expect(setup.data.data.proposal.keywords.map(k => k.keyword)).toEqual(['pintura']);
   expect(setup.data.data.rejected).toEqual(['x']);
-  expect(ops().map(o => o.op)).toEqual(['seoReport.updateMany', 'seoReport.updateMany', 'seoReport.deleteMany', 'actionTask.deleteMany', 'aiProposal.deleteMany', 'connection.deleteMany']);
+  expect(ops().map(o => o.op)).toEqual(['seoReport.updateMany', 'seoReport.updateMany', 'seoReport.deleteMany', 'seoReport.deleteMany', 'actionTask.deleteMany', 'aiProposal.deleteMany', 'connection.deleteMany']);
   expect(mocks.metricDelete).not.toHaveBeenCalled();
+ });
+
+ it('Search Console: keeps plan tasks (and the owner\'s done/dismissed choices) that did not come from Search Console', async () => {
+  // Newest on-page review: the owner's own keyword; an older one still had a Search Console keyword (it is scrubbed).
+  const newest = { id: 'op2', kind: 'onpage', data: { pages: [{ ...onpageRow.data.pages[0], keyword: 'techos', keywordSource: 'owner' }], overrides: {} } };
+  mocks.reportFind.mockResolvedValue([newest, onpageRow]);
+  mocks.reportFindFirst.mockResolvedValue({ data: { source: 'rank', issues: [] } });
+  await purgeGoogleChannelData('biz1', 'gsc');
+  expect(mocks.reportFindFirst).toHaveBeenCalledWith({ where: { businessId: 'biz1', kind: 'cannibal' }, orderBy: { createdAt: 'desc' }, select: { data: true } });
+  expect(mocks.taskDelete).toHaveBeenCalledWith({ where: { businessId: 'biz1', OR: [{ source: 'gsc', key: { not: 'setup:gsc' } }, { key: { startsWith: 'decay:' } }] } });
+  expect(mocks.reportUpdate).toHaveBeenCalledTimes(1);
+  expect(mocks.reportUpdate.mock.calls[0][0]).toMatchObject({ where: { id: 'op1' } });
  });
 
  it('Search Console: the scrubbed setup row is still read by the setup reader', async () => {
@@ -125,7 +173,8 @@ describe('purgeGoogleChannelData', () => {
   expect(mocks.reportFind).toHaveBeenCalledWith({ where: { businessId: 'biz1', kind: 'reviews' }, select: { id: true, data: true } });
   expect(mocks.reportDelete).not.toHaveBeenCalled();
   expect(mocks.reportUpdate).toHaveBeenCalledTimes(1);
-  expect(mocks.reportUpdate).toHaveBeenCalledWith({ where: { id: 'r1' }, data: { data: { reviews: [{ id: 'a', ownerAnswer: '', ownerTimestamp: '' }] } } });
+  // The reply text is the owner's and is still live on Google: only Matya's "posted from Matya" marker goes.
+  expect(mocks.reportUpdate).toHaveBeenCalledWith({ where: { id: 'r1' }, data: { data: { reviews: [{ id: 'a', ownerAnswer: 'Gracias', ownerTimestamp: at }] } } });
   expect(ops().map(o => o.op)).toEqual(['seoReport.updateMany', 'connection.deleteMany']);
  });
 

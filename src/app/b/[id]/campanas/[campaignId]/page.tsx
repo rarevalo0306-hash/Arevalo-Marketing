@@ -21,10 +21,10 @@ import { youtubeKeywords } from "@/lib/youtube-options";
 // Aprobar publica a su hora; «Guardar y aprobar» puede tardar un poco.
 export const maxDuration = 60;
 
-export default async function CampaignPage({ params, searchParams }: { params: Promise<{ id: string; campaignId: string }>; searchParams: Promise<{ nueva?: string }> }) {
+export default async function CampaignPage({ params, searchParams }: { params: Promise<{ id: string; campaignId: string }>; searchParams: Promise<{ nueva?: string; draft?: string; msg?: string }> }) {
   const { id, campaignId } = await params;
   await pageBusiness(id);
-  const { nueva } = await searchParams;
+  const { nueva, draft, msg } = await searchParams;
   const { lang, t } = await getT();
   const [b, c] = await Promise.all([
     db.business.findUniqueOrThrow({ where: { id }, include: { connections: { select: { channel: true } } } }),
@@ -153,7 +153,7 @@ export default async function CampaignPage({ params, searchParams }: { params: P
                 {t(`${drafts} borrador(es) esperan tu aprobación. Nada sale sin que lo apruebes.`, `${drafts} draft(s) are waiting for your approval. Nothing goes out until you approve it.`)}
               </p>
             )}
-            <CampaignTimeline posts={posts} upcoming={upcoming} businessId={id} campaignId={c.id} cancelled={closed} lang={lang} businessName={b.name} keywords={youtubeKeywords(b.study)} />
+            <CampaignTimeline posts={posts} upcoming={upcoming} businessId={id} campaignId={c.id} cancelled={closed} lang={lang} businessName={b.name} keywords={youtubeKeywords(b.study)} notice={draft && msg ? { postId: draft, msg: msg.slice(0, 300) } : undefined} />
           </div>
           <div className="stack" style={{ gap: 16 }}>
             <div className="card" style={{ gap: 8 }}>

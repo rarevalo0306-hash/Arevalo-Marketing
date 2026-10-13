@@ -38,28 +38,49 @@ export function googleAuthUrl(businessId: string, purpose: GooglePurpose = "prof
     client_id: process.env.GOOGLE_CLIENT_ID!,
     redirect_uri: googleRedirectUri(),
     response_type: "code",
-    scope: (PURPOSE_SCOPES[purpose] ?? [GOOGLE_SCOPE]).join(" "),
+    // «openid» (básico, no se puede desmarcar) trae el id_token con la cuenta de Google: ver googleUserFrom.
+    scope: ["openid", ...(PURPOSE_SCOPES[purpose] ?? [GOOGLE_SCOPE])].join(" "),
     // offline + consent: Google entrega un refresh token que no vence mientras no se revoque.
     access_type: "offline",
     prompt: "consent",
     include_granted_scopes: "true",
     // Search Console y Analytics usan el mismo regreso (/api/google/callback); el propósito va dentro del state firmado.
-    state: makeState(purpose === "profile" ? businessId : `${purpose}:${businessId}`),
+    // El prefijo «google:» separa este state del de Facebook (misma firma): uno no sirve en el regreso del otro.
+    state: makeState(`google:${purpose}:${businessId}`),
   });
   return `https://accounts.google.com/o/oauth2/v2/auth?${q}`;
 }
 
-/** Separa el propósito del negocio en lo que devuelve readState (sin prefijo = Perfil de Negocio). */
+const PURPOSES: GooglePurpose[] = ["profile", "gsc", "ga4", "youtube"];
+
+/** Separa el propósito del negocio en lo que devuelve readState. Sin el prefijo «google:» (por ejemplo, un state de
+ *  Facebook) no hay negocio y el regreso lo rechaza. */
 export function googleStatePurpose(value: string): { purpose: GooglePurpose; businessId: string } {
-  if (value.startsWith("gsc:")) return { purpose: "gsc", businessId: value.slice(4) };
-  if (value.startsWith("ga4:")) return { purpose: "ga4", businessId: value.slice(4) };
-  if (value.startsWith("youtube:")) return { purpose: "youtube", businessId: value.slice(8) };
-  return { purpose: "profile", businessId: value };
+  const [prefix, purpose, ...rest] = value.split(":");
+  const businessId = rest.join(":");
+  if (prefix !== "google" || !PURPOSES.includes(purpose as GooglePurpose) || !businessId) return { purpose: "profile", businessId: "" };
+  return { purpose: purpose as GooglePurpose, businessId };
 }
 
-/** Cambia el código por un refresh token (para guardar), un access token (para usar ya) y los permisos que se dieron. */
-export async function googleExchange(code: string): Promise<{ refreshToken: string; accessToken: string; scopes: string[] | null }> {
-  const t = await fetchJson<{ access_token: string; refresh_token?: string; scope?: string }>("https://oauth2.googleapis.com/token", {
+/**
+ * La cuenta de Google que dio el permiso («sub» del id_token, que llega por pedir «openid»). Sirve para saber qué conexiones
+ * comparten el mismo permiso de Google (ver canRevokeAlone). El id_token llega directo de Google por TLS en el cambio del
+ * código, así que basta revisar que sea para esta app. Sin id_token (o de otra app): null.
+ */
+export function googleUserFrom(idToken: string | undefined): string | null {
+  if (!idToken) return null;
+  try {
+    const p = JSON.parse(Buffer.from(idToken.split(".")[1] ?? "", "base64url").toString("utf8")) as { sub?: unknown; aud?: unknown };
+    return typeof p.sub === "string" && p.sub && p.aud === process.env.GOOGLE_CLIENT_ID ? p.sub : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Cambia el código por un refresh token (para guardar), un access token (para usar ya), los permisos que se dieron y la
+ *  cuenta de Google que los dio. */
+export async function googleExchange(code: string): Promise<{ refreshToken: string; accessToken: string; scopes: string[] | null; googleUser: string | null }> {
+  const t = await fetchJson<{ access_token: string; refresh_token?: string; scope?: string; id_token?: string }>("https://oauth2.googleapis.com/token", {
     method: "POST",
     body: form({
       code,
@@ -72,7 +93,7 @@ export async function googleExchange(code: string): Promise<{ refreshToken: stri
   if (!t.refresh_token) throw bi("Google no entregó el permiso permanente. Vuelve a intentarlo.", "Google didn't grant permanent access. Please try again.");
   // Lo que la persona dejó marcado en la pantalla de Google (puede desmarcar casillas). Sin «scope» = todo lo pedido.
   const scopes = typeof t.scope === "string" ? t.scope.split(/\s+/).filter(Boolean) : null;
-  return { refreshToken: t.refresh_token, accessToken: t.access_token, scopes };
+  return { refreshToken: t.refresh_token, accessToken: t.access_token, scopes, googleUser: googleUserFrom(t.id_token) };
 }
 
 /** Los permisos de este propósito que la persona desmarcó (vacío = están todos). Con include_granted_scopes pueden venir
@@ -143,10 +164,10 @@ export async function listLocations(accessToken: string): Promise<GoogleLocation
   return out;
 }
 
-/** Guarda la ubicación elegida y el refresh token. Sin copia del cliente: se renueva con el cliente de la app del servidor
- *  (googleClient en publishers/google.ts). */
-export async function saveGoogleLocation(businessId: string, refreshToken: string, loc: GoogleLocation) {
-  const secret = encryptJson({ accountId: loc.accountId, locationId: loc.locationId, refreshToken });
+/** Guarda la ubicación elegida y el refresh token (y la cuenta de Google que dio el permiso, si se sabe). Sin copia del
+ *  cliente: se renueva con el cliente de la app del servidor (googleClient en publishers/google.ts). */
+export async function saveGoogleLocation(businessId: string, refreshToken: string, loc: GoogleLocation, googleUser?: string | null) {
+  const secret = encryptJson({ accountId: loc.accountId, locationId: loc.locationId, refreshToken, ...(googleUser ? { googleUser } : {}) });
   await db.connection.upsert({
     where: { businessId_channel: { businessId, channel: "google" } },
     create: { businessId, channel: "google", secret, label: loc.title },
@@ -167,10 +188,10 @@ export async function youtubeChannel(accessToken: string): Promise<YoutubeChanne
   return ch ? { id: ch.id, title: ch.snippet?.title?.trim() || ch.id } : null;
 }
 
-/** Guarda la conexión de YouTube (refresh token y canal). Sin copia del cliente: se renueva con el cliente de la app del
- *  servidor (googleClient en publishers/google.ts). */
-export async function saveYoutubeChannel(businessId: string, refreshToken: string, channel: YoutubeChannel) {
-  const secret = encryptJson({ refreshToken, channelId: channel.id });
+/** Guarda la conexión de YouTube (refresh token, canal y la cuenta de Google, si se sabe). Sin copia del cliente: se renueva
+ *  con el cliente de la app del servidor (googleClient en publishers/google.ts). */
+export async function saveYoutubeChannel(businessId: string, refreshToken: string, channel: YoutubeChannel, googleUser?: string | null) {
+  const secret = encryptJson({ refreshToken, channelId: channel.id, ...(googleUser ? { googleUser } : {}) });
   await db.connection.upsert({
     where: { businessId_channel: { businessId, channel: "youtube" } },
     create: { businessId, channel: "youtube", secret, label: channel.title },

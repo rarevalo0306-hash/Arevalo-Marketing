@@ -366,7 +366,7 @@ describe("conectar Google Analytics", () => {
   });
   it("pide solo lectura de Analytics, usa el mismo regreso y marca el propósito en el state", () => {
     const u = new URL(googleAuthUrl("biz123", "ga4"));
-    expect(u.searchParams.get("scope")).toBe(GA4_SCOPE);
+    expect(u.searchParams.get("scope")).toBe(`openid ${GA4_SCOPE}`);
     expect(GA4_SCOPE).toBe("https://www.googleapis.com/auth/analytics.readonly");
     expect(u.searchParams.get("redirect_uri")).toBe("https://app.example.com/api/google/callback");
     expect(u.searchParams.get("access_type")).toBe("offline");
@@ -375,6 +375,10 @@ describe("conectar Google Analytics", () => {
   it("Search Console y el Perfil de Negocio siguen igual", () => {
     expect(googleStatePurpose(readState(new URL(googleAuthUrl("b1", "gsc")).searchParams.get("state")!)!)).toEqual({ purpose: "gsc", businessId: "b1" });
     expect(googleStatePurpose(readState(new URL(googleAuthUrl("b1")).searchParams.get("state")!)!)).toEqual({ purpose: "profile", businessId: "b1" });
-    expect(googleStatePurpose("ga4:")).toEqual({ purpose: "ga4", businessId: "" });
+    expect(googleStatePurpose("google:ga4:")).toEqual({ purpose: "profile", businessId: "" });
+    // Un state sin el prefijo de Google (por ejemplo, el de Facebook, con la misma firma) no sirve en el regreso de Google.
+    expect(googleStatePurpose("b1")).toEqual({ purpose: "profile", businessId: "" });
+    expect(googleStatePurpose("ga4:b1")).toEqual({ purpose: "profile", businessId: "" });
+    expect(googleStatePurpose("google:otra:b1")).toEqual({ purpose: "profile", businessId: "" });
   });
 });

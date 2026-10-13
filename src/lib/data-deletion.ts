@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { requireBusiness } from '@/lib/auth';
 import { decryptJson } from '@/lib/crypto';
 import { db } from '@/lib/db';
-import { scrubOnPageGsc, scrubPostedReplies, scrubSetupGsc } from '@/lib/google-data-shape';
+import { canRevokeAlone, scrubOnPageGsc, scrubPostedReplies, scrubSetupGsc } from '@/lib/google-data-shape';
 import { deleteBusinessMedia } from '@/lib/media';
 import { deleteBusinessR2Files, r2Enabled } from '@/lib/r2';
 import { revokeGoogleToken } from '@/lib/google-oauth';
@@ -12,6 +12,20 @@ import { urlKey } from '@/lib/seo/onpage';
 export const GOOGLE_CHANNELS = ['google', 'gsc', 'ga4', 'youtube'] as const;
 export type GoogleChannel = (typeof GOOGLE_CHANNELS)[number];
 
+type GoogleSecret = { refreshToken?: string; googleUser?: string };
+
+/** The Google account (googleUser) of every other Google connection, in any business; undefined when unknown. */
+async function googleUsersWhere(where: Prisma.ConnectionWhereInput): Promise<(string | undefined)[]> {
+  const rows = await db.connection.findMany({ where: { channel: { in: [...GOOGLE_CHANNELS] }, ...where }, select: { secret: true } });
+  return rows.map(r => {
+    try {
+      return decryptJson<GoogleSecret>(r.secret).googleUser;
+    } catch {
+      return undefined;
+    }
+  });
+}
+
 // Disconnecting Google needs "connect" (Administrator or "Can connect" for that business); erasing a business stays
 // Administrator-only (src/lib/auth.ts).
 export async function disconnectGoogleData(businessId: string, channel: string) {
@@ -19,10 +33,12 @@ export async function disconnectGoogleData(businessId: string, channel: string) 
   if (!GOOGLE_CHANNELS.some(c => c === channel)) throw new Error('Unsupported Google connection');
   const connection = await db.connection.findUnique({ where: { businessId_channel: { businessId, channel } } });
   if (connection) {
-    const secret = decryptJson<{ refreshToken?: string }>(connection.secret);
-    if (secret.refreshToken) await revokeGoogleToken(secret.refreshToken);
+    const secret = decryptJson<GoogleSecret>(connection.secret);
+    // Revoking at Google would also cut every other connection made with the same Google account (any business), and the
+    // cron would then delete their data. Only revoke when no other connection uses, or may use, that account.
+    if (secret.refreshToken && canRevokeAlone(secret.googleUser, await googleUsersWhere({ NOT: { id: connection.id } })))
+      await revokeGoogleToken(secret.refreshToken);
   }
-  // Revocation may invalidate other connections under the same Google grant.
   // Data cleanup is scoped to this selected connection, never another business.
   await purgeGoogleChannelData(businessId, channel as GoogleChannel);
 }
@@ -38,29 +54,36 @@ export async function purgeGoogleChannelData(businessId: string, channel: Google
   const ops: Prisma.PrismaPromise<unknown>[] = [];
   const rewrite = (id: string, data: Record<string, unknown>) => ops.push(db.seoReport.updateMany({ where: { id }, data: { data: data as Prisma.InputJsonValue } }));
   if (channel === 'gsc') {
-    // Search Console keywords inside the on-page review and the SEO setup proposal.
-    const rows = await db.seoReport.findMany({ where: { businessId, kind: { in: ['onpage', 'setup'] } }, select: { id: true, kind: true, data: true } });
+    // Search Console keywords inside the on-page review and the SEO setup proposal (every row is scrubbed).
+    const rows = await db.seoReport.findMany({ where: { businessId, kind: { in: ['onpage', 'setup'] } }, orderBy: { createdAt: 'desc' }, select: { id: true, kind: true, data: true } });
+    // Plan tasks come only from the newest on-page review (onpageTasks): only its Search Console pages lose their tasks,
+    // so the owner's done/dismissed choices on pages whose keyword came from elsewhere are kept.
     const urls = new Set<string>();
+    let newestOnpage = true;
     for (const r of rows) {
       if (r.kind === 'onpage') {
         const s = scrubOnPageGsc(r.data);
-        if (!s) continue;
-        s.urls.forEach(u => urls.add(urlKey(u)));
-        rewrite(r.id, s.data);
+        if (s && newestOnpage) s.urls.forEach(u => urls.add(urlKey(u)));
+        newestOnpage = false;
+        if (s) rewrite(r.id, s.data);
       } else {
         const s = scrubSetupGsc(r.data);
         if (s) rewrite(r.id, s);
       }
     }
-    // "decay" and "cannibal" are built from Search Console (cannibal is rebuilt for free from rank and audit data).
-    ops.push(db.seoReport.deleteMany({ where: { businessId, kind: { in: ['gsc', 'decay', 'cannibal'] } } }));
+    // "decay" is all Search Console. A competing-pages review counts only when it was built from Search Console (others
+    // come from rank or audit data); its plan tasks come from the newest review, so they go only if that one used it.
+    const newestCannibal = await db.seoReport.findFirst({ where: { businessId, kind: 'cannibal' }, orderBy: { createdAt: 'desc' }, select: { data: true } });
+    const cannibalFromGsc = !!newestCannibal && (newestCannibal.data as { source?: unknown } | null)?.source === 'gsc';
+    ops.push(db.seoReport.deleteMany({ where: { businessId, kind: { in: ['gsc', 'decay'] } } }));
+    ops.push(db.seoReport.deleteMany({ where: { businessId, kind: 'cannibal', data: { path: ['source'], equals: 'gsc' } } }));
     ops.push(db.actionTask.deleteMany({
       where: {
         businessId,
         OR: [
           { source: 'gsc', key: { not: 'setup:gsc' } },
           { key: { startsWith: 'decay:' } },
-          { key: { startsWith: 'cannibal:' } },
+          ...(cannibalFromGsc ? [{ key: { startsWith: 'cannibal:' } }] : []),
           ...[...urls].map(u => ({ key: { startsWith: `onpage:${u}:` } })),
         ],
       },
@@ -91,10 +114,12 @@ export async function eraseBusinessData(businessId: string) {
   await requireBusiness(businessId, 'admin');
   if (!r2Enabled() && await db.libraryItem.count({ where: { businessId } }) > 0) throw new Error('Configure R2 before deleting a business with library files; cleanup cannot be verified.');
   const connections = await db.connection.findMany({ where: { businessId, channel: { in: [...GOOGLE_CHANNELS] } }, select: { secret: true } });
+  // Same rule as disconnecting: never revoke a Google account that another business's connection uses (or may use).
+  const others = connections.length ? await googleUsersWhere({ businessId: { not: businessId } }) : [];
   const tokens = new Set<string>();
   for (const c of connections) {
-    const secret = decryptJson<{ refreshToken?: string }>(c.secret);
-    if (secret.refreshToken) tokens.add(secret.refreshToken);
+    const secret = decryptJson<GoogleSecret>(c.secret);
+    if (secret.refreshToken && canRevokeAlone(secret.googleUser, others)) tokens.add(secret.refreshToken);
   }
   for (const token of tokens) await revokeGoogleToken(token);
   await deleteBusinessMedia(businessId);

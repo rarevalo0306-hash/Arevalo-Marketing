@@ -103,6 +103,9 @@ export function readYoutubeApproval(variants: unknown, mediaUrl: string): Youtub
 
 export type YoutubeApprovalResult = { ok: true; value: YoutubeApproval } | { ok: false; error: Bi };
 
+/** La categoría de YouTube de cada subida: 22 = «Gente y blogs» (la que muestra la pantalla de aprobación). */
+export const YT_CATEGORY_ID = "22";
+
 /**
  * Lo que la persona eligió en los campos de YouTube (YoutubeOptionsFields): yt_title, v_youtube (descripción),
  * yt_tags, yt_privacy y yt_kids. La privacidad y «para niños» son obligatorias: nunca se ponen por defecto.

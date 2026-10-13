@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { disconnectSearchConsole, refreshSearchConsole } from "@/app/actions-seo-gsc";
 import { capClass, Fold } from "@/components/seo/Fold";
+import { Ga4ConfirmButton } from "@/components/seo/Ga4PanelClient";
 import { SearchConsoleButton, SearchConsoleNotice } from "@/components/seo/SearchConsoleButton";
 import { ShowMore } from "@/components/seo/ShowMore";
 import { hasBusiness } from "@/lib/auth";
@@ -419,9 +420,12 @@ export async function SearchConsolePanel({ businessId }: { businessId: string })
       )}
 
       {canConnect && (
-        <form action={disconnectSearchConsole.bind(null, id)}>
-          <button type="submit" className="btn danger">{t("Desconectar Search Console", "Disconnect Search Console")}</button>
-        </form>
+        // Borra mucho y no se puede deshacer: se confirma, igual que en Conexiones.
+        <Ga4ConfirmButton
+          action={disconnectSearchConsole.bind(null, id)}
+          label={t("Desconectar Search Console", "Disconnect Search Console")}
+          question={t("¿Desconectar Search Console? Se borran sus reportes, «Páginas para actualizar», «Páginas que compiten entre sí», las palabras clave que sugirió y las tareas del plan que salieron de ellos.", "Disconnect Search Console? Its reports, “Pages to refresh”, “Pages competing with each other”, the keywords it suggested and the plan tasks built from them are deleted.")}
+        />
       )}
     </section>
   );

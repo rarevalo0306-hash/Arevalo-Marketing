@@ -116,8 +116,8 @@ export default async function ConexionesPage({
         <a href={legalUrl("borrado-de-datos", lang)}>{t("Borrado de datos", "Data deletion")}</a>.
         {t(" La IA puede recibir fotos y resúmenes de resultados para las funciones que solicites.", " AI may receive photos and result summaries for requested features.")}
         {t(
-          " Desconectar un servicio de Google revoca su permiso y borra sus datos y lo que Matya creó con ellos. Los datos de YouTube se actualizan o se borran en un plazo de 30 días. Si quitas el acceso de Matya desde tu cuenta de Google, Matya borra los datos de esa conexión en un plazo de 7 días. Puedes quitar el acceso de Matya cuando quieras en ",
-          " Disconnecting a Google service revokes its permission and deletes its data and what Matya built from it. Data from YouTube is refreshed or deleted within 30 days. If you remove Matya's access from your Google account, Matya deletes that connection's data within 7 days. You can remove Matya's access at any time at ",
+          " Desconectar un servicio de Google borra sus datos y lo que Matya creó con ellos, y quita su permiso en Google si ninguna otra conexión usa esa cuenta. Los datos de YouTube se actualizan o se borran en un plazo de 30 días. Si quitas el acceso de Matya desde tu cuenta de Google, Matya borra los datos de esa conexión en un plazo de 7 días. Puedes quitar el acceso de Matya cuando quieras en ",
+          " Disconnecting a Google service deletes its data and what Matya built from it, and removes its access in Google unless another connection uses that account. Data from YouTube is refreshed or deleted within 30 days. If you remove Matya's access from your Google account, Matya deletes that connection's data within 7 days. You can remove Matya's access at any time at ",
         )}
         <a href={GOOGLE_PERMISSIONS_URL}>myaccount.google.com/permissions</a>.
       </p>

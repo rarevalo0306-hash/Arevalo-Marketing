@@ -190,11 +190,11 @@ export async function chooseGoogleLocation(businessId: string, locationId: strin
   const { t } = await getT();
   const jar = await cookies();
   const raw = jar.get(GOOGLE_COOKIE)?.value;
-  const saved = raw ? decryptJson<{ refreshToken: string; businessId: string; locations: GoogleLocation[] }>(raw) : null;
+  const saved = raw ? decryptJson<{ refreshToken: string; businessId: string; locations: GoogleLocation[]; googleUser?: string | null }>(raw) : null;
   if (!saved || saved.businessId !== businessId) redirect(`/b/${businessId}/conexiones?google=error&msg=${encodeURIComponent(t("La conexión venció. Vuelve a intentarlo.", "The connection expired. Please try again."))}`);
   const loc = saved.locations.find((l) => l.locationId === locationId);
   if (!loc) throw new Error(t("Ese perfil ya no está disponible", "That profile is no longer available"));
-  await saveGoogleLocation(businessId, saved.refreshToken, loc);
+  await saveGoogleLocation(businessId, saved.refreshToken, loc, saved.googleUser);
   jar.delete(GOOGLE_COOKIE);
   revalidatePath(`/b/${businessId}/conexiones`);
   redirect(`/b/${businessId}/conexiones?${new URLSearchParams({ google: "ok", place: loc.title })}`);
@@ -583,18 +583,23 @@ export async function stormCampaign(businessId: string, _prev: PlanResult, f: Fo
   }
 }
 
+export type DraftApproval = { ok: true } | { ok: false; error: { es: string; en: string } };
+
 /**
- * Guarda los cambios del borrador y lo programa. Devuelve false si no se aprobó: los del agente se aprueban en MATYA,
- * un video que todavía se está creando no se aprueba, y un video para YouTube necesita los campos de YouTube.
+ * Guarda los cambios del borrador y lo programa. Si no se aprueba dice por qué: los del agente se aprueban en MATYA, un
+ * video que todavía se está creando no se aprueba, y un video para YouTube necesita los campos de YouTube.
+ * `nextHourIfPast`: si su hora ya pasó, sale en la próxima hora (en el mismo guardado, nunca antes de aprobar).
  */
-export async function approveDraft(businessId: string, postId: string, f: FormData): Promise<boolean> {
+export async function approveDraftChecked(businessId: string, postId: string, f: FormData, nextHourIfPast = false): Promise<DraftApproval> {
   ensure.text(businessId, postId);
+  ensure.flag(nextHourIfPast);
   const { user } = await requireBusiness(businessId, "publish");
-  if (postId.startsWith("agent-")) return false;
+  const fail = (es: string, en: string): DraftApproval => ({ ok: false, error: { es, en } });
+  if (postId.startsWith("agent-")) return fail("Este borrador es de MATYA: apruébalo en MATYA.", "This draft belongs to MATYA: approve it in MATYA.");
   const post = await db.post.findFirst({ where: { id: postId, businessId, status: "draft" }, include: { targets: true } });
-  if (!post) return false;
+  if (!post) return fail("Este borrador ya no está (se aprobó o se borró).", "This draft is no longer here (it was approved or deleted).");
   const video = post.kind === "video" || post.mediaType === "video";
-  if (video && !post.mediaUrl) return false;
+  if (video && !post.mediaUrl) return fail("El video todavía no está listo.", "The video isn't ready yet.");
   // La aprobación de YouTube solo se pone con los campos que la persona envía ahora (nunca se copia la de antes).
   const variants = withoutYoutubeApproval(post.variants);
   for (const t of post.targets) {
@@ -602,7 +607,7 @@ export async function approveDraft(businessId: string, postId: string, f: FormDa
     if (typeof v === "string") variants[t.channel] = v.trim();
   }
   const yt = video && post.targets.some((t) => t.channel === "youtube") ? youtubeApprovalFromForm(f, { mediaUrl: post.mediaUrl, approvedBy: user.id }) : null;
-  if (yt && !yt.ok) return false;
+  if (yt && !yt.ok) return { ok: false, error: yt.error };
   const approval = yt?.ok ? yt.value : null;
   if (approval) {
     variants.youtube = approval.description;
@@ -615,6 +620,7 @@ export async function approveDraft(businessId: string, postId: string, f: FormDa
     text: main || post.text,
     subject: typeof subject === "string" ? subject.trim() : post.subject,
     status: "scheduled",
+    ...(nextHourIfPast && post.scheduledAt.getTime() < Date.now() ? { scheduledAt: new Date(Date.now() + 60 * 60000) } : {}),
   };
   // Con YouTube, el cambio y la constancia de la aprobación se guardan juntos (o ninguno).
   if (approval)
@@ -625,13 +631,22 @@ export async function approveDraft(businessId: string, postId: string, f: FormDa
   else await db.post.update({ where: { id: postId }, data });
   revalidatePath(`/b/${businessId}/plan`);
   revalidatePath(`/b/${businessId}/historial`);
-  return true;
+  return { ok: true };
 }
 
-/** «Aprobar y programar» del Plan (el formulario no usa la respuesta). */
+/** Lo mismo, respondiendo solo si se aprobó. */
+export async function approveDraft(businessId: string, postId: string, f: FormData): Promise<boolean> {
+  ensure.text(businessId, postId);
+  return (await approveDraftChecked(businessId, postId, f)).ok;
+}
+
+/** «Aprobar y programar» del Plan. Si no se aprueba, vuelve al Plan con el motivo junto a ese borrador. */
 export async function approvePlanDraft(businessId: string, postId: string, f: FormData): Promise<void> {
   ensure.text(businessId, postId);
-  await approveDraft(businessId, postId, f);
+  const r = await approveDraftChecked(businessId, postId, f);
+  if (r.ok) return;
+  const { t } = await getT();
+  redirect(`/b/${businessId}/plan?${new URLSearchParams({ draft: postId, msg: t(r.error.es, r.error.en) })}#draft-${postId}`);
 }
 
 // ---------- Imágenes y videos con IA ----------

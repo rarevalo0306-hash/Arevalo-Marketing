@@ -43,20 +43,23 @@ import { GSC_COOKIE } from "@/lib/seo/gsc";
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
 /** Google: el token con los permisos que se dieron (undefined = sin campo «scope»), y lo demás según la dirección. */
-function google(scope: string | undefined, rest: (url: string) => Response = () => json({ error: { message: "unexpected" } }, 500)) {
+function google(scope: string | undefined, rest: (url: string) => Response = () => json({ error: { message: "unexpected" } }, 500), idToken?: string) {
   const urls: string[] = [];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
       urls.push(String(url));
-      if (String(url) === "https://oauth2.googleapis.com/token") return json({ access_token: "AT", refresh_token: "RT", ...(scope === undefined ? {} : { scope }) });
+      if (String(url) === "https://oauth2.googleapis.com/token") return json({ access_token: "AT", refresh_token: "RT", ...(scope === undefined ? {} : { scope }), ...(idToken ? { id_token: idToken } : {}) });
       return rest(String(url));
     }),
   );
   return urls;
 }
 
-const back = (state: string) => GET(new Request(`https://app.example/api/google/callback?code=c1&state=${encodeURIComponent(makeState(state))}`));
+/** El regreso de Google con un state firmado: «youtube:biz1» → «google:youtube:biz1»; «biz1» → Perfil de Negocio. */
+const back = (state: string, raw = false) =>
+  GET(new Request(`https://app.example/api/google/callback?code=c1&state=${encodeURIComponent(makeState(raw ? state : `google:${state.includes(":") ? state : `profile:${state}`}`))}`));
+const jwt = (p: unknown) => `h.${Buffer.from(JSON.stringify(p)).toString("base64url")}.sig`;
 const where = (res: Response) => new URL(res.headers.get("location") ?? "");
 const scopes = (...s: string[]) => s.join(" ");
 
@@ -103,6 +106,20 @@ describe("YouTube: hacen falta los dos permisos", () => {
     const arg = m.upsert.mock.calls[0][0];
     expect(JSON.parse(arg.create.secret)).toEqual({ refreshToken: "RT", channelId: "UC1" });
     expect(arg.update.secret).toBe(arg.create.secret);
+  });
+
+  it("guarda la cuenta de Google que dio el permiso (para no revocar el de otras conexiones al desconectar)", async () => {
+    google(scopes(YOUTUBE_SCOPE, YOUTUBE_READ_SCOPE), () => json({ items: [{ id: "UC1", snippet: { title: "Fameseg" } }] }), jwt({ sub: "g-123", aud: "app-id.apps.googleusercontent.com" }));
+    await back("youtube:biz1");
+    expect(JSON.parse(m.upsert.mock.calls[0][0].create.secret)).toEqual({ refreshToken: "RT", channelId: "UC1", googleUser: "g-123" });
+  });
+
+  it("un state de Facebook (misma firma, sin «google:») no sirve aquí: no se cambia el código", async () => {
+    const urls = google(scopes(YOUTUBE_SCOPE, YOUTUBE_READ_SCOPE));
+    const res = await back("biz1", true);
+    expect(res.status).toBe(400);
+    expect(urls).toEqual([]);
+    expect(m.upsert).not.toHaveBeenCalled();
   });
 
   it("sin el campo «scope»: sigue como antes", async () => {
@@ -163,7 +180,7 @@ describe("Search Console y Analytics", () => {
     m.findBusiness.mockResolvedValue({ website: "https://fameseg.com" });
     expect(where(await back("gsc:biz1")).searchParams.get("gsc")).toBe("ok");
     expect(m.listGscSites).toHaveBeenCalledWith("AT");
-    expect(m.saveGscSite).toHaveBeenCalledWith("biz1", "RT", "https://fameseg.com/");
+    expect(m.saveGscSite).toHaveBeenCalledWith("biz1", "RT", "https://fameseg.com/", null);
   });
 
   it("Analytics sin su permiso: no lista propiedades ni guarda", async () => {

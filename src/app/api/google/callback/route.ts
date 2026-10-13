@@ -44,7 +44,7 @@ async function searchConsole(url: URL, businessId: string, lang: UiLang, t: T) {
       ),
     });
   try {
-    const { refreshToken, accessToken, scopes } = await googleExchange(url.searchParams.get("code") ?? "");
+    const { refreshToken, accessToken, scopes, googleUser } = await googleExchange(url.searchParams.get("code") ?? "");
     // Si la persona desmarcó la casilla en Google, no se guarda nada. El permiso no se revoca: con include_granted_scopes
     // es el mismo de sus otras conexiones de Google.
     const missing = missingGoogleScopes("gsc", scopes);
@@ -62,7 +62,7 @@ async function searchConsole(url: URL, businessId: string, lang: UiLang, t: T) {
     const site = matchSite(b.website, sites) ?? (sites.length === 1 && !b.website.trim() ? sites[0] : null);
     if (!site) {
       // Ninguno coincide con la página del negocio: guardamos el permiso (cifrado, 15 minutos) y la persona elige.
-      (await cookies()).set(GSC_COOKIE, encryptJson({ refreshToken, businessId, sites }), {
+      (await cookies()).set(GSC_COOKIE, encryptJson({ refreshToken, businessId, sites, googleUser }), {
         httpOnly: true,
         sameSite: "lax",
         secure: process.env.NODE_ENV === "production",
@@ -71,7 +71,7 @@ async function searchConsole(url: URL, businessId: string, lang: UiLang, t: T) {
       });
       return seo({}, "seo/gsc");
     }
-    await saveGscSite(businessId, refreshToken, site);
+    await saveGscSite(businessId, refreshToken, site, googleUser);
     await tryFirstGscReport(businessId);
     return seo({ gsc: "ok" });
   } catch (e) {
@@ -93,7 +93,7 @@ async function analytics(url: URL, businessId: string, lang: UiLang, t: T) {
       ),
     });
   try {
-    const { refreshToken, accessToken, scopes } = await googleExchange(url.searchParams.get("code") ?? "");
+    const { refreshToken, accessToken, scopes, googleUser } = await googleExchange(url.searchParams.get("code") ?? "");
     // Casilla desmarcada: no se guarda nada (ni se revoca, ver searchConsole).
     const missing = missingGoogleScopes("ga4", scopes);
     if (missing.length) return go({ ga4: "error", msg: missingScopesText(missing, t) });
@@ -109,7 +109,7 @@ async function analytics(url: URL, businessId: string, lang: UiLang, t: T) {
     // Al volver a conectar se queda la propiedad que ya estaba elegida (si la cuenta todavía la ve).
     const before = (await readGa4Connection(businessId))?.secret.propertyId;
     const pick = properties.find((p) => p.id === before) ?? autoPick(properties);
-    await writeGa4Connection(businessId, { refreshToken, properties, propertyId: pick?.id, propertyName: pick?.name });
+    await writeGa4Connection(businessId, { refreshToken, properties, propertyId: pick?.id, propertyName: pick?.name, ...(googleUser ? { googleUser } : {}) });
     if (!pick) return go({ ga4: "choose" });
     // Si los primeros datos fallan, el panel muestra el motivo guardado y el botón «Actualizar».
     const first = await refreshGa4(businessId).catch(() => ({ ok: false }));
@@ -125,14 +125,14 @@ async function youtube(url: URL, businessId: string, lang: UiLang, t: T) {
   if (url.searchParams.get("error"))
     return go({ youtube: "error", msg: t("No se dio el permiso para YouTube (o cancelaste). Vuelve a intentarlo y acepta los dos permisos: subir videos y ver tu canal.", "Permission for YouTube wasn't granted (or you canceled). Try again and accept both permissions: upload videos and view your channel.") });
   try {
-    const { refreshToken, accessToken, scopes } = await googleExchange(url.searchParams.get("code") ?? "");
+    const { refreshToken, accessToken, scopes, googleUser } = await googleExchange(url.searchParams.get("code") ?? "");
     // Hacen falta los dos permisos (subir videos y ver el canal); con uno solo no se guarda nada (ni se revoca).
     const missing = missingGoogleScopes("youtube", scopes);
     if (missing.length) return go({ youtube: "error", msg: missingScopesText(missing, t) });
     const channel = await youtubeChannel(accessToken);
     if (!channel)
       return go({ youtube: "error", msg: t("Esa cuenta de Google no tiene canal de YouTube. Créalo gratis en youtube.com y vuelve a conectar.", "That Google account doesn't have a YouTube channel. Create one for free at youtube.com and connect again.") });
-    await saveYoutubeChannel(businessId, refreshToken, channel);
+    await saveYoutubeChannel(businessId, refreshToken, channel, googleUser);
     return go({ youtube: "ok", chan: channel.title });
   } catch (e) {
     const msg = errorText(e, lang);
@@ -163,7 +163,7 @@ export async function GET(req: Request) {
   if (url.searchParams.get("error")) return back(businessId, { google: "error", msg: t("Cancelaste la conexión con Google.", "You canceled the Google connection.") });
 
   try {
-    const { refreshToken, accessToken, scopes } = await googleExchange(url.searchParams.get("code") ?? "");
+    const { refreshToken, accessToken, scopes, googleUser } = await googleExchange(url.searchParams.get("code") ?? "");
     // Casilla desmarcada: no se guarda nada ni se deja la cookie (y no se revoca, ver searchConsole).
     const missing = missingGoogleScopes("profile", scopes);
     if (missing.length) return back(businessId, { google: "error", msg: missingScopesText(missing, t) });
@@ -171,11 +171,11 @@ export async function GET(req: Request) {
     if (!locations.length)
       return back(businessId, { google: "error", msg: t("Esa cuenta de Google no administra ningún Perfil de Negocio. Entra con la cuenta dueña del perfil.", "That Google account doesn't manage any Business Profile. Sign in with the account that owns the profile.") });
     if (locations.length === 1) {
-      await saveGoogleLocation(businessId, refreshToken, locations[0]);
+      await saveGoogleLocation(businessId, refreshToken, locations[0], googleUser);
       return back(businessId, { google: "ok", place: locations[0].title });
     }
     // Varias ubicaciones: guardamos el permiso (cifrado, 15 minutos) y la persona elige cuál.
-    (await cookies()).set(GOOGLE_COOKIE, encryptJson({ refreshToken, businessId, locations }), {
+    (await cookies()).set(GOOGLE_COOKIE, encryptJson({ refreshToken, businessId, locations, googleUser }), {
       httpOnly: true,
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",

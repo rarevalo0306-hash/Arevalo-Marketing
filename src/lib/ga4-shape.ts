@@ -16,6 +16,8 @@ export type Ga4Property = {
 /** Lo que se guarda cifrado en Connection.secret (channel "ga4"). */
 export type Ga4Secret = {
   refreshToken: string;
+  /** La cuenta de Google que dio el permiso (para no revocar el de otras conexiones, ver canRevokeAlone). */
+  googleUser?: string;
   /** La propiedad elegida (vacío = todavía hay que elegir). */
   propertyId?: string;
   propertyName?: string;

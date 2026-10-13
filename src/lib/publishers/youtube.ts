@@ -4,15 +4,15 @@
 // - Los verticales cortos se ven como Shorts (YouTube los reconoce solo; el título y la descripción llevan #Shorts).
 // Permisos: youtube.upload y youtube.readonly. La conexión guarda el refreshToken (y clientId/clientSecret solo si se pegó a mano con un cliente propio, ver googleClient).
 import { fetchMedia } from "@/lib/media";
-import { cleanYoutubeDescription, PRIVACY_LABEL, YOUTUBE_NEEDS_APPROVAL, youtubeTags, youtubeTitleFor, type YoutubeApproval } from "@/lib/youtube-options";
+import { cleanYoutubeDescription, PRIVACY_LABEL, YT_CATEGORY_ID, YOUTUBE_NEEDS_APPROVAL, youtubeTags, youtubeTitleFor, type YoutubeApproval } from "@/lib/youtube-options";
 import { googleAccessToken } from "./google";
 import { fetchJson, PublishError } from "./http";
 import type { PublishInput, Publisher } from "./types";
 
 const API = "https://www.googleapis.com/youtube/v3";
 const UPLOAD = "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status";
-/** 22 = «Gente y blogs» (la categoría más general); se puede cambiar con YOUTUBE_CATEGORY_ID. */
-const CATEGORY = () => (/^\d{1,3}$/.test(process.env.YOUTUBE_CATEGORY_ID ?? "") ? process.env.YOUTUBE_CATEGORY_ID! : "22");
+/** 22 = «Gente y blogs» (la categoría más general). Es la que dice la pantalla de aprobación: siempre la misma. */
+const CATEGORY = () => YT_CATEGORY_ID;
 
 // Las sugerencias viven en youtube-options (sin fs: también las usan las pantallas).
 export { youtubeTags };

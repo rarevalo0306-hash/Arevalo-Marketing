@@ -99,7 +99,7 @@ export function Ga4Card({ businessId, connected, property, enabled, redirectUri,
             type="button"
             disabled={pending}
             onClick={() => {
-              if (confirm(t("¿Revocar Google Analytics y borrar sus reportes y las tareas del plan que salieron de ellos? Otras conexiones de Google podrían necesitar reconexión.", "Revoke Google Analytics and delete its reports and the plan tasks built from them? Other Google connections may need reconnection."))) start(() => disconnect());
+              if (confirm(t("¿Desconectar Google Analytics? Se borran sus reportes y las tareas del plan que salieron de ellos, y se quita su permiso en Google (si ninguna otra conexión usa esa cuenta de Google).", "Disconnect Google Analytics? Its reports and the plan tasks built from them are deleted, and its access is removed in Google (unless another connection uses that Google account)."))) start(() => disconnect());
             }}
           >
             {pending ? t("Desconectando…", "Disconnecting…") : t("Desconectar", "Disconnect")}
