@@ -55,15 +55,29 @@ export default async function ConexionesPage({
   const youtubeUrl = googleEnabled() ? `/api/youtube/start?b=${id}` : null;
   const [b, gsc, ga4, health, library, uploads, origin] = await Promise.all([
     db.business.findUniqueOrThrow({ where: { id }, include: { connections: { where: { channel: { in: CHANNEL_IDS } } } } }),
-    db.connection.findUnique({ where: { businessId_channel: { businessId: id, channel: GSC_CHANNEL } }, select: { label: true } }),
-    db.connection.findUnique({ where: { businessId_channel: { businessId: id, channel: GA4_CHANNEL } }, select: { label: true } }),
+    db.connection.findUnique({ where: { businessId_channel: { businessId: id, channel: GSC_CHANNEL } }, select: { label: true, secret: true } }),
+    db.connection.findUnique({ where: { businessId_channel: { businessId: id, channel: GA4_CHANNEL } }, select: { label: true, secret: true } }),
     connectionsNeedingReconnect(id),
     libraryCounts(id),
     uploadStats(id),
     appOrigin(),
   ]);
-  // Canales cuya última publicación falló por permisos o clave vencida (y no se han vuelto a conectar).
-  const broken = new Set(Object.keys(health).filter((ch) => CHANNEL_IDS.includes(ch as (typeof CHANNEL_IDS)[number])));
+  // Conexiones de Google a las que el dueño les quitó el acceso desde su cuenta de Google (lo ve la revisión diaria).
+  const isRevoked = (secret?: string) => {
+    try {
+      return Boolean(secret && decryptJson<{ revokedAt?: string }>(secret).revokedAt);
+    } catch {
+      return false;
+    }
+  };
+  const revoked = new Set(
+    [...b.connections.filter((c) => c.channel === "google" || c.channel === "youtube"), { channel: GSC_CHANNEL, secret: gsc?.secret }, { channel: GA4_CHANNEL, secret: ga4?.secret }]
+      .filter((c) => isRevoked(c.secret))
+      .map((c) => c.channel),
+  );
+  // Canales cuya última publicación falló por permisos o clave vencida (y no se han vuelto a conectar), o sin acceso de Google.
+  const broken = new Set([...Object.keys(health).filter((ch) => CHANNEL_IDS.includes(ch as (typeof CHANNEL_IDS)[number])), ...revoked]);
+  const nameOf = (ch: string) => (ch === GSC_CHANNEL ? "Search Console" : ch === GA4_CHANNEL ? "Google Analytics" : channelName(ch, lang));
   const connected = b.connections.length;
   const isOn = (ch: string) => b.connections.some((x) => x.channel === ch);
   const metaMissing = !isOn("facebook") || !isOn("instagram");
@@ -165,7 +179,7 @@ export default async function ConexionesPage({
             {[...broken].map((ch, i) => (
               <span key={ch}>
                 {i > 0 && ", "}
-                <a href={`#c-${ch}`}>{channelName(ch, lang)}</a>
+                <a href={`#c-${ch}`}>{nameOf(ch)}</a>
               </span>
             ))}
             .
@@ -192,19 +206,19 @@ export default async function ConexionesPage({
                   })}
                   {g === "google" && (
                     <li>
-                      <a href="#c-gsc" className={gsc ? s.on : undefined}>
+                      <a href="#c-gsc" className={revoked.has(GSC_CHANNEL) ? s.bad : gsc ? s.on : undefined}>
                         <span className={s.dot} aria-hidden="true" />
                         Search Console
-                        <span className="sr-only">{gsc ? t(" (conectado)", " (connected)") : t(" (no conectado)", " (not connected)")}</span>
+                        <span className="sr-only">{revoked.has(GSC_CHANNEL) ? t(" (volver a conectar)", " (reconnect)") : gsc ? t(" (conectado)", " (connected)") : t(" (no conectado)", " (not connected)")}</span>
                       </a>
                     </li>
                   )}
                   {g === "google" && (
                     <li>
-                      <a href="#c-ga4" className={ga4?.label ? s.on : undefined}>
+                      <a href="#c-ga4" className={revoked.has(GA4_CHANNEL) ? s.bad : ga4?.label ? s.on : undefined}>
                         <span className={s.dot} aria-hidden="true" />
                         Google Analytics
-                        <span className="sr-only">{ga4?.label ? t(" (conectado)", " (connected)") : t(" (no conectado)", " (not connected)")}</span>
+                        <span className="sr-only">{revoked.has(GA4_CHANNEL) ? t(" (volver a conectar)", " (reconnect)") : ga4?.label ? t(" (conectado)", " (connected)") : t(" (no conectado)", " (not connected)")}</span>
                       </a>
                     </li>
                   )}
@@ -266,6 +280,7 @@ export default async function ConexionesPage({
                       oauthName={c.id === "google" || c.id === "youtube" ? "Google" : "Facebook"}
                       brevo={c.id === "email" ? brevo : null}
                       needsReconnect={broken.has(c.id)}
+                      revoked={revoked.has(c.id)}
                       account={label && !/^\d+$/.test(label) ? label : undefined}
                       canConnect={(c.id === "google" || c.id === "youtube") && googleUrl ? canGoogle : canAdmin}
                       canPaste={canAdmin}
@@ -279,6 +294,7 @@ export default async function ConexionesPage({
                     site={gsc?.label ?? ""}
                     enabled={googleEnabled()}
                     hasWebsite={Boolean(b.website.trim())}
+                    revoked={revoked.has(GSC_CHANNEL)}
                     disconnect={disconnectGscFromConnections.bind(null, id)}
                     canConnect={canGoogle}
                   />
@@ -290,6 +306,7 @@ export default async function ConexionesPage({
                     property={ga4?.label ?? ""}
                     enabled={googleEnabled()}
                     redirectUri={googleRedirectUri()}
+                    revoked={revoked.has(GA4_CHANNEL)}
                     disconnect={disconnectGa4.bind(null, id)}
                     canConnect={canGoogle}
                   />

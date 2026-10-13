@@ -1,0 +1,127 @@
+// Datos de Google que guarda Matya: cuándo se revisa que cada conexión siga con permiso, cuándo se borra lo de una
+// conexión a la que el dueño le quitó el acceso desde su cuenta de Google, cuánto se guardan los datos de YouTube y
+// los reportes, y cómo se limpian los reportes que mezclan datos de Search Console o de respuestas a reseñas.
+// PURO: sin red ni base de datos (se prueba en tests/google-data-shape.test.ts). Quien llama a Google y borra es
+// src/lib/google-data.ts (cron) y src/lib/data-deletion.ts (purgeGoogleChannelData).
+//
+// El estado de la revisión va DENTRO del secreto cifrado de la conexión (Connection.secret), como lastTryAt en GA4:
+// no hace falta cambiar la base. Las conexiones de antes (sin estos campos) cuentan como «toca revisar, con permiso».
+
+const H = 3_600_000;
+export const DAY_MS = 24 * H;
+
+/** Cada conexión de Google se revisa (pidiendo un permiso nuevo) más o menos una vez al día. */
+export const GOOGLE_CHECK_EVERY_MS = 20 * H;
+/** Desde que Google dice que el permiso se quitó hasta que se borra: 3 días (dentro de los 7 que pide Google aunque falle un cron). */
+export const GOOGLE_REVOKED_GRACE_MS = 3 * DAY_MS;
+/** Los resultados de YouTube (PostMetric) se guardan 28 días: nunca pasan de 30 con un cron diario. */
+export const YOUTUBE_KEEP_DAYS = 28;
+/** El nombre del canal de YouTube se borra si no se pudo volver a leer en 30 días. */
+export const YOUTUBE_LABEL_DAYS = 30;
+
+/** Lo que se guarda en el secreto: última revisión, última que salió bien y desde cuándo Google dice que se quitó el permiso. */
+export type GoogleHealth = { checkedAt?: string; okAt?: string; revokedAt?: string };
+
+/** ¿Google dice que el permiso se quitó o venció? Solo invalid_grant: nunca invalid_client, unauthorized_client, 5xx ni red. */
+export const isRevokedGrant = (msg: string) => /\binvalid_grant\b/i.test(msg);
+
+const msOf = (iso: string | undefined) => {
+  const n = iso ? Date.parse(iso) : NaN;
+  return Number.isFinite(n) ? n : null;
+};
+
+/** ¿Toca revisar la conexión? Sí si nunca se revisó o la última revisión tiene más de 20 h. */
+export function googleCheckDue(h: GoogleHealth, now: Date): boolean {
+  const at = msOf(h.checkedAt);
+  return at === null || now.getTime() - at >= GOOGLE_CHECK_EVERY_MS;
+}
+
+/** ¿Ya pasaron los 3 días desde que Google dijo que el permiso se quitó? Entonces se borra la conexión y sus datos. */
+export function shouldPurgeRevoked(h: GoogleHealth, now: Date): boolean {
+  const at = msOf(h.revokedAt);
+  return at !== null && now.getTime() - at >= GOOGLE_REVOKED_GRACE_MS;
+}
+
+/** ¿El nombre del canal de YouTube ya tiene más de 30 días sin volver a leerse? (sin okAt cuenta la fecha de la conexión) */
+export function youtubeLabelExpired(h: GoogleHealth, updatedAt: Date, now: Date): boolean {
+  const at = msOf(h.okAt) ?? updatedAt.getTime();
+  return now.getTime() - at > YOUTUBE_LABEL_DAYS * DAY_MS;
+}
+
+// ---------- Limpiar reportes que mezclan datos de Google ----------
+// Editan el JSON TAL CUAL está guardado (no pasan por los lectores, que normalizan y botarían campos de filas viejas),
+// tocan solo lo que vino de Google y devuelven null cuando no hay nada que cambiar (así esa fila no se reescribe).
+
+type Json = Record<string, unknown>;
+const isObj = (v: unknown): v is Json => !!v && typeof v === "object" && !Array.isArray(v);
+
+/**
+ * Revisión de páginas ("onpage"): las páginas cuya palabra clave salió de Search Console quedan como cuando el dueño
+ * cambia la palabra (applyOverride en seo/onpage.ts): sin palabra, sin nota, ideas ni ganadores, y «volver a revisar».
+ * Se conservan las palabras que eligió el dueño (overrides). Devuelve también las direcciones limpiadas (sus tareas
+ * del plan "onpage:<url>:…" se borran).
+ */
+export function scrubOnPageGsc(data: unknown): { data: Json; urls: string[] } | null {
+  if (!isObj(data) || !Array.isArray(data.pages)) return null;
+  const urls: string[] = [];
+  let changed = false;
+  const pages = data.pages.map((p) => {
+    if (!isObj(p) || p.keywordSource !== "gsc") return p;
+    changed = true;
+    if (typeof p.url === "string") urls.push(p.url);
+    const rest: Json = { ...p };
+    for (const k of ["suggestion", "error", "skipped"]) delete rest[k];
+    return {
+      ...rest,
+      keyword: null,
+      keywordSource: null,
+      score: null,
+      ideas: [],
+      winners: [],
+      brief: null,
+      needsRecheck: true,
+      ...(isObj(p.stats) ? { stats: { ...p.stats, targetWords: null, position: null } } : {}),
+    };
+  });
+  return changed ? { data: { ...data, pages }, urls } : null;
+}
+
+/** Propuesta de Ajustes SEO ("setup"): quita las palabras que salieron de Search Console. Se conservan las rechazadas y la huella. */
+export function scrubSetupGsc(data: unknown): Json | null {
+  if (!isObj(data) || !isObj(data.proposal) || !Array.isArray(data.proposal.keywords)) return null;
+  const all = data.proposal.keywords;
+  const keywords = all.filter((k) => !(isObj(k) && k.source === "search_console"));
+  if (keywords.length === all.length) return null;
+  return { ...data, proposal: { ...data.proposal, keywords } };
+}
+
+/**
+ * Reseñas ("reviews", datos públicos de DataForSEO): quita la marca «publicada desde Matya» (postedAt). Si la respuesta
+ * guardada es la que escribió Matya y Google todavía no la mostraba (ownerTimestamp igual a postedAt), también se
+ * borra su texto. Las respuestas que DataForSEO trajo de Google se quedan.
+ */
+export function scrubPostedReplies(data: unknown): Json | null {
+  if (!isObj(data) || !Array.isArray(data.reviews)) return null;
+  let changed = false;
+  const reviews = data.reviews.map((r) => {
+    if (!isObj(r) || !("postedAt" in r)) return r;
+    changed = true;
+    const rest: Json = { ...r };
+    delete rest.postedAt;
+    const posted = msOf(typeof r.postedAt === "string" ? r.postedAt : undefined);
+    const answered = msOf(typeof r.ownerTimestamp === "string" ? r.ownerTimestamp : undefined);
+    return posted !== null && posted === answered ? { ...rest, ownerAnswer: "", ownerTimestamp: "" } : rest;
+  });
+  return changed ? { ...data, reviews } : null;
+}
+
+// ---------- Cuánto se guardan los reportes de Google ----------
+
+/**
+ * Se borra una fila solo si está fuera de las `keep` más nuevas de su negocio Y tiene más de `maxAgeDays`.
+ * Solo reportes de Google: gsc (el PDF del mes necesita la fila de fin del mes pasado) y ga4 (latestGa4Report lee 3).
+ */
+export const SEO_RETENTION: Record<string, { keep: number; maxAgeDays: number }> = {
+  gsc: { keep: 2, maxAgeDays: 45 },
+  ga4: { keep: 3, maxAgeDays: 35 },
+};

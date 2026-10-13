@@ -287,6 +287,21 @@ describe("syncPostMetrics (base de datos simulada)", () => {
     expect(sum.errors).toBe(2);
   });
 
+  it("YouTube desconectado: no guarda filas (sus datos se borraron al desconectar)", async () => {
+    fake.targets = [target("y1", "youtube", 30), target("f1", "facebook", 30)];
+    fake.conns = [];
+    const sum = await syncPostMetrics(now, {
+      fetchFacebook: async () => ({ ok: false, error: "x" }),
+      fetchInstagram: async () => ({ ok: false, error: "x" }),
+      fetchYoutube: async () => {
+        throw new Error("no debería llamarse: YouTube no está conectado");
+      },
+      fetchX: async () => ({}),
+    });
+    expect(fake.created.map((c) => c.data.postTargetId)).toEqual(["f1"]);
+    expect(sum.errors).toBe(1);
+  });
+
   it("para una red cuando pide esperar (límite de pedidos)", async () => {
     fake.targets = [target("a", "facebook", 2), target("b", "facebook", 3), target("c", "facebook", 4)];
     fake.conns = [{ businessId: "biz", channel: "facebook", secret: JSON.stringify({ accessToken: "a" }) }];

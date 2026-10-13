@@ -2,6 +2,7 @@ import { after } from "next/server";
 import { syncAds } from "@/lib/ads";
 import { runCampaigns } from "@/lib/campaign-engine";
 import { runDailyReports } from "@/lib/daily-report";
+import { runGoogleDataMaintenance } from "@/lib/google-data";
 import { getT } from "@/lib/i18n-server";
 import { runDueDriveSync, runDueUploadAnalysis } from "@/lib/library-sync";
 import { pruneLoginAttempts } from "@/lib/login-attempts";
@@ -79,6 +80,14 @@ export async function GET(req: Request) {
       if (metrics.due || metrics.errors) console.log("[resultados]", JSON.stringify(metrics));
     } catch (e) {
       console.error("[resultados] error:", e instanceof Error ? e.message : e);
+    }
+    // Datos de Google: revisa que cada conexión siga con permiso (si el dueño lo quitó en su cuenta de Google, a los
+    // 3 días se borran la conexión y sus datos) y, a la hora del cron diario, borra lo viejo. Como mucho 30 s.
+    try {
+      const g = await runGoogleDataMaintenance(new Date(), { budgetMs: 30_000 });
+      if (Object.values(g).some(Boolean)) console.log("[google-datos]", JSON.stringify(g));
+    } catch (e) {
+      console.error("[google-datos] error:", e instanceof Error ? e.message : e);
     }
     // Propuestas de la IA para mejorar (el dueño las acepta o rechaza): pocos negocios por llamada.
     try {

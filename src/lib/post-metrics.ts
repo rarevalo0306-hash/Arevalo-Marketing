@@ -272,6 +272,8 @@ export async function syncPostMetrics(now: Date = new Date(), fetchers = { fetch
     for (const [businessId, group] of byBiz) {
       if (stopped.has(channel)) break;
       const creds = credsOf(businessId, channel);
+      // YouTube desconectado: no se guarda nada (sus datos se borraron al desconectar y no deben volver). Sin red.
+      if (!creds && channel === "youtube") continue;
       let results: Record<string, FetchOutcome>;
       if (!creds) results = Object.fromEntries(group.map((j) => [j.externalId, { ok: false, error: plainMetricError(channel, "token: la red ya no está conectada") } as FetchOutcome]));
       else {

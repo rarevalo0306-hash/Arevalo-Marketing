@@ -456,7 +456,7 @@ export async function Ga4Panel({ businessId }: { businessId: string }) {
     <Ga4ConfirmButton
       action={disconnectGa4.bind(null, id)}
       label={t("Desconectar Google Analytics", "Disconnect Google Analytics")}
-      question={t("¿Revocar Google Analytics y borrar sus reportes guardados? Otras conexiones de Google podrían necesitar reconexión.", "Revoke Google Analytics and delete its saved reports? Other Google connections may need reconnection.")}
+      question={t("¿Revocar Google Analytics y borrar sus reportes y las tareas del plan que salieron de ellos? Otras conexiones de Google podrían necesitar reconexión.", "Revoke Google Analytics and delete its reports and the plan tasks built from them? Other Google connections may need reconnection.")}
     />
   );
 
@@ -548,6 +548,14 @@ export async function Ga4Panel({ businessId }: { businessId: string }) {
         </div>
         <Ga4RefreshButton action={refreshGa4Action.bind(null, id)} />
       </div>
+      {conn.secret.revokedAt && (
+        <p className="note error" role="alert">
+          {t(
+            "El acceso a Google se quitó desde tu cuenta de Google. Vuelve a conectarla en los próximos 3 días o Matya borrará esta conexión y los datos que trajo.",
+            "Google access was removed from your Google account. Reconnect within 3 days, or Matya will delete this connection and the data it brought in.",
+          )}
+        </p>
+      )}
       {failed && (
         <p className="note error" role="alert">
           {t(`No se pudieron traer los datos nuevos (${f.when(conn.secret.lastTryAt ?? "")}): `, `Couldn't get new data (${f.when(conn.secret.lastTryAt ?? "")}): `)}

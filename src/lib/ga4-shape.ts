@@ -24,6 +24,10 @@ export type Ga4Secret = {
   /** Último intento automático que falló (para no repetirlo en cada visita) y su motivo. */
   lastTryAt?: string;
   lastError?: string;
+  /** Revisión diaria del permiso (cron, src/lib/google-data.ts): última revisión, última buena y desde cuándo Google lo da por quitado. */
+  checkedAt?: string;
+  okAt?: string;
+  revokedAt?: string;
 };
 
 export type Ga4Range = { start: string; end: string };

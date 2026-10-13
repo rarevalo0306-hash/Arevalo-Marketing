@@ -16,29 +16,41 @@ type Props = {
   /** Falta configurar el cliente de Google en el servidor. */
   enabled: boolean;
   redirectUri: string;
+  /** El dueño quitó el acceso desde su cuenta de Google (en 3 días se borra la conexión y sus datos). */
+  revoked?: boolean;
   disconnect: () => Promise<void>;
   /** Su papel le deja conectar, elegir la propiedad y desconectar (Administrador o «Puede conectar»). */
   canConnect: boolean;
 };
 
 /** Google Analytics 4: visitas reales de la página web (solo lectura, gratis). */
-export function Ga4Card({ businessId, connected, property, enabled, redirectUri, disconnect, canConnect }: Props) {
+export function Ga4Card({ businessId, connected, property, enabled, redirectUri, revoked, disconnect, canConnect }: Props) {
   const { t } = useT();
   const [pending, start] = useTransition();
   const panel = `/b/${businessId}/seo?tab=web#ga4`;
-  const choose = connected && !property;
+  const broken = connected && revoked;
+  const choose = connected && !property && !broken;
   return (
-    <article id="c-ga4" className={`card ${s.card}`}>
+    <article id="c-ga4" className={`card ${s.card}${broken ? ` ${s.broken}` : ""}`}>
       <div className={s.head}>
         <span className={`mono solid ${s.logo}`} aria-hidden="true">GA4</span>
         <div className={s.title}>
           <h2>Google Analytics</h2>
           <span className={s.account}>{connected && property ? property : t("Visitas a tu página", "Visits to your website")}</span>
         </div>
-        <span className={connected && !choose ? "pill connected" : choose ? "pill warn" : "pill"}>
-          {choose ? t("Falta elegir", "Pick one") : connected ? t("Conectado", "Connected") : t("No conectado", "Not connected")}
+        <span className={broken ? "pill failed" : connected && !choose ? "pill connected" : choose ? "pill warn" : "pill"}>
+          {broken ? t("Volver a conectar", "Reconnect") : choose ? t("Falta elegir", "Pick one") : connected ? t("Conectado", "Connected") : t("No conectado", "Not connected")}
         </span>
       </div>
+      {broken && (
+        <p className={`note error ${s.alert}`} role="status">
+          <strong>{t("Necesita volver a conectarse.", "Needs to be reconnected.")}</strong>{" "}
+          {t(
+            "El acceso a Google se quitó desde tu cuenta de Google. Vuelve a conectarla en los próximos 3 días o Matya borrará esta conexión y los datos que trajo.",
+            "Google access was removed from your Google account. Reconnect within 3 days, or Matya will delete this connection and the data it brought in.",
+          )}
+        </p>
+      )}
       <p className={s.gain}>
         {t(
           "Mira cuántas personas visitan tu página, de dónde llegan y cuántas te llaman o te escriben. Gratis, y no publica nada.",
@@ -58,7 +70,7 @@ export function Ga4Card({ businessId, connected, property, enabled, redirectUri,
           {!canConnect ? null : choose ? (
             <Link className="btn on" href={panel}>{t("Elegir la propiedad", "Pick the property")}</Link>
           ) : (
-            <a className={connected ? "btn outline" : "btn on"} href={`/api/ga4/start?b=${businessId}`}>
+            <a className={connected && !broken ? "btn outline" : "btn on"} href={`/api/ga4/start?b=${businessId}`}>
               {connected ? t("Volver a conectar con Google", "Reconnect with Google") : t("Conectar Google Analytics", "Connect Google Analytics")}
             </a>
           )}
@@ -87,7 +99,7 @@ export function Ga4Card({ businessId, connected, property, enabled, redirectUri,
             type="button"
             disabled={pending}
             onClick={() => {
-              if (confirm(t("¿Revocar Google Analytics y borrar sus reportes guardados? Otras conexiones de Google podrían necesitar reconexión.", "Revoke Google Analytics and delete its saved reports? Other Google connections may need reconnection."))) start(() => disconnect());
+              if (confirm(t("¿Revocar Google Analytics y borrar sus reportes y las tareas del plan que salieron de ellos? Otras conexiones de Google podrían necesitar reconexión.", "Revoke Google Analytics and delete its reports and the plan tasks built from them? Other Google connections may need reconnection."))) start(() => disconnect());
             }}
           >
             {pending ? t("Desconectando…", "Disconnecting…") : t("Desconectar", "Disconnect")}

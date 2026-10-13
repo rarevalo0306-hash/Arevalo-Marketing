@@ -24,6 +24,8 @@ type Props = {
   brevo?: { domains: string[]; defaultName: string; connect: (f: FormData) => Promise<TestResult> } | null;
   /** La última publicación falló por permisos o token vencido: hay que volver a conectar. */
   needsReconnect?: boolean;
+  /** Google: el dueño quitó el acceso desde su cuenta de Google (en 3 días se borra la conexión y sus datos). */
+  revoked?: boolean;
   /** Nombre de la cuenta conectada (página, perfil o remitente), si se conoce. */
   account?: string;
   /** Su papel le deja conectar, probar y desconectar esta cuenta (Google: también «Puede conectar»). */
@@ -32,7 +34,7 @@ type Props = {
   canPaste: boolean;
 };
 
-export function ConnectionCard({ channel: def, connected, values, secretSet, save, remove, test, oauthUrl, oauthName = "Facebook", brevo, needsReconnect, account, canConnect, canPaste }: Props) {
+export function ConnectionCard({ channel: def, connected, values, secretSet, save, remove, test, oauthUrl, oauthName = "Facebook", brevo, needsReconnect, revoked, account, canConnect, canPaste }: Props) {
   const { lang, t } = useT();
   const channel = channelText(def, lang);
   const [open, setOpen] = useState(false);
@@ -58,10 +60,15 @@ export function ConnectionCard({ channel: def, connected, values, secretSet, sav
       {broken && (
         <p className={`note error ${s.alert}`} role="status">
           <strong>{t("Necesita volver a conectarse.", "Needs to be reconnected.")}</strong>{" "}
-          {t(
-            `La última publicación en ${channel.name} falló porque la cuenta ya no da permiso (la conexión venció o se quitó el permiso). Vuelve a conectarla y luego reintenta la publicación desde el Historial.`,
-            `The last post to ${channel.name} failed because the account no longer gives permission (the connection expired or the permission was removed). Reconnect it, then retry the post from History.`,
-          )}
+          {revoked
+            ? t(
+                "El acceso a Google se quitó desde tu cuenta de Google. Vuelve a conectarla en los próximos 3 días o Matya borrará esta conexión y los datos que trajo.",
+                "Google access was removed from your Google account. Reconnect within 3 days, or Matya will delete this connection and the data it brought in.",
+              )
+            : t(
+                `La última publicación en ${channel.name} falló porque la cuenta ya no da permiso (la conexión venció o se quitó el permiso). Vuelve a conectarla y luego reintenta la publicación desde el Historial.`,
+                `The last post to ${channel.name} failed because the account no longer gives permission (the connection expired or the permission was removed). Reconnect it, then retry the post from History.`,
+              )}
         </p>
       )}
       <p className={s.gain}>{channel.gain}</p>
@@ -172,7 +179,14 @@ export function ConnectionCard({ channel: def, connected, values, secretSet, sav
                 type="button"
                 disabled={pending}
                 onClick={() => {
-                  if (confirm(t(`¿Desconectar ${channel.name}?`, `Disconnect ${channel.name}?`))) start(async () => { await remove(); setResult(null); });
+                  const google = def.id === "google" || def.id === "youtube";
+                  const question = google
+                    ? t(
+                        `¿Desconectar ${channel.name}? Matya quita su permiso y borra los datos que trajo de ${channel.name}. Otras conexiones de Google podrían necesitar reconectarse.`,
+                        `Disconnect ${channel.name}? Matya revokes its access and deletes the data it brought in from ${channel.name}. Other Google connections may need reconnection.`,
+                      )
+                    : t(`¿Desconectar ${channel.name}?`, `Disconnect ${channel.name}?`);
+                  if (confirm(question)) start(async () => { await remove(); setResult(null); });
                 }}
               >
                 {t("Desconectar", "Disconnect")}
