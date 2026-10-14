@@ -175,6 +175,20 @@ function KeywordView({ businessId, k }: { businessId: string; k: KeywordLookup }
         </div>
       ) : null}
 
+      {k.ads && k.ads.length > 0 && (
+        <div className="stack" style={{ gap: 6 }}>
+          <span className="lbl">{t("Quién paga anuncios en esta búsqueda", "Who pays for ads on this search")}</span>
+          <ul className={l.comps}>
+            {k.ads.map((a) => (
+              <li key={a.domain}>
+                <strong>{a.domain}</strong>
+                {a.title ? <span className="small muted"> · {a.title}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {k.features.length > 0 && (
         <div className="tags">
           {k.features.map((x) => (

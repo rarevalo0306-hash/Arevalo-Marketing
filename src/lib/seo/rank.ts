@@ -48,8 +48,15 @@ export type RankRow = {
   questions?: string[];
   /** "Búsquedas relacionadas" del pie de Google (sin repetir, máx. 8). Las revisiones viejas no las tienen. */
   related?: string[];
+  /** Los anuncios de Google que salieron en la búsqueda (vienen gratis en la misma respuesta). Las revisiones viejas no los tienen. */
+  ads?: SerpAd[];
   error?: { es: string; en: string };
 };
+
+/** Un anuncio de Google en los resultados (type "paid"). */
+export type SerpAd = { position: number; domain: string; title: string; description: string; url: string };
+/** Máximo de anuncios que se guardan por búsqueda. */
+export const RANK_MAX_ADS = 4;
 
 /** Máximo de preguntas y de búsquedas relacionadas que se guardan por palabra clave. */
 export const RANK_MAX_QUESTIONS = 8;
@@ -130,6 +137,7 @@ export type SerpItem = {
   domain?: string;
   url?: string;
   title?: string;
+  description?: string;
   /** Algunas versiones anidan los negocios del mapa. */
   items?: SerpItem[] | null;
 };
@@ -183,6 +191,19 @@ export function serpRelated(items: SerpItem[]): string[] {
   );
 }
 
+/** Los anuncios de la búsqueda (type "paid": title, description, domain, url), en orden y sin repetir el mismo dominio. */
+export function serpAds(items: SerpItem[], max = RANK_MAX_ADS): SerpAd[] {
+  const out: SerpAd[] = [];
+  const ads = items.filter((i) => i.type === "paid").sort((a, b) => (num(a.rank_absolute) ?? 99) - (num(b.rank_absolute) ?? 99));
+  for (const i of ads) {
+    const domain = siteDomain(i.domain || i.url) || str(i.domain).toLowerCase();
+    if (!domain || out.some((a) => a.domain === domain)) continue;
+    out.push({ position: out.length + 1, domain, title: str(i.title).replace(/\s+/g, " ").trim().slice(0, 200), description: str(i.description).replace(/\s+/g, " ").trim().slice(0, 400), url: str(i.url).slice(0, 500) });
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
 /** Convierte un resultado de la SERP API en una fila del reporte. */
 export function parseSerp(keyword: string, result: SerpResult | null | undefined, domain: string, businessName: string): RankRow {
   const items = Array.isArray(result?.items) ? result.items.filter((i): i is SerpItem => !!i && typeof i === "object") : [];
@@ -213,6 +234,7 @@ export function parseSerp(keyword: string, result: SerpResult | null | undefined
 
   const questions = serpQuestions(items);
   const related = serpRelated(items);
+  const ads = serpAds(items);
 
   return {
     keyword,
@@ -224,6 +246,7 @@ export function parseSerp(keyword: string, result: SerpResult | null | undefined
     // Siempre se guardan (aunque vengan vacías) para distinguir "Google no mostró preguntas" de una revisión vieja.
     questions,
     related,
+    ads,
   };
 }
 
@@ -315,6 +338,13 @@ export function readRankReport(json: unknown): RankReport | null {
     // Las revisiones viejas no traen preguntas ni búsquedas relacionadas.
     const questions = Array.isArray(r.questions) ? uniqueTexts(r.questions) : null;
     const related = Array.isArray(r.related) ? uniqueTexts(r.related) : null;
+    const ads = Array.isArray(r.ads)
+      ? r.ads
+          .filter((a): a is Record<string, unknown> => !!a && typeof a === "object")
+          .map((a) => ({ position: num(a.position) ?? 0, domain: str(a.domain), title: str(a.title).slice(0, 200), description: str(a.description).slice(0, 400), url: str(a.url).slice(0, 500) }))
+          .filter((a) => a.domain && a.position > 0)
+          .slice(0, RANK_MAX_ADS)
+      : null;
     rows.push({
       keyword,
       position: position !== null && position >= 1 ? position : null,
@@ -335,6 +365,7 @@ export function readRankReport(json: unknown): RankReport | null {
       features: Array.isArray(r.features) ? r.features.filter((f): f is string => typeof f === "string") : [],
       ...(questions ? { questions } : {}),
       ...(related ? { related } : {}),
+      ...(ads ? { ads } : {}),
       ...(error ? { error } : {}),
     });
   }

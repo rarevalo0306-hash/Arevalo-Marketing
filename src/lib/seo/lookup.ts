@@ -9,7 +9,7 @@ import { bi } from "@/lib/i18n";
 import { type BiText, isDirectory, normalizeDomain, parseLabsCompetitors, parseRankedKeywords, resolveLocation } from "@/lib/seo/competitors";
 import { dfsPost, type Zone } from "@/lib/seo/dataforseo";
 import { type KeywordOverview, keywordOverview, labsCost } from "@/lib/seo/labs";
-import { domainMatches, nameMatches, type SerpItem, type SerpResult, serpQuestions, siteDomain } from "@/lib/seo/rank";
+import { domainMatches, nameMatches, RANK_MAX_ADS, type SerpAd, serpAds, type SerpItem, type SerpResult, serpQuestions, siteDomain } from "@/lib/seo/rank";
 
 export const LOOKUP_KIND = "lookup";
 /** Cuántos días se muestra una búsqueda guardada antes de sugerir revisarla otra vez. */
@@ -46,6 +46,8 @@ export type KeywordLookup = {
   /** Lo que muestra Google además de los resultados: mapa, preguntas, resumen con IA… */
   features: string[];
   questions: string[];
+  /** Los anuncios de Google en esa búsqueda (las búsquedas viejas no los tienen). */
+  ads?: SerpAd[];
   /** Los datos de la palabra en el país (null si Labs no la tiene o falló). */
   facts: (Omit<KeywordOverview, "keyword"> & { country: string }) | null;
   notes: BiText[];
@@ -131,7 +133,7 @@ export function parseLookupSerp(
   result: SerpResult | null | undefined,
   domain: string,
   businessName: string,
-): Pick<KeywordLookup, "top" | "yourPosition" | "localPack" | "features" | "questions"> {
+): Pick<KeywordLookup, "top" | "yourPosition" | "localPack" | "features" | "questions" | "ads"> {
   const items = Array.isArray(result?.items) ? result.items.filter((i): i is SerpItem => !!i && typeof i === "object") : [];
   const organic = items
     .filter((i) => i.type === "organic" && num(i.rank_group) !== null)
@@ -152,7 +154,7 @@ export function parseLookupSerp(
   }
   const types = new Set<string>([...(Array.isArray(result?.item_types) ? result.item_types.filter((x): x is string => typeof x === "string") : []), ...items.map((i) => str(i.type))]);
   const features = [...types].filter((x) => x && x !== "organic").map((x) => (x === "paid" ? "ads" : x)).filter((x, i, all) => all.indexOf(x) === i);
-  return { top, yourPosition: top.find((x) => x.mine)?.position ?? null, localPack, features, questions: serpQuestions(items) };
+  return { top, yourPosition: top.find((x) => x.mine)?.position ?? null, localPack, features, questions: serpQuestions(items), ads: serpAds(items) };
 }
 
 /**
@@ -222,6 +224,15 @@ export function readLookup(json: unknown): Lookup | null {
       localPack: lp ? { names: arr(lp.names).filter((n): n is string => typeof n === "string").slice(0, 3), you: num(lp.you) } : null,
       features: arr(r.features).filter((x): x is string => typeof x === "string"),
       questions: arr(r.questions).filter((x): x is string => typeof x === "string").slice(0, 8),
+      ...(Array.isArray(r.ads)
+        ? {
+            ads: arr(r.ads)
+              .map(obj)
+              .map((a) => ({ position: num(a.position) ?? 0, domain: str(a.domain), title: str(a.title).slice(0, 200), description: str(a.description).slice(0, 400), url: str(a.url).slice(0, 500) }))
+              .filter((a) => a.domain && a.position > 0)
+              .slice(0, RANK_MAX_ADS),
+          }
+        : {}),
       facts: f
         ? {
             volume: num(f.volume),
@@ -296,7 +307,7 @@ export async function runKeywordLookup(input: { q: string; zone: Zone; language:
   if (serp.status === "rejected" && facts.status === "rejected") throw serp.reason;
   const noteList: BiText[] = [];
   let cost = 0;
-  let parsed: ReturnType<typeof parseLookupSerp> = { top: [], yourPosition: null, localPack: null, features: [], questions: [] };
+  let parsed: ReturnType<typeof parseLookupSerp> = { top: [], yourPosition: null, localPack: null, features: [], questions: [], ads: [] };
   if (serp.status === "fulfilled") {
     cost += serp.value.cost;
     parsed = parseLookupSerp(serp.value.result[0], domain, input.businessName);

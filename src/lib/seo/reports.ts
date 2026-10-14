@@ -47,7 +47,17 @@ export type SeoKind =
   | "rank-desktop"
   | "clusters"
   | "listings-scan"
-  | "logs";
+  | "logs"
+  // Más herramientas como las de Semrush: ideas de palabras (ideas.ts), anuncios de la competencia (ads-research.ts),
+  // menciones en la web (mentions.ts), reseñas de otros sitios (web-reviews.ts, con su tarea pendiente) y lo que hace
+  // tu competencia cada semana (watch.ts, con su configuración).
+  | "ideas"
+  | "ads"
+  | "mentions"
+  | "web-reviews"
+  | "web-reviews-task"
+  | "watch"
+  | "watch-config";
 
 export async function saveReport(businessId: string, kind: SeoKind, data: Prisma.InputJsonValue) {
   return db.seoReport.create({ data: { businessId, kind, data } });
