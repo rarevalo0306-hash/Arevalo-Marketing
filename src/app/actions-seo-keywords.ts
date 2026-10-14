@@ -8,8 +8,9 @@ import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { dataForSeoEnabled, readTrackedKeywords, readZones, type Zone, zoneLabel } from "@/lib/seo/dataforseo";
-import { cleanKeyword, costText, keywordReport, type KeywordsReport, MAX_TRACKED } from "@/lib/seo/keywords";
-import { saveReport } from "@/lib/seo/reports";
+import { cleanKeyword, costText, fetchKeywordsLabs, keywordReport, type KeywordsReport, MAX_TRACKED, readKeywordsReport } from "@/lib/seo/keywords";
+import { latestReports, saveReport } from "@/lib/seo/reports";
+import { latestByZone } from "@/lib/seo/zones";
 import { readStudy } from "@/lib/study-shape";
 
 export type KeywordsResult = { ok: boolean; message: string } | null;
@@ -46,7 +47,9 @@ export async function refreshKeywords(businessId: string, _prev: KeywordsResult,
   const failed: { zone: Zone; error: unknown }[] = [];
   for (const [i, zone] of zones.entries()) {
     try {
-      const report = await keywordReport({ keywords, seeds: tracked, locationCode: zone.code, locationName: zone.name, language, ideas: i === 0 });
+      let report = await keywordReport({ keywords, seeds: tracked, locationCode: zone.code, locationName: zone.name, language, ideas: i === 0 });
+      // La dificultad y la intención (Labs, por país) solo en la zona principal: no cambian de una ciudad a otra.
+      if (i === 0) report = await fetchKeywordsLabs(report, zone, language).catch(() => ({ ...report, labsFailed: true }));
       await saveReport(businessId, "keywords", report as unknown as Prisma.InputJsonValue);
       done.push({ zone, report });
     } catch (error) {
@@ -79,6 +82,7 @@ export async function refreshKeywords(businessId: string, _prev: KeywordsResult,
       (main ? t(` Encontramos ${main.ideas.length} ideas nuevas.`, ` We found ${main.ideas.length} new ideas.`) : "") +
       t(` Costo total: ${cost}.`, ` Total cost: ${cost}.`) +
       (main?.ideasFailed ? t(" Las ideas nuevas no se pudieron traer esta vez; inténtalo de nuevo en un minuto.", " New ideas couldn't be fetched this time; try again in a minute.") : "") +
+      (main?.labsFailed ? t(" La dificultad no se pudo traer esta vez; usa el botón «Ver qué tan difícil es» en un minuto.", " Difficulty couldn't be fetched this time; use the “See how hard it is” button in a minute.") : "") +
       (failed.length
         ? t(
             ` No se pudo medir en: ${failedNames} (${errorText(failed[0].error, "es")}). Vuelve a intentarlo en un minuto.`,
@@ -104,4 +108,46 @@ export async function trackKeyword(businessId: string, keyword: string): Promise
   await db.business.update({ where: { id: businessId }, data: { seoKeywords: [...tracked, k] } });
   revalidatePath(`/b/${businessId}/seo`);
   return { ok: true, message: t("Agregada.", "Added.") };
+}
+
+/**
+ * Agrega la dificultad y la intención al último reporte de la zona principal sin volver a medir las búsquedas
+ * (una llamada de DataForSEO Labs, unos centavos). Actualiza ese mismo reporte.
+ */
+export async function addKeywordDifficulty(businessId: string, _prev: KeywordsResult, _f: FormData): Promise<KeywordsResult> {
+  ensure.text(businessId);
+  void _prev;
+  void _f;
+  const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
+  if (!dataForSeoEnabled())
+    return { ok: false, message: t("Falta conectar DataForSEO (DATAFORSEO_LOGIN y DATAFORSEO_PASSWORD en Vercel).", "DataForSEO isn't connected yet (DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD in Vercel).") };
+  const b = await db.business.findUnique({ where: { id: businessId }, select: { seoLocations: true, seoLocationCode: true, seoLocationName: true, seoLanguage: true } });
+  if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  const zones = readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName);
+  if (!zones.length) return { ok: false, message: t("Primero elige tu zona de Google en la pestaña «⚙ Ajustes».", "First pick your Google area in the “⚙ Settings” tab.") };
+  const rows = await latestReports(businessId, "keywords", 20);
+  const parsed = rows.map((r) => {
+    const report = readKeywordsReport(r.data);
+    return report ? { ...report, rowId: r.id } : null;
+  });
+  const main = latestByZone(parsed, zones).get(zones[0].code);
+  if (!main) return { ok: false, message: t("Primero presiona «Actualizar búsquedas».", "First press “Update searches”.") };
+  try {
+    const { rowId, ...report } = main;
+    const next = await fetchKeywordsLabs(report, zones[0], b.seoLanguage === "en" ? "en" : "es");
+    await db.seoReport.update({ where: { id: rowId }, data: { data: next as unknown as Prisma.InputJsonValue } });
+    revalidatePath(`/b/${businessId}/seo`);
+    const known = [...next.keywords, ...next.ideas].filter((k) => k.difficulty !== null && k.difficulty !== undefined).length;
+    const cost = costText(next.labs?.cost ?? 0);
+    return {
+      ok: true,
+      message: t(
+        `Listo: ${known} palabras con dificultad e intención (datos de ${next.labs?.country || "tu país"}). Costó ${cost}.`,
+        `Done: ${known} keywords with difficulty and intent (data for ${next.labs?.country || "your country"}). It cost ${cost}.`,
+      ),
+    };
+  } catch (e) {
+    return { ok: false, message: errorText(e, lang) };
+  }
 }

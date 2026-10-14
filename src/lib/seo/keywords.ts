@@ -4,6 +4,8 @@
 // principal, 1 llamada más de ideas nuevas. Con 3 zonas: 4 llamadas ≈ $0.30.
 import { intlLocale, type UiLang } from "@/lib/i18n";
 import { dfsPost, type Zone } from "@/lib/seo/dataforseo";
+import { resolveLocation } from "@/lib/seo/competitors";
+import { asIntent, type KeywordOverview, keywordOverview, labsCost, monthlyTrend, type SearchIntent } from "@/lib/seo/labs";
 
 export type Competition = "high" | "medium" | "low";
 
@@ -19,7 +21,14 @@ export type KwRow = {
   competitionIndex: number | null;
   /** Búsquedas de cada mes, del más viejo al más nuevo (hasta 12). */
   trend: number[];
+  /** Qué tan difícil es salir en la primera página de Google, 0 a 100 (DataForSEO Labs, en el país). Sin dato: no viene. */
+  difficulty?: number | null;
+  /** Lo que busca la gente con esa frase (comprar, comparar, informarse, un sitio). Sin dato: no viene. */
+  intent?: SearchIntent | null;
 };
+
+/** De dónde salieron la dificultad y la intención (Labs trabaja por país, no por ciudad). */
+export type KeywordsLabs = { country: string; language: string; at: string; cost: number };
 
 export type KeywordsReport = {
   location: string;
@@ -34,6 +43,10 @@ export type KeywordsReport = {
   createdAt: string;
   /** La búsqueda de ideas falló (los volúmenes sí se guardaron). */
   ideasFailed?: boolean;
+  /** Dificultad e intención de cada palabra (solo la zona principal). Los reportes viejos no lo tienen. */
+  labs?: KeywordsLabs;
+  /** La dificultad y la intención no se pudieron traer esta vez. */
+  labsFailed?: boolean;
 };
 
 export const MAX_TRACKED = 25;
@@ -48,9 +61,6 @@ export const KEYWORDS_CALL_COST = 0.075;
 export function keywordsCostEstimate(zones: number): number {
   return Math.round(KEYWORDS_CALL_COST * (Math.max(1, zones) + 1) * 1000) / 1000;
 }
-
-/** Así viene cada palabra de search_volume y keywords_for_keywords. */
-type ApiMonth = { year?: unknown; month?: unknown; search_volume?: unknown };
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
 
@@ -86,17 +96,8 @@ export function uniqueKeywords(list: string[], max = MAX_MEASURED): string[] {
   return out;
 }
 
-/** Los volúmenes de cada mes ordenados del más viejo al más nuevo (la API los manda del más nuevo al más viejo). */
-export function monthlyTrend(months: unknown, n = 12): number[] {
-  if (!Array.isArray(months)) return [];
-  return months
-    .filter((m): m is ApiMonth => typeof m === "object" && m !== null)
-    .map((m) => ({ at: Number(m.year) * 12 + Number(m.month), v: num(m.search_volume) ?? 0 }))
-    .filter((m) => Number.isFinite(m.at))
-    .sort((a, b) => a.at - b.at)
-    .slice(-n)
-    .map((m) => m.v);
-}
+/** Los volúmenes de cada mes ordenados del más viejo al más nuevo (se usa también en otras secciones). */
+export { monthlyTrend };
 
 const asCompetition = (v: unknown): Competition | null => {
   const c = typeof v === "string" ? v.toLowerCase() : "";
@@ -184,7 +185,15 @@ const readRow = (v: unknown): KwRow | null => {
     competition: asCompetition(r.competition),
     competitionIndex: num(r.competitionIndex),
     trend: Array.isArray(r.trend) ? r.trend.map((x) => num(x) ?? 0).slice(-12) : [],
+    ...(r.difficulty !== undefined ? { difficulty: num(r.difficulty) === null ? null : Math.min(100, Math.round(num(r.difficulty) as number)) } : {}),
+    ...(r.intent !== undefined ? { intent: asIntent(r.intent) } : {}),
   };
+};
+
+const readLabs = (v: unknown): KeywordsLabs | null => {
+  if (typeof v !== "object" || v === null) return null;
+  const r = v as Record<string, unknown>;
+  return typeof r.at === "string" ? { country: typeof r.country === "string" ? r.country : "", language: typeof r.language === "string" ? r.language : "", at: r.at, cost: num(r.cost) ?? 0 } : null;
 };
 
 /** Lee un reporte guardado; null si falta o tiene otro formato. */
@@ -202,7 +211,29 @@ export function readKeywordsReport(json: unknown): KeywordsReport | null {
     cost: num(r.cost) ?? 0,
     createdAt: typeof r.createdAt === "string" ? r.createdAt : "",
     ...(r.ideasFailed === true ? { ideasFailed: true } : {}),
+    ...(readLabs(r.labs) ? { labs: readLabs(r.labs) as KeywordsLabs } : {}),
+    ...(r.labsFailed === true ? { labsFailed: true } : {}),
   };
+}
+
+// ---------- Dificultad e intención (DataForSEO Labs) ----------
+
+/** Las palabras del reporte a las que se les pide dificultad e intención: las medidas y las ideas. */
+export const labsKeywords = (report: Pick<KeywordsReport, "keywords" | "ideas">): string[] => [...new Set([...report.keywords, ...report.ideas].map((r) => r.keyword.trim().toLowerCase()))];
+
+/**
+ * Agrega la dificultad y la intención a cada palabra del reporte (las búsquedas al mes siguen siendo las de Google
+ * Ads de la zona). Las que Labs no conoce quedan con null: así se sabe que sí se preguntó.
+ */
+export function withLabs(report: KeywordsReport, rows: KeywordOverview[], labs: KeywordsLabs): KeywordsReport {
+  const map = new Map(rows.map((r) => [r.keyword, r]));
+  const add = (r: KwRow): KwRow => {
+    const o = map.get(r.keyword.trim().toLowerCase());
+    return { ...r, difficulty: o?.difficulty ?? null, intent: o?.intent ?? null };
+  };
+  const { labsFailed: _failed, ...rest } = report;
+  void _failed;
+  return { ...rest, keywords: report.keywords.map(add), ideas: report.ideas.map(add), labs, cost: Math.round((report.cost + labs.cost) * 10000) / 10000 };
 }
 
 /** Busca una palabra en el reporte (medidas e ideas), sin importar mayúsculas. */
@@ -258,6 +289,19 @@ export async function keywordReport(opts: {
     createdAt: new Date().toISOString(),
     ...(ideasFailed ? { ideasFailed: true } : {}),
   };
+}
+
+/** Lo que cuesta pedir la dificultad y la intención de `n` palabras (una llamada de Labs). */
+export const labsCostEstimate = (n: number) => labsCost(n);
+
+/**
+ * Pide a DataForSEO Labs (keyword_overview, una llamada, unos US$0.03 con 150 palabras) la dificultad y la intención
+ * de las palabras del reporte, en el país de la zona. Docs: docs.dataforseo.com/v3/dataforseo_labs/google/keyword_overview/live
+ */
+export async function fetchKeywordsLabs(report: KeywordsReport, zone: Zone, language: string): Promise<KeywordsReport> {
+  const loc = await resolveLocation(zone.code, zone.name, language);
+  const { rows, cost } = await keywordOverview(labsKeywords(report), { countryCode: loc.countryCode, language: loc.language });
+  return withLabs(report, rows, { country: loc.countryName, language: loc.language, at: new Date().toISOString(), cost: Math.round(cost * 10000) / 10000 });
 }
 
 // ---------- Varias zonas ----------

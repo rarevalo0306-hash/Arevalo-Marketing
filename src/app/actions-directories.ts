@@ -12,7 +12,7 @@ import { deniedText, hasBusiness } from "@/lib/auth";
 import { brandSlogan, identityPrompt } from "@/lib/brand-identity";
 import { decryptJson } from "@/lib/crypto";
 import { db } from "@/lib/db";
-import { ALL_DIRECTORY_IDS, directoryName, isListingStatus, readDescriptions, type NapDescriptions } from "@/lib/directories";
+import { ALL_DIRECTORY_IDS, directoryName, isListingStatus, officialNap, readDescriptions, type NapDescriptions } from "@/lib/directories";
 import { loadDirectoryBasics } from "@/lib/directories-data";
 import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
@@ -34,7 +34,10 @@ import {
   type ReqChannel,
   type ReqTemplate,
 } from "@/lib/reviews-request";
-import { readTrackedKeywords } from "@/lib/seo/dataforseo";
+import { dataForSeoEnabled, readTrackedKeywords, readZones } from "@/lib/seo/dataforseo";
+import { costText } from "@/lib/seo/keywords";
+import { listingUpdate, runListingsScan, SCAN_KIND } from "@/lib/listings-scan";
+import { saveReport } from "@/lib/seo/reports";
 import { readStudy, topKeywords } from "@/lib/study-shape";
 
 export type DirResult = { ok: boolean; message: string } | null;
@@ -346,4 +349,64 @@ export async function sendReviewRequests(businessId: string, _prev: DirResult, f
       (failed ? t(` ${failed} fallaron (${firstError}).`, ` ${failed} failed (${firstError}).`) : "") +
       (skipped ? ` ${t("No se envió a:", "Not sent to:")} ${extra}.` : ""),
   };
+}
+
+// ---------- Buscar mis fichas automáticamente ----------
+
+/**
+ * Busca en Google las fichas del negocio en los directorios de su lista (2 consultas, ~US$0.013) y anota solas las que
+ * encontró y estaban «por hacer». No publica nada en ningún directorio.
+ */
+export async function scanListings(businessId: string, _prev: DirResult, _f: FormData): Promise<DirResult> {
+  ensure.text(businessId);
+  void _prev;
+  void _f;
+  const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
+  if (!dataForSeoEnabled())
+    return { ok: false, message: t("Para buscar tus fichas hace falta DataForSEO (DATAFORSEO_LOGIN y DATAFORSEO_PASSWORD en Vercel).", "Finding your listings needs DataForSEO (DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD in Vercel).") };
+  const [basics, b] = await Promise.all([
+    loadDirectoryBasics(businessId),
+    db.business.findUnique({ where: { id: businessId }, select: { seoLocations: true, seoLocationCode: true, seoLocationName: true, seoLanguage: true } }),
+  ]);
+  if (!basics || !b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  const zone = readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName)[0];
+  if (!zone) return { ok: false, message: t("Primero elige la zona donde buscan tus clientes en SEO → «⚙ Ajustes».", "First pick the area where your customers search in SEO → “⚙ Settings”.") };
+  // El mismo teléfono que la tarjeta de «Tus datos oficiales».
+  const phone = officialNap(basics.nap).phone;
+  try {
+    const scan = await runListingsScan({
+      name: basics.business.name,
+      city: basics.place.city,
+      phone,
+      dirs: basics.dirs,
+      locationCode: zone.code,
+      language: b.seoLanguage === "en" ? "en" : "es",
+    });
+    let marked = 0;
+    for (const hit of scan.hits) {
+      const current = basics.listings.find((l) => l.directory === hit.id);
+      const data = listingUpdate(hit, current, scan.createdAt);
+      if (!data) continue;
+      await db.directoryListing.upsert({
+        where: { businessId_directory: { businessId, directory: hit.id } },
+        create: { businessId, directory: hit.id, ...data, checkedAt: new Date() },
+        update: { ...data, checkedAt: new Date() },
+      });
+      marked++;
+    }
+    await saveReport(businessId, SCAN_KIND, { ...scan, marked });
+    await afterChange(businessId);
+    const different = scan.hits.filter((h) => h.phone === "different").length;
+    return {
+      ok: true,
+      message:
+        t(
+          `Listo: encontramos ${scan.hits.length} ${scan.hits.length === 1 ? "ficha tuya" : "fichas tuyas"} en Google${marked ? ` y anotamos ${marked} en tu lista` : ""}. Costó ${costText(scan.cost)}.`,
+          `Done: we found ${scan.hits.length} of your ${scan.hits.length === 1 ? "listing" : "listings"} on Google${marked ? ` and marked ${marked} on your list` : ""}. It cost ${costText(scan.cost)}.`,
+        ) + (different ? t(` ${different} con un teléfono distinto: corrígelo en ese directorio.`, ` ${different} with a different phone: fix it on that directory.`) : ""),
+    };
+  } catch (e) {
+    return { ok: false, message: errorText(e, lang) };
+  }
 }

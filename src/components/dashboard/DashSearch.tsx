@@ -1,7 +1,13 @@
 import Form from "next/form";
 import Link from "next/link";
 import { looksLikeDomain, domainFacts, keywordFacts, loadSeoBits } from "@/lib/dashboard";
+import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
+import { dataForSeoEnabled, readZones } from "@/lib/seo/dataforseo";
+import { costText } from "@/lib/seo/keywords";
+import { domainLookupCost, findLookup, keywordLookupCost, LOOKUP_KIND } from "@/lib/seo/lookup";
+import { latestReports } from "@/lib/seo/reports";
+import { LiveLookup } from "./LiveLookup";
 import { compact, n } from "./fmt";
 import { DashIcon } from "./DashIcon";
 import { TrackButton } from "./TrackButton";
@@ -44,6 +50,24 @@ export async function DashSearch({ businessId, q, example }: { businessId: strin
       <span className={s.searchHint}>{t(`Ej.: «${ex}» o «competencia.com»`, `E.g. “${ex}” or “competitor.com”`)}</span>
     </Form>
   );
+}
+
+/** «Ver quién sale ahora»: la búsqueda en vivo, con la última guardada de lo mismo (si hay, no gasta). */
+async function Live({ businessId, q }: { businessId: string; q: string }) {
+  if (!dataForSeoEnabled()) return null;
+  const [b, saved] = await Promise.all([
+    db.business.findUnique({ where: { id: businessId }, select: { seoLocations: true, seoLocationCode: true, seoLocationName: true } }),
+    latestReports(businessId, LOOKUP_KIND, 60),
+  ]);
+  if (!b) return null;
+  const type = looksLikeDomain(q) ? "domain" : "keyword";
+  const initial = findLookup(
+    saved.map((r) => r.data),
+    type,
+    q,
+  );
+  const ready = readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName).length > 0;
+  return <LiveLookup businessId={businessId} q={q} initial={initial} ready={ready} price={costText(type === "domain" ? domainLookupCost() : keywordLookupCost())} />;
 }
 
 /** Lo que ya sabemos de lo que buscó (solo lo guardado) y a dónde ir. */
@@ -119,6 +143,7 @@ export async function SearchResult({ businessId, q }: { businessId: string; q: s
             </div>
           </>
         )}
+        <Live businessId={businessId} q={q} />
       </section>
     );
   }
@@ -141,8 +166,8 @@ export async function SearchResult({ businessId, q }: { businessId: string; q: s
       {nothing ? (
         <p className="small muted">
           {t(
-            "Todavía no tenemos datos de esta búsqueda. Síguela para revisar en qué lugar sales, o escribe un artículo para salir en Google.",
-            "We don't have data for this search yet. Track it to check where you rank, or write an article to show up on Google.",
+            "Todavía no tenemos datos guardados de esta búsqueda. Mírala en vivo abajo, síguela para revisar tu lugar cada vez, o escribe un artículo para salir en Google.",
+            "We don't have saved data for this search yet. See it live below, track it to check your spot every time, or write an article to show up on Google.",
           )}
         </p>
       ) : (
@@ -174,6 +199,7 @@ export async function SearchResult({ businessId, q }: { businessId: string; q: s
         </Link>
         {k.tracked ? <span className="pill done">{t("Ya la sigues", "You track it")}</span> : <TrackButton businessId={businessId} keyword={k.keyword} />}
       </div>
+      <Live businessId={businessId} q={q} />
     </section>
   );
 }

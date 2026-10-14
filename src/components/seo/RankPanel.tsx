@@ -1,17 +1,18 @@
 import Link from "next/link";
-import { runRankCheck } from "@/app/actions-seo-rank";
+import { runDesktopRankCheck, runRankCheck } from "@/app/actions-seo-rank";
 import { RankFixSection } from "@/components/rankfix/RankFixSection";
 import { AiPromptButton } from "@/components/seo/AiPromptButton";
 import { HowToRead } from "@/components/seo/HowToRead";
 import { capClass, Fold } from "@/components/seo/Fold";
 import { RankButton } from "@/components/seo/RankButton";
+import { RunButton } from "@/components/seo/RunButton";
 import { ShowMore } from "@/components/seo/ShowMore";
 import help from "@/components/seo/SeoHelp.module.css";
 import { db } from "@/lib/db";
 import { intlLocale, type T } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { dataForSeoEnabled, type Zone, zoneLabel } from "@/lib/seo/dataforseo";
-import { compareRuns, RANK_COST_PER_KEYWORD, RANK_DEPTH, rankSetup, readRankReport, type Change, type RankReport, type RankRow } from "@/lib/seo/rank";
+import { compareRuns, deviceGap, RANK_COST_PER_KEYWORD, RANK_DEPTH, RANK_DESKTOP_KIND, rankSetup, readRankReport, type Change, type RankReport, type RankRow } from "@/lib/seo/rank";
 import { positionText, rowAdvice, VERDICTS } from "@/lib/seo/plain";
 import { loadPromptContext } from "@/lib/seo/prompt-context";
 import { rankItems, rankPrompt } from "@/lib/seo/prompts";
@@ -142,7 +143,10 @@ export async function RankPanel({ businessId }: { businessId: string }) {
   const zones = setup.zones;
   const multi = zones.length > 1;
   // Un reporte por zona y por revisión: se leen las últimas 10 revisiones de cada zona (máx. 50 filas).
-  const saved = await latestReports(businessId, "rank", 10 * zones.length);
+  const [saved, [desktopRow]] = await Promise.all([latestReports(businessId, "rank", 10 * zones.length), latestReports(businessId, RANK_DESKTOP_KIND, 1)]);
+  // La revisión en computadora (solo la zona principal), guardada aparte.
+  const desktopParsed = desktopRow ? readRankReport(desktopRow.data) : null;
+  const desktop = desktopParsed && (desktopParsed.locationCode === zones[0].code || desktopParsed.locationCode === 0) ? desktopParsed : null;
   const parsed = saved.map((r) => {
     const report = readRankReport(r.data);
     return report ? { ...report, savedAt: r.createdAt } : null;
@@ -210,6 +214,23 @@ export async function RankPanel({ businessId }: { businessId: string }) {
         <span className={help.posMap} title={t("Los 3 negocios con mapa que Google muestra arriba de los resultados", "The 3 businesses with a map that Google shows above the results")}>
           📍 {pick(p.map)}
         </span>
+      </span>
+    );
+  };
+
+  /** En la computadora: el lugar y la diferencia con el celular (de la zona principal). */
+  const desktopCell = (keyword: string) => {
+    const d = rowOf(desktop, keyword);
+    if (!d) return <span className="muted small" title={t("Esta palabra no se revisó en la computadora", "This keyword wasn't checked on desktop")}>·</span>;
+    if (d.error) return <span className="pill failed" title={lang === "en" ? d.error.en : d.error.es}>{t("Falló", "Failed")}</span>;
+    const m = rowOf(report, keyword);
+    const gap = deviceGap(m && !m.error ? m.position : undefined, d.position);
+    return (
+      <span className={help.pos}>
+        <span className={help.posMain}>{pick(positionText(d).organic)}</span>
+        {gap.kind === "better" && <span className="small rank-up">▲{gap.delta} {t("vs. celular", "vs. mobile")}</span>}
+        {gap.kind === "worse" && <span className="small rank-down">▼{gap.delta} {t("vs. celular", "vs. mobile")}</span>}
+        {gap.kind === "same" && <span className="small muted">{t("igual que en el celular", "same as mobile")}</span>}
       </span>
     );
   };
@@ -302,6 +323,19 @@ export async function RankPanel({ businessId }: { businessId: string }) {
         </span>
       </p>
       <RankButton action={runRankCheck.bind(null, businessId)} keywords={setup.keywords.length} zones={zones.length} perKeyword={RANK_COST_PER_KEYWORD} has={latest.length > 0} />
+      {latest.length > 0 && (
+        <RunButton
+          action={runDesktopRankCheck.bind(null, businessId)}
+          label={desktop ? t("💻 Volver a revisar en computadora", "💻 Check desktop again") : t("💻 Revisar también en computadora", "💻 Also check on desktop")}
+          busy={t("Buscando en Google en computadora…", "Searching Google on desktop…")}
+          note={
+            t(
+              `Cuesta ≈ ${money.format(Math.round(setup.keywords.length * RANK_COST_PER_KEYWORD * 10000) / 10000)} (${setup.keywords.length} ${setup.keywords.length === 1 ? "palabra" : "palabras"}${multi ? `, solo en ${label(zones[0])}` : ""}).`,
+              `Costs ≈ ${money.format(Math.round(setup.keywords.length * RANK_COST_PER_KEYWORD * 10000) / 10000)} (${setup.keywords.length} ${setup.keywords.length === 1 ? "keyword" : "keywords"}${multi ? `, only in ${label(zones[0])}` : ""}).`,
+            ) + (desktop && desktopRow ? t(` Última: ${short.format(desktopRow.createdAt)}.`, ` Last: ${short.format(desktopRow.createdAt)}.`) : "")
+          }
+        />
+      )}
 
       {latest.length === 0 &&
         (saved.length === 0 ? (
@@ -437,6 +471,12 @@ export async function RankPanel({ businessId }: { businessId: string }) {
                   ) : (
                     <th>{t("Posición", "Position")}</th>
                   )}
+                  {desktop && (
+                    <th title={t("Google en computadora (zona principal). La tendencia y los avisos siguen siendo del celular.", "Google on desktop (main area). The trend and alerts are still for mobile.")}>
+                      💻 {t("Computadora", "Desktop")}
+                      {multi && <span className="small muted"> ★</span>}
+                    </th>
+                  )}
                   <th>{multi ? t("¿Qué significa? ★", "What does it mean? ★") : t("¿Qué significa?", "What does it mean?")}</th>
                   <th>{t("Tu página que sale", "Your page that ranks")}</th>
                   <th>{multi ? t("Tendencia ★", "Trend ★") : t("Tendencia", "Trend")}</th>
@@ -460,6 +500,7 @@ export async function RankPanel({ businessId }: { businessId: string }) {
                         const row = rowOf(z.report, k);
                         return <td key={z.zone.code}>{cell(row, row ? z.changes[row.keyword] : undefined)}</td>;
                       })}
+                      {desktop && <td>{desktopCell(k)}</td>}
                       <td>{meaning(rowOf(report, k) ?? perZone.map((z) => rowOf(z.report, k)).find(Boolean))}</td>
                       <td className={`small rank-url ${help.urlCell}`}>
                         {url ? <a href={url} target="_blank" rel="noopener noreferrer">{shortUrl(url)}</a> : <span className="muted">—</span>}
@@ -482,6 +523,14 @@ export async function RankPanel({ businessId }: { businessId: string }) {
                 {multi && t(" ★ = tu zona principal (la tendencia es de esa zona).", " ★ = your main area (the trend is for that area).")}
                 {history.length > 1 && ` ${t("Tendencia desde", "Trend since")} ${short.format(history[0].savedAt)}.`}
               </li>
+              {desktop && (
+                <li>
+                  {t(
+                    "💻 Computadora: el mismo Google pero desde una computadora. Suele parecerse al celular; si sales mucho más abajo en uno de los dos, revisa que tu página se vea bien en ese aparato.",
+                    "💻 Desktop: the same Google but from a computer. It's usually similar to mobile; if you rank much lower on one of them, check that your site looks good on that device.",
+                  )}
+                </li>
+              )}
               <li>{t("1 = el primero que sale en Google. 1 a 3: excelente, ahí se van la mayoría de los clics.", "1 = the first result on Google. 1 to 3: excellent, most clicks go there.")}</li>
               <li>{t("4 a 10: primera página. Te ven, pero menos.", "4 to 10: page one. People see you, but less.")}</li>
               <li>{t("11 a 20: segunda página. Casi nadie llega ahí.", "11 to 20: page two. Almost nobody gets there.")}</li>

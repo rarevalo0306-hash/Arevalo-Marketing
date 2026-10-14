@@ -38,7 +38,16 @@ export type SeoKind =
   // Arreglos de la página web hechos por Matya (src/lib/webfix*.ts): cada propuesta con su PR en GitHub y su estado.
   | "webfix"
   // «Que la IA mejore mis posiciones» (src/lib/rankfix*.ts): el plan por búsqueda, lo preparado y lo publicado.
-  | "rankfix";
+  | "rankfix"
+  // Herramientas como las de Semrush: búsqueda en vivo de una palabra o página (lookup.ts), comparar páginas
+  // (compare.ts), posiciones en computadora (rank.ts), temas (clusters.ts), fichas en directorios (listings-scan.ts) y
+  // visitas de los robots a la web (logs.ts).
+  | "lookup"
+  | "compare"
+  | "rank-desktop"
+  | "clusters"
+  | "listings-scan"
+  | "logs";
 
 export async function saveReport(businessId: string, kind: SeoKind, data: Prisma.InputJsonValue) {
   return db.seoReport.create({ data: { businessId, kind, data } });
