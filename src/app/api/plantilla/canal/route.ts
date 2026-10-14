@@ -14,7 +14,7 @@ function allowed(url: string, businessId: string): boolean {
 }
 
 // Vista previa por red: la foto de la publicación EXACTAMENTE como se mandará a ese canal (diseños dibujados de
-// nuevo en su forma, recortes y fondos desenfocados). Protegida por el middleware (hay que haber entrado).
+// nuevo en su forma, recortes, fotos extendidas con IA y fondos desenfocados). Protegida por el middleware (hay que haber entrado).
 // ?b=negocio&u=dirección de la foto&c=canal (instagram, facebook, google, linkedin, x…).
 export async function GET(req: Request) {
   const q = new URL(req.url).searchParams;
@@ -31,7 +31,8 @@ export async function GET(req: Request) {
     );
   if (!allowed(url, businessId)) return new Response(t("Esa foto no es de este negocio.", "That photo doesn't belong to this business."), { status: 400 });
   try {
-    const made = await imageForChannel(url, channel);
+    // Si la foto ya se extendió con IA para esta forma, se ve así; la vista previa nunca hace una nueva (no gasta).
+    const made = await imageForChannel(url, channel, undefined, { expand: { businessId, cachedOnly: true } });
     // Sin cambios para esta red: se muestra la original.
     if (!made) return Response.redirect(new URL(url, req.url), 302);
     return new Response(new Uint8Array(made.out), { headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=600" } });

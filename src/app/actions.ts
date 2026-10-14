@@ -36,6 +36,7 @@ import type { Need } from "@/lib/roles";
 import { SESSION_COOKIE } from "@/lib/session";
 import { stormEvent, stormSchedule } from "@/lib/storm";
 import { businessDay, localToUtc } from "@/lib/time";
+import { designStyleOf } from "@/lib/design-style";
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 const safeJson = (v: string): unknown => {
@@ -644,7 +645,7 @@ export async function aiVideoCheck(businessId: string, job: VideoJob): Promise<V
 // ---------- Diseño con la marca ----------
 
 type BrandRow = Awaited<ReturnType<typeof business>>;
-const brandOf = (b: BrandRow): Brand => ({ name: b.name, color: b.color, color2: b.color2, color3: b.color3, logoUrl: b.logoUrl, logoLightUrl: b.logoLightUrl, phone: b.phone, website: b.website, fontHeading: b.fontHeading, fontBody: b.fontBody });
+const brandOf = (b: BrandRow): Brand => ({ name: b.name, color: b.color, color2: b.color2, color3: b.color3, logoUrl: b.logoUrl, logoLightUrl: b.logoLightUrl, phone: b.phone, website: b.website, fontHeading: b.fontHeading, fontBody: b.fontBody, style: designStyleOf(b).style });
 
 /** Plantillas del negocio (las que creó la IA o subió el dueño), o las de fábrica si todavía no tiene. */
 async function templatesOf(businessId: string): Promise<StoredTemplate[]> {

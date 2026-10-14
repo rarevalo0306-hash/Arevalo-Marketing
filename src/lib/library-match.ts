@@ -174,6 +174,9 @@ export type LibraryCard = {
   thumb: string;
   url: string;
   durationSec: number;
+  /** Medida de la foto (0 si no se sabe). */
+  width: number;
+  height: number;
   description: LibraryDescription | null;
   tags: string[];
   quality: number;

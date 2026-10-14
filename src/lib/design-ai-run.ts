@@ -44,6 +44,7 @@ import { bi, type UiLang } from "@/lib/i18n";
 import { libraryPhotoUrl } from "@/lib/photo-enhance-shape";
 import { readMedia, readSidecar } from "@/lib/media";
 import { storeAiPhoto } from "@/lib/media-formats";
+import { designStyleOf } from "@/lib/design-style";
 
 export const MASTER_KIND = "design.master";
 
@@ -605,8 +606,8 @@ export function sampleHeadline(brandIdentity: unknown, lang: UiLang): string {
   return lang === "en" ? "Quality you can see in every detail" : "Calidad que se nota en cada detalle";
 }
 
-type BrandBiz = { name: string; color: string; color2: string; color3: string; logoUrl: string; logoLightUrl: string; phone: string; website: string; fontHeading: string; fontBody: string; brandIdentity: unknown };
-export const brandOf = (b: BrandBiz, lang: UiLang): Brand => ({ name: b.name, color: b.color, color2: b.color2, color3: b.color3, logoUrl: b.logoUrl, logoLightUrl: b.logoLightUrl, phone: b.phone, website: b.website, fontHeading: b.fontHeading, fontBody: b.fontBody, slogan: sloganFrom(b.brandIdentity, lang) });
+type BrandBiz = { name: string; aiProfile?: string; color: string; color2: string; color3: string; logoUrl: string; logoLightUrl: string; phone: string; website: string; fontHeading: string; fontBody: string; brandIdentity: unknown };
+export const brandOf = (b: BrandBiz, lang: UiLang): Brand => ({ name: b.name, color: b.color, color2: b.color2, color3: b.color3, logoUrl: b.logoUrl, logoLightUrl: b.logoLightUrl, phone: b.phone, website: b.website, fontHeading: b.fontHeading, fontBody: b.fontBody, slogan: sloganFrom(b.brandIdentity, lang), style: designStyleOf(b).style });
 
 /** El post ya armado (foto + titular + logo) con un diseño y sus cajas, como data: JPEG chico para la pantalla. */
 export async function previewMaster(b: BrandBiz & { id: string }, d: MasterDetail, a: MasterAdjust, lang: UiLang): Promise<string> {

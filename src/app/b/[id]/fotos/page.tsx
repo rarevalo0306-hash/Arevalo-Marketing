@@ -16,6 +16,7 @@ import { readEnhanceInfo } from "@/lib/photo-enhance-shape";
 import { r2Enabled } from "@/lib/r2";
 import { fmtWhen } from "@/lib/time";
 import { uploadStats } from "@/lib/upload";
+import { falToolsEnabled, fixEnabled } from "@/lib/photo-tools";
 
 // «Revisar ahora» trae y revisa con IA lo nuevo de la carpeta.
 export const maxDuration = 300;
@@ -224,7 +225,7 @@ export default async function FotosPage({ params, searchParams }: { params: Prom
             <>
               <div className={s.grid}>
                 {page.items.map((c) => (
-                  <LibraryItemCard key={c.id} c={c} businessId={id} lang={lang} variantCents={variantsEnabled() ? VARIANT_CENTS : null} />
+                  <LibraryItemCard key={c.id} c={c} businessId={id} lang={lang} variantCents={variantsEnabled() ? VARIANT_CENTS : null} aiTools={{ fal: falToolsEnabled(), fix: fixEnabled() }} />
                 ))}
               </div>
               {page.more && (

@@ -1,7 +1,7 @@
 import { brandFromAi, brandFromBook, deleteTemplate, getBrandBookUploadUrl, getUploadUrl, proposeTemplates, updateBrandKit } from "@/app/actions";
 import { saveBrandBook } from "@/app/actions-brand-book";
-import { saveVoicePrefs } from "@/app/actions-brand-identity";
-import { saveBrandLogo, saveLogoSlot, saveMainLogoType, uploadSvgLogo } from "@/app/actions-brand";
+import { saveDesignStyle, saveVoicePrefs } from "@/app/actions-brand-identity";
+import { detectMainLogoType, removeLogoBackground, saveBrandLogo, saveLogoSlot, saveMainLogoType, uploadSvgLogo } from "@/app/actions-brand";
 import { BrandKitForm } from "@/components/BrandKitForm";
 import { BookAssetsSection } from "@/components/brand/BookAssetsSection";
 import { IdentitySection } from "@/components/brand/IdentitySection";
@@ -9,6 +9,7 @@ import { BrandKitSection } from "@/components/brand/BrandKitSection";
 import { DesignAiSection } from "@/components/brand/DesignAiSection";
 import { saveCustomTemplate } from "@/app/actions-media";
 import { PlacementsPanel, type PlacementGroup } from "@/components/brand/PlacementsPanel";
+import { StylePick } from "@/components/brand/StylePick";
 import { PageHead } from "@/components/PageHead";
 import { SizesInfo } from "@/components/SizesInfo";
 import { TemplateUpload } from "@/components/TemplateUpload";
@@ -19,8 +20,10 @@ import { readBrandAssets } from "@/lib/brand-assets";
 import { readBrandIdentity } from "@/lib/brand-identity-shape";
 import { db } from "@/lib/db";
 import { BUILTIN_TEMPLATES, builtinTemplateName, LAYOUTS } from "@/lib/design-shapes";
+import { designStyleOf } from "@/lib/design-style";
 import type { UiLang } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
+import { logoTypeEnabled } from "@/lib/logo-type";
 import { usesSupabaseStorage } from "@/lib/media";
 import { EVIDENCE_LABEL, PLAN_LABEL, placementGroups, placementPlan, previewSize, sizeText } from "@/lib/placements";
 import s from "./marca.module.css";
@@ -59,6 +62,9 @@ export default async function MarcaPage({ params }: { params: Promise<{ id: stri
   const identity = readBrandIdentity(b.brandIdentity);
   const appliedAt = identity.appliedAt;
   const v = b.createdAt.getTime().toString(36) + (b.templates.at(-1)?.createdAt.getTime().toString(36) ?? "");
+  // El estilo de los diseños (el del dueño o el que va con su tipo de negocio). Va en la clave de las vistas previas.
+  const look = designStyleOf(b);
+  const version = `${v}-${b.color}${b.fontHeading}${look.style}`;
   // Los formatos de cada red (src/data/formatos.json), ya listos para la pantalla (sin mandar el catálogo entero).
   const placements: PlacementGroup[] = placementGroups().map((g) => ({
     platform: g.platform,
@@ -96,7 +102,9 @@ export default async function MarcaPage({ params }: { params: Promise<{ id: stri
         logos={assets.logos}
         saveSlot={saveLogoSlot.bind(null, id)}
         saveMainType={saveMainLogoType.bind(null, id)}
+        detectLogoType={logoTypeEnabled() ? detectMainLogoType.bind(null, id) : undefined}
         uploadSvg={uploadSvgLogo.bind(null, id)}
+        removeBg={removeLogoBackground.bind(null, id)}
       >
         <BookAssetsSection businessId={id} />
       </BrandKitForm>
@@ -117,6 +125,7 @@ export default async function MarcaPage({ params }: { params: Promise<{ id: stri
           </div>
           {aiEnabled() && <TemplatesAuto businessId={id} propose={proposeTemplates.bind(null, id)} has={own.length > 0} />}
         </div>
+        <StylePick businessId={id} style={look.style} by={look.by} version={`${v}-${b.color}${b.fontHeading}`} save={saveDesignStyle.bind(null, id)} />
         <DesignAiSection businessId={id} />
         <TemplateUpload save={saveCustomTemplate.bind(null, id)} upload={usesSupabaseStorage() ? getUploadUrl.bind(null, id) : null} color={b.color} />
         <SizesInfo />
@@ -124,7 +133,7 @@ export default async function MarcaPage({ params }: { params: Promise<{ id: stri
           {shown.map((x) => (
             <figure key={x.key} className="tpl">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={`/api/plantilla?b=${id}&t=${x.key}&v=${v}-${b.color}${b.fontHeading}`} alt={t(`Plantilla ${x.name}`, `${x.name} template`)} loading="lazy" />
+              <img src={`/api/plantilla?b=${id}&t=${x.key}&v=${version}`} alt={t(`Plantilla ${x.name}`, `${x.name} template`)} loading="lazy" />
               <figcaption>
                 <span className="stack" style={{ gap: 0 }}>
                   <strong>{x.name}</strong>
@@ -151,7 +160,7 @@ export default async function MarcaPage({ params }: { params: Promise<{ id: stri
             )}
           </p>
         </div>
-        <PlacementsPanel businessId={id} templates={shown.map((x) => ({ key: x.key, name: x.name }))} groups={placements} version={`${v}-${b.color}${b.fontHeading}`} />
+        <PlacementsPanel businessId={id} templates={shown.map((x) => ({ key: x.key, name: x.name }))} groups={placements} version={version} />
       </section>
     </>
   );

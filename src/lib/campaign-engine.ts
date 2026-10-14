@@ -49,6 +49,7 @@ import { pickLibraryPhoto, pickLibraryPhotos } from "@/lib/library";
 import { photoContextFor, photoMetaFor, storeDesign } from "@/lib/media-formats";
 import { fmtDateTime } from "@/lib/time";
 import { makeCampaignVideo, pollCampaignVideo, type CampaignVideoJob } from "@/lib/video-campaign";
+import { designStyleOf } from "@/lib/design-style";
 
 /** Cuántos días antes se prepara cada publicación. */
 export const LEAD_DAYS = 3;
@@ -104,7 +105,7 @@ async function templatesOf(businessId: string): Promise<StoredTemplate[]> {
 async function brandDesign(b: Biz, photoUrl: string | undefined, post: AiPostOut, shape: DesignShape, seed: number, keywords: string[]): Promise<string> {
   const list = await templatesOf(b.id);
   const template = pickTemplate(list, -1, { headline: post.imageHeadline, steps: post.imageSteps, hasPhoto: !!photoUrl, seed });
-  const brand = { name: b.name, color: b.color, color2: b.color2, color3: b.color3, logoUrl: b.logoUrl, logoLightUrl: b.logoLightUrl, phone: b.phone, website: b.website, fontHeading: b.fontHeading, fontBody: b.fontBody };
+  const brand = { name: b.name, color: b.color, color2: b.color2, color3: b.color3, logoUrl: b.logoUrl, logoLightUrl: b.logoLightUrl, phone: b.phone, website: b.website, fontHeading: b.fontHeading, fontBody: b.fontBody, style: designStyleOf(b).style };
   return storeDesign({ brand, template, headline: post.imageHeadline, photoUrl, steps: post.imageSteps, shape }, b.id, photoMetaFor(b, { title: post.imageHeadline, keywords }));
 }
 
