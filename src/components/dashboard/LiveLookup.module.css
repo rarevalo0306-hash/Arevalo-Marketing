@@ -1,0 +1,8 @@
+/* «Ver quién sale ahora» en el buscador del Tablero. */
+.live { gap: 12px; padding-top: 14px; border-top: 1px solid var(--line); }
+.liveHead { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.badge { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; background: var(--teal-soft); color: var(--teal-text); }
+.serp { margin: 0; padding-left: 26px; display: flex; flex-direction: column; gap: 5px; font-size: 14px; overflow-wrap: anywhere; }
+.serp li.mine { font-weight: 700; color: var(--teal-text); }
+.serp li.mine a { color: inherit; }
+.comps { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; overflow-wrap: anywhere; }

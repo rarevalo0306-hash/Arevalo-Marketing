@@ -824,3 +824,35 @@ textarea.field.gbp-reply { min-height: 120px; width: 100%; }
   .mbiz-label { font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--nav-muted); padding: 8px 8px 2px; }
   .mbiz-sep { height: 1px; background: var(--line); margin: 6px 0; }
 }
+
+/* Comparar páginas (SEO → Competencia). */
+.compare-inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 8px; align-items: center; }
+.compare-own { font-size: 14px; padding: 9px 12px; border-radius: var(--r-md); background: var(--surface-2); overflow-wrap: anywhere; }
+.compare-best { font-weight: 800; color: var(--teal-text); }
+tr.compare-mine td { background: var(--surface-2); }
+
+/* ¿Se movió Google? (SEO → Posiciones). */
+.sensor-now { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 18px; }
+.sensor-score { font: 600 34px/1 var(--display); letter-spacing: -0.5px; }
+.sensor-score small { font-size: 15px; color: var(--muted); margin-left: 2px; }
+.sensor-bars rect { fill: var(--line-strong); }
+.sensor-bars rect.sensor-calm { fill: var(--teal-text); opacity: 0.55; }
+.sensor-bars rect.sensor-normal { fill: var(--primary); opacity: 0.6; }
+.sensor-bars rect.sensor-high { fill: var(--warn-text); }
+.sensor-bars rect.sensor-very-high { fill: var(--err-text); }
+
+/* Tus temas (SEO → Posiciones). */
+.topic-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 12px; }
+.topic-card { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); min-width: 0; }
+.topic-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.topic-head h3 { font-size: 16px; margin: 0; overflow-wrap: anywhere; }
+.topic-head .pill { flex-shrink: 0; }
+.topic-next { padding-top: 8px; border-top: 1px dashed var(--line); line-height: 1.45; }
+
+/* Visitas de Google y de las IAs (SEO → Tu página web). */
+.log-bars { max-width: 100%; height: auto; }
+.log-bars .log-google { fill: var(--primary); opacity: 0.75; }
+.log-bars .log-ai { fill: var(--violet); opacity: 0.85; }
+.log-key { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; }
+.log-key-google { background: var(--primary); opacity: 0.75; }
+.log-key-ai { background: var(--violet); opacity: 0.85; }

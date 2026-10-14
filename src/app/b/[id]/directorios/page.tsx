@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { DirectoryList, type DirItem } from "@/components/directories/DirectoryList";
 import s from "@/components/directories/Directories.module.css";
 import { NapCard } from "@/components/directories/NapCard";
+import { ListingScan } from "@/components/directories/ListingScan";
 import { ReviewLink } from "@/components/directories/ReviewLink";
 import { ReviewRequest } from "@/components/directories/ReviewRequest";
 import { PageHead } from "@/components/PageHead";
@@ -164,6 +165,7 @@ export default async function DirectoriosPage({ params }: { params: Promise<{ id
             )}
           </p>
         </div>
+        <ListingScan businessId={id} phone={d.official.phone} />
         <DirectoryList businessId={id} items={items} progress={d.progress} />
         <details className={s.more}>
           <summary>{t("¿Cómo sé si ya estoy en un directorio?", "How do I know if I'm already on a directory?")}</summary>

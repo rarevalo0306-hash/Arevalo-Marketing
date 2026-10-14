@@ -8,7 +8,7 @@ import { ensure } from "@/lib/ensure";
 import { errorText, intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { dataForSeoEnabled, zoneLabel } from "@/lib/seo/dataforseo";
-import { checkRankings, rankSetup } from "@/lib/seo/rank";
+import { checkRankings, RANK_DESKTOP_KIND, rankSetup } from "@/lib/seo/rank";
 import { saveReport } from "@/lib/seo/reports";
 
 export type RankResult = { ok: boolean; message: string } | null;
@@ -71,6 +71,43 @@ export async function runRankCheck(businessId: string, _prev: RankResult, _f: Fo
               ` Couldn't check in: ${failed.map((f) => zoneLabel(f.zone.name) || f.zone.code).join(", ")}.`,
             )
           : ""),
+    };
+  } catch (e) {
+    return { ok: false, message: errorText(e, lang) };
+  }
+}
+
+/**
+ * Revisa también en Google en computadora (solo la zona principal) y lo guarda aparte ("rank-desktop"), para comparar
+ * con el celular sin cambiar la tendencia ni los avisos.
+ */
+export async function runDesktopRankCheck(businessId: string, _prev: RankResult, _f: FormData): Promise<RankResult> {
+  ensure.text(businessId);
+  void _prev;
+  void _f;
+  const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
+  if (!dataForSeoEnabled())
+    return { ok: false, message: t("Falta conectar DataForSEO (DATAFORSEO_LOGIN y DATAFORSEO_PASSWORD en Vercel).", "DataForSEO isn't connected yet (DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD in Vercel).") };
+  const b = await db.business.findUnique({
+    where: { id: businessId },
+    select: { name: true, website: true, seoLocations: true, seoLocationCode: true, seoLocationName: true, seoLanguage: true, seoKeywords: true },
+  });
+  if (!b) return { ok: false, message: t("Negocio no encontrado", "Business not found") };
+  const setup = rankSetup(b);
+  if (!setup.ok) return { ok: false, message: t("Primero revisa tus posiciones en el celular (arriba).", "First check your rankings on mobile (above).") };
+  try {
+    const { reports } = await checkRankings({ keywords: setup.keywords, domain: setup.domain, businessName: b.name, zones: [setup.zones[0]], language: b.seoLanguage === "en" ? "en" : "es", device: "desktop" });
+    const report = reports[0];
+    await saveReport(businessId, RANK_DESKTOP_KIND, report as unknown as Prisma.InputJsonValue);
+    revalidatePath(`/b/${businessId}/seo`);
+    const money = new Intl.NumberFormat(intlLocale(lang), { style: "currency", currency: "USD", maximumFractionDigits: 4 }).format(report.cost);
+    return {
+      ok: true,
+      message: t(
+        `Listo: en la computadora sales en los primeros 10 en ${report.inTop10} de ${report.rows.length}. Costó ${money}.`,
+        `Done: on desktop you're in the top 10 for ${report.inTop10} of ${report.rows.length}. It cost ${money}.`,
+      ),
     };
   } catch (e) {
     return { ok: false, message: errorText(e, lang) };

@@ -20,6 +20,12 @@ export const RANK_COST_PER_KEYWORD = 0.002 + 0.0015;
 export const RANK_DEVICE = "mobile" as const;
 /** Máximo de palabras clave por revisión (igual que en los ajustes). */
 export const RANK_MAX_KEYWORDS = 25;
+/**
+ * La revisión en computadora se guarda aparte (kind "rank-desktop", solo la zona principal) para que las
+ * comparaciones, los avisos y la tendencia sigan siendo siempre del celular.
+ */
+export const RANK_DESKTOP_KIND = "rank-desktop" as const;
+export type RankDevice = "mobile" | "desktop";
 
 const CONCURRENCY = 8;
 const CALL_TIMEOUT_MS = 60_000;
@@ -376,6 +382,8 @@ export type RankInput = {
   /** Las zonas a revisar (la primera es la principal). */
   zones: Zone[];
   language: string;
+  /** Celular (lo de siempre) o computadora. */
+  device?: RankDevice;
 };
 
 /** Cada palabra en cada zona: una consulta a Google por par. */
@@ -395,6 +403,7 @@ export function buildZoneReports(
   language: string,
   results: ZoneRunResult[],
   createdAt = new Date().toISOString(),
+  device: RankDevice = RANK_DEVICE,
 ): { reports: RankReport[]; failed: { zone: Zone; error: { es: string; en: string } }[] } {
   const reports: RankReport[] = [];
   const failed: { zone: Zone; error: { es: string; en: string } }[] = [];
@@ -412,7 +421,7 @@ export function buildZoneReports(
       location: zone.name,
       locationCode: zone.code,
       language,
-      device: RANK_DEVICE,
+      device,
       rows,
       cost: Math.round(cost * 10000) / 10000,
       createdAt,
@@ -422,18 +431,30 @@ export function buildZoneReports(
   return { reports, failed };
 }
 
+/** Celular contra computadora para una palabra: cuántos lugares mejor (+) o peor (−) sale en la computadora. */
+export function deviceGap(mobile: number | null | undefined, desktop: number | null | undefined): { kind: "same" | "better" | "worse" | "only-desktop" | "only-mobile" | "none"; delta: number | null } {
+  const m = typeof mobile === "number" ? mobile : null;
+  const d = typeof desktop === "number" ? desktop : null;
+  if (m === null && d === null) return { kind: "none", delta: null };
+  if (m === null) return { kind: "only-desktop", delta: null };
+  if (d === null) return { kind: "only-mobile", delta: null };
+  if (m === d) return { kind: "same", delta: 0 };
+  return d < m ? { kind: "better", delta: m - d } : { kind: "worse", delta: d - m };
+}
+
 /**
  * Revisa en Google (celular, primeros 20) cada palabra clave en cada zona, con máximo 8 consultas a la vez
  * en total. Devuelve un reporte por zona. Si todo falla, lanza el error.
  */
 export async function checkRankings(input: RankInput): Promise<ReturnType<typeof buildZoneReports>> {
   const domain = siteDomain(input.domain);
+  const device = input.device ?? RANK_DEVICE;
   const jobs = rankJobs(input.zones, input.keywords);
   const results = await pool(jobs, CONCURRENCY, async ({ zone, keyword }): Promise<ZoneRunResult> => {
     try {
       const r = await dfsPost<SerpResult>(
         "/serp/google/organic/live/advanced",
-        { keyword, location_code: zone.code, language_code: input.language, device: RANK_DEVICE, depth: RANK_DEPTH },
+        { keyword, location_code: zone.code, language_code: input.language, device, depth: RANK_DEPTH },
         CALL_TIMEOUT_MS,
       );
       return { zoneCode: zone.code, row: parseSerp(keyword, r.result[0], domain, input.businessName), cost: r.cost };
@@ -441,7 +462,7 @@ export async function checkRankings(input: RankInput): Promise<ReturnType<typeof
       return { zoneCode: zone.code, row: { keyword, position: null, url: null, localPack: null, top: [], features: [], error: biOf(e) }, cost: 0 };
     }
   });
-  const out = buildZoneReports(input.zones, input.language, results);
+  const out = buildZoneReports(input.zones, input.language, results, new Date().toISOString(), device);
   if (!out.reports.length && out.failed.length) {
     const e = out.failed[0].error;
     throw bi(e.es, e.en);

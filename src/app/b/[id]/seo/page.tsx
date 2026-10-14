@@ -3,20 +3,24 @@ import { ReportCard } from "@/components/seo/ReportCard";
 import { AlertsPanel } from "@/components/seo/AlertsPanel";
 import { AuditPanel } from "@/components/seo/AuditPanel";
 import { CannibalPanel } from "@/components/seo/CannibalPanel";
+import { ClustersPanel } from "@/components/seo/ClustersPanel";
 import { BacklinksPanel } from "@/components/seo/BacklinksPanel";
 import { DecayPanel } from "@/components/seo/DecayPanel";
+import { ComparePanel } from "@/components/seo/ComparePanel";
 import { CompetitorsPanel } from "@/components/seo/CompetitorsPanel";
 import { DfsSettingsPanel } from "@/components/seo/DfsSettingsPanel";
 import { GapPanel } from "@/components/seo/GapPanel";
 import { GbpPanel } from "@/components/seo/GbpPanel";
 import { Ga4Panel } from "@/components/seo/Ga4Panel";
 import { KeywordsPanel } from "@/components/seo/KeywordsPanel";
+import { LogsPanel } from "@/components/seo/LogsPanel";
 import { MapRankPanel } from "@/components/seo/MapRankPanel";
 import { OnPagePanel } from "@/components/seo/OnPagePanel";
 import { QuestionsPanel } from "@/components/seo/QuestionsPanel";
 import { RankPanel } from "@/components/seo/RankPanel";
 import { SchemaPanel } from "@/components/seo/SchemaPanel";
 import { SearchConsolePanel } from "@/components/seo/SearchConsolePanel";
+import { SensorPanel } from "@/components/seo/SensorPanel";
 import { SharePanel } from "@/components/seo/SharePanel";
 import { TrafficPanel } from "@/components/seo/TrafficPanel";
 import { SeoGuide } from "@/components/seo/SeoGuide";
@@ -41,12 +45,14 @@ import { loadWebFixState } from "@/lib/webfix";
 // La auditoría recorre el sitio y la visibilidad en IA hace varias búsquedas: puede tardar.
 export const maxDuration = 300;
 
-export default async function SeoPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ mapa?: string; tab?: string; competidor?: string }> }) {
+export default async function SeoPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ mapa?: string; tab?: string; competidor?: string; comparar?: string }> }) {
   const { id } = await params;
   await pageBusiness(id);
-  const { mapa, tab, competidor: rawCompetidor } = await searchParams;
+  const { mapa, tab, competidor: rawCompetidor, comparar: rawComparar } = await searchParams;
   // Desde el buscador del Tablero: el sitio del competidor llega escrito en el formulario de competencia.
   const competidor = (rawCompetidor ?? "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0].slice(0, 100) || undefined;
+  // «Comparar con mi página» desde la búsqueda en vivo del Tablero.
+  const comparar = (rawComparar ?? "").trim().slice(0, 200) || undefined;
   const b = await db.business.findUniqueOrThrow({
     where: { id },
     select: { name: true, color: true, website: true, seoKeywords: true, seoLocations: true, seoLocationCode: true, seoLocationName: true },
@@ -91,7 +97,9 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
       content: (
         <>
           <RankPanel businessId={id} />
+          <SensorPanel businessId={id} />
           <KeywordsPanel businessId={id} />
+          <ClustersPanel businessId={id} />
           <QuestionsPanel businessId={id} />
         </>
       ),
@@ -124,6 +132,7 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
           <div id="search-console">
             <SearchConsolePanel businessId={id} />
           </div>
+          <LogsPanel businessId={id} />
         </>
       ),
     },
@@ -135,6 +144,7 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
         <>
           <SharePanel businessId={id} />
           <CompetitorsPanel businessId={id} competidor={competidor} />
+          <ComparePanel businessId={id} comparar={comparar} />
           <GapPanel businessId={id} />
           <TrafficPanel businessId={id} />
           <BacklinksPanel businessId={id} />

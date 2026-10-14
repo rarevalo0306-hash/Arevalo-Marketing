@@ -743,3 +743,6 @@ export async function fetchBulkSpamScores(domains: string[]): Promise<{ results:
   }
   return { results, cost: Math.round(cost * 10000) / 10000 };
 }
+
+/** Una llamada "live" de Backlinks API que avisa amable si la cuenta no tiene acceso (la usan otras secciones). */
+export const backlinksLive = live;
