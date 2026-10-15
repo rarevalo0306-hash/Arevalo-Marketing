@@ -6,7 +6,7 @@
 import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { approveDraft } from "@/app/actions";
+import { approveDraftChecked } from "@/app/actions";
 import { logAiAction } from "@/lib/ai-actions";
 import { deniedText, hasBusiness, requireBusiness } from "@/lib/auth";
 import { competitorNames, pauseCampaign, resumeCampaign, rulesOf, saveRules, stopAllCampaigns, stopCampaign } from "@/lib/campaign";
@@ -238,13 +238,17 @@ export async function stopAllAction(businessId: string, _prev?: StopActionResult
 export async function approveCampaignDraft(businessId: string, campaignId: string, postId: string, f: FormData) {
   ensure.text(businessId, campaignId, postId);
   await requireBusiness(businessId, "publish");
-  const post = await db.post.findFirst({ where: { id: postId, businessId, campaignId, status: "draft" }, select: { id: true, scheduledAt: true, kind: true, mediaUrl: true } });
+  const post = await db.post.findFirst({ where: { id: postId, businessId, campaignId, status: "draft" }, select: { id: true, kind: true, mediaUrl: true } });
   // Un video que todavía se está creando no se puede aprobar (saldría sin video).
   if (!post || (post.kind === "video" && !post.mediaUrl)) return;
   const c = await db.campaign.findFirst({ where: { id: campaignId, businessId }, select: { name: true, status: true } });
-  // Si su hora ya pasó, sale en la próxima hora.
-  if (post.scheduledAt.getTime() < Date.now()) await db.post.update({ where: { id: postId }, data: { scheduledAt: new Date(Date.now() + 60 * 60000) } });
-  await approveDraft(businessId, postId, f);
+  // Si su hora ya pasó, sale en la próxima hora (se cambia al aprobar, no antes).
+  const r = await approveDraftChecked(businessId, postId, f, true);
+  if (!r.ok) {
+    // Por ejemplo, un video para YouTube sin sus campos: se vuelve a la campaña con el motivo junto a ese borrador.
+    const { t } = await getT();
+    redirect(`/b/${businessId}/campanas/${campaignId}?${new URLSearchParams({ draft: postId, msg: t(r.error.es, r.error.en) })}#draft-${postId}`);
+  }
   await logAiAction({
     businessId,
     campaignId,

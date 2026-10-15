@@ -585,6 +585,22 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       }),
     ).toBe(2);
   });
+  it("never gives an agent video a YouTube target, even when YouTube is allowed and connected", async () => {
+    await saveSettings(A, { ...settings, channels: ["facebook", "youtube"] });
+    await db.connection.create({ data: { businessId: A, channel: "youtube", secret: "synthetic-no-provider-access" } });
+    const texts = { title: "Techos #Shorts", description: "Descripción", tags: ["techos"], instagram: "IG", tiktok: "TT", facebook: "Texto del video para Facebook." };
+    vi.mocked(advanceRender).mockResolvedValue({ status: "ready", videoUrl: "https://example.com/agent-video.mp4", storyboard: { texts } } as never);
+    const r = await ask("Prepara un video", { kind: "video" });
+    for (let i = 0; i < 3; i++)
+      await workOne(A, async (_run, name) => ({ data: name === "research" ? research : name === "copy" ? copy : { assets: [{ shape: "square", url: "https://example.com/owned.jpg" }] } }), () => 0);
+    for (let i = 0; i < 6 && !(await db.post.findUnique({ where: { id: `agent-${r.id}` } })); i++)
+      await workOne(A, executeStep, (name) => (name === "video" ? 50 : 0));
+    const post = await db.post.findUniqueOrThrow({ where: { id: `agent-${r.id}` }, include: { targets: true } });
+    expect(post.kind).toBe("video");
+    expect(post.targets.map((t) => t.channel)).toEqual(["facebook"]);
+    const prepare = await db.agentStep.findUniqueOrThrow({ where: { runId_name: { runId: r.id, name: "prepare" } } });
+    expect(prepare.output).toMatchObject({ blockedChannels: ["youtube"] });
+  });
   it("caps actual delivery on the sending day, including delayed scheduled work", async () => {
     const r = await prepared();
     await workOne(A, executeStep, () => 0);

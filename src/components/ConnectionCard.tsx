@@ -2,8 +2,10 @@
 
 import { useState, useTransition } from "react";
 import type { TestResult } from "@/app/actions";
+import { ConsentLine, YoutubeTermsLine } from "@/components/ConsentLine";
 import { useT } from "@/components/I18n";
 import { channelText, type ChannelDef } from "@/lib/channels";
+import { whoConnects } from "@/lib/roles";
 import s from "./ConnectionCard.module.css";
 
 type Props = {
@@ -22,11 +24,17 @@ type Props = {
   brevo?: { domains: string[]; defaultName: string; connect: (f: FormData) => Promise<TestResult> } | null;
   /** La última publicación falló por permisos o token vencido: hay que volver a conectar. */
   needsReconnect?: boolean;
+  /** Google: el dueño quitó el acceso desde su cuenta de Google (en 3 días se borra la conexión y sus datos). */
+  revoked?: boolean;
   /** Nombre de la cuenta conectada (página, perfil o remitente), si se conoce. */
   account?: string;
+  /** Su papel le deja conectar, probar y desconectar esta cuenta (Google: también «Puede conectar»). */
+  canConnect: boolean;
+  /** Puede pegar los datos a mano o elegir el remitente de Brevo (solo el Administrador). */
+  canPaste: boolean;
 };
 
-export function ConnectionCard({ channel: def, connected, values, secretSet, save, remove, test, oauthUrl, oauthName = "Facebook", brevo, needsReconnect, account }: Props) {
+export function ConnectionCard({ channel: def, connected, values, secretSet, save, remove, test, oauthUrl, oauthName = "Facebook", brevo, needsReconnect, revoked, account, canConnect, canPaste }: Props) {
   const { lang, t } = useT();
   const channel = channelText(def, lang);
   const [open, setOpen] = useState(false);
@@ -52,15 +60,20 @@ export function ConnectionCard({ channel: def, connected, values, secretSet, sav
       {broken && (
         <p className={`note error ${s.alert}`} role="status">
           <strong>{t("Necesita volver a conectarse.", "Needs to be reconnected.")}</strong>{" "}
-          {t(
-            `La última publicación en ${channel.name} falló porque la cuenta ya no da permiso (la conexión venció o se quitó el permiso). Vuelve a conectarla y luego reintenta la publicación desde el Historial.`,
-            `The last post to ${channel.name} failed because the account no longer gives permission (the connection expired or the permission was removed). Reconnect it, then retry the post from History.`,
-          )}
+          {revoked
+            ? t(
+                "El acceso a Google se quitó desde tu cuenta de Google. Vuelve a conectarla en los próximos 3 días o Matya borrará esta conexión y los datos que trajo.",
+                "Google access was removed from your Google account. Reconnect within 3 days, or Matya will delete this connection and the data it brought in.",
+              )
+            : t(
+                `La última publicación en ${channel.name} falló porque la cuenta ya no da permiso (la conexión venció o se quitó el permiso). Vuelve a conectarla y luego reintenta la publicación desde el Historial.`,
+                `The last post to ${channel.name} failed because the account no longer gives permission (the connection expired or the permission was removed). Reconnect it, then retry the post from History.`,
+              )}
         </p>
       )}
       <p className={s.gain}>{channel.gain}</p>
 
-      {oauthUrl && !open && (
+      {oauthUrl && !open && canConnect && (
         <div className={s.easy}>
           <a className={connected && !broken ? "btn outline" : "btn on"} href={oauthUrl}>
             {connected ? t(`Volver a conectar con ${oauthName}`, `Reconnect with ${oauthName}`) : t(`Conectar con ${oauthName}`, `Connect with ${oauthName}`)}
@@ -70,10 +83,13 @@ export function ConnectionCard({ channel: def, connected, values, secretSet, sav
               ? t("Úsalo si cambiaste de página o la conexión dejó de funcionar.", "Use it if you switched Pages or the connection stopped working.")
               : t(`Solo entra con tu cuenta de ${oauthName}. No tienes que copiar ningún código.`, `Just sign in with your ${oauthName} account. You don't have to copy any codes.`)}
           </span>
+          <ConsentLine className={s.hint} />
         </div>
       )}
+      {canConnect && channel.id === "youtube" && <YoutubeTermsLine className={s.hint} />}
+      {!canConnect && <p className={s.hint}>{whoConnects(Boolean(oauthUrl) && oauthName === "Google", t)}</p>}
 
-      {brevo && !open && (
+      {brevo && !open && canPaste && (
         <form action={(f) => start(async () => setResult(await brevo.connect(f)))} className={`stack ${s.sendBox}`}>
           <div className={s.label} style={{ fontSize: 14 }}>{connected ? t("Cambiar el remitente", "Change the sender") : t("Conectar en un paso", "Connect in one step")}</div>
           <div className="stack" style={{ gap: 4 }}>
@@ -111,7 +127,7 @@ export function ConnectionCard({ channel: def, connected, values, secretSet, sav
           ) : (
             <ol className={s.steps}>{channel.steps.map((step) => <li key={step}>{step}</li>)}</ol>
           )}
-          {!open && (oauthUrl || brevo) && (
+          {!open && canPaste && (oauthUrl || brevo) && (
             <button className={`btn link ${s.manual}`} type="button" onClick={() => setOpen(true)}>
               {oauthUrl ? t("Pegar datos a mano", "Enter details manually") : t("Usar otra cuenta (pegar clave)", "Use another account (paste key)")}
             </button>
@@ -151,7 +167,7 @@ export function ConnectionCard({ channel: def, connected, values, secretSet, sav
         </form>
       )}
 
-      {!open && (connected || (!oauthUrl && !brevo)) && (
+      {canConnect && !open && (connected || (!oauthUrl && !brevo)) && (
         <div className={s.actions}>
           {connected && (
             <>
@@ -163,14 +179,21 @@ export function ConnectionCard({ channel: def, connected, values, secretSet, sav
                 type="button"
                 disabled={pending}
                 onClick={() => {
-                  if (confirm(t(`¿Desconectar ${channel.name}?`, `Disconnect ${channel.name}?`))) start(async () => { await remove(); setResult(null); });
+                  const google = def.id === "google" || def.id === "youtube";
+                  const question = google
+                    ? t(
+                        `¿Desconectar ${channel.name}? Matya borra los datos que trajo de ${channel.name} y deja de usar esta conexión. También quita su permiso en Google cuando sabe que ninguna otra conexión usa esa cuenta; tú puedes quitarlo siempre en myaccount.google.com/permissions.`,
+                        `Disconnect ${channel.name}? Matya deletes the data it brought in from ${channel.name} and stops using this connection. It also removes its access in Google when it knows no other connection uses that account; you can always remove it at myaccount.google.com/permissions.`,
+                      )
+                    : t(`¿Desconectar ${channel.name}?`, `Disconnect ${channel.name}?`);
+                  if (confirm(question)) start(async () => { await remove(); setResult(null); });
                 }}
               >
                 {t("Desconectar", "Disconnect")}
               </button>
             </>
           )}
-          {!oauthUrl && !brevo && (
+          {!oauthUrl && !brevo && canPaste && (
             <button className="btn outline" type="button" onClick={() => setOpen(true)}>
               {broken ? t("Pegar datos nuevos", "Paste new details") : connected ? t("Editar datos", "Edit details") : t(`Conectar ${channel.name}`, `Connect ${channel.name}`)}
             </button>

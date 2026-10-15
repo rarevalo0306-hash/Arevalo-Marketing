@@ -81,6 +81,7 @@ import {
   rulesJson,
   slotCounts,
   slotKey,
+  statusForErrors,
   validateCampaign,
   validateRules,
   type CampaignBasics,
@@ -91,6 +92,7 @@ import {
 } from "../src/lib/campaign-shape";
 import { buildCampaignEmail, pauseCampaign, resumeCampaign, stopCampaign } from "../src/lib/campaign";
 import { claimCampaign, LOCK_MS, type ClaimDb } from "../src/lib/campaign-engine";
+import { YOUTUBE_NEEDS_APPROVAL } from "../src/lib/youtube-options";
 
 const TZ = "America/New_York";
 const rules = (over: Partial<CampaignRules> = {}): CampaignRules => ({ ...defaultRules({ email: "dueno@negocio.com" }), timezone: TZ, ...over });
@@ -280,8 +282,25 @@ describe("checkPost: cada razón", () => {
     expect(reasonText(res.needsApproval[1], "en", (id) => id.toUpperCase())).toContain("FACEBOOK");
   });
 
+  it("un video para YouTube siempre pide aprobación, aunque el dueño haya apagado todo lo demás", () => {
+    const yt = { channels: ["facebook", "youtube"], video: true };
+    const c = campaign({ channels: ["facebook", "youtube"] });
+    const cnt = counts({ connected: ["facebook", "youtube"], usedChannels: ["facebook", "youtube"] });
+    const res = checkPost(rules({ needsApprovalFor: [] }), c, draft(yt), cnt, NOW);
+    expect(res.ok).toBe(true);
+    expect(res.needsApproval).toEqual([{ code: "youtube", channel: "youtube" }]);
+    // 100% IA: queda como borrador (nunca programado solo).
+    expect(decideStatus("auto", res)).toBe("draft");
+    expect(decideStatus("approval", res)).toBe("draft");
+    // Una foto con YouTube, o un video sin YouTube, no cambian.
+    expect(checkPost(rules({ needsApprovalFor: [] }), c, draft({ ...yt, video: false }), cnt, NOW).needsApproval).toEqual([]);
+    expect(checkPost(rules({ needsApprovalFor: [] }), c, draft({ channels: ["facebook"], video: true }), cnt, NOW).needsApproval).toEqual([]);
+    expect(reasonText({ code: "youtube" }, "en")).toBe("Uploading a video to YouTube always needs your approval.");
+    expect(reasonText({ code: "youtube" }, "es")).toBe("Subir un video a YouTube siempre necesita tu aprobación.");
+  });
+
   it("cada razón tiene una frase en los dos idiomas", () => {
-    const all = ["status", "manual", "beforeStart", "afterEnd", "past", "noChannels", "channel", "maxPerDay", "perWeek", "quietHours", "weekday", "budget", "banned", "empty", "prices", "newChannel", "aiImage"] as const;
+    const all = ["status", "manual", "beforeStart", "afterEnd", "past", "noChannels", "channel", "maxPerDay", "perWeek", "quietHours", "weekday", "budget", "banned", "empty", "prices", "newChannel", "aiImage", "youtube"] as const;
     for (const code of all) {
       expect(reasonText({ code, word: "x", channel: "facebook" }, "es")).toMatch(/\w/);
       expect(reasonText({ code, word: "x", channel: "facebook" }, "en")).not.toBe(reasonText({ code, word: "x", channel: "facebook" }, "es"));
@@ -381,6 +400,18 @@ describe("tipo de publicación y errores seguidos", () => {
     expect(failuresInRow(["failed", "failed", "done", "failed"])).toBe(2);
     expect(failuresInRow(["done", "failed"])).toBe(0);
     expect(failuresInRow(["failed", "failed", "failed"])).toBe(3);
+  });
+
+  it("lo que YouTube saltó por falta de aprobación no cuenta como error de la campaña", () => {
+    const waiting = { status: "failed", targets: [{ status: "skipped", detail: YOUTUBE_NEEDS_APPROVAL }] };
+    const broken = { status: "failed", targets: [{ status: "failed", detail: "401: invalid_grant" }] };
+    const mixed = { status: "failed", targets: [{ status: "skipped", detail: YOUTUBE_NEEDS_APPROVAL }, { status: "failed", detail: "500: boom" }] };
+    expect(statusForErrors(waiting)).toBe("waiting");
+    expect(statusForErrors(broken)).toBe("failed");
+    expect(statusForErrors(mixed)).toBe("failed");
+    expect(statusForErrors({ status: "partial", targets: waiting.targets })).toBe("partial");
+    expect(failuresInRow([waiting, waiting, waiting, broken].map(statusForErrors))).toBe(1);
+    expect(failuresInRow([broken, waiting, broken].map(statusForErrors))).toBe(2);
   });
 });
 

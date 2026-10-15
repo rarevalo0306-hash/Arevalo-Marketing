@@ -2,6 +2,7 @@
 
 // «Videos»: guion con IA a partir de fotos reales, vista previa, crear el video (con costo confirmado) y publicarlo
 // en Instagram (Reel), TikTok, YouTube (Short) y Facebook.
+import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import sharp from "sharp";
 import { logAiAction } from "@/lib/ai-actions";
@@ -30,6 +31,7 @@ import {
 } from "@/lib/video-jobs";
 import { applyEdits, applyTextEdits, channelsFor, VIDEO_KIND, type SceneEdit, type VideoFormat, type VideoProject, type VideoTexts } from "@/lib/video-plan";
 import { sceneStill } from "@/lib/video-render";
+import { YT_KEY, youtubeApprovalFromForm, youtubeApprovalLog, type YoutubeApproval } from "@/lib/youtube-options";
 
 export type VideoView = { id: string; createdAt: string; project: VideoProject };
 export type VideoResult = { ok: true; video: VideoView } | { ok: false; error: string };
@@ -157,13 +159,22 @@ export async function publishVideo(businessId: string, projectId: string, f: For
     const channels = f.getAll("channels").map(String).filter((c): c is (typeof allowed)[number] => (allowed as string[]).includes(c));
     if (!channels.length) return { ok: false, error: t("Elige al menos una red.", "Choose at least one network.") };
     const sb = p.storyboard;
-    const texts = applyTextEdits(sb, {
-      title: String(f.get("title") ?? sb.texts.title),
-      description: String(f.get("description") ?? sb.texts.description),
+    // YouTube: lo que la persona revisó y eligió, tal cual (el título no se reescribe) y para este mismo video.
+    let youtube: YoutubeApproval | null = null;
+    if (channels.includes("youtube")) {
+      const { user } = await requireBusiness(businessId, "publish");
+      const yt = youtubeApprovalFromForm(f, { mediaUrl: p.videoUrl, approvedBy: user.id });
+      if (!yt.ok) return { ok: false, error: t(yt.error.es, yt.error.en) };
+      youtube = yt.value;
+    }
+    const edited = applyTextEdits(sb, {
+      // Las etiquetas que se mandan también quedan en el guion.
+      ...(youtube ? { description: youtube.description, tags: youtube.tags } : {}),
       instagram: String(f.get("instagram") ?? sb.texts.instagram),
       tiktok: String(f.get("tiktok") ?? sb.texts.tiktok),
       facebook: String(f.get("facebook") ?? sb.texts.facebook),
     });
+    const texts: VideoTexts = youtube ? { ...edited, title: youtube.title } : edited;
     const when = String(f.get("when") ?? "now");
     let scheduledAt = new Date();
     if (when === "later") {
@@ -174,22 +185,29 @@ export async function publishVideo(businessId: string, projectId: string, f: For
       if (scheduledAt.getTime() < Date.now() - 60_000) return { ok: false, error: t("Esa hora ya pasó. Elige una hora futura.", "That time has passed. Pick a future time.") };
     }
     const variants: Partial<Record<ChannelId, string>> = { instagram: texts.instagram, tiktok: texts.tiktok, facebook: texts.facebook, youtube: texts.description };
-    const post = await db.post.create({
-      data: {
-        businessId,
-        text: texts.facebook || texts.instagram,
-        variants,
-        source: "ai",
-        subject: "",
-        seoTitle: texts.title,
-        mediaUrl: p.videoUrl,
-        mediaType: "video",
-        kind: "video",
-        altText: texts.title.replace(/\s*#Shorts\b/i, "").slice(0, 250),
-        scheduledAt,
-        targets: { create: channels.map((channel) => ({ channel })) },
-      },
-    });
+    const data: Prisma.PostUncheckedCreateInput = {
+      businessId,
+      text: texts.facebook || texts.instagram,
+      variants: (youtube ? { ...variants, [YT_KEY]: youtube } : variants) as Prisma.InputJsonValue,
+      source: "ai",
+      subject: "",
+      seoTitle: texts.title,
+      mediaUrl: p.videoUrl,
+      mediaType: "video",
+      kind: "video",
+      altText: texts.title.replace(/\s*#Shorts\b/i, "").slice(0, 250),
+      scheduledAt,
+      targets: { create: channels.map((channel) => ({ channel })) },
+    };
+    // La publicación y la constancia de la aprobación de YouTube se guardan juntas (o ninguna).
+    const approval = youtube;
+    const post = approval
+      ? await db.$transaction(async (tx) => {
+          const created = await tx.post.create({ data });
+          await tx.aiAction.create({ data: youtubeApprovalLog(businessId, created.id, approval) });
+          return created;
+        })
+      : await db.post.create({ data });
     await saveProject(businessId, projectId, { ...p, storyboard: { ...sb, texts }, status: "published", postId: post.id });
     await logAiAction({
       businessId,

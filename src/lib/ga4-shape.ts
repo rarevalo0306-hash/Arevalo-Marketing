@@ -16,6 +16,8 @@ export type Ga4Property = {
 /** Lo que se guarda cifrado en Connection.secret (channel "ga4"). */
 export type Ga4Secret = {
   refreshToken: string;
+  /** La cuenta de Google que dio el permiso (para no revocar el de otras conexiones, ver canRevokeAlone). */
+  googleUser?: string;
   /** La propiedad elegida (vacío = todavía hay que elegir). */
   propertyId?: string;
   propertyName?: string;
@@ -24,6 +26,10 @@ export type Ga4Secret = {
   /** Último intento automático que falló (para no repetirlo en cada visita) y su motivo. */
   lastTryAt?: string;
   lastError?: string;
+  /** Revisión diaria del permiso (cron, src/lib/google-data.ts): última revisión, última buena y desde cuándo Google lo da por quitado. */
+  checkedAt?: string;
+  okAt?: string;
+  revokedAt?: string;
 };
 
 export type Ga4Range = { start: string; end: string };

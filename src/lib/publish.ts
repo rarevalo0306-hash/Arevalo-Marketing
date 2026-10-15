@@ -11,6 +11,7 @@ import { isPostKind, readPostMedia, type PostKind } from "@/lib/post-media";
 import { TIKTOK_NO_PHOTOS } from "@/lib/publishers/tiktok";
 import type { PublishMedia } from "@/lib/publishers/types";
 import { claimAgentPost } from "@/lib/agent/publication";
+import { readYoutubeApproval, YOUTUBE_NEEDS_APPROVAL } from "@/lib/youtube-options";
 
 /** Cuántas fotos de un carrusel manda cada red (Instagram y Facebook 10, LinkedIn 20, X 4, las demás solo la primera). */
 const CAROUSEL_LIMIT: Partial<Record<ChannelId, number>> = { instagram: 10, facebook: 10, linkedin: 20, x: 4 };
@@ -96,12 +97,20 @@ export async function publishPost(postId: string): Promise<void> {
         detail = audienceGap(channel, post.business.contacts);
       } else {
         const blocking = notesFor(channel, channelDraft).filter((n) => n.blocking);
+        // YouTube solo sube lo que una persona aprobó para este mismo video (cron, reintentos, campañas y agente igual).
+        const approval = channel === "youtube" ? readYoutubeApproval(post.variants, post.mediaUrl) : null;
         if (blocking.length) {
           detail = blocking.map((n) => n.text).join(" ");
+        } else if (channel === "youtube" && !approval) {
+          status = "skipped";
+          detail = YOUTUBE_NEEDS_APPROVAL;
         } else {
           try {
             const media = await mediaForTarget(post, channel, input.kind);
-            const res = await PUBLISHERS[channel].publish({ ...input, text, mediaUrl: media[0]?.url ?? publicMediaUrl(post.mediaUrl), media }, decryptJson(conn.secret));
+            const res = await PUBLISHERS[channel].publish(
+              { ...input, text, mediaUrl: media[0]?.url ?? publicMediaUrl(post.mediaUrl), media, ...(approval ? { youtube: approval } : {}) },
+              decryptJson(conn.secret),
+            );
             status = "sent";
             detail = res.detail;
             if (input.kind === "story" && !(STORY_CHANNELS as readonly string[]).includes(channel) && STORY_AS_POST[channel]) detail += ` (${STORY_AS_POST[channel]})`;

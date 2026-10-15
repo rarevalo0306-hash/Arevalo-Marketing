@@ -2,8 +2,10 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { disconnectSearchConsole, refreshSearchConsole } from "@/app/actions-seo-gsc";
 import { capClass, Fold } from "@/components/seo/Fold";
+import { Ga4ConfirmButton } from "@/components/seo/Ga4PanelClient";
 import { SearchConsoleButton, SearchConsoleNotice } from "@/components/seo/SearchConsoleButton";
 import { ShowMore } from "@/components/seo/ShowMore";
+import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { googleEnabled } from "@/lib/google-oauth";
 import { intlLocale, type T, type UiLang } from "@/lib/i18n";
@@ -194,10 +196,12 @@ export async function SearchConsolePanel({ businessId }: { businessId: string })
       </section>
     );
 
-  const [business, conn, reports] = await Promise.all([
+  const [business, conn, reports, canConnect] = await Promise.all([
     db.business.findUnique({ where: { id }, select: { website: true } }),
     db.connection.findUnique({ where: { businessId_channel: { businessId: id, channel: GSC_CHANNEL } }, select: { label: true } }),
     latestReports(id, "gsc", 1),
+    // Desconectar: el Administrador o quien «Puede conectar» (src/lib/roles.ts).
+    hasBusiness(id, "connect"),
   ]);
 
   if (!conn)
@@ -415,9 +419,14 @@ export async function SearchConsolePanel({ businessId }: { businessId: string })
         </>
       )}
 
-      <form action={disconnectSearchConsole.bind(null, id)}>
-        <button type="submit" className="btn danger">{t("Desconectar Search Console", "Disconnect Search Console")}</button>
-      </form>
+      {canConnect && (
+        // Borra mucho y no se puede deshacer: se confirma, igual que en Conexiones.
+        <Ga4ConfirmButton
+          action={disconnectSearchConsole.bind(null, id)}
+          label={t("Desconectar Search Console", "Disconnect Search Console")}
+          question={t("¿Desconectar Search Console? Se borran sus reportes, «Páginas para actualizar», las revisiones de «Páginas que compiten entre sí» hechas con sus datos, las palabras clave que sugirió y las tareas del plan que salieron de ellos.", "Disconnect Search Console? Its reports, “Pages to refresh”, the “Pages competing with each other” reviews built from its data, the keywords it suggested and the plan tasks built from them are deleted.")}
+        />
+      )}
     </section>
   );
 }

@@ -206,7 +206,8 @@ export async function refreshGa4(businessId: string, opts: { auto?: boolean; now
   try {
     const report = await ga4Report(conn.secret, now);
     await saveReport(businessId, "ga4", report);
-    if (conn.secret.lastError || conn.secret.lastTryAt) await writeGa4Connection(businessId, { ...conn.secret, lastError: undefined, lastTryAt: undefined });
+    // Si trajo datos, el permiso sirve: se borra también la marca de «permiso quitado».
+    if (conn.secret.lastError || conn.secret.lastTryAt || conn.secret.revokedAt) await writeGa4Connection(businessId, { ...conn.secret, lastError: undefined, lastTryAt: undefined, revokedAt: undefined });
     return { ok: true, report };
   } catch (e) {
     await writeGa4Connection(businessId, { ...conn.secret, lastTryAt: now.toISOString(), lastError: errorText(e, "es").slice(0, 400) }).catch(() => undefined);

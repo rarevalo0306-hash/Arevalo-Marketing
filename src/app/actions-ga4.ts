@@ -74,7 +74,7 @@ export async function autoRefreshGa4(businessId: string): Promise<{ refreshed: b
 /** Elige la propiedad de GA4 de este negocio (de las que se encontraron al conectar) y trae los primeros datos. */
 export async function chooseGa4Property(businessId: string, propertyId: string) {
   ensure.text(businessId, propertyId);
-  await ensureBusiness(businessId, "admin");
+  await ensureBusiness(businessId, "connect");
   const { t } = await getT();
   const conn = await readGa4Connection(businessId);
   const prop = conn?.secret.properties?.find((p) => p.id === propertyId);
@@ -90,7 +90,7 @@ export async function chooseGa4Property(businessId: string, propertyId: string) 
 /** «Cambiar de propiedad»: vuelve a mostrar la lista (sin volver a pedir permiso a Google). */
 export async function changeGa4Property(businessId: string) {
   ensure.text(businessId);
-  await ensureBusiness(businessId, "admin");
+  await ensureBusiness(businessId, "connect");
   const conn = await readGa4Connection(businessId);
   if (conn) await writeGa4Connection(businessId, { ...conn.secret, propertyId: undefined, propertyName: undefined, lastError: undefined, lastTryAt: undefined });
   paths(businessId);

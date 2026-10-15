@@ -16,7 +16,8 @@ vi.mock("@/lib/db", () => ({
         return a;
       }),
     },
-    connection: { findMany: vi.fn(async () => fake.conns) },
+    // Respeta el filtro por canal (dueJobs pregunta qué negocios tienen YouTube conectado).
+    connection: { findMany: vi.fn(async (a?: { where?: { channel?: string } }) => (fake.conns as { channel: string }[]).filter((c) => !a?.where?.channel || c.channel === a.where.channel)) },
     postMetric: {
       create: vi.fn(async (a: { data: Record<string, unknown> }) => {
         fake.created.push(a);
@@ -285,6 +286,39 @@ describe("syncPostMetrics (base de datos simulada)", () => {
     expect(String((byTarget.t3.raw as Record<string, unknown>).error)).toMatch(/YouTube/);
     expect(sum.saved).toBe(1);
     expect(sum.errors).toBe(2);
+  });
+
+  it("YouTube desconectado: no guarda filas (sus datos se borraron al desconectar)", async () => {
+    fake.targets = [target("y1", "youtube", 30), target("f1", "facebook", 30)];
+    fake.conns = [];
+    const sum = await syncPostMetrics(now, {
+      fetchFacebook: async () => ({ ok: false, error: "x" }),
+      fetchInstagram: async () => ({ ok: false, error: "x" }),
+      fetchYoutube: async () => {
+        throw new Error("no debería llamarse: YouTube no está conectado");
+      },
+      fetchX: async () => ({}),
+    });
+    expect(fake.created.map((c) => c.data.postTargetId)).toEqual(["f1"]);
+    expect(sum.errors).toBe(1);
+    // Ni siquiera cuentan como pendientes: no ocupan lugar en la vuelta.
+    expect(sum.due).toBe(1);
+  });
+
+  it("videos de YouTube sin conexión no le quitan el turno a Facebook ni a Instagram", async () => {
+    fake.targets = [...Array.from({ length: 40 }, (_, i) => target(`y${i}`, "youtube", 30)), target("f1", "facebook", 80)];
+    fake.conns = [{ businessId: "biz", channel: "facebook", secret: JSON.stringify({ accessToken: "a" }) }];
+    const read: string[] = [];
+    await syncPostMetrics(now, {
+      fetchFacebook: async (id: string) => {
+        read.push(id);
+        return { ok: false, error: "x" };
+      },
+      fetchInstagram: async () => ({ ok: false, error: "x" }),
+      fetchYoutube: async () => ({}),
+      fetchX: async () => ({}),
+    });
+    expect(read).toEqual(["f1_ext"]);
   });
 
   it("para una red cuando pide esperar (límite de pedidos)", async () => {

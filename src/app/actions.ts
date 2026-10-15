@@ -36,6 +36,7 @@ import type { Need } from "@/lib/roles";
 import { SESSION_COOKIE } from "@/lib/session";
 import { stormEvent, stormSchedule } from "@/lib/storm";
 import { businessDay, localToUtc } from "@/lib/time";
+import { withoutYoutubeApproval, YT_KEY, youtubeApprovalFromForm, youtubeApprovalLog, type YoutubeApproval } from "@/lib/youtube-options";
 import { designStyleOf } from "@/lib/design-style";
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
@@ -121,6 +122,14 @@ export async function saveConnection(businessId: string, channel: ChannelId, f: 
     // Un campo secreto vacío conserva el valor guardado.
     values[field.key] = v || (field.secret ? previous[field.key] ?? "" : "");
   }
+  // Google y YouTube con el cliente de la app: no se guarda copia de su clave (se usa la del servidor, ver googleClient).
+  if ((channel === "google" || channel === "youtube") && (!values.clientId?.trim() || values.clientId.trim() === process.env.GOOGLE_CLIENT_ID?.trim())) {
+    delete values.clientId;
+    delete values.clientSecret;
+    // Mismo permiso de antes (mismo refresh token, cliente de la app): se conserva de qué cuenta de Google es, para poder
+    // revocarlo al desconectar (canRevokeAlone). Un token pegado distinto ya no se sabe de quién es.
+    if (previous.googleUser && values.refreshToken === previous.refreshToken) values.googleUser = previous.googleUser;
+  }
   const secret = encryptJson(values);
   // El nombre visible nunca es un dato secreto (va sin cifrar).
   const labelField = def.fields.find((x) => !x.secret);
@@ -182,15 +191,15 @@ export async function chooseMetaPage(businessId: string, pageId: string) {
 /** Después de "Conectar con Google", cuando la cuenta administra varios perfiles. */
 export async function chooseGoogleLocation(businessId: string, locationId: string) {
   ensure.text(businessId, locationId);
-  await business(businessId, "admin");
+  await business(businessId, "connect");
   const { t } = await getT();
   const jar = await cookies();
   const raw = jar.get(GOOGLE_COOKIE)?.value;
-  const saved = raw ? decryptJson<{ refreshToken: string; businessId: string; locations: GoogleLocation[] }>(raw) : null;
+  const saved = raw ? decryptJson<{ refreshToken: string; businessId: string; locations: GoogleLocation[]; googleUser?: string | null }>(raw) : null;
   if (!saved || saved.businessId !== businessId) redirect(`/b/${businessId}/conexiones?google=error&msg=${encodeURIComponent(t("La conexión venció. Vuelve a intentarlo.", "The connection expired. Please try again."))}`);
   const loc = saved.locations.find((l) => l.locationId === locationId);
   if (!loc) throw new Error(t("Ese perfil ya no está disponible", "That profile is no longer available"));
-  await saveGoogleLocation(businessId, saved.refreshToken, loc);
+  await saveGoogleLocation(businessId, saved.refreshToken, loc, saved.googleUser);
   jar.delete(GOOGLE_COOKIE);
   revalidatePath(`/b/${businessId}/conexiones`);
   redirect(`/b/${businessId}/conexiones?${new URLSearchParams({ google: "ok", place: loc.title })}`);
@@ -198,8 +207,10 @@ export async function chooseGoogleLocation(businessId: string, locationId: strin
 
 export async function deleteConnection(businessId: string, channel: ChannelId) {
   ensure.text(businessId, channel);
-  await requireBusiness(businessId, "admin");
-  if (GOOGLE_CHANNELS.some(c => c === channel)) await disconnectGoogleData(businessId, channel);
+  const google = GOOGLE_CHANNELS.some(c => c === channel);
+  // Las cuentas de Google también las desconecta quien «Puede conectar»; las demás, solo el Administrador.
+  await requireBusiness(businessId, google ? "connect" : "admin");
+  if (google) await disconnectGoogleData(businessId, channel);
   else await db.connection.deleteMany({ where: { businessId, channel } });
   revalidatePath(`/b/${businessId}/conexiones`);
 }
@@ -209,7 +220,9 @@ export type TestResult = { ok: boolean; message: string } | null;
 export async function testConnection(businessId: string, channel: ChannelId): Promise<TestResult> {
   ensure.text(businessId, channel);
   const { lang, t } = await getT();
-  if (!(await hasBusiness(businessId, "admin"))) return { ok: false, message: await deniedText(businessId, "admin") };
+  // Como al conectar: Google también quien «Puede conectar»; lo demás, solo el Administrador.
+  const need = GOOGLE_CHANNELS.some(c => c === channel) ? "connect" : "admin";
+  if (!(await hasBusiness(businessId, need))) return { ok: false, message: await deniedText(businessId, need) };
   const conn = await db.connection.findUnique({ where: { businessId_channel: { businessId, channel } } });
   if (!conn) return { ok: false, message: t("Primero guarda los datos de la conexión.", "Save the connection details first.") };
   try {
@@ -353,23 +366,40 @@ export async function createPost(businessId: string, f: FormData) {
     variants = undefined;
   }
 
-  const post = await db.post.create({
-    data: {
-      businessId,
-      text,
-      variants,
-      source: str(f, "source") === "ai" ? "ai" : "manual",
-      subject: str(f, "subject"),
-      seoTitle: str(f, "seoTitle"),
-      mediaUrl,
-      mediaType: mediaType === "photo" || mediaType === "video" ? mediaType : "none",
-      kind,
-      media,
-      altText,
-      scheduledAt,
-      targets: { create: channels.map((channel) => ({ channel })) },
-    },
-  });
+  // YouTube con video: solo con lo que la persona revisó y eligió (título, etiquetas, quién puede verlo, para niños).
+  // La descripción es el texto de YouTube que se manda (el mismo que usa publishPost).
+  let youtube: YoutubeApproval | null = null;
+  if (channels.includes("youtube") && mediaType === "video") {
+    const { user } = await requireBusiness(businessId, "publish");
+    const yt = youtubeApprovalFromForm(f, { mediaUrl, approvedBy: user.id, description: variants?.youtube?.trim() || text });
+    if (!yt.ok) throw new Error(t(yt.error.es, yt.error.en));
+    youtube = yt.value;
+  }
+
+  const data: Prisma.PostUncheckedCreateInput = {
+    businessId,
+    text,
+    variants: youtube ? ({ ...variants, [YT_KEY]: youtube } as Prisma.InputJsonValue) : variants,
+    source: str(f, "source") === "ai" ? "ai" : "manual",
+    subject: str(f, "subject"),
+    seoTitle: str(f, "seoTitle"),
+    mediaUrl,
+    mediaType: mediaType === "photo" || mediaType === "video" ? mediaType : "none",
+    kind,
+    media,
+    altText,
+    scheduledAt,
+    targets: { create: channels.map((channel) => ({ channel })) },
+  };
+  // La publicación y la constancia de la aprobación de YouTube se guardan juntas (o ninguna).
+  const approval = youtube;
+  const post = approval
+    ? await db.$transaction(async (tx) => {
+        const created = await tx.post.create({ data });
+        await tx.aiAction.create({ data: youtubeApprovalLog(businessId, created.id, approval) });
+        return created;
+      })
+    : await db.post.create({ data });
   if (!later || scheduledAt <= new Date()) await publishPost(post.id);
   revalidatePath(`/b/${businessId}/historial`);
   redirect(`/b/${businessId}/historial?nuevo=${post.id}`);
@@ -558,29 +588,70 @@ export async function stormCampaign(businessId: string, _prev: PlanResult, f: Fo
   }
 }
 
-/** Guarda los cambios del borrador y lo programa. */
-export async function approveDraft(businessId: string, postId: string, f: FormData) {
+export type DraftApproval = { ok: true } | { ok: false; error: { es: string; en: string } };
+
+/**
+ * Guarda los cambios del borrador y lo programa. Si no se aprueba dice por qué: los del agente se aprueban en MATYA, un
+ * video que todavía se está creando no se aprueba, y un video para YouTube necesita los campos de YouTube.
+ * `nextHourIfPast`: si su hora ya pasó, sale en la próxima hora (en el mismo guardado, nunca antes de aprobar).
+ */
+export async function approveDraftChecked(businessId: string, postId: string, f: FormData, nextHourIfPast = false): Promise<DraftApproval> {
   ensure.text(businessId, postId);
-  await requireBusiness(businessId, "publish");
+  ensure.flag(nextHourIfPast);
+  const { user } = await requireBusiness(businessId, "publish");
+  const fail = (es: string, en: string): DraftApproval => ({ ok: false, error: { es, en } });
+  if (postId.startsWith("agent-")) return fail("Este borrador es de MATYA: apruébalo en MATYA.", "This draft belongs to MATYA: approve it in MATYA.");
   const post = await db.post.findFirst({ where: { id: postId, businessId, status: "draft" }, include: { targets: true } });
-  if (!post) return;
-  const variants = { ...((post.variants ?? {}) as Record<string, string>) };
+  if (!post) return fail("Este borrador ya no está (se aprobó o se borró).", "This draft is no longer here (it was approved or deleted).");
+  const video = post.kind === "video" || post.mediaType === "video";
+  if (video && !post.mediaUrl) return fail("El video todavía no está listo.", "The video isn't ready yet.");
+  // La aprobación de YouTube solo se pone con los campos que la persona envía ahora (nunca se copia la de antes).
+  const variants = withoutYoutubeApproval(post.variants);
   for (const t of post.targets) {
     const v = f.get(`v_${t.channel}`);
     if (typeof v === "string") variants[t.channel] = v.trim();
   }
+  const yt = video && post.targets.some((t) => t.channel === "youtube") ? youtubeApprovalFromForm(f, { mediaUrl: post.mediaUrl, approvedBy: user.id }) : null;
+  if (yt && !yt.ok) return { ok: false, error: yt.error };
+  const approval = yt?.ok ? yt.value : null;
+  if (approval) {
+    variants.youtube = approval.description;
+    variants[YT_KEY] = approval;
+  }
   const subject = f.get("subject");
-  await db.post.update({
-    where: { id: postId },
-    data: {
-      variants,
-      text: variants.facebook || post.text,
-      subject: typeof subject === "string" ? subject.trim() : post.subject,
-      status: "scheduled",
-    },
-  });
+  const main = typeof variants.facebook === "string" ? variants.facebook : "";
+  const data = {
+    variants: variants as Prisma.InputJsonValue,
+    text: main || post.text,
+    subject: typeof subject === "string" ? subject.trim() : post.subject,
+    status: "scheduled",
+    ...(nextHourIfPast && post.scheduledAt.getTime() < Date.now() ? { scheduledAt: new Date(Date.now() + 60 * 60000) } : {}),
+  };
+  // Con YouTube, el cambio y la constancia de la aprobación se guardan juntos (o ninguno).
+  if (approval)
+    await db.$transaction(async (tx) => {
+      await tx.post.update({ where: { id: postId }, data });
+      await tx.aiAction.create({ data: youtubeApprovalLog(businessId, postId, approval, post.campaignId) });
+    });
+  else await db.post.update({ where: { id: postId }, data });
   revalidatePath(`/b/${businessId}/plan`);
   revalidatePath(`/b/${businessId}/historial`);
+  return { ok: true };
+}
+
+/** Lo mismo, respondiendo solo si se aprobó. */
+export async function approveDraft(businessId: string, postId: string, f: FormData): Promise<boolean> {
+  ensure.text(businessId, postId);
+  return (await approveDraftChecked(businessId, postId, f)).ok;
+}
+
+/** «Aprobar y programar» del Plan. Si no se aprueba, vuelve al Plan con el motivo junto a ese borrador. */
+export async function approvePlanDraft(businessId: string, postId: string, f: FormData): Promise<void> {
+  ensure.text(businessId, postId);
+  const r = await approveDraftChecked(businessId, postId, f);
+  if (r.ok) return;
+  const { t } = await getT();
+  redirect(`/b/${businessId}/plan?${new URLSearchParams({ draft: postId, msg: t(r.error.es, r.error.en) })}#draft-${postId}`);
 }
 
 // ---------- Imágenes y videos con IA ----------

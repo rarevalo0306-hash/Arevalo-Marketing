@@ -3,6 +3,7 @@
 
 import { channelName } from "@/lib/channels";
 import type { UiLang } from "@/lib/i18n";
+import { PRIVACY_LABEL, YT_PRIVACY } from "@/lib/youtube-options";
 
 export type FailureKind =
   /** Facebook/Instagram quitaron el permiso o el token venció: hay que volver a conectar. */
@@ -18,6 +19,8 @@ export type FailureKind =
   | "website-no-write"
   | "needs-media"
   | "needs-video"
+  /** YouTube no sube nada que una persona no haya aprobado (título, descripción, etiquetas y visibilidad). */
+  | "needs-approval"
   | "media-rejected"
   | "ai-missing"
   | "temporary"
@@ -35,6 +38,7 @@ const OWNER_MUST_ACT: FailureKind[] = [
   "website-no-write",
   "needs-media",
   "needs-video",
+  "needs-approval",
   "ai-missing",
 ];
 
@@ -49,7 +53,7 @@ const META_AUTH =
   /impersonat|permission\(s\) must be granted|pages_(?:read_engagement|manage_posts|manage_metadata|show_list|read_user_content)|instagram_content_publish|\(#(?:10|190|200)\)|error validating access token|session has (?:expired|been invalidated)|has not authorized application|invalid oauth|access token .*(?:expired|invalid)|cannot parse access token|OAuthException/i;
 // Google, Brevo/Resend, Twilio, GitHub, TikTok: claves vencidas o revocadas.
 const GENERIC_AUTH =
-  /^401\b|^403: (?:bad credentials|unauthorized|forbidden)|invalid_grant|token has been expired or revoked|invalid[_ ](?:api[_ ])?key|key not found|unauthorized|bad credentials|access_token_invalid|authenticat(?:e|ion) (?:failed|required)/i;
+  /^401\b|^403: (?:bad credentials|unauthorized|forbidden)|invalid_grant|token has been expired or revoked|invalid[_ ](?:api[_ ])?key|key not found|unauthorized|bad credentials|access_token_invalid|authenticat(?:e|ion) (?:failed|required)|insufficient authentication scopes|ACCESS_TOKEN_SCOPE_INSUFFICIENT/i;
 const TEMPORARY =
   /^5\d\d\b|fetch failed|ETIMEDOUT|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up|timed? ?out|temporarily|try again later|rate limit|too many|\(#(?:1|2|4|17|32|341|368)\)|^429\b/i;
 
@@ -58,6 +62,7 @@ export function classifyFailure(detail: string, channel = ""): FailureKind {
   const d = (detail || "").trim();
   if (!d) return "unknown";
   if (/no está conectado para este negocio/i.test(d)) return "not-connected";
+  if (/necesita tu aprobaci[oó]n antes de subirse/i.test(d)) return "needs-approval";
   if (/contactos con email|contactos que hayan aceptado recibir correos/i.test(d)) return "no-email-contacts";
   if (/contactos con tel[eé]fono|contactos que hayan aceptado recibir textos/i.test(d)) return "no-sms-contacts";
   if (/sitio todav[ií]a no est[aá] preparado/i.test(d)) return "website-not-ready";
@@ -191,6 +196,15 @@ export function explainFailure(channel: string, detail: string, lang: UiLang, bu
         ...base,
         message: t(`${name} solo acepta videos. Haz una publicación nueva con video, o quita ${name} de los canales.`, `${name} only takes videos. Make a new post with a video, or remove ${name} from the channels.`),
       };
+    case "needs-approval":
+      return {
+        ...base,
+        message: t(
+          "YouTube: no se subió. Este video necesita tu aprobación primero: revisa su título, descripción, etiquetas y visibilidad, y apruébalo.",
+          "YouTube: not uploaded. This video needs your approval first: review its title, description, tags and visibility, then approve it.",
+        ),
+        action: { label: t("Revisar y subir desde Videos", "Review and upload from Videos"), href: `/b/${businessId}/videos` },
+      };
     case "media-rejected":
       return {
         ...base,
@@ -245,5 +259,10 @@ export function explainSent(channel: string, detail: string, lang: UiLang): stri
   if (channel === "sms" && n) return `Text sent to ${n[1]} contact${n[1] === "1" ? "" : "s"}`;
   if (channel === "seo") return "Article sent to your website (in Spanish and English); it goes live in a few minutes";
   if (channel === "tiktok") return "Sent to TikTok; it will be ready in a few minutes";
+  if (channel === "youtube") {
+    // «Subido a YouTube como no listado (Short); …» → «Uploaded to YouTube as Unlisted (Short); …».
+    const p = YT_PRIVACY.find((x) => clean.includes(`como ${PRIVACY_LABEL[x].es.toLowerCase()}`));
+    if (p) return `Uploaded to YouTube as ${PRIVACY_LABEL[p].en}${/\(Short\)/.test(clean) ? " (Short)" : ""}; YouTube processes it in a few minutes`;
+  }
   return `Posted on ${name}`;
 }

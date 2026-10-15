@@ -1,4 +1,5 @@
 import type { MediaType } from "@/lib/channels";
+import type { YoutubeApproval } from "@/lib/youtube-options";
 
 export type Creds = Record<string, string>;
 
@@ -22,6 +23,8 @@ export type PublishInput = {
   kind?: "post" | "carousel" | "story" | "video";
   /** Texto alternativo de la foto (con palabras clave), para las redes que lo aceptan. */
   altText?: string;
+  /** YouTube: lo que aprobó una persona para este video (título, descripción, etiquetas, privacidad, para niños). Sin esto no se sube. */
+  youtube?: YoutubeApproval;
 };
 
 export type PublishMedia = { url: string; type: "photo" | "video"; alt?: string };

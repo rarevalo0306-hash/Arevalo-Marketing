@@ -16,10 +16,12 @@ import { PostTypePicker, type StudioKind } from "@/components/posts/PostTypePick
 import { CarouselSlides, type Slide } from "@/components/posts/CarouselSlides";
 import { AltTextField } from "@/components/posts/AltTextField";
 import { KeywordChips } from "@/components/posts/KeywordChips";
+import { YoutubeOptionsFields, type YoutubeField } from "@/components/posts/YoutubeOptionsFields";
 import ps from "@/components/posts/posts.module.css";
 import { applyGbpLead, gbpKeywordHint, hashtagsFor, pickPostKeywords, withHashtags } from "@/lib/post-keywords";
 import { CAROUSEL_MAX, CAROUSEL_MIN } from "@/lib/post-media";
 import { isNetworkView } from "@/lib/preview";
+import { youtubeTags, youtubeTitleFor } from "@/lib/youtube-options";
 import { useT } from "@/components/I18n";
 import { IdeaList } from "@/components/IdeaList";
 import s from "./Composer.module.css";
@@ -191,6 +193,8 @@ export function Composer({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [variants, setVariants] = useState<Partial<Record<ChannelId, string>>>({});
+  // YouTube (solo con video): lo que se sube tal cual. Título y etiquetas null = siguen lo que sugiere el texto.
+  const [yt, setYt] = useState<{ title: string | null; tags: string | null; privacy: string; kids: string }>({ title: null, tags: null, privacy: "", kids: "" });
   const [idea, setIdea] = useState(initialIdea);
   // La idea elegida de la lista (o la que eligió la IA sola con la caja vacía).
   const [pickedId, setPickedId] = useState("");
@@ -614,6 +618,12 @@ export function Composer({
     : t(`Publicar en ${n} ${n === 1 ? "canal" : "canales"}`, `Publish on ${n} ${n === 1 ? "channel" : "channels"}`);
   const mediaSrc = fileUrl || mediaLink;
   const shownMedia: MediaType = mediaSrc ? mediaType : "none";
+  // YouTube sube solo videos y solo con lo que la persona revisó: título, etiquetas, quién lo ve y si es para niños.
+  const ytOn = on.has("youtube") && shownMedia === "video";
+  const ytTitle = yt.title ?? youtubeTitleFor({ seoTitle, text: textFor("youtube"), businessName });
+  const ytTags = yt.tags ?? youtubeTags(textFor("youtube"), keywords).join(", ");
+  const ytMissing = ytOn && (!yt.privacy || !yt.kids || !ytTitle.trim());
+  const setYtField = (field: YoutubeField, value: string) => setYt((cur) => ({ ...cur, [field]: value }));
 
   const toggle = (id: ChannelId) =>
     setOn((prev) => {
@@ -639,6 +649,7 @@ export function Composer({
       headLabel = t("Artículo en tu página web (en español e inglés)", "Article on your website (in Spanish and English)");
     }
     if (id === "email") { head = subject || t("[Asunto del email]", "[Email subject]"); headLabel = t("Asunto", "Subject"); }
+    if (id === "youtube" && ytOn) { head = ytTitle || t("[Título del video]", "[Video title]"); headLabel = t("Título en YouTube", "YouTube title"); }
     return (
       <div className="preview" style={{ width: "100%" }}>
         <div className="preview-head">
@@ -998,6 +1009,19 @@ export function Composer({
                 <input id="seoTitle" name="seoTitle" className="field" value={seoTitle} onChange={(e) => setSeoTitle(e.target.value)} placeholder={t("Ej.: Cómo saber si tu techo tiene una filtración", "E.g., How to tell if your roof has a leak")} />
               </div>
             )}
+            {ytOn && (
+              <div className="stack" style={{ gap: 6 }}>
+                <YoutubeOptionsFields
+                  lang={uiLang}
+                  idPrefix="composer"
+                  title={ytTitle}
+                  tags={ytTags}
+                  verb="post"
+                  controlled={{ privacy: yt.privacy, kids: yt.kids, onChange: setYtField }}
+                />
+                <p className="small muted">{t("Descripción: el texto de YouTube de esta publicación (míralo en la vista previa).", "Description: this post's YouTube text (see it in the preview).")}</p>
+              </div>
+            )}
             {on.has("email") && (
               <div className={s.extra}>
                 <label htmlFor="subject" className={s.extraLbl}>{t("Asunto del email", "Email subject")}</label>
@@ -1080,9 +1104,16 @@ export function Composer({
               </ul>
             )}
             <div className={s.send}>
-              <SubmitButton disabled={cant} label={uploading ? t("Esperando a que suba el archivo…", "Waiting for the file to upload…") : label} />
+              <SubmitButton disabled={cant || ytMissing} label={uploading ? t("Esperando a que suba el archivo…", "Waiting for the file to upload…") : label} />
               <span className="small muted">
-                {!selected.length ? t("Elige al menos un canal", "Pick at least one channel") : !text.trim() ? t("Escribe tu mensaje para empezar", "Write your message to get started") : kindProblem || t(`${ready} de ${n} listos`, `${ready} of ${n} ready`)}
+                {!selected.length
+                  ? t("Elige al menos un canal", "Pick at least one channel")
+                  : !text.trim()
+                    ? t("Escribe tu mensaje para empezar", "Write your message to get started")
+                    : kindProblem ||
+                      (ytMissing
+                        ? t("Para YouTube, escribe el título y elige quién puede verlo y si es para niños", "For YouTube, write the title and choose who can see it and whether it's made for kids")
+                        : t(`${ready} de ${n} listos`, `${ready} of ${n} ready`))}
               </span>
             </div>
           </section>

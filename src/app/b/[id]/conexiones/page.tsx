@@ -15,12 +15,14 @@ import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
 import { GA4_CHANNEL } from "@/lib/ga4-shape";
 import { googleEnabled, googleRedirectUri } from "@/lib/google-oauth";
+import { GOOGLE_PERMISSIONS_URL, legalUrl } from "@/lib/legal";
 import { metaEnabled } from "@/lib/meta-oauth";
 import { connectionsNeedingReconnect } from "@/lib/connection-health";
 import { GSC_CHANNEL } from "@/lib/seo/gsc";
 import { serviceAccountEmail } from "@/lib/google-sa";
 import { libraryCounts } from "@/lib/library-sync";
 import { r2Enabled } from "@/lib/r2";
+import { roleAllows } from "@/lib/roles";
 import { uploadStats } from "@/lib/upload";
 import { businessTzLabel, fmtWhen } from "@/lib/time";
 import { DriveCard } from "./DriveCard";
@@ -42,6 +44,10 @@ export default async function ConexionesPage({
   const { id } = await params;
   // El link privado de los técnicos deja subir a cualquiera que lo tenga: solo lo ve el Administrador.
   const { role } = await pageBusiness(id);
+  // Las cuentas de Google (Perfil de Negocio, YouTube, Search Console y Analytics) las conecta también quien «Puede
+  // conectar»; Facebook, Instagram, Brevo y los datos pegados a mano, solo el Administrador (src/lib/roles.ts).
+  const canGoogle = roleAllows(role, "connect");
+  const canAdmin = role === "admin";
   const q = await searchParams;
   const { lang, t } = await getT();
   const metaUrl = metaEnabled() ? `/api/meta/start?b=${id}` : null;
@@ -49,15 +55,29 @@ export default async function ConexionesPage({
   const youtubeUrl = googleEnabled() ? `/api/youtube/start?b=${id}` : null;
   const [b, gsc, ga4, health, library, uploads, origin] = await Promise.all([
     db.business.findUniqueOrThrow({ where: { id }, include: { connections: { where: { channel: { in: CHANNEL_IDS } } } } }),
-    db.connection.findUnique({ where: { businessId_channel: { businessId: id, channel: GSC_CHANNEL } }, select: { label: true } }),
-    db.connection.findUnique({ where: { businessId_channel: { businessId: id, channel: GA4_CHANNEL } }, select: { label: true } }),
+    db.connection.findUnique({ where: { businessId_channel: { businessId: id, channel: GSC_CHANNEL } }, select: { label: true, secret: true } }),
+    db.connection.findUnique({ where: { businessId_channel: { businessId: id, channel: GA4_CHANNEL } }, select: { label: true, secret: true } }),
     connectionsNeedingReconnect(id),
     libraryCounts(id),
     uploadStats(id),
     appOrigin(),
   ]);
-  // Canales cuya última publicación falló por permisos o clave vencida (y no se han vuelto a conectar).
-  const broken = new Set(Object.keys(health).filter((ch) => CHANNEL_IDS.includes(ch as (typeof CHANNEL_IDS)[number])));
+  // Conexiones de Google a las que el dueño les quitó el acceso desde su cuenta de Google (lo ve la revisión diaria).
+  const isRevoked = (secret?: string) => {
+    try {
+      return Boolean(secret && decryptJson<{ revokedAt?: string }>(secret).revokedAt);
+    } catch {
+      return false;
+    }
+  };
+  const revoked = new Set(
+    [...b.connections.filter((c) => c.channel === "google" || c.channel === "youtube"), { channel: GSC_CHANNEL, secret: gsc?.secret }, { channel: GA4_CHANNEL, secret: ga4?.secret }]
+      .filter((c) => isRevoked(c.secret))
+      .map((c) => c.channel),
+  );
+  // Canales cuya última publicación falló por permisos o clave vencida (y no se han vuelto a conectar), o sin acceso de Google.
+  const broken = new Set([...Object.keys(health).filter((ch) => CHANNEL_IDS.includes(ch as (typeof CHANNEL_IDS)[number])), ...revoked]);
+  const nameOf = (ch: string) => (ch === GSC_CHANNEL ? "Search Console" : ch === GA4_CHANNEL ? "Google Analytics" : channelName(ch, lang));
   const connected = b.connections.length;
   const isOn = (ch: string) => b.connections.some((x) => x.channel === ch);
   const metaMissing = !isOn("facebook") || !isOn("instagram");
@@ -91,9 +111,15 @@ export default async function ConexionesPage({
       />
       <p className="note">
         {t("Antes de conectar una cuenta, consulta ", "Before connecting an account, read ")}
-        <a href={`https://matya.app/${lang === "en" ? "en/" : ""}privacidad/`}>{t("Privacidad", "Privacy")}</a>{" · "}
-        <a href={`https://matya.app/${lang === "en" ? "en/" : ""}borrado-de-datos/`}>{t("Borrado de datos", "Data deletion")}</a>.
-        {t(" La IA puede recibir fotos y resúmenes de resultados para las funciones que solicites. Desconectar Google revoca su permiso y borra el reporte de esa conexión; otras conexiones de Google podrían necesitar reconexión.", " AI may receive photos and result summaries for requested features. Disconnecting Google revokes its permission and deletes that connection's report; other Google connections may need reconnection.")}
+        <a href={legalUrl("privacidad", lang)}>{t("Privacidad", "Privacy")}</a>{" · "}
+        <a href={legalUrl("condiciones", lang)}>{t("Condiciones", "Terms")}</a>{" · "}
+        <a href={legalUrl("borrado-de-datos", lang)}>{t("Borrado de datos", "Data deletion")}</a>.
+        {t(" La IA puede recibir fotos y resúmenes de resultados para las funciones que solicites.", " AI may receive photos and result summaries for requested features.")}
+        {t(
+          " Desconectar un servicio de Google borra sus datos y lo que Matya creó con ellos, y Matya también quita su permiso en Google cuando sabe que ninguna otra conexión usa esa cuenta. Los datos de YouTube se actualizan o se borran en un plazo de 30 días. Si quitas el acceso de Matya desde tu cuenta de Google, Matya borra los datos de esa conexión en un plazo de 7 días. Puedes quitar el acceso de Matya cuando quieras en ",
+          " Disconnecting a Google service deletes its data and what Matya built from it, and Matya also removes its access in Google when it knows no other connection uses that account. Data from YouTube is refreshed or deleted within 30 days. If you remove Matya's access from your Google account, Matya deletes that connection's data within 7 days. You can remove Matya's access at any time at ",
+        )}
+        <a href={GOOGLE_PERMISSIONS_URL}>myaccount.google.com/permissions</a>.
       </p>
       {q.meta === "ok" && (
         <p className="note ok" role="status">
@@ -153,7 +179,7 @@ export default async function ConexionesPage({
             {[...broken].map((ch, i) => (
               <span key={ch}>
                 {i > 0 && ", "}
-                <a href={`#c-${ch}`}>{channelName(ch, lang)}</a>
+                <a href={`#c-${ch}`}>{nameOf(ch)}</a>
               </span>
             ))}
             .
@@ -180,19 +206,19 @@ export default async function ConexionesPage({
                   })}
                   {g === "google" && (
                     <li>
-                      <a href="#c-gsc" className={gsc ? s.on : undefined}>
+                      <a href="#c-gsc" className={revoked.has(GSC_CHANNEL) ? s.bad : gsc ? s.on : undefined}>
                         <span className={s.dot} aria-hidden="true" />
                         Search Console
-                        <span className="sr-only">{gsc ? t(" (conectado)", " (connected)") : t(" (no conectado)", " (not connected)")}</span>
+                        <span className="sr-only">{revoked.has(GSC_CHANNEL) ? t(" (volver a conectar)", " (reconnect)") : gsc ? t(" (conectado)", " (connected)") : t(" (no conectado)", " (not connected)")}</span>
                       </a>
                     </li>
                   )}
                   {g === "google" && (
                     <li>
-                      <a href="#c-ga4" className={ga4?.label ? s.on : undefined}>
+                      <a href="#c-ga4" className={revoked.has(GA4_CHANNEL) ? s.bad : ga4?.label ? s.on : undefined}>
                         <span className={s.dot} aria-hidden="true" />
                         Google Analytics
-                        <span className="sr-only">{ga4?.label ? t(" (conectado)", " (connected)") : t(" (no conectado)", " (not connected)")}</span>
+                        <span className="sr-only">{revoked.has(GA4_CHANNEL) ? t(" (volver a conectar)", " (reconnect)") : ga4?.label ? t(" (conectado)", " (connected)") : t(" (no conectado)", " (not connected)")}</span>
                       </a>
                     </li>
                   )}
@@ -254,7 +280,10 @@ export default async function ConexionesPage({
                       oauthName={c.id === "google" || c.id === "youtube" ? "Google" : "Facebook"}
                       brevo={c.id === "email" ? brevo : null}
                       needsReconnect={broken.has(c.id)}
+                      revoked={revoked.has(c.id)}
                       account={label && !/^\d+$/.test(label) ? label : undefined}
+                      canConnect={(c.id === "google" || c.id === "youtube") && googleUrl ? canGoogle : canAdmin}
+                      canPaste={canAdmin}
                     />
                   );
                 })}
@@ -265,7 +294,9 @@ export default async function ConexionesPage({
                     site={gsc?.label ?? ""}
                     enabled={googleEnabled()}
                     hasWebsite={Boolean(b.website.trim())}
+                    revoked={revoked.has(GSC_CHANNEL)}
                     disconnect={disconnectGscFromConnections.bind(null, id)}
+                    canConnect={canGoogle}
                   />
                 )}
                 {g === "google" && (
@@ -275,7 +306,9 @@ export default async function ConexionesPage({
                     property={ga4?.label ?? ""}
                     enabled={googleEnabled()}
                     redirectUri={googleRedirectUri()}
+                    revoked={revoked.has(GA4_CHANNEL)}
                     disconnect={disconnectGa4.bind(null, id)}
+                    canConnect={canGoogle}
                   />
                 )}
               </div>

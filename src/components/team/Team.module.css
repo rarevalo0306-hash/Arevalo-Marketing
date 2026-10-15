@@ -120,7 +120,7 @@
 .matrix { width: 100%; border-collapse: collapse; font-size: 15px; }
 .matrix th, .matrix td { padding: 12px 8px; border-bottom: 1px solid var(--line); background: none; vertical-align: middle; }
 .matrix th:first-child { padding-left: 0; }
-.matrix thead th { font-size: 13px; white-space: normal; text-align: center; vertical-align: bottom; width: 18%; }
+.matrix thead th { font-size: 13px; white-space: normal; text-align: center; vertical-align: bottom; width: 15%; }
 .matrix thead th:first-child { width: auto; }
 .matrix tbody th { font-weight: 500; font-size: 15px; color: var(--ink); white-space: normal; text-align: left; }
 .matrix td { text-align: center; }
@@ -132,7 +132,7 @@
 @container roles (max-width: 460px) {
   .matrix thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .matrix, .matrix tbody, .matrix tr, .matrix th, .matrix td { display: block; }
-  .matrix tbody tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 6px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .matrix tbody tr { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 6px; padding: 12px 0; border-bottom: 1px solid var(--line); }
   .matrix tbody tr:first-child { padding-top: 0; }
   .matrix tbody tr:last-child { border-bottom: 0; padding-bottom: 0; }
   .matrix tbody th, .matrix td { padding: 0; border: 0; }

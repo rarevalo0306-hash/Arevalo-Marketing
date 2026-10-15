@@ -12,6 +12,7 @@ import type { Prisma } from "@prisma/client";
 import { decryptJson } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import { oauthHeader } from "@/lib/publish-x";
+import { googleClient } from "@/lib/publishers/google";
 import { fetchJson, form } from "@/lib/publishers/http";
 import type { Creds } from "@/lib/publishers/types";
 import {
@@ -101,10 +102,9 @@ export async function fetchInstagram(externalId: string, creds: Creds): Promise<
   return { ok: true, values: parseInstagram(fields, insights), raw };
 }
 
-/** Un access token de YouTube (igual que al publicar: la conexión o las claves de la app). */
+/** Un access token de YouTube (igual que al publicar: el cliente de la app, o el propio si se pegó a mano). */
 async function youtubeToken(creds: Creds): Promise<string> {
-  const clientId = creds.clientId?.trim() || process.env.GOOGLE_CLIENT_ID || "";
-  const clientSecret = creds.clientSecret?.trim() || process.env.GOOGLE_CLIENT_SECRET || "";
+  const { clientId, clientSecret } = googleClient(creds);
   if (!clientId || !clientSecret || !creds.refreshToken?.trim()) throw new Error("token: faltan datos de la conexión de YouTube");
   const t = await fetchJson<{ access_token: string }>("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -173,9 +173,15 @@ export async function dueJobs(now: Date, limit = MAX_PER_RUN): Promise<MetricJob
     orderBy: { sentAt: "desc" },
     take: 1000,
   });
+  // YouTube sin conexión en ese negocio: no se lee ni se guarda nada (sus datos se borraron al desconectar), así que esas
+  // publicaciones se quedan fuera aquí y no ocupan los lugares de la vuelta.
+  const ytBiz = targets.some((t) => t.channel === "youtube")
+    ? new Set((await db.connection.findMany({ where: { channel: "youtube" }, select: { businessId: true } })).map((c) => c.businessId))
+    : new Set<string>();
   const jobs: MetricJob[] = [];
   for (const t of targets) {
     if (!t.sentAt) continue;
+    if (t.channel === "youtube" && !ytBiz.has(t.post.businessId)) continue;
     const checkpoint = dueCheckpoint(t.sentAt, t.metrics[0]?.fetchedAt ?? null, now);
     if (checkpoint === null) continue;
     let externalId = t.externalId;
@@ -272,6 +278,8 @@ export async function syncPostMetrics(now: Date = new Date(), fetchers = { fetch
     for (const [businessId, group] of byBiz) {
       if (stopped.has(channel)) break;
       const creds = credsOf(businessId, channel);
+      // YouTube desconectado: no se guarda nada (sus datos se borraron al desconectar y no deben volver). Sin red.
+      if (!creds && channel === "youtube") continue;
       let results: Record<string, FetchOutcome>;
       if (!creds) results = Object.fromEntries(group.map((j) => [j.externalId, { ok: false, error: plainMetricError(channel, "token: la red ya no está conectada") } as FetchOutcome]));
       else {

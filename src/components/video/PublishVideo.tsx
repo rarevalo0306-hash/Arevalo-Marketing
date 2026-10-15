@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useState } from "react";
 import { useT } from "@/components/I18n";
+import { YoutubeOptionsFields } from "@/components/posts/YoutubeOptionsFields";
 import type { PublishVideoResult, VideoView } from "@/app/actions-video";
 import { channelsFor, type VideoTexts } from "@/lib/video-plan";
 import s from "./video.module.css";
@@ -82,12 +83,8 @@ export function PublishVideo({ video, texts, channels, connectHref, historyHref,
         </fieldset>
 
         {on.includes("youtube") && (
-          <div className="stack" style={{ gap: 6 }}>
-            <label htmlFor="pv-title" className={s.legend}>{t("YouTube: título", "YouTube: title")}</label>
-            <input id="pv-title" name="title" className="field" defaultValue={texts.title} maxLength={100} />
-            <label htmlFor="pv-desc" className={s.legend}>{t("YouTube: descripción", "YouTube: description")}</label>
-            <textarea id="pv-desc" name="description" className="field" rows={5} defaultValue={texts.description} maxLength={5000} />
-          </div>
+          // Lo que se sube a YouTube tal cual: la persona elige quién lo ve y si es para niños (nada elegido de entrada).
+          <YoutubeOptionsFields lang={lang} idPrefix="pv" title={texts.title} description={texts.description} tags={texts.tags} verb="post" />
         )}
         {on.includes("instagram") && (
           <div className="stack" style={{ gap: 6 }}>

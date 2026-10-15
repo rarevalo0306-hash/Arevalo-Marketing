@@ -1,8 +1,10 @@
 import { Suspense } from "react";
 import { autoRefreshGa4, changeGa4Property, chooseGa4Property, disconnectGa4, refreshGa4Action } from "@/app/actions-ga4";
+import { ConsentLine } from "@/components/ConsentLine";
 import { Fold } from "@/components/seo/Fold";
 import { Ga4AutoRefresh, Ga4ConfirmButton, Ga4Notice, Ga4RefreshButton } from "@/components/seo/Ga4PanelClient";
 import { Ga4HowTo } from "@/components/seo/Ga4PanelHowTo";
+import { hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { latestGa4Report, readGa4Connection } from "@/lib/ga4";
 import {
@@ -20,6 +22,7 @@ import {
 import { googleEnabled, googleRedirectUri } from "@/lib/google-oauth";
 import { intlLocale, type T, type UiLang } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
+import { whoConnects } from "@/lib/roles";
 import s from "./Ga4Panel.module.css";
 
 function fmt(lang: UiLang) {
@@ -416,7 +419,12 @@ export async function Ga4Panel({ businessId }: { businessId: string }) {
       </section>
     );
 
-  const [business, conn] = await Promise.all([db.business.findUnique({ where: { id }, select: { website: true } }), readGa4Connection(id)]);
+  const [business, conn, canConnect] = await Promise.all([
+    db.business.findUnique({ where: { id }, select: { website: true } }),
+    readGa4Connection(id),
+    // Conectar, elegir la propiedad y desconectar: el Administrador o quien «Puede conectar» (src/lib/roles.ts).
+    hasBusiness(id, "connect"),
+  ]);
   const website = business?.website ?? "";
 
   if (!conn)
@@ -431,7 +439,14 @@ export async function Ga4Panel({ businessId }: { businessId: string }) {
               "Connect it and you'll see your real visits from the last 28 days compared with the previous 28.",
             )}
           </p>
-          <a className="btn on" href={`/api/ga4/start?b=${id}`}>{t("Conectar Google Analytics", "Connect Google Analytics")}</a>
+          {canConnect ? (
+            <>
+              <a className="btn on" href={`/api/ga4/start?b=${id}`}>{t("Conectar Google Analytics", "Connect Google Analytics")}</a>
+              <ConsentLine />
+            </>
+          ) : (
+            <p className="small muted">{whoConnects(true, t)}</p>
+          )}
         </div>
         {howTo}
       </section>
@@ -441,12 +456,23 @@ export async function Ga4Panel({ businessId }: { businessId: string }) {
     <Ga4ConfirmButton
       action={disconnectGa4.bind(null, id)}
       label={t("Desconectar Google Analytics", "Disconnect Google Analytics")}
-      question={t("¿Revocar Google Analytics y borrar sus reportes guardados? Otras conexiones de Google podrían necesitar reconexión.", "Revoke Google Analytics and delete its saved reports? Other Google connections may need reconnection.")}
+      question={t("¿Desconectar Google Analytics? Se borran sus reportes y las tareas del plan que salieron de ellos. Matya también quita su permiso en Google cuando sabe que ninguna otra conexión usa esa cuenta.", "Disconnect Google Analytics? Its reports and the plan tasks built from them are deleted. Matya also removes its access in Google when it knows no other connection uses that account.")}
     />
   );
 
   // Conectado, pero falta elegir la propiedad de este negocio.
   if (!conn.secret.propertyId) {
+    if (!canConnect)
+      return (
+        <section className="card" id="ga4">
+          {head}
+          {notice}
+          <p className="note">
+            {t("Google Analytics está conectado, pero falta elegir la propiedad de este negocio. ", "Google Analytics is connected, but this business's property still needs to be picked. ")}
+            {whoConnects(true, t)}
+          </p>
+        </section>
+      );
     const { list, suggested } = orderForPicker(website, conn.secret.properties ?? []);
     return (
       <section className="card" id="ga4">
@@ -522,6 +548,14 @@ export async function Ga4Panel({ businessId }: { businessId: string }) {
         </div>
         <Ga4RefreshButton action={refreshGa4Action.bind(null, id)} />
       </div>
+      {conn.secret.revokedAt && (
+        <p className="note error" role="alert">
+          {t(
+            "El acceso a Google se quitó desde tu cuenta de Google. Vuelve a conectarla en los próximos 3 días o Matya borrará esta conexión y los datos que trajo.",
+            "Google access was removed from your Google account. Reconnect within 3 days, or Matya will delete this connection and the data it brought in.",
+          )}
+        </p>
+      )}
       {failed && (
         <p className="note error" role="alert">
           {t(`No se pudieron traer los datos nuevos (${f.when(conn.secret.lastTryAt ?? "")}): `, `Couldn't get new data (${f.when(conn.secret.lastTryAt ?? "")}): `)}
@@ -535,12 +569,14 @@ export async function Ga4Panel({ businessId }: { businessId: string }) {
         !failed && <p className="note">{t("Presiona «Actualizar» para traer tus visitas de los últimos 28 días.", "Click \"Refresh\" to get your visits from the last 28 days.")}</p>
       )}
 
-      <div className={s.footer}>
-        {(conn.secret.properties?.length ?? 0) > 1 && (
-          <Ga4ConfirmButton action={changeGa4Property.bind(null, id)} label={t("Cambiar de propiedad", "Change property")} className="btn outline" />
-        )}
-        {disconnect}
-      </div>
+      {canConnect && (
+        <div className={s.footer}>
+          {(conn.secret.properties?.length ?? 0) > 1 && (
+            <Ga4ConfirmButton action={changeGa4Property.bind(null, id)} label={t("Cambiar de propiedad", "Change property")} className="btn outline" />
+          )}
+          {disconnect}
+        </div>
+      )}
     </section>
   );
 }

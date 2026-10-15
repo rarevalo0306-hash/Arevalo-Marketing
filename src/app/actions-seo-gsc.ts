@@ -50,7 +50,7 @@ export async function refreshSearchConsole(businessId: string, _prev: GscResult,
 /** Después de "Conectar Search Console", cuando ningún sitio coincide con la página del negocio. */
 export async function chooseGscSite(businessId: string, siteUrl: string) {
   ensure.text(businessId, siteUrl);
-  await ensureBusiness(businessId, "admin");
+  await ensureBusiness(businessId, "connect");
   const { t } = await getT();
   const jar = await cookies();
   const raw = jar.get(GSC_COOKIE)?.value;
@@ -62,7 +62,7 @@ export async function chooseGscSite(businessId: string, siteUrl: string) {
   }
   if (!saved || saved.businessId !== businessId || !saved.sites.includes(siteUrl))
     redirect(`/b/${businessId}/seo?${new URLSearchParams({ gsc: "error", msg: t("La conexión venció. Vuelve a intentarlo.", "The connection expired. Please try again.") })}`);
-  await saveGscSite(businessId, saved.refreshToken, siteUrl);
+  await saveGscSite(businessId, saved.refreshToken, siteUrl, saved.googleUser);
   jar.delete(GSC_COOKIE);
   await tryFirstGscReport(businessId);
   revalidatePath(`/b/${businessId}/seo`);

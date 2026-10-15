@@ -12,7 +12,7 @@ export const GSC_COOKIE = "am_gsc";
 export const GSC_CHANNEL = "gsc";
 
 export type GscSite = { siteUrl: string; permissionLevel: string };
-export type GscPending = { refreshToken: string; businessId: string; sites: string[] };
+export type GscPending = { refreshToken: string; businessId: string; sites: string[]; googleUser?: string | null };
 
 export type GscRow = { key: string; clicks: number; impressions: number; ctr: number; position: number };
 export type GscTotals = { clicks: number; impressions: number; ctr: number; position: number };
@@ -114,8 +114,9 @@ export async function listGscSites(accessToken: string): Promise<string[]> {
 }
 
 /** Guarda la conexión con el sitio elegido. */
-export async function saveGscSite(businessId: string, refreshToken: string, siteUrl: string) {
-  const secret = encryptJson({ refreshToken, siteUrl });
+export async function saveGscSite(businessId: string, refreshToken: string, siteUrl: string, googleUser?: string | null) {
+  // googleUser: la cuenta de Google que dio el permiso (para no revocar el de otras conexiones, ver canRevokeAlone).
+  const secret = encryptJson({ refreshToken, siteUrl, ...(googleUser ? { googleUser } : {}) });
   await db.connection.upsert({
     where: { businessId_channel: { businessId, channel: GSC_CHANNEL } },
     create: { businessId, channel: GSC_CHANNEL, secret, label: siteUrl },

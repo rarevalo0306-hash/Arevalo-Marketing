@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useTransition } from "react";
+import { ConsentLine } from "@/components/ConsentLine";
 import { useT } from "@/components/I18n";
+import { whoConnects } from "@/lib/roles";
 import s from "@/components/ConnectionCard.module.css";
 
 type Props = {
@@ -13,7 +15,11 @@ type Props = {
   /** Falta configurar el cliente de Google en el servidor. */
   enabled: boolean;
   hasWebsite: boolean;
+  /** El dueño quitó el acceso desde su cuenta de Google (en 3 días se borra la conexión y sus datos). */
+  revoked?: boolean;
   disconnect: () => Promise<void>;
+  /** Su papel le deja conectar y desconectar las cuentas de Google (Administrador o «Puede conectar»). */
+  canConnect: boolean;
 };
 
 function siteName(site: string) {
@@ -21,20 +27,32 @@ function siteName(site: string) {
 }
 
 /** Google Search Console: con qué búsquedas aparece tu página en Google (solo lectura, gratis). */
-export function GscCard({ businessId, connected, site, enabled, hasWebsite, disconnect }: Props) {
+export function GscCard({ businessId, connected, site, enabled, hasWebsite, revoked, disconnect, canConnect }: Props) {
   const { t } = useT();
   const [pending, start] = useTransition();
   const url = `/api/gsc/start?b=${businessId}`;
+  const broken = connected && revoked;
   return (
-    <article id="c-gsc" className={`card ${s.card}`}>
+    <article id="c-gsc" className={`card ${s.card}${broken ? ` ${s.broken}` : ""}`}>
       <div className={s.head}>
         <span className={`mono solid ${s.logo}`} aria-hidden="true">GSC</span>
         <div className={s.title}>
           <h2>Google Search Console</h2>
           <span className={s.account}>{connected && site ? siteName(site) : t("Tus búsquedas en Google", "Your Google searches")}</span>
         </div>
-        <span className={connected ? "pill connected" : "pill"}>{connected ? t("Conectado", "Connected") : t("No conectado", "Not connected")}</span>
+        <span className={broken ? "pill failed" : connected ? "pill connected" : "pill"}>
+          {broken ? t("Volver a conectar", "Reconnect") : connected ? t("Conectado", "Connected") : t("No conectado", "Not connected")}
+        </span>
       </div>
+      {broken && (
+        <p className={`note error ${s.alert}`} role="status">
+          <strong>{t("Necesita volver a conectarse.", "Needs to be reconnected.")}</strong>{" "}
+          {t(
+            "El acceso a Google se quitó desde tu cuenta de Google. Vuelve a conectarla en los próximos 3 días o Matya borrará esta conexión y los datos que trajo.",
+            "Google access was removed from your Google account. Reconnect within 3 days, or Matya will delete this connection and the data it brought in.",
+          )}
+        </p>
+      )}
       <p className={s.gain}>
         {t(
           "Mira con qué búsquedas aparece tu página web en Google, cuántos te ven y cuántos hacen clic. Gratis, y no publica nada.",
@@ -51,19 +69,24 @@ export function GscCard({ businessId, connected, site, enabled, hasWebsite, disc
         </p>
       ) : (
         <div className={s.easy}>
-          <a className={connected ? "btn outline" : "btn on"} href={url}>
-            {connected ? t("Volver a conectar con Google", "Reconnect with Google") : t("Conectar Search Console", "Connect Search Console")}
-          </a>
+          {canConnect && (
+            <a className={connected && !broken ? "btn outline" : "btn on"} href={url}>
+              {connected ? t("Volver a conectar con Google", "Reconnect with Google") : t("Conectar Search Console", "Connect Search Console")}
+            </a>
+          )}
           <span className={s.easyNote}>
             {connected ? (
               <>
                 {t("Ve tus datos en ", "See your data in ")}
                 <Link href={`/b/${businessId}/seo`}>SEO</Link>.
               </>
-            ) : (
+            ) : canConnect ? (
               t("Solo entra con la cuenta de Google donde tienes tu página en Search Console.", "Just sign in with the Google account where your website is in Search Console.")
+            ) : (
+              whoConnects(true, t)
             )}
           </span>
+          {canConnect && <ConsentLine className={s.hint} />}
         </div>
       )}
 
@@ -105,14 +128,14 @@ export function GscCard({ businessId, connected, site, enabled, hasWebsite, disc
         </div>
       </details>
 
-      {connected && (
+      {connected && canConnect && (
         <div className={s.actions}>
           <button
             className="btn danger"
             type="button"
             disabled={pending}
             onClick={() => {
-              if (confirm(t("¿Desconectar Search Console? Se borran los reportes guardados de esta conexión.", "Disconnect Search Console? Saved reports for this connection are deleted."))) start(() => disconnect());
+              if (confirm(t("¿Desconectar Search Console? Se borran sus reportes, «Páginas para actualizar», las revisiones de «Páginas que compiten entre sí» hechas con sus datos, las palabras clave que sugirió y las tareas del plan que salieron de ellos.", "Disconnect Search Console? Its reports, “Pages to refresh”, the “Pages competing with each other” reviews built from its data, the keywords it suggested and the plan tasks built from them are deleted."))) start(() => disconnect());
             }}
           >
             {pending ? t("Desconectando…", "Disconnecting…") : t("Desconectar", "Disconnect")}

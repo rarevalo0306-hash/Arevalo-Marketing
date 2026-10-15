@@ -127,9 +127,13 @@ export async function deniedText(businessId: string, need: Need = "view"): Promi
   if (access.ok) return "";
   if (access.status === 401) return t("Tu sesión venció. Vuelve a entrar.", "Your session expired. Sign in again.");
   if (access.status === 404) return t("Negocio no encontrado", "Business not found");
-  return need === "admin"
-    ? t("Esto solo lo puede hacer el Administrador.", "Only the Administrator can do this.")
-    : t("Tu papel es «Solo ver»: puedes mirar, pero no cambiar nada. Pídele al Administrador más permisos.", "Your role is View only: you can look but not change anything. Ask the Administrator for more access.");
+  if (need === "admin") return t("Esto solo lo puede hacer el Administrador.", "Only the Administrator can do this.");
+  if (need === "connect")
+    return t(
+      "Conectar las cuentas de Google lo hace el Administrador o quien «Puede conectar». Pídele al Administrador ese permiso.",
+      'Connecting Google accounts is for the Administrator or someone who "Can connect". Ask the Administrator for that access.',
+    );
+  return t("Tu papel es «Solo ver»: puedes mirar, pero no cambiar nada. Pídele al Administrador más permisos.", "Your role is View only: you can look but not change anything. Ask the Administrator for more access.");
 }
 
 /** Para páginas: sin sesión, a /login; sin acceso, la página de «no encontrado» (no se dice si el negocio existe). */
