@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState, useTransition } from "react";
-import { draftOutreach, draftTopOutreach, saveOutreachEdit } from "@/app/actions-seo-outreach";
+import { draftMentionOutreach, draftOutreach, draftTopOutreach, saveOutreachEdit, sendOutreach } from "@/app/actions-seo-outreach";
 import { useT } from "@/components/I18n";
 import { HowToRead } from "@/components/seo/HowToRead";
 import styles from "@/components/seo/OutreachDrafts.module.css";
@@ -108,8 +108,8 @@ export function OutreachTop({ pendingCount }: { pendingCount: number }) {
           </li>
           <li>
             {t(
-              "Nada se envía solo: tú lo revisas y lo mandas desde tu correo. Nunca pagues por un enlace; Google lo castiga.",
-              "Nothing is sent automatically: you check it and send it from your own email. Never pay for a link; Google penalizes it.",
+              "Nada se envía solo: tú lo revisas y lo mandas desde tu correo (copiándolo o con «Enviar desde mi correo», que sale de tu Email conectado). Nunca pagues por un enlace; Google lo castiga.",
+              "Nothing is sent automatically: you check it and send it from your own email (copying it or with “Send from my email”, which goes out from your connected Email). Never pay for a link; Google penalizes it.",
             )}
           </li>
         </ul>
@@ -135,11 +135,79 @@ export function OutreachTop({ pendingCount }: { pendingCount: number }) {
   );
 }
 
+/**
+ * «Enviar desde mi correo»: el dueño revisa el correo, confirma a quién va y se manda desde su Email conectado.
+ * Dos pasos (nunca se manda con un solo clic) y una sola vez por sitio.
+ */
+function SendBox({ businessId, draft, beforeSend, onSent }: { businessId: string; draft: OutreachDraft; beforeSend: () => Promise<void>; onSent: (d: OutreachDraft) => void }) {
+  const { t, lang } = useT();
+  const [to, setTo] = useState(draft.contactEmail ?? "");
+  const [confirm, setConfirm] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [pending, start] = useTransition();
+  if (draft.sentAt) {
+    const when = new Intl.DateTimeFormat(lang === "en" ? "en-US" : "es", { dateStyle: "medium" }).format(new Date(draft.sentAt));
+    return <p className="note ok">{t(`✓ Enviado a ${draft.sentTo ?? ""} el ${when}. Las respuestas te llegan a tu correo.`, `✓ Sent to ${draft.sentTo ?? ""} on ${when}. Replies go to your email.`)}</p>;
+  }
+  const send = () =>
+    start(async () => {
+      setMsg(null);
+      await beforeSend();
+      const r = await sendOutreach(businessId, draft.domain, to);
+      setMsg({ ok: r.ok, text: r.message });
+      setConfirm(false);
+      if (r.ok && r.draft) onSent(r.draft);
+    });
+  return (
+    <div className="stack" style={{ gap: 6 }}>
+      <label className="lbl" htmlFor={`ot-${draft.domain}`}>{t("Mandar desde mi correo a", "Send from my email to")}</label>
+      <div className={styles.actions}>
+        <input
+          id={`ot-${draft.domain}`}
+          className="field"
+          type="email"
+          value={to}
+          onChange={(e) => {
+            setTo(e.target.value);
+            setConfirm(false);
+          }}
+          placeholder={t("correo@susitio.com", "email@theirsite.com")}
+          maxLength={200}
+          style={{ maxWidth: 320 }}
+          disabled={pending}
+        />
+        {!confirm ? (
+          <button type="button" className="btn" onClick={() => setConfirm(true)} disabled={pending || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to.trim())}>
+            {t("Enviar desde mi correo", "Send from my email")}
+          </button>
+        ) : (
+          <>
+            <button type="button" className="btn on" onClick={send} disabled={pending}>
+              {pending ? t("Enviando…", "Sending…") : t(`Sí, enviar a ${to.trim()}`, `Yes, send to ${to.trim()}`)}
+            </button>
+            <button type="button" className="btn link" onClick={() => setConfirm(false)} disabled={pending}>
+              {t("Cancelar", "Cancel")}
+            </button>
+          </>
+        )}
+      </div>
+      <span className="small muted">
+        {t("Sale de tu Email conectado (Conexiones), una sola vez por sitio y máximo 10 al día.", "It goes out from your connected Email (Connections), once per site and up to 10 a day.")}
+      </span>
+      {msg && !pending && (
+        <p className={msg.ok ? "note ok" : "note error"} role="status">
+          {msg.text}
+        </p>
+      )}
+    </div>
+  );
+}
+
 const TYPE_LABEL = (t: (es: string, en: string) => string, d: OutreachDraft) =>
   d.type === "email" ? t("Correo para pedir el enlace", "Email to ask for the link") : d.type === "profile" ? t("Crea o completa tu perfil", "Create or complete your profile") : t("Regístrate", "Sign up");
 
-/** El botón "Pedir enlace" de un sitio y lo que se preparó. */
-export function OutreachRow({ domain, hint }: { domain: string; hint: LinkHint }) {
+/** El botón "Pedir enlace" de un sitio y lo que se preparó. `mentionUrl`: el sitio ya te mencionó ahí sin enlace. */
+export function OutreachRow({ domain, hint, mentionUrl }: { domain: string; hint: LinkHint; mentionUrl?: string }) {
   const { t, lang } = useT();
   const { businessId, aiReady, drafts, put, fresh } = useOutreach();
   const draft = drafts[domain];
@@ -169,7 +237,7 @@ export function OutreachRow({ domain, hint }: { domain: string; hint: LinkHint }
     start(async () => {
       setMsg(null);
       setOpen(true);
-      const r = await draftOutreach(businessId, domain);
+      const r = mentionUrl ? await draftMentionOutreach(businessId, mentionUrl) : await draftOutreach(businessId, domain);
       if (r.ok && r.draft) {
         shownAt.current = r.draft.createdAt;
         setSubject(r.draft.subject ?? "");
@@ -211,7 +279,7 @@ export function OutreachRow({ domain, hint }: { domain: string; hint: LinkHint }
           >
             {draft ? t("Ver cómo pedirlo", "See how to ask") : t("Pedir enlace", "Ask for a link")}
           </button>
-          {draft && <span className="small muted">{t("Ya preparado", "Already prepared")}</span>}
+          {draft && <span className="small muted">{draft.sentAt ? t("Correo enviado ✓", "Email sent ✓") : t("Ya preparado", "Already prepared")}</span>}
         </div>
       ) : (
         <div className={styles.panel}>
@@ -275,12 +343,13 @@ export function OutreachRow({ domain, hint }: { domain: string; hint: LinkHint }
                         {t("Abrir en mi correo", "Open in my email")}
                       </a>
                     )}
-                    {aiReady && (
+                    {aiReady && !draft.sentAt && (
                       <button type="button" className="btn link" onClick={make}>
                         {t("Otra versión con IA", "Another AI version")}
                       </button>
                     )}
                   </div>
+                  <SendBox businessId={businessId} draft={draft} beforeSend={save} onSent={(d) => put([d])} />
                 </>
               )}
 

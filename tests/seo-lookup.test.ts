@@ -13,7 +13,8 @@ const SERP = {
     { type: "organic", rank_group: 1, domain: "www.joesroofing.com", url: "https://www.joesroofing.com/roof-repair", title: "Roof Repair in Miami" },
     { type: "organic", rank_group: 3, domain: "sunroofs.com", url: "https://sunroofs.com/", title: "Sun Roofs" },
     { type: "people_also_ask", items: [{ title: "How much is a roof repair?" }, { title: "How much is a roof repair?" }] },
-    { type: "paid", title: "ad" },
+    { type: "paid", title: "Roof Repair Today", description: "Free estimate", domain: "www.ads-roof.com", url: "https://ads-roof.com/x", rank_absolute: 1 },
+    { type: "paid", title: "Again", domain: "ads-roof.com", rank_absolute: 2 },
     null,
   ],
 } as unknown as SerpResult;
@@ -30,13 +31,15 @@ describe("Ver quién sale ahora: palabra", () => {
     expect(r.localPack).toEqual({ names: ["Joe's Roofing LLC", "Sun Roofs"], you: 1 });
     expect(r.features).toEqual(["local_pack", "people_also_ask", "ai_overview", "ads"]);
     expect(r.questions).toEqual(["How much is a roof repair?"]);
+    // Los anuncios, sin repetir el mismo anunciante.
+    expect(r.ads).toEqual([{ position: 1, domain: "ads-roof.com", title: "Roof Repair Today", description: "Free estimate", url: "https://ads-roof.com/x" }]);
   });
 
   it("sin página web no marca nada como tuyo", () => {
     const r = parseLookupSerp(SERP, "", "Otro Negocio");
     expect(r.yourPosition).toBeNull();
     expect(r.localPack?.you).toBeNull();
-    expect(parseLookupSerp(null, "", "")).toEqual({ top: [], yourPosition: null, localPack: null, features: [], questions: [] });
+    expect(parseLookupSerp(null, "", "")).toEqual({ top: [], yourPosition: null, localPack: null, features: [], questions: [], ads: [] });
   });
 
   it("normaliza la búsqueda para no pagar dos veces lo mismo", () => {

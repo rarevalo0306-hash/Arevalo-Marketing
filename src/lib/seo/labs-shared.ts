@@ -76,31 +76,59 @@ export type KeywordOverview = {
   trend: number[];
 };
 
+/** Una palabra de Labs (keyword_overview, keyword_suggestions, keyword_ideas): todas traen la misma forma. null sin palabra. */
+export function parseLabsItem(raw: unknown): KeywordOverview | null {
+  const it = obj(raw);
+  // keyword_suggestions trae la palabra arriba; otras respuestas la anidan en keyword_data.
+  const data = Object.keys(obj(it.keyword_data)).length ? obj(it.keyword_data) : it;
+  const keyword = typeof data.keyword === "string" ? data.keyword.replace(/\s+/g, " ").trim().toLowerCase() : "";
+  if (!keyword) return null;
+  const info = obj(data.keyword_info);
+  const volume = num(info.search_volume);
+  const cpc = num(info.cpc);
+  const difficulty = num(obj(data.keyword_properties).keyword_difficulty);
+  return {
+    keyword,
+    volume: volume !== null && volume >= 0 ? volume : null,
+    cpc: cpc !== null && cpc >= 0 ? cpc : null,
+    difficulty: difficulty !== null ? Math.max(0, Math.min(100, Math.round(difficulty))) : null,
+    intent: asIntent(obj(data.search_intent_info).main_intent),
+    trend: monthlyTrend(info.monthly_searches),
+  };
+}
+
 /**
  * Lee keyword_overview: result[0].items[] con keyword, keyword_info (search_volume, cpc, monthly_searches),
  * keyword_properties.keyword_difficulty y search_intent_info.main_intent.
  * Docs: docs.dataforseo.com/v3/dataforseo_labs/google/keyword_overview/live
  */
 export function parseKeywordOverview(result: unknown[]): KeywordOverview[] {
-  const out: KeywordOverview[] = [];
-  for (const raw of arr(obj(result[0]).items)) {
-    const it = obj(raw);
-    const keyword = typeof it.keyword === "string" ? it.keyword.replace(/\s+/g, " ").trim().toLowerCase() : "";
-    if (!keyword) continue;
-    const info = obj(it.keyword_info);
-    const volume = num(info.search_volume);
-    const cpc = num(info.cpc);
-    const difficulty = num(obj(it.keyword_properties).keyword_difficulty);
-    out.push({
-      keyword,
-      volume: volume !== null && volume >= 0 ? volume : null,
-      cpc: cpc !== null && cpc >= 0 ? cpc : null,
-      difficulty: difficulty !== null ? Math.max(0, Math.min(100, Math.round(difficulty))) : null,
-      intent: asIntent(obj(it.search_intent_info).main_intent),
-      trend: monthlyTrend(info.monthly_searches),
-    });
+  return arr(obj(result[0]).items)
+    .map(parseLabsItem)
+    .filter((x): x is KeywordOverview => x !== null);
+}
+
+/**
+ * Las palabras de TODOS los elementos de la respuesta, sin repetir (keyword_suggestions puede traer la palabra semilla
+ * en un elemento y las ideas en otro). Devuelve también el total que dice tener DataForSEO.
+ */
+export function parseLabsItemsAll(result: unknown[]): { rows: KeywordOverview[]; total: number | null } {
+  const seen = new Set<string>();
+  const rows: KeywordOverview[] = [];
+  let total: number | null = null;
+  for (const el of arr(result)) {
+    const o = obj(el);
+    const t = num(o.total_count);
+    if (t !== null) total = Math.max(total ?? 0, t);
+    const seed = obj(o.seed_keyword_data);
+    for (const raw of [...(Object.keys(seed).length ? [seed] : []), ...arr(o.items)]) {
+      const r = parseLabsItem(raw);
+      if (!r || seen.has(r.keyword)) continue;
+      seen.add(r.keyword);
+      rows.push(r);
+    }
   }
-  return out;
+  return { rows, total };
 }
 
 /** Máximo de palabras por llamada de keyword_overview. */

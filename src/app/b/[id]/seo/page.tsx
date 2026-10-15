@@ -1,5 +1,6 @@
 import { PageHead } from "@/components/PageHead";
 import { ReportCard } from "@/components/seo/ReportCard";
+import { AdsPanel } from "@/components/seo/AdsPanel";
 import { AlertsPanel } from "@/components/seo/AlertsPanel";
 import { AuditPanel } from "@/components/seo/AuditPanel";
 import { CannibalPanel } from "@/components/seo/CannibalPanel";
@@ -12,9 +13,11 @@ import { DfsSettingsPanel } from "@/components/seo/DfsSettingsPanel";
 import { GapPanel } from "@/components/seo/GapPanel";
 import { GbpPanel } from "@/components/seo/GbpPanel";
 import { Ga4Panel } from "@/components/seo/Ga4Panel";
+import { IdeasPanel } from "@/components/seo/IdeasPanel";
 import { KeywordsPanel } from "@/components/seo/KeywordsPanel";
 import { LogsPanel } from "@/components/seo/LogsPanel";
 import { MapRankPanel } from "@/components/seo/MapRankPanel";
+import { MentionsPanel } from "@/components/seo/MentionsPanel";
 import { OnPagePanel } from "@/components/seo/OnPagePanel";
 import { QuestionsPanel } from "@/components/seo/QuestionsPanel";
 import { RankPanel } from "@/components/seo/RankPanel";
@@ -27,6 +30,8 @@ import { SeoGuide } from "@/components/seo/SeoGuide";
 import { SeoSetup } from "@/components/seo/SeoSetup";
 import { SeoTabs, type SeoTab } from "@/components/seo/SeoTabs";
 import { VisibilityPanel } from "@/components/seo/VisibilityPanel";
+import { WatchPanel } from "@/components/seo/WatchPanel";
+import { WebReviewsPanel } from "@/components/seo/WebReviewsPanel";
 import { seoTabFrom } from "@/components/nav/model";
 import { WriterCard } from "@/components/seo/WriterCard";
 import { DiagnosisBanner } from "@/components/diagnosis/DiagnosisBanner";
@@ -45,10 +50,11 @@ import { loadWebFixState } from "@/lib/webfix";
 // La auditoría recorre el sitio y la visibilidad en IA hace varias búsquedas: puede tardar.
 export const maxDuration = 300;
 
-export default async function SeoPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ mapa?: string; tab?: string; competidor?: string; comparar?: string }> }) {
+export default async function SeoPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ mapa?: string; tab?: string; competidor?: string; comparar?: string; idea?: string }> }) {
   const { id } = await params;
   await pageBusiness(id);
-  const { mapa, tab, competidor: rawCompetidor, comparar: rawComparar } = await searchParams;
+  const { mapa, tab, competidor: rawCompetidor, comparar: rawComparar, idea: rawIdea } = await searchParams;
+  const idea = (rawIdea ?? "").trim().slice(0, 40) || undefined;
   // Desde el buscador del Tablero: el sitio del competidor llega escrito en el formulario de competencia.
   const competidor = (rawCompetidor ?? "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0].slice(0, 100) || undefined;
   // «Comparar con mi página» desde la búsqueda en vivo del Tablero.
@@ -99,6 +105,7 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
           <RankPanel businessId={id} />
           <SensorPanel businessId={id} />
           <KeywordsPanel businessId={id} />
+          <IdeasPanel businessId={id} idea={idea} />
           <ClustersPanel businessId={id} />
           <QuestionsPanel businessId={id} />
         </>
@@ -112,6 +119,7 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
         <>
           <MapRankPanel businessId={id} mapId={mapa} />
           <GbpPanel businessId={id} />
+          <WebReviewsPanel businessId={id} />
           <SchemaPanel businessId={id} />
         </>
       ),
@@ -145,9 +153,12 @@ export default async function SeoPage({ params, searchParams }: { params: Promis
           <SharePanel businessId={id} />
           <CompetitorsPanel businessId={id} competidor={competidor} />
           <ComparePanel businessId={id} comparar={comparar} />
+          <AdsPanel businessId={id} />
+          <WatchPanel businessId={id} />
           <GapPanel businessId={id} />
           <TrafficPanel businessId={id} />
           <BacklinksPanel businessId={id} />
+          <MentionsPanel businessId={id} />
         </>
       ),
     },
