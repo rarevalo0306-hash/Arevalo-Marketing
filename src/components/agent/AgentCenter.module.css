@@ -503,6 +503,37 @@
   grid-template-columns: 1fr 1fr;
   gap: 20px;
 }
+.numberField {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.money {
+  position: relative;
+  display: block;
+}
+.money > span {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: 14px;
+  pointer-events: none;
+}
+.settings .money input {
+  padding-left: 26px;
+}
+.settings input[aria-invalid="true"] {
+  border-color: #b13c22;
+}
+.fieldError {
+  margin: 0;
+  color: #b13c22;
+  font-size: 12px;
+  line-height: 1.5;
+}
 .settings fieldset {
   padding: 0;
   border: 0;

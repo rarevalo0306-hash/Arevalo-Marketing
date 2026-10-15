@@ -1,11 +1,87 @@
 "use client";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useT } from "@/components/I18n";
 import { INDUSTRIES } from "@/lib/agent/industry";
+import { formatUsd, readCount, readUsd } from "@/lib/agent/settings-input";
 import { CHANNELS } from "@/lib/channels";
 import type { Settings } from "@/lib/agent/schema";
 import { DEFAULT_SETTINGS, type Snapshot } from "./types";
 import s from "./AgentCenter.module.css";
+type NumberKey = "dailyBudgetCents" | "runBudgetCents" | "maxPostsPerDay" | "radarHours";
+/**
+ * A number the owner types: the text stays as typed (it can be cleared and accepts a decimal comma) and only valid
+ * numbers inside min–max reach the settings. `usd` values are cents, shown as dollars with two decimals.
+ */
+function NumberField({
+  label,
+  kind,
+  value,
+  min,
+  max,
+  onValue,
+}: {
+  label: string;
+  kind: "usd" | "count";
+  value: number;
+  min: number;
+  max: number;
+  onValue: (v: number | null) => void;
+}) {
+  const { t } = useT();
+  const id = useId();
+  const show = (v: number) => (kind === "usd" ? formatUsd(v) : String(v));
+  const [text, setText] = useState(show(value));
+  const read = (raw: string) => {
+    const v = kind === "usd" ? readUsd(raw) : readCount(raw);
+    return v !== null && v >= min && v <= max ? v : null;
+  };
+  const valid = read(text) !== null;
+  const input = (
+    <input
+      id={id}
+      type="text"
+      inputMode={kind === "usd" ? "decimal" : "numeric"}
+      autoComplete="off"
+      value={text}
+      aria-invalid={!valid}
+      aria-describedby={valid ? undefined : `${id}-error`}
+      onChange={(e) => {
+        setText(e.target.value);
+        onValue(read(e.target.value));
+      }}
+      onBlur={() => {
+        const v = read(text);
+        if (v !== null) setText(show(v));
+      }}
+    />
+  );
+  return (
+    <div className={s.numberField}>
+      <label htmlFor={id}>{label}</label>
+      {kind === "usd" ? (
+        <span className={s.money}>
+          <span aria-hidden="true">$</span>
+          {input}
+        </span>
+      ) : (
+        input
+      )}
+      {!valid && (
+        <p id={`${id}-error`} className={s.fieldError}>
+          {kind === "usd"
+            ? t(
+                `Escribe una cantidad entre $${formatUsd(min)} y $${formatUsd(max)}, por ejemplo 5 o 2.50.`,
+                `Enter an amount between $${formatUsd(min)} and $${formatUsd(max)}, for example 5 or 2.50.`,
+              )
+            : t(
+                `Escribe un número entero entre ${min} y ${max}.`,
+                `Enter a whole number between ${min} and ${max}.`,
+              )}
+        </p>
+      )}
+    </div>
+  );
+}
 export function AgentSettings({
   data,
   save,
@@ -25,11 +101,18 @@ export function AgentSettings({
   );
   const set = <K extends keyof Settings>(key: K, v: Settings[K]) =>
     setValue((old) => ({ ...old, [key]: v }));
+  // Number fields whose text is not a valid number yet: saving waits until they are fixed.
+  const [invalid, setInvalid] = useState<NumberKey[]>([]);
+  const setNumber = (key: NumberKey) => (v: number | null) => {
+    setInvalid((old) => (v === null ? [...new Set([...old, key])] : old.filter((k) => k !== key)));
+    if (v !== null) set(key, v);
+  };
   return (
     <form
       className={s.settings}
       onSubmit={async (e) => {
         e.preventDefault();
+        if (invalid.length) return;
         await save(value);
       }}
     >
@@ -132,52 +215,38 @@ export function AgentSettings({
         </p>
       </fieldset>
       <div className={s.formGrid}>
-        <label>
-          {t("Límite diario de IA (USD)", "Daily AI limit (USD)")}
-          <input
-            type="number"
-            min="0"
-            max="1000"
-            step="0.01"
-            value={value.dailyBudgetCents / 100}
-            onChange={(e) =>
-              set("dailyBudgetCents", Math.round(Number(e.target.value) * 100))
-            }
-          />
-        </label>
-        <label>
-          {t("Límite por encargo (USD)", "Limit per task (USD)")}
-          <input
-            type="number"
-            min="0"
-            max="100"
-            step="0.01"
-            value={value.runBudgetCents / 100}
-            onChange={(e) =>
-              set("runBudgetCents", Math.round(Number(e.target.value) * 100))
-            }
-          />
-        </label>
-        <label>
-          {t("Máximo de publicaciones al día", "Maximum posts per day")}
-          <input
-            type="number"
-            min="1"
-            max="12"
-            value={value.maxPostsPerDay}
-            onChange={(e) => set("maxPostsPerDay", Number(e.target.value))}
-          />
-        </label>
-        <label>
-          {t("Revisar noticias cada (horas)", "Check news every (hours)")}
-          <input
-            type="number"
-            min="6"
-            max="168"
-            value={value.radarHours}
-            onChange={(e) => set("radarHours", Number(e.target.value))}
-          />
-        </label>
+        <NumberField
+          label={t("Límite diario de IA (USD)", "Daily AI limit (USD)")}
+          kind="usd"
+          value={value.dailyBudgetCents}
+          min={0}
+          max={100000}
+          onValue={setNumber("dailyBudgetCents")}
+        />
+        <NumberField
+          label={t("Límite por encargo (USD)", "Limit per task (USD)")}
+          kind="usd"
+          value={value.runBudgetCents}
+          min={0}
+          max={10000}
+          onValue={setNumber("runBudgetCents")}
+        />
+        <NumberField
+          label={t("Máximo de publicaciones al día", "Maximum posts per day")}
+          kind="count"
+          value={value.maxPostsPerDay}
+          min={1}
+          max={12}
+          onValue={setNumber("maxPostsPerDay")}
+        />
+        <NumberField
+          label={t("Revisar noticias cada (horas)", "Check news every (hours)")}
+          kind="count"
+          value={value.radarHours}
+          min={6}
+          max={168}
+          onValue={setNumber("radarHours")}
+        />
       </div>
       <p className={s.note}>
         {t(
@@ -449,7 +518,15 @@ export function AgentSettings({
           {saveNotice}
         </p>
       )}
-      <button disabled={busy} className="btn on" type="submit">
+      {invalid.length > 0 && (
+        <p className={s.saveFeedback} data-error="true" role="alert">
+          {t(
+            "Corrige los números marcados para poder guardar.",
+            "Fix the highlighted numbers to save.",
+          )}
+        </p>
+      )}
+      <button disabled={busy || invalid.length > 0} className="btn on" type="submit">
         {busy
           ? t("Guardando…", "Saving…")
           : t("Guardar configuración", "Save settings")}
