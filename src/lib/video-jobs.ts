@@ -148,16 +148,20 @@ export async function loadVideoMedia(businessId: string, ids: string[], lang: "e
   return unique.map((id) => byId.get(id)).filter((r): r is MediaRow => Boolean(r)).map((r) => toMedia(r, lang));
 }
 
-/** Las fotos (y clips) que mejor van con la idea, para empezar con algo elegido. */
-export async function suggestMedia(businessId: string, idea: string, format: VideoFormat, keywords: string[], max = 6, options: { kind?: "photo" | "video"; minRelevance?: number } = {}): Promise<string[]> {
+/**
+ * Las fotos (y clips) que mejor van con la idea, para empezar con algo elegido. `reuse`: lo que ya usa esta misma pieza
+ * (el diseño del mismo encargo del agente); eso sí puede volver a salir hoy.
+ */
+export async function suggestMedia(businessId: string, idea: string, format: VideoFormat, keywords: string[], max = 6, options: { kind?: "photo" | "video"; minRelevance?: number; reuse?: string[] } = {}): Promise<string[]> {
   const rows = await db.libraryItem.findMany({
     where: { businessId, status: "ready", NOT: { choice: "skip" }, ...(options.kind ? { kind: options.kind } : {}) },
     select: MEDIA_SELECT,
     orderBy: [{ usedCount: "asc" }, { createdAt: "desc" }, { id: "asc" }],
     take: 400,
   });
-  // Lo que ya se usó hoy no se repite el mismo día.
-  const usable = rows.filter((r) => usableNow(r) && !usedToday(r) && (r.kind === "photo" ? Boolean(r.url) : true));
+  // Lo que ya se usó hoy no se repite el mismo día (salvo lo de esta misma pieza).
+  const reuse = new Set(options.reuse ?? []);
+  const usable = rows.filter((r) => usableNow(r) && (reuse.has(r.id) || !usedToday(r)) && (r.kind === "photo" ? Boolean(r.url) : true));
   const q = { text: idea, keywords: keywords.slice(0, 6), shape: format === "vertical" ? ("vertical" as const) : ("horizontal" as const) };
   return usable
     .map((r) => ({ id: r.id, kind: r.kind, s: scoreItem(r, q) }))

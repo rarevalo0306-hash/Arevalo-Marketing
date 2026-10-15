@@ -80,10 +80,12 @@ async function libraryMedia(
   idea: string,
   language: "es" | "en",
   kind?: "photo",
+  reuse: string[] = [],
 ) {
   const ids = await suggestMedia(businessId, idea, "vertical", [], kind ? 1 : 6, {
     kind,
     minRelevance: MIN_RELEVANCE,
+    reuse,
   });
   // Recheck the current library choices, privacy flags and company before use.
   const media = await loadVideoMedia(businessId, ids, language);
@@ -294,12 +296,16 @@ export async function executeStep(
     const copy = Copy.parse(await output(run.id, "copy"));
     const design = (await output(run.id, "design")) as {
       assets: { shape: string; url: string }[];
+      mediaSelection?: { libraryItems?: { id: string }[] };
     };
     const business = await videoBusiness(run.businessId);
+    // The design step of this same run just marked its photo as used today; the video may still use it.
     const ownMedia = await libraryMedia(
       run.businessId,
       `${run.prompt}\n${copy.title}\n${copy.headline}\n${copy.summary}`,
       language,
+      undefined,
+      (design.mediaSelection?.libraryItems ?? []).map((item) => item.id),
     );
     const media: VideoMedia[] = ownMedia.length ? ownMedia : design.assets.map((a, i) => ({
       id: `design-${i}`,

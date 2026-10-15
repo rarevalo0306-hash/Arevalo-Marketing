@@ -279,6 +279,19 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     expect(step.output).toMatchObject({ mediaSelection: { source: "library", generatedFromScratch: false } });
     expect(await db.libraryItem.findUnique({ where: { id: clip.id } })).toMatchObject({ usedCount: 1 });
   });
+  it("keeps a photo another post used today out of the video", async () => {
+    const usedElsewhere = await libraryItem("used-today", { usedCount: 1, lastUsedAt: new Date() });
+    const clip = await libraryItem("clip", { kind: "video", durationSec: 8 });
+    const r = await visualRun("video");
+    await workOne(A, executeStep, () => 0);
+    await workOne(A, executeStep, (name) => name === "video" ? 50 : 0);
+    expect(startRender).toHaveBeenCalledTimes(1);
+    const storyboard = (await loadProject(A, vi.mocked(startRender).mock.calls[0][1])).project.storyboard;
+    expect(storyboard.media.map((m) => m.id)).toEqual([clip.id]);
+    const design = await db.agentStep.findUniqueOrThrow({ where: { runId_name: { runId: r.id, name: "design" } } });
+    expect(design.output).toMatchObject({ mediaSelection: { source: "brand_template", libraryItems: [] } });
+    expect(await db.libraryItem.findUnique({ where: { id: usedElsewhere.id } })).toMatchObject({ usedCount: 1 });
+  });
   it("excludes facts from a previous territory after the industry changes", async () => {
     const fact = {
       fact: "Hecho confirmado de Florida",
