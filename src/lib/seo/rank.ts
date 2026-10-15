@@ -20,6 +20,12 @@ export const RANK_COST_PER_KEYWORD = 0.002 + 0.0015;
 export const RANK_DEVICE = "mobile" as const;
 /** Máximo de palabras clave por revisión (igual que en los ajustes). */
 export const RANK_MAX_KEYWORDS = 25;
+/**
+ * La revisión en computadora se guarda aparte (kind "rank-desktop", solo la zona principal) para que las
+ * comparaciones, los avisos y la tendencia sigan siendo siempre del celular.
+ */
+export const RANK_DESKTOP_KIND = "rank-desktop" as const;
+export type RankDevice = "mobile" | "desktop";
 
 const CONCURRENCY = 8;
 const CALL_TIMEOUT_MS = 60_000;
@@ -42,8 +48,15 @@ export type RankRow = {
   questions?: string[];
   /** "Búsquedas relacionadas" del pie de Google (sin repetir, máx. 8). Las revisiones viejas no las tienen. */
   related?: string[];
+  /** Los anuncios de Google que salieron en la búsqueda (vienen gratis en la misma respuesta). Las revisiones viejas no los tienen. */
+  ads?: SerpAd[];
   error?: { es: string; en: string };
 };
+
+/** Un anuncio de Google en los resultados (type "paid"). */
+export type SerpAd = { position: number; domain: string; title: string; description: string; url: string };
+/** Máximo de anuncios que se guardan por búsqueda. */
+export const RANK_MAX_ADS = 4;
 
 /** Máximo de preguntas y de búsquedas relacionadas que se guardan por palabra clave. */
 export const RANK_MAX_QUESTIONS = 8;
@@ -124,6 +137,7 @@ export type SerpItem = {
   domain?: string;
   url?: string;
   title?: string;
+  description?: string;
   /** Algunas versiones anidan los negocios del mapa. */
   items?: SerpItem[] | null;
 };
@@ -177,6 +191,19 @@ export function serpRelated(items: SerpItem[]): string[] {
   );
 }
 
+/** Los anuncios de la búsqueda (type "paid": title, description, domain, url), en orden y sin repetir el mismo dominio. */
+export function serpAds(items: SerpItem[], max = RANK_MAX_ADS): SerpAd[] {
+  const out: SerpAd[] = [];
+  const ads = items.filter((i) => i.type === "paid").sort((a, b) => (num(a.rank_absolute) ?? 99) - (num(b.rank_absolute) ?? 99));
+  for (const i of ads) {
+    const domain = siteDomain(i.domain || i.url) || str(i.domain).toLowerCase();
+    if (!domain || out.some((a) => a.domain === domain)) continue;
+    out.push({ position: out.length + 1, domain, title: str(i.title).replace(/\s+/g, " ").trim().slice(0, 200), description: str(i.description).replace(/\s+/g, " ").trim().slice(0, 400), url: str(i.url).slice(0, 500) });
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
 /** Convierte un resultado de la SERP API en una fila del reporte. */
 export function parseSerp(keyword: string, result: SerpResult | null | undefined, domain: string, businessName: string): RankRow {
   const items = Array.isArray(result?.items) ? result.items.filter((i): i is SerpItem => !!i && typeof i === "object") : [];
@@ -207,6 +234,7 @@ export function parseSerp(keyword: string, result: SerpResult | null | undefined
 
   const questions = serpQuestions(items);
   const related = serpRelated(items);
+  const ads = serpAds(items);
 
   return {
     keyword,
@@ -218,6 +246,7 @@ export function parseSerp(keyword: string, result: SerpResult | null | undefined
     // Siempre se guardan (aunque vengan vacías) para distinguir "Google no mostró preguntas" de una revisión vieja.
     questions,
     related,
+    ads,
   };
 }
 
@@ -309,6 +338,13 @@ export function readRankReport(json: unknown): RankReport | null {
     // Las revisiones viejas no traen preguntas ni búsquedas relacionadas.
     const questions = Array.isArray(r.questions) ? uniqueTexts(r.questions) : null;
     const related = Array.isArray(r.related) ? uniqueTexts(r.related) : null;
+    const ads = Array.isArray(r.ads)
+      ? r.ads
+          .filter((a): a is Record<string, unknown> => !!a && typeof a === "object")
+          .map((a) => ({ position: num(a.position) ?? 0, domain: str(a.domain), title: str(a.title).slice(0, 200), description: str(a.description).slice(0, 400), url: str(a.url).slice(0, 500) }))
+          .filter((a) => a.domain && a.position > 0)
+          .slice(0, RANK_MAX_ADS)
+      : null;
     rows.push({
       keyword,
       position: position !== null && position >= 1 ? position : null,
@@ -329,6 +365,7 @@ export function readRankReport(json: unknown): RankReport | null {
       features: Array.isArray(r.features) ? r.features.filter((f): f is string => typeof f === "string") : [],
       ...(questions ? { questions } : {}),
       ...(related ? { related } : {}),
+      ...(ads ? { ads } : {}),
       ...(error ? { error } : {}),
     });
   }
@@ -376,6 +413,8 @@ export type RankInput = {
   /** Las zonas a revisar (la primera es la principal). */
   zones: Zone[];
   language: string;
+  /** Celular (lo de siempre) o computadora. */
+  device?: RankDevice;
 };
 
 /** Cada palabra en cada zona: una consulta a Google por par. */
@@ -395,6 +434,7 @@ export function buildZoneReports(
   language: string,
   results: ZoneRunResult[],
   createdAt = new Date().toISOString(),
+  device: RankDevice = RANK_DEVICE,
 ): { reports: RankReport[]; failed: { zone: Zone; error: { es: string; en: string } }[] } {
   const reports: RankReport[] = [];
   const failed: { zone: Zone; error: { es: string; en: string } }[] = [];
@@ -412,7 +452,7 @@ export function buildZoneReports(
       location: zone.name,
       locationCode: zone.code,
       language,
-      device: RANK_DEVICE,
+      device,
       rows,
       cost: Math.round(cost * 10000) / 10000,
       createdAt,
@@ -422,18 +462,30 @@ export function buildZoneReports(
   return { reports, failed };
 }
 
+/** Celular contra computadora para una palabra: cuántos lugares mejor (+) o peor (−) sale en la computadora. */
+export function deviceGap(mobile: number | null | undefined, desktop: number | null | undefined): { kind: "same" | "better" | "worse" | "only-desktop" | "only-mobile" | "none"; delta: number | null } {
+  const m = typeof mobile === "number" ? mobile : null;
+  const d = typeof desktop === "number" ? desktop : null;
+  if (m === null && d === null) return { kind: "none", delta: null };
+  if (m === null) return { kind: "only-desktop", delta: null };
+  if (d === null) return { kind: "only-mobile", delta: null };
+  if (m === d) return { kind: "same", delta: 0 };
+  return d < m ? { kind: "better", delta: m - d } : { kind: "worse", delta: d - m };
+}
+
 /**
  * Revisa en Google (celular, primeros 20) cada palabra clave en cada zona, con máximo 8 consultas a la vez
  * en total. Devuelve un reporte por zona. Si todo falla, lanza el error.
  */
 export async function checkRankings(input: RankInput): Promise<ReturnType<typeof buildZoneReports>> {
   const domain = siteDomain(input.domain);
+  const device = input.device ?? RANK_DEVICE;
   const jobs = rankJobs(input.zones, input.keywords);
   const results = await pool(jobs, CONCURRENCY, async ({ zone, keyword }): Promise<ZoneRunResult> => {
     try {
       const r = await dfsPost<SerpResult>(
         "/serp/google/organic/live/advanced",
-        { keyword, location_code: zone.code, language_code: input.language, device: RANK_DEVICE, depth: RANK_DEPTH },
+        { keyword, location_code: zone.code, language_code: input.language, device, depth: RANK_DEPTH },
         CALL_TIMEOUT_MS,
       );
       return { zoneCode: zone.code, row: parseSerp(keyword, r.result[0], domain, input.businessName), cost: r.cost };
@@ -441,7 +493,7 @@ export async function checkRankings(input: RankInput): Promise<ReturnType<typeof
       return { zoneCode: zone.code, row: { keyword, position: null, url: null, localPack: null, top: [], features: [], error: biOf(e) }, cost: 0 };
     }
   });
-  const out = buildZoneReports(input.zones, input.language, results);
+  const out = buildZoneReports(input.zones, input.language, results, new Date().toISOString(), device);
   if (!out.reports.length && out.failed.length) {
     const e = out.failed[0].error;
     throw bi(e.es, e.en);

@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { refreshKeywords } from "@/app/actions-seo-keywords";
+import { addKeywordDifficulty, refreshKeywords } from "@/app/actions-seo-keywords";
 import { capClass, Fold } from "@/components/seo/Fold";
 import { HowToRead } from "@/components/seo/HowToRead";
 import { FollowButton, KeywordsButton } from "@/components/seo/KeywordsButton";
+import { RunButton } from "@/components/seo/RunButton";
 import { ShowMore } from "@/components/seo/ShowMore";
 import { db } from "@/lib/db";
 import { intlLocale } from "@/lib/i18n";
@@ -12,6 +13,9 @@ import {
   type Competition,
   costText,
   keywordsCostEstimate,
+  type KwRow,
+  labsCostEstimate,
+  labsKeywords,
   MAX_TRACKED,
   mergeZoneRows,
   readKeywordsReport,
@@ -20,6 +24,7 @@ import {
   zoneTotal,
   type ZoneKwRow,
 } from "@/lib/seo/keywords";
+import { DIFFICULTY_LABEL, difficultyLevel, INTENT_LABEL } from "@/lib/seo/labs";
 import { latestReports } from "@/lib/seo/reports";
 import { latestByZone, zonesWithout } from "@/lib/seo/zones";
 import { BUSINESS_TZ } from "@/lib/time";
@@ -117,6 +122,18 @@ export async function KeywordsPanel({ businessId }: { businessId: string }) {
   const post = (kw: string) =>
     `/b/${businessId}/publicar?${new URLSearchParams({ idea: t(`Escribe una publicación para la búsqueda: ${kw}`, `Write a post for the search: ${kw}`), magic: "1" })}`;
   const label = (z: Zone) => zoneLabel(z.name) || String(z.code);
+  // Dificultad e intención: de DataForSEO Labs, solo en la zona principal (por país).
+  const hasLabs = Boolean(main?.labs);
+  const difficultyCell = (r: KwRow) => {
+    const level = difficultyLevel(r.difficulty);
+    if (!level) return <span className="muted" title={t("DataForSEO no tiene la dificultad de esta búsqueda (casi nadie la hace).", "DataForSEO has no difficulty for this search (almost nobody makes it).")}>—</span>;
+    const [pill, es, en] = DIFFICULTY_LABEL[level];
+    return (
+      <span className={`pill ${pill}`} title={t(`Dificultad ${r.difficulty} de 100`, `Difficulty ${r.difficulty} out of 100`)} style={{ whiteSpace: "nowrap" }}>
+        {t(es, en)} · {r.difficulty}
+      </span>
+    );
+  };
 
   const mine = mergeZoneRows(tracked, zones, byZone);
   const others = mergeZoneRows(
@@ -165,6 +182,8 @@ export async function KeywordsPanel({ businessId }: { businessId: string }) {
               <th className="kw-num">{t("Búsquedas al mes", "Monthly searches")}</th>
             )}
             <th>{t("Últimos 12 meses", "Last 12 months")}</th>
+            {hasLabs && <th title={t("Qué tan difícil es salir en la primera página de Google sin pagar (0 a 100)", "How hard it is to reach Google's first page without paying (0 to 100)")}>{t("Dificultad", "Difficulty")}</th>}
+            {hasLabs && <th>{t("Qué buscan", "What they want")}</th>}
             <th>{t("Competencia en anuncios", "Ad competition")}</th>
             <th className="kw-num">CPC</th>
             <th><span className="sr-only">{t("Acciones", "Actions")}</span></th>
@@ -186,6 +205,8 @@ export async function KeywordsPanel({ businessId }: { businessId: string }) {
                     {dir === "down" && <span className="kw-down" title={t("Bajando: menos búsquedas en los últimos 3 meses", "Falling: fewer searches in the last 3 months")}>▼</span>}
                   </span>
                 </td>
+                {hasLabs && <td>{difficultyCell(r)}</td>}
+                {hasLabs && <td className="small">{r.intent ? t(INTENT_LABEL[r.intent].es, INTENT_LABEL[r.intent].en) : <span className="muted">—</span>}</td>}
                 <td>{r.competition ? <span className={`pill ${COMPETITION[r.competition][0]}`}>{pick(COMPETITION[r.competition])}</span> : <span className="muted">—</span>}</td>
                 <td className="kw-num">{r.cpc !== null ? money.format(r.cpc) : <span className="muted">—</span>}</td>
                 <td>
@@ -218,6 +239,21 @@ export async function KeywordsPanel({ businessId }: { businessId: string }) {
         )}
       </p>
       <KeywordsButton action={refreshKeywords.bind(null, businessId)} zones={zones.length} estimate={keywordsCostEstimate(zones.length)} />
+      {main && !main.labs && (
+        <div className="note info stack" style={{ gap: 8 }}>
+          <span className="small">
+            {main.labsFailed
+              ? t("La dificultad no se pudo traer la última vez.", "Difficulty couldn't be fetched last time.")
+              : t("Nuevo: mira qué tan difícil es salir en Google con cada búsqueda y si la gente quiere comprar o solo informarse.", "New: see how hard it is to show up on Google for each search and whether people want to buy or just learn.")}
+          </span>
+          <RunButton
+            action={addKeywordDifficulty.bind(null, businessId)}
+            label={t("Ver qué tan difícil es cada una", "See how hard each one is")}
+            busy={t("Preguntando a DataForSEO…", "Asking DataForSEO…")}
+            note={t(`Cuesta ≈ ${costText(labsCostEstimate(labsKeywords(main).length))} de tu saldo de DataForSEO. No vuelve a medir las búsquedas.`, `Costs ≈ ${costText(labsCostEstimate(labsKeywords(main).length))} from your DataForSEO balance. It doesn't measure the searches again.`)}
+          />
+        </div>
+      )}
 
       {shown.length === 0 && (
         <p className="small muted">
@@ -263,6 +299,22 @@ export async function KeywordsPanel({ businessId }: { businessId: string }) {
                 <li>{t("Búsquedas al mes: cuántas veces buscan esa frase en Google al mes en tu zona (promedio del último año). Más es mejor, pero frases con pocas búsquedas y muy claras («lo que vendes + tu ciudad») traen clientes listos para comprar.", "Monthly searches: how many times that phrase is searched on Google per month in your area (last year's average). More is better, but clear phrases with few searches (“what you sell + your city”) bring customers ready to buy.")}</li>
                 <li>{t("«—»: Google dice que se busca muy poco (menos de unas 10 al mes) o no tiene datos.", "“—”: Google says it's barely searched (fewer than about 10 a month) or has no data.")}</li>
                 <li>{t("Últimos 12 meses: si la búsqueda sube ▲ o baja ▼ en la temporada.", "Last 12 months: whether the search goes up ▲ or down ▼ with the season.")}</li>
+                {hasLabs && (
+                  <li>
+                    {t(
+                      `Dificultad (0 a 100): qué tan difícil es llegar a la primera página de Google sin pagar. Fácil (menos de 30): con una buena página o artículo puedes llegar. Difícil (60 o más): hacen falta meses y enlaces. Es un dato de ${main?.labs?.country || "tu país"} (no por ciudad).`,
+                      `Difficulty (0 to 100): how hard it is to reach Google's first page without paying. Easy (under 30): a good page or article can get you there. Hard (60 or more): it takes months and links. It's data for ${main?.labs?.country || "your country"} (not by city).`,
+                    )}
+                  </li>
+                )}
+                {hasLabs && (
+                  <li>
+                    {t(
+                      "Qué buscan: «quieren comprar» y «comparan opciones» traen clientes; «buscan información» sirve para artículos que te dan a conocer.",
+                      "What they want: “ready to buy” and “comparing options” bring customers; “looking for info” is good for articles that make you known.",
+                    )}
+                  </li>
+                )}
                 <li>{t("Competencia en anuncios: cuántos negocios pagan anuncios en Google por esa búsqueda (baja, media, alta). No dice qué tan difícil es salir gratis.", "Ad competition: how many businesses pay for Google ads on that search (low, medium, high). It doesn't say how hard it is to show up for free.")}</li>
                 <li>{t("CPC: lo que paga un anunciante en Google por cada clic. Alto = esa búsqueda trae clientes que valen dinero: vale la pena aparecer gratis con publicaciones y artículos.", "CPC: what an advertiser pays Google for each click. High = that search brings customers worth money: it's worth showing up for free with posts and articles.")}</li>
               </ul>

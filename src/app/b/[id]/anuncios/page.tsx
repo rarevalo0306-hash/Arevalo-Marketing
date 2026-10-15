@@ -313,5 +313,14 @@ async function GoogleTab({ id, lang }: { id: string; lang: "es" | "en" }) {
   const { plan, saved, keywordsAt } = await googlePlanFor(id);
   // Si la IA mejoró los textos y las palabras no cambiaron, se muestra esa versión.
   const sameGroups = saved && saved.groups.map((g) => g.name).join("|") === plan.groups.map((g) => g.name).join("|");
-  return <GooglePlanView plan={sameGroups ? saved : plan} improve={improveGooglePlanAction.bind(null, id)} aiReady={aiEnabled()} keywordsAt={keywordsAt ? fmtDate(keywordsAt, lang) : ""} />;
+  return (
+    <>
+      <p className="note info">
+        <Link href={`/b/${id}/seo?tab=competencia#anuncios-competencia`}>
+          {lang === "en" ? "See which ads your competitors pay for on Google →" : "Mira qué anuncios paga tu competencia en Google →"}
+        </Link>
+      </p>
+      <GooglePlanView plan={sameGroups ? saved : plan} improve={improveGooglePlanAction.bind(null, id)} aiReady={aiEnabled()} keywordsAt={keywordsAt ? fmtDate(keywordsAt, lang) : ""} />
+    </>
+  );
 }

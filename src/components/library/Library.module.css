@@ -78,3 +78,7 @@
 .howTo { text-align: left; width: 100%; max-width: 520px; font-size: 14px; color: var(--muted); }
 .howTo summary { cursor: pointer; font-weight: 700; color: var(--link); width: fit-content; margin: 0 auto; }
 .howTo ol { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; line-height: 1.45; }
+
+/* «Editar con IA»: recortar, agrandar y arreglar (cerrado para no llenar la tarjeta). */
+.aiTools { border-top: 1px solid var(--line); padding-top: 8px; }
+.aiTools summary { cursor: pointer; font-size: 13.5px; font-weight: 600; color: var(--link); }

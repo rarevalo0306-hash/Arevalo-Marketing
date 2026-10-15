@@ -28,8 +28,8 @@ beforeEach(() => {
 });
 const ops = () => (mocks.transaction.mock.calls[0][0] as { op: string; args: unknown }[]);
 /** seoReport.findMany: on-page/setup rows, or the Search Console competing-pages reviews. */
-const reports = (r: { onpage: unknown[]; cannibal: unknown[] }) =>
-  mocks.reportFind.mockImplementation(async (a: { where: { kind: unknown } }) => (a.where.kind === 'cannibal' ? r.cannibal : r.onpage));
+const reports = (r: { onpage: unknown[]; cannibal: unknown[]; clusters?: unknown[] }) =>
+  mocks.reportFind.mockImplementation(async (a: { where: { kind: unknown } }) => (a.where.kind === 'cannibal' ? r.cannibal : a.where.kind === 'clusters' ? r.clusters ?? [] : r.onpage));
 describe('data erasure sequencing', () => {
  it('keeps relational data when external storage fails so cleanup can be retried', async () => {
   mocks.media.mockRejectedValue(new Error('Storage unavailable'));
@@ -127,6 +127,17 @@ describe('purgeGoogleChannelData', () => {
   expect(setup.data.data.rejected).toEqual(['x']);
   expect(ops().map(o => o.op)).toEqual(['seoReport.updateMany', 'seoReport.updateMany', 'seoReport.deleteMany', 'seoReport.deleteMany', 'actionTask.deleteMany', 'aiProposal.deleteMany', 'connection.deleteMany']);
   expect(mocks.metricDelete).not.toHaveBeenCalled();
+ });
+
+ it('Search Console: deletes the topic clusters that grouped its searches (they are rebuilt with one click)', async () => {
+  const kw = (keyword: string, sources: string[]) => ({ keyword, volume: null, difficulty: null, intent: null, position: null, sources });
+  reports({ onpage: [], cannibal: [], clusters: [
+    { id: 'cl1', data: { clusters: [{ main: 'techos', keywords: [kw('techos miami', ['gsc', 'rank'])] }] } },
+    { id: 'cl2', data: { clusters: [{ main: 'pintura', keywords: [kw('pintura', ['keywords'])] }] } },
+  ] });
+  await purgeGoogleChannelData('biz1', 'gsc');
+  expect(mocks.reportFind).toHaveBeenCalledWith({ where: { businessId: 'biz1', kind: 'clusters' }, select: { id: true, data: true } });
+  expect(mocks.reportDelete).toHaveBeenCalledWith({ where: { businessId: 'biz1', id: { in: ['cl1'] } } });
  });
 
  it('Search Console: from older reviews, deletes only the tasks that quote its keyword (the owner\'s other choices stay)', async () => {

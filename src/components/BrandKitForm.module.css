@@ -125,3 +125,15 @@
   padding-top: 14px;
   border-top: 1px solid var(--line);
 }
+
+/* El tipo de logo que vio la IA */
+.typeKnown {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}

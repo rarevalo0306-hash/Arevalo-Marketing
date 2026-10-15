@@ -19,6 +19,8 @@ import { mediaExists, mediaUrlFor, publicMediaUrl, readMedia, readSidecar, seoMe
 import { readProvenance, writePhotoMeta, type PhotoMeta, type Provenance } from "@/lib/photo-meta";
 import { readMapPlace } from "@/lib/seo/maprank";
 import { readStudy, topKeywords } from "@/lib/study-shape";
+import { logAiAction } from "@/lib/ai-actions";
+import { EXPAND_CENTS, EXPAND_TOOL, EXPANDED_SOURCE, expandedName, expandEnabled, expandWithAi } from "@/lib/photo-expand";
 import { smartCrop } from "@/lib/post-crop";
 import { businessKeywords, focusForUrl } from "@/lib/post-focus";
 import { pickPostKeywords, seoSlug } from "@/lib/post-keywords";
@@ -182,6 +184,19 @@ export async function storeAiPhoto(data: Buffer, contentType: string, folder: st
   return url;
 }
 
+/**
+ * Guarda una foto editada con IA (recortada, agrandada o arreglada) y anota que la IA la editó: al publicarla va
+ * marcada como «real con partes de IA», o como «hecha con IA» si la original ya lo era.
+ */
+export async function storeEditedPhoto(data: Buffer, contentType: string, folder: string, o: { fullyAi: boolean; tool: string; meta?: PhotoMeta }): Promise<string> {
+  const provenance = { digitalSourceType: `http://cv.iptc.org/newscodes/digitalsourcetype/${o.fullyAi ? "trainedAlgorithmicMedia" : "compositeWithTrainedAlgorithmicMedia"}`, creatorTool: o.tool };
+  const file = o.meta ? writePhotoMeta(data, o.meta, provenance) : data;
+  const ext = EXT[contentType];
+  const { url } = await storeBuffer(file, contentType, folder, ext ? seoNameFor(o.meta, ext) : undefined);
+  await writeSidecar(url, { v: 1, kind: "photo", ai: o.fullyAi, provenance } satisfies Sidecar).catch(() => {});
+  return url;
+}
+
 /** Dibuja un diseño con la marca, le pone los datos del negocio, lo guarda y anota cómo se hizo. */
 export async function storeDesign(input: DesignInput, folder: string, meta?: PhotoMeta): Promise<string> {
   // El eslogan de la marca (sección Marca) va en el pie si quien llama no lo pasó.
@@ -233,6 +248,9 @@ export type PostForMedia = {
  * La foto de `mediaUrl` en el tamaño de `channel`, exactamente como se publica (sin guardarla): los diseños
  * se vuelven a dibujar en la forma de la red; las fotos sin letras se recortan con recorte inteligente; las
  * demás se mandan tal cual si la red las acepta, o centradas sobre un fondo desenfocado.
+ * Con `expand`, una foto real que en una historia perdería mucho al recortarla se extiende con IA (cielo, piso o
+ * pared arriba y abajo) en vez del fondo desenfocado: la que ya se hizo se reutiliza, y una nueva solo se hace al
+ * publicar (`cachedOnly` en las vistas previas, que no gastan).
  * Devuelve null si la red no tiene formato propio o si la original ya sirve tal cual (con credenciales C2PA).
  * La usa la vista previa de cada red (/api/plantilla/canal) para mostrar el recorte real.
  */
@@ -240,7 +258,7 @@ export async function imageForChannel(
   mediaUrl: string,
   channel: string,
   note?: Sidecar | null,
-  opts: { focus?: Focus | null; exact?: boolean } = {},
+  opts: { focus?: Focus | null; exact?: boolean; expand?: ExpandOpts } = {},
 ): Promise<{ out: Buffer; keep: Omit<Provenance, "c2pa"> } | null> {
   const f = formatFor(channel);
   if (!f) return null;
@@ -261,14 +279,58 @@ export async function imageForChannel(
   keep = { digitalSourceType: keep.digitalSourceType ?? prov.digitalSourceType, creatorTool: keep.creatorTool ?? prov.creatorTool, credit: keep.credit ?? prov.credit };
   const rw = (info.orientation ?? 1) >= 5 ? info.height ?? w : info.width ?? w;
   const rh = (info.orientation ?? 1) >= 5 ? info.width ?? h : info.height ?? h;
-  const plan = adaptPlan(rw / rh, f, { hasText: note?.kind !== "photo" && !focus, exact: opts.exact, focus: !!focus });
+  const hasText = note?.kind !== "photo" && !focus;
+  const plan = adaptPlan(rw / rh, f, { hasText, exact: opts.exact, focus: !!focus });
   if (plan === "keep") {
     // Ya sirve: si trae credenciales C2PA se manda la original sin tocar. Las redes piden JPEG.
     if (prov.c2pa) return null;
     return { out: info.format === "jpeg" ? src : await sharp(src).rotate().flatten({ background: "#ffffff" }).jpeg({ quality: 92, mozjpeg: true }).toBuffer(), keep };
   }
   if (plan === "crop") return { out: await smartCrop(src, w, h, focus), keep };
+  // Una foto real (sin letras) que no cabe en la historia: extendida con IA. Si no se puede, el fondo desenfocado.
+  if (opts.expand && !hasText && f.shape === "story") {
+    const wide = await expandedPhoto(mediaUrl, src, rw, rh, w, h, opts.expand).catch((e) => {
+      console.error("[expand]", e instanceof Error ? e.message : e);
+      return null;
+    });
+    if (wide) {
+      // Una foto hecha toda con IA sigue siéndolo; una real queda como «real con partes de IA».
+      const ai = /\/trainedAlgorithmicMedia$/.test(keep.digitalSourceType ?? "");
+      return { out: await sharp(wide).resize(w, h, { fit: "cover" }).flatten({ background: "#ffffff" }).jpeg({ quality: 90, mozjpeg: true }).toBuffer(), keep: { ...keep, digitalSourceType: ai ? keep.digitalSourceType : EXPANDED_SOURCE, creatorTool: keep.creatorTool ?? EXPAND_TOOL } };
+    }
+  }
   return { out: await fitToShape(await sharp(src).rotate().toBuffer(), w, h), keep };
+}
+
+type ExpandOpts = { businessId: string; postId?: string; cachedOnly?: boolean };
+
+/**
+ * La foto extendida a w × h (Bria Expand en fal.ai). Se guarda con un nombre fijo por foto y forma: si ya existe se
+ * reutiliza; si no (y no es solo para ver), se hace, se guarda y se anota lo que costó. null si no se puede.
+ */
+async function expandedPhoto(mediaUrl: string, src: Buffer, rw: number, rh: number, w: number, h: number, x: ExpandOpts): Promise<Buffer | null> {
+  const name = expandedName(mediaUrl, w, h);
+  if (await mediaExists(x.businessId, name)) return readMedia(mediaUrlFor(x.businessId, name));
+  if (x.cachedOnly || !expandEnabled()) return null;
+  // fal.ai lee la foto de una dirección pública: la original si ya está derecha y no es enorme; si no, una copia.
+  let pub = publicMediaUrl(mediaUrl);
+  const meta = await sharp(src).metadata();
+  if (!/^https:\/\//i.test(pub) || (meta.orientation ?? 1) !== 1 || Math.max(rw, rh) > 2400) {
+    const copy = await sharp(src).rotate().resize({ width: 2000, height: 2000, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
+    pub = publicMediaUrl((await storeBuffer(copy, "image/jpeg", x.businessId, name.replace("ia-extendida-", "ia-extender-"))).url);
+  }
+  const out = await sharp(await expandWithAi(pub, rw, rh, w, h)).flatten({ background: "#ffffff" }).jpeg({ quality: 92, mozjpeg: true }).toBuffer();
+  await storeBuffer(out, "image/jpeg", x.businessId, name);
+  await logAiAction({
+    businessId: x.businessId,
+    postId: x.postId,
+    kind: "photo.expand",
+    actor: "auto",
+    costCents: EXPAND_CENTS,
+    summary: { es: "Foto extendida con IA para una historia (9:16), en vez del fondo desenfocado", en: "Photo extended with AI for a story (9:16), instead of the blurred background" },
+    detail: { from: mediaUrl, size: `${w}x${h}` },
+  });
+  return out;
 }
 
 /**
@@ -289,11 +351,11 @@ export async function mediaForChannel(post: PostForMedia, channel: string, opts:
     // Nombre fijo por publicación, foto y forma (con palabras clave para Google): si ya se hizo (por ejemplo al
     // reintentar), se reutiliza.
     const focus = opts.focus === undefined ? await focusForUrl(post.mediaUrl, post.businessId) : opts.focus;
-    const hex = createHash("sha1").update(`${post.id ?? ""}|${post.mediaUrl}|${f.shape}|${exact ? "x" : ""}|${focus ? `${focus.x},${focus.y}` : ""}|v3`).digest("hex");
+    const hex = createHash("sha1").update(`${post.id ?? ""}|${post.mediaUrl}|${f.shape}|${exact ? "x" : ""}|${focus ? `${focus.x},${focus.y}` : ""}|v4`).digest("hex");
     const name = seoNameFor(meta, "jpg", hex)!;
     if (await mediaExists(post.businessId, name)) return publicMediaUrl(mediaUrlFor(post.businessId, name));
 
-    const made = await imageForChannel(post.mediaUrl, key, note, { focus: focus ?? null, exact });
+    const made = await imageForChannel(post.mediaUrl, key, note, { focus: focus ?? null, exact, expand: { businessId: post.businessId, postId: post.id } });
     if (!made) return original;
     const { out, keep } = made;
     const stored = await storeBuffer(writePhotoMeta(out, meta, keep), "image/jpeg", post.businessId, name);

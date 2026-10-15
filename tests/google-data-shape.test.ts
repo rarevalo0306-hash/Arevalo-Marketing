@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   canRevokeAlone,
+  clustersUseGsc,
   DAY_MS,
   GOOGLE_CHECK_EVERY_MS,
   GOOGLE_REVOKED_GRACE_MS,
@@ -229,5 +230,14 @@ describe("canRevokeAlone", () => {
     expect(canRevokeAlone("g1", [""])).toBe(false);
     expect(canRevokeAlone(undefined, [])).toBe(false);
     expect(canRevokeAlone(null, ["g2"])).toBe(false);
+  });
+});
+
+describe("clustersUseGsc", () => {
+  it("solo si algún tema agrupó una búsqueda que salió de Search Console", () => {
+    expect(clustersUseGsc({ clusters: [{ keywords: [{ keyword: "a", sources: ["rank", "gsc"] }] }] })).toBe(true);
+    expect(clustersUseGsc({ clusters: [{ keywords: [{ keyword: "a", sources: ["keywords"] }] }] })).toBe(false);
+    expect(clustersUseGsc({ clusters: "x" })).toBe(false);
+    expect(clustersUseGsc(null)).toBe(false);
   });
 });

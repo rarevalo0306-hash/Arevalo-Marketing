@@ -24,6 +24,7 @@ import {
   FONTS,
   fontId,
   hexOr,
+  luminance,
   mix,
   nearestShape,
   needsPhoto,
@@ -35,7 +36,8 @@ import {
   type DesignShape,
   type StoredTemplate,
 } from "@/lib/design-shapes";
-import { accentOn, fitText, gradientPair, grayOf, gridMargin, inkDark, inkForAll, isStory, pickInk, safeArea, scrimAlpha, shortHost, unitOf, type Fitted, type Measure } from "@/lib/design-layout";
+import { accentOn, fitText, grayOf, gridMargin, inkDark, inkForAll, isStory, pickInk, safeArea, scrimAlpha, shortHost, unitOf, type Fitted, type Measure } from "@/lib/design-layout";
+import { styleTokens, type DesignStyle } from "@/lib/design-style";
 import { measurer, parseFont } from "@/lib/font-metrics";
 
 export { DESIGN_SHAPES, type DesignShape };
@@ -54,6 +56,8 @@ export type Brand = {
   fontBody?: string;
   /** Eslogan de la marca (una línea corta). Opcional. */
   slogan?: string;
+  /** La actitud de los diseños (profesional, elegante, fresco o audaz). Sin estilo: profesional. */
+  style?: DesignStyle;
 };
 
 export type DesignInput = {
@@ -104,6 +108,8 @@ function measureOf(file: string, f: FontFile, tracking = 0): Measure {
 
 /** Espacio entre letras del titular (en "em"): un poco cerrado en minúsculas, un poco abierto en mayúsculas. */
 const headTracking = (upper: boolean) => (upper ? 0.01 : -0.015);
+/** Espacio entre letras del nombre del negocio cuando no hay logo (en mayúsculas espaciadas, como una firma). */
+const NAME_TRACKING = 0.16;
 /** Alto de línea del titular según la letra. */
 const HEAD_LH: Record<keyof typeof FONTS, number> = { montserrat: 1.1, poppins: 1.1, inter: 1.08, oswald: 1.08, "playfair-display": 1.14 };
 
@@ -114,7 +120,7 @@ async function loadFonts(brand: Brand, upper: boolean) {
   const fonts = await fontFiles(head, hf.name, [hf.semi, hf.bold]);
   const bold = fonts.find((f) => f.weight === hf.bold)!;
   const semi = fonts.find((f) => f.weight === hf.semi)!;
-  const base = { head: hf.name, bold: hf.bold, semi: hf.semi, headLH: HEAD_LH[head], measureHead: measureOf(head, bold, headTracking(upper)), measureHeadPlain: measureOf(head, bold) };
+  const base = { head: hf.name, bold: hf.bold, semi: hf.semi, headLH: HEAD_LH[head], measureHead: measureOf(head, bold, headTracking(upper)), measureHeadSemi: measureOf(head, semi, headTracking(upper)), measureHeadPlain: measureOf(head, bold), measureNameCaps: measureOf(head, semi, NAME_TRACKING) };
   const bodyId = bodyFontId(brand.fontBody ?? "");
   const body = bodyId ? await fontFiles(bodyId, BODY_FONTS[bodyId].name, [BODY_FONTS[bodyId].regular, BODY_FONTS[bodyId].semi]).catch(() => null) : null;
   if (!bodyId || !body) {
@@ -200,7 +206,7 @@ function photoLum(ph: Photo, r: Box, p = 0.92): number {
   return vals[Math.min(vals.length - 1, Math.floor(vals.length * p))];
 }
 
-type Logo = Img & { tone: string };
+type Logo = Img & { buf: Buffer; tone: string };
 /** El logo y su color medio (para saber si se lee sobre el fondo). */
 async function loadLogo(url: string): Promise<Logo | null> {
   try {
@@ -240,6 +246,27 @@ const iconUri = (kind: "phone" | "web", color: string) => {
   return `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
 };
 
+const arrowUri = (color: string) => {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15"/><path d="M13 6l6 6-6 6"/></svg>`;
+  return `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+};
+
+/**
+ * La versión blanca del logo para fotos y fondos oscuros, cuando el dueño no subió una: lo que tiene color queda
+ * blanco y lo que es blanco queda transparente (así las letras blancas dentro de un dibujo siguen viéndose).
+ */
+async function whiteLogo(l: Logo): Promise<Logo> {
+  const { data, info } = await sharp(l.buf).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  for (let i = 0; i < data.length; i += 4) {
+    const lum = (0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]) / 255;
+    const white = Math.min(1, Math.max(0, (lum - 0.84) / 0.12));
+    data[i + 3] = Math.round(data[i + 3] * (1 - white));
+    data[i] = data[i + 1] = data[i + 2] = 255;
+  }
+  const buf = await sharp(data, { raw: info }).png().toBuffer();
+  return { uri: `data:image/png;base64,${buf.toString("base64")}`, w: l.w, h: l.h, buf, tone: "#ffffff" };
+}
+
 // ---------- Medidas por forma ----------
 
 /** Tamaños del titular (en unidades de 1080) y máximo de líneas para cada forma. */
@@ -262,7 +289,7 @@ type BlockPlan = {
   accentH: number;
   head: Fitted;
   sub: Fitted | null;
-  cta: { text: string; size: number; w: number; h: number } | null;
+  cta: { text: string; size: number; w: number; h: number; upper: boolean } | null;
   gap: number;
 };
 
@@ -272,7 +299,12 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
   const t = d.template;
   const { w, h } = d.size ?? DESIGN_SHAPES[d.shape ?? "square"];
   const b = d.brand;
-  const F = await loadFonts(b, t.uppercase);
+  /** La actitud del negocio: peso del titular, esquinas, botón y detalles. */
+  const st = styleTokens(b.style);
+  const upper = t.uppercase || st.upper;
+  const F = await loadFonts(b, upper);
+  const headWeight = st.headWeight === "semi" ? F.semi : F.bold;
+  const measureHead = st.headWeight === "semi" ? F.measureHeadSemi : F.measureHead;
   const c1 = hexOr(b.color, "#126BBC");
   const c2 = hexOr(b.color2, c1);
   const c3 = hexOr(b.color3, c2);
@@ -280,7 +312,7 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
   const deep = mix(c1, "#050a14", 0.86);
   const dark = inkDark(c1);
   let headline = d.headline.trim().replace(/\s+/g, " ").slice(0, 180);
-  if (t.uppercase) headline = headline.toLocaleUpperCase("es");
+  if (upper) headline = headline.toLocaleUpperCase("es");
   const sub = (d.sub ?? "").trim().replace(/\s+/g, " ").slice(0, 160);
   const ctaText = (d.cta ?? "").trim().replace(/\s+/g, " ").slice(0, 40);
   const slogan = (d.slogan ?? b.slogan ?? "").trim().replace(/\s+/g, " ").slice(0, 80);
@@ -295,17 +327,20 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
   const ratio = w / h;
   const wide = ratio > 1.25;
   const tall = h / w > 1.1;
-  const center = t.align === "centro";
+  const center = t.align === "centro" || (st.center && (t.layout === "foto-completa" || t.layout === "color-solido"));
   const align = center ? "center" : "left";
   const rules = shapeRules(w, h);
   const gap = Math.round(30 * u);
 
-  const [logo, logoLight] = await Promise.all([b.logoUrl ? loadLogo(b.logoUrl) : null, b.logoLightUrl ? loadLogo(b.logoLightUrl) : null]);
+  const [logo, ownLight] = await Promise.all([b.logoUrl ? loadLogo(b.logoUrl) : null, b.logoLightUrl ? loadLogo(b.logoLightUrl) : null]);
+  // Sin versión blanca subida: se saca del logo (para fotos y fondos oscuros, en vez de ponerlo sobre una placa).
+  const logoLight = ownLight ?? (logo && logo.tone !== "opaque" ? await whiteLogo(logo).catch(() => null) : null);
 
   // ---------- Colores de los bloques ----------
-  const [g1, g2] = gradientPair(c1, c2);
+  // Degradado del mismo color (más oscuro, o más claro si el color es claro): se ve sólido y con cuerpo, no "de stock".
+  const [g1, g2] = [c1, luminance(c1) > 0.5 ? mix(c1, "#ffffff", 0.3) : mix(c1, "#000000", 0.26)];
   const panelBase = { color1: c1, color2: c2, color3: c3, degradado: c1, blanco: "#ffffff" }[t.background];
-  const gradient = t.background === "degradado" ? `linear-gradient(135deg, ${g1} 0%, ${g2} 100%)` : "";
+  const gradient = t.background === "degradado" ? `linear-gradient(160deg, ${g1} 0%, ${g2} 100%)` : "";
   const panelStops = gradient ? [g1, g2] : [panelBase];
   const panelInk = t.background === "blanco" ? dark : inkForAll(panelStops, dark);
   /** Fondo "medio" del bloque (para elegir los colores de los detalles). */
@@ -315,34 +350,42 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
   const accentFor = (bg: string, ink: string) => accentOn(bg, [c3, c2, c1], ink);
 
   // ---------- Logo ----------
-  const logoH = Math.round((story ? 76 : wide ? 62 : 68) * u);
+  const logoH = Math.round((story ? 68 : wide ? 54 : 58) * u);
   const logoMaxW = Math.round(w * (story ? 0.5 : wide ? 0.26 : 0.36));
   const plateY = Math.round(logoH * 0.26);
   const plateX = Math.round(logoH * 0.36);
   // Sin logo: el nombre con la letra de los titulares, achicado si hace falta para que quepa entero.
   const nameMaxW = Math.round(w * (story ? 0.7 : wide ? 0.4 : 0.6));
-  const nameBase = Math.round((b.name.length > 22 ? 36 : 44) * u);
-  const nameSize = Math.max(Math.round(22 * u), Math.min(nameBase, Math.floor((nameBase * nameMaxW) / Math.max(1, F.measureHeadPlain(b.name, nameBase)))));
-  type LogoPick = { pic: Logo | null; plate: string | null; w: number; h: number; textColor: string };
+  // Sin logo, el nombre va en mayúsculas espaciadas y finas (se ve como una firma, no como un titular más).
+  const nameText = b.name.toLocaleUpperCase("es");
+  const nameBase = Math.round((b.name.length > 22 ? 26 : 30) * u);
+  const nameSize = Math.max(Math.round(18 * u), Math.min(nameBase, Math.floor((nameBase * nameMaxW) / Math.max(1, F.measureNameCaps(nameText, nameBase)))));
+  /** `scrim`: va en blanco sobre la foto, con un degradado oscuro suave detrás para que se lea. */
+  type LogoPick = { pic: Logo | null; plate: string | null; w: number; h: number; textColor: string; scrim?: boolean };
   type Under = { color: string } | { bright: number; darkest: number };
   /** Qué logo usar sobre un fondo (color liso, o la parte clara y oscura de la foto) y si necesita placa. */
   const pickLogo = (bg: Under): LogoPick => {
     const size = (pic: Logo | null) => {
-      if (!pic) return { w: Math.ceil(Math.min(nameMaxW, F.measureHeadPlain(b.name, nameSize))), h: Math.round(nameSize * 1.15) };
+      if (!pic) return { w: Math.ceil(Math.min(nameMaxW, F.measureNameCaps(nameText, nameSize))), h: Math.round(nameSize * 1.3) };
       const lw = Math.min(logoMaxW, Math.round((logoH * pic.w) / pic.h));
       return { w: lw, h: Math.round((lw * pic.h) / pic.w) };
     };
     const readsOn = (tone: string) =>
       tone !== "opaque" && ("color" in bg ? contrast(tone, bg.color) >= 2.2 : Math.min(contrast(tone, grayOf(bg.bright)), contrast(tone, grayOf(bg.darkest))) >= 2.4);
     const plated = (s: { w: number; h: number }) => ({ w: s.w + plateX * 2, h: s.h + plateY * 2 });
+    const onPhoto = !("color" in bg);
     if (!logo) {
       // Sin logo: el nombre del negocio con la letra de los titulares.
-      const ink = "color" in bg ? pickInk(bg.color, dark) : bg.bright < 0.25 ? "#ffffff" : dark;
       const s = size(null);
-      return readsOn(ink) ? { pic: null, plate: null, ...s, textColor: ink } : { pic: null, plate: "#ffffff", ...plated(s), textColor: c1 };
+      // Sobre fotos, el nombre siempre en blanco (con degradado detrás si hace falta): oscuro sobre una foto se pierde.
+      if (onPhoto) return { pic: null, plate: null, ...s, textColor: "#ffffff", scrim: true };
+      const ink = pickInk(bg.color, dark);
+      if (readsOn(ink)) return { pic: null, plate: null, ...s, textColor: ink };
+      return { pic: null, plate: "#ffffff", ...plated(s), textColor: c1 };
     }
     for (const pic of [logo, logoLight]) if (pic && readsOn(pic.tone)) return { pic, plate: null, ...size(pic), textColor: "" };
     if (logo.tone === "opaque") return { pic: logo, plate: null, ...size(logo), textColor: "" };
+    if (onPhoto && logoLight) return { pic: logoLight, plate: null, ...size(logoLight), textColor: "", scrim: true };
     // No se lee directo: placa blanca (o del color oscuro de la marca si el logo es claro).
     const lightLogo = contrast(logo.tone, "#ffffff") < 2.2;
     return { pic: logo, plate: lightLogo ? deep : "#ffffff", ...plated(size(logo)), textColor: "" };
@@ -356,10 +399,10 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
       // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
       <img src={pick.pic.uri} width={iw} height={ih} style={{ width: iw, height: ih }} />
     ) : (
-      <div style={{ display: "flex", maxWidth: iw, fontFamily: F.head, fontWeight: F.bold, fontSize: nameSize, lineHeight: 1.15, color: pick.textColor, whiteSpace: "nowrap", overflow: "hidden" }}>{b.name}</div>
+      <div style={{ display: "flex", maxWidth: iw, fontFamily: F.head, fontWeight: F.semi, fontSize: nameSize, letterSpacing: nameSize * NAME_TRACKING, lineHeight: 1.3, color: pick.textColor, whiteSpace: "nowrap", overflow: "hidden" }}>{nameText}</div>
     );
     if (!pick.plate) return inner;
-    return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", background: pick.plate, borderRadius: Math.round(logoH * 0.22), padding: `${plateY}px ${plateX}px`, boxShadow: "0 6px 22px rgba(0,0,0,0.16)" }}>{inner}</div>;
+    return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", background: pick.plate, borderRadius: Math.round(logoH * (st.radius ? 0.2 : 0.04)), padding: `${plateY}px ${plateX}px`, boxShadow: "0 4px 16px rgba(0,0,0,0.12)" }}>{inner}</div>;
   };
 
   // ---------- Contacto (teléfono y web) y eslogan ----------
@@ -438,12 +481,19 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
     const inner = Math.round(12 * u);
     const hgt = sloganH + ch + (sloganH && ch ? inner : 0);
     if (!hgt) return { h: 0, view: null as React.ReactNode };
+    // Línea fina sobre el pie (estilos profesional y elegante): separa el contacto sin cajas ni adornos.
+    const lineH = Math.max(1, Math.round(2 * u));
+    const hair = st.hairline && !pill ? Math.round(28 * u) : 0;
+    const lineW = a === "center" ? Math.min(maxW, Math.round(140 * u)) : maxW;
     return {
-      h: hgt,
+      h: hgt + hair,
       view: (
-        <div style={{ display: "flex", flexDirection: "column", alignItems: a === "center" ? "center" : "flex-start", gap: inner }}>
-          {sloganH > 0 && <SloganView color={ink} a={a} maxW={maxW} />}
-          {contact}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: a === "center" ? "center" : "flex-start" }}>
+          {hair > 0 && <div style={{ display: "flex", width: lineW, height: lineH, marginBottom: hair - lineH, background: bg ? rgba(ink, 0.22) : "rgba(255,255,255,0.42)" }} />}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: a === "center" ? "center" : "flex-start", gap: inner }}>
+            {sloganH > 0 && <SloganView color={ink} a={a} maxW={maxW} />}
+            {contact}
+          </div>
         </div>
       ),
     };
@@ -459,7 +509,7 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
     const plan = planContact((story ? w - m * 2 : w) - m * 2, true);
     if (!plan) return null;
     const style: React.CSSProperties = story
-      ? { position: "absolute", left: m, width: w - m * 2, top: h - S.bottom - barH, height: barH, borderRadius: Math.round(barH / 2) }
+      ? { position: "absolute", left: m, width: w - m * 2, top: h - S.bottom - barH, height: barH, borderRadius: st.radius >= 20 ? Math.round(barH / 2) : Math.round(st.radius * u) }
       : { position: "absolute", left: 0, width: w, top: h - barH, height: barH };
     return (
       <div style={{ ...style, display: "flex", alignItems: "center", justifyContent: "center", background: barBg }}>
@@ -469,32 +519,48 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
   };
 
   // ---------- Bloque de texto: detalle, titular, texto corto y botón ----------
-  const planBlock = (width: number, maxH: number, o: { maxLines?: number; capScale?: number } = {}): BlockPlan => {
-    const accent = t.accent === "barra" ? "bar" : t.accent === "comillas" ? "quote" : null;
-    const accentH = accent === "bar" ? Math.round(10 * u) : accent === "quote" ? Math.round(80 * u) : 0;
+  /**
+   * Detalle, titular, texto corto y botón en `width` × `maxH`. El titular nunca se corta con «…»: si no cabe, primero
+   * se quita el texto corto y luego el botón (salvo `drop: false`, cuando quien llama todavía puede dar más espacio).
+   */
+  const planBlock = (width: number, maxH: number, o: { maxLines?: number; capScale?: number; drop?: boolean } = {}): BlockPlan => {
+    const accent = t.accent === "barra" || t.accent === "comillas" ? "bar" : null;
+    const accentH = accent ? Math.max(2, Math.round(st.rule.h * u)) : 0;
     const subSize = Math.round((story ? 40 : wide ? 32 : 36) * u);
-    const ctaSize = Math.round((wide ? 28 : 32) * u);
-    const cta = ctaText ? { text: ctaText, size: ctaSize, w: Math.min(width, Math.ceil(F.measureBody(ctaText, ctaSize) + 2 * 34 * u)), h: Math.round(ctaSize * 1.25 + 2 * 18 * u) } : null;
-    let rest = maxH - (accent ? accentH + gap : 0) - (cta ? cta.h + gap : 0);
-    const subFit = sub ? fitText({ text: sub, maxW: width, maxH: Math.max(subSize * 1.3, rest * 0.34), max: subSize, min: Math.round(subSize * 0.8), maxLines: 3, lineHeight: 1.3, measure: F.measureBodyReg }) : null;
-    if (subFit) rest -= subFit.height + Math.round(gap * 0.7);
-    const max = Math.round(rules.headMax * u * t.headlineScale * (o.capScale ?? 1));
-    const min = Math.round(rules.headMin * u);
-    const head = fitText({ text: headline, maxW: width, maxH: Math.max(min * F.headLH, rest), max: Math.max(min, max), min, maxLines: o.maxLines ?? rules.maxLines, hardLines: (o.maxLines ?? rules.maxLines) + 3, lineHeight: F.headLH, measure: F.measureHead });
-    const height = (accent ? accentH + gap : 0) + head.height + (subFit ? subFit.height + Math.round(gap * 0.7) : 0) + (cta ? cta.h + gap : 0);
-    return { width, height: Math.ceil(height), accent, accentH, head, sub: subFit, cta, gap };
+    const ctaUpper = st.cta === "texto" || st.upper;
+    const ctaLabel = ctaUpper ? ctaText.toLocaleUpperCase("es") : ctaText;
+    const ctaSize = Math.round((wide ? 28 : 32) * u * (ctaUpper ? 0.84 : 1));
+    const arrow = st.cta === "pastilla" ? 0 : Math.round(ctaSize * 0.95 + 14 * u);
+    const padX = st.cta === "texto" ? 0 : Math.round(34 * u);
+    const measureCta = ctaUpper ? F.measureCaps : F.measureBody;
+    const plan = (useSub: boolean, useCta: boolean): BlockPlan => {
+      const cta = useCta && ctaText ? { text: ctaLabel, upper: ctaUpper, size: ctaSize, w: Math.min(width, Math.ceil(measureCta(ctaLabel, ctaSize) + arrow + 2 * padX)), h: Math.round(ctaSize * 1.25 + (st.cta === "texto" ? 16 * u : 2 * 18 * u)) } : null;
+      let rest = maxH - (accent ? accentH + gap : 0) - (cta ? cta.h + gap : 0);
+      const subFit = useSub && sub ? fitText({ text: sub, maxW: width, maxH: Math.max(subSize * 1.3, rest * 0.34), max: subSize, min: Math.round(subSize * 0.8), maxLines: 3, lineHeight: 1.3, measure: F.measureBodyReg }) : null;
+      if (subFit) rest -= subFit.height + Math.round(gap * 0.7);
+      const max = Math.round(rules.headMax * u * t.headlineScale * st.headScale * (o.capScale ?? 1));
+      const min = Math.round(rules.headMin * u);
+      const head = fitText({ text: headline, maxW: width, maxH: Math.max(min * F.headLH, rest), max: Math.max(min, max), min, maxLines: o.maxLines ?? rules.maxLines, hardLines: (o.maxLines ?? rules.maxLines) + 3, lineHeight: F.headLH, measure: measureHead });
+      const height = (accent ? accentH + gap : 0) + head.height + (subFit ? subFit.height + Math.round(gap * 0.7) : 0) + (cta ? cta.h + gap : 0);
+      return { width, height: Math.ceil(height), accent, accentH, head, sub: subFit, cta, gap };
+    };
+    const full = plan(true, true);
+    if (!full.head.truncated || o.drop === false) return full;
+    const noSub = sub ? plan(false, true) : full;
+    return !noSub.head.truncated || !ctaText ? noSub : plan(false, false);
   };
   const BlockView = ({ p, color, bg, shadow }: { p: BlockPlan; color: string; bg: string; shadow?: boolean }) => {
     const acc = accentFor(bg, color);
     const ai = center ? "center" : "flex-start";
-    const ctaBg = accentOn(bg, [c3, c2, c1], color);
+    // El botón va con el color principal de la marca; si no se distingue del fondo, con el secundario o el de acento.
+    const ctaBg = accentOn(bg, [c1, c2, c3], color);
+    const ctaFg = pickInk(ctaBg, dark);
+    const cta = p.cta;
+    const arrowSize = cta ? Math.round(cta.size * 0.95) : 0;
     return (
       <div style={{ display: "flex", flexDirection: "column", width: p.width, alignItems: ai }}>
-        {p.accent === "bar" && <div style={{ display: "flex", width: Math.round(84 * u), height: p.accentH, borderRadius: 99, background: acc, marginBottom: p.gap }} />}
-        {p.accent === "quote" && (
-          <div style={{ display: "flex", height: p.accentH, marginBottom: p.gap, fontFamily: F.head, fontWeight: F.bold, fontSize: Math.round(180 * u), lineHeight: 1, color: acc, overflow: "hidden" }}>“</div>
-        )}
-        <div style={{ display: "flex", flexDirection: "column", width: p.width, alignItems: ai, fontFamily: F.head, fontWeight: F.bold, fontSize: p.head.size, lineHeight: F.headLH, color, letterSpacing: p.head.size * headTracking(t.uppercase), textShadow: shadow ? "0 2px 14px rgba(0,0,0,0.28)" : "none" }}>
+        {p.accent === "bar" && <div style={{ display: "flex", width: Math.round(st.rule.w * u), height: p.accentH, borderRadius: st.radius ? 99 : 0, background: acc, marginBottom: p.gap }} />}
+        <div style={{ display: "flex", flexDirection: "column", width: p.width, alignItems: ai, fontFamily: F.head, fontWeight: headWeight, fontSize: p.head.size, lineHeight: F.headLH, color, letterSpacing: p.head.size * headTracking(upper), textShadow: shadow ? "0 2px 14px rgba(0,0,0,0.28)" : "none" }}>
           {p.head.lines.map((l, i) => (
             <div key={i} style={{ display: "flex", whiteSpace: "pre", height: Math.round(p.head.size * F.headLH) }}>{l}</div>
           ))}
@@ -506,8 +572,20 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
             ))}
           </div>
         )}
-        {p.cta && (
-          <div style={{ display: "flex", marginTop: p.gap, height: p.cta.h, maxWidth: p.cta.w, alignItems: "center", padding: `0 ${Math.round(34 * u)}px`, borderRadius: p.cta.h, background: ctaBg, color: pickInk(ctaBg, dark), fontFamily: F.body, fontWeight: F.bodySemi, fontSize: p.cta.size, whiteSpace: "nowrap", overflow: "hidden" }}>{p.cta.text}</div>
+        {cta && st.cta === "texto" && (
+          // Elegante: texto en mayúsculas espaciadas con una línea debajo, sin caja.
+          <div style={{ display: "flex", marginTop: p.gap, height: cta.h, maxWidth: cta.w, alignItems: "center", gap: Math.round(14 * u), borderBottom: `${Math.max(2, Math.round(2 * u))}px solid ${acc}`, color, fontFamily: F.body, fontWeight: F.bodySemi, fontSize: cta.size, letterSpacing: cta.size * 0.12, whiteSpace: "nowrap", overflow: "hidden" }}>
+            <span>{cta.text}</span>
+            {/* eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text */}
+            <img src={arrowUri(color)} width={arrowSize} height={arrowSize} style={{ width: arrowSize, height: arrowSize }} />
+          </div>
+        )}
+        {cta && st.cta !== "texto" && (
+          <div style={{ display: "flex", marginTop: p.gap, height: cta.h, maxWidth: cta.w, alignItems: "center", gap: Math.round(14 * u), padding: `0 ${Math.round(34 * u)}px`, borderRadius: st.cta === "pastilla" ? cta.h : Math.round(st.radius * u), background: ctaBg, color: ctaFg, fontFamily: F.body, fontWeight: F.bodySemi, fontSize: cta.size, letterSpacing: cta.upper ? cta.size * 0.12 : 0, whiteSpace: "nowrap", overflow: "hidden" }}>
+            <span>{cta.text}</span>
+            {/* eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text */}
+            {st.cta === "boton" && <img src={arrowUri(ctaFg)} width={arrowSize} height={arrowSize} style={{ width: arrowSize, height: arrowSize }} />}
+          </div>
         )}
       </div>
     );
@@ -537,7 +615,7 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
    * Degradado oscuro (con el tono de la marca) en las bandas donde hay texto sobre la foto, calculado para
    * que el texto blanco tenga contraste 4.5 sobre la parte más clara de esa banda.
    */
-  const scrim = (ph: Photo, bands: { r: Rect; floor: number }[]) => {
+  const scrim = (ph: Photo, bands: { r: Rect; floor: number }[], at = nodes.length) => {
     const steps = 48;
     const feather = Math.max(h * 0.16, 150 * u);
     const alphaAt = new Array<number>(steps + 1).fill(0);
@@ -546,7 +624,7 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
       const need = scrimAlpha(grayOf(photoLum(ph, band.r, 0.94)), deep, 4.6, band.floor);
       if (need <= 0.01) continue;
       for (let i = 0; i <= steps; i++) {
-        const y = (i / steps) * h;
+        const y = ph.y + (i / steps) * ph.h;
         const y0 = band.r.y - 24 * u;
         const y1 = band.r.y + band.r.h + 24 * u;
         const k = y >= y0 && y <= y1 ? 1 : y < y0 ? Math.max(0, 1 - (y0 - y) / feather) : Math.max(0, 1 - (y - y1) / feather);
@@ -555,7 +633,15 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
     }
     if (alphaAt.every((a) => a <= 0.01)) return;
     const stops = alphaAt.map((a, i) => `${rgba(deep, Math.round(a * 1000) / 1000)} ${((i / steps) * 100).toFixed(2)}%`).join(", ");
-    nodes.push(<Abs key="scrim" r={{ x: ph.x, y: 0, w: ph.w, h }} style={{ backgroundImage: `linear-gradient(to bottom, ${stops})` }} />);
+    // Solo sobre la foto: si la foto ocupa una parte, el degradado no oscurece el bloque de color de al lado.
+    nodes.splice(at, 0, <Abs key={`scrim-${at}`} r={{ x: ph.x, y: ph.y, w: ph.w, h: ph.h }} style={{ backgroundImage: `linear-gradient(to bottom, ${stops})` }} />);
+  };
+  /** El logo sobre una foto: a color si se lee; si no, en blanco con un degradado suave detrás (que va justo encima de la foto). */
+  const logoOnPhoto = (ph: Photo, x: number, y: number, right: boolean, photoAt: number) => {
+    const r = { x: right ? x - logoMaxW : x, y, w: logoMaxW, h: logoRow };
+    const pick = pickLogo(photoBg(ph, r));
+    if (pick.scrim) scrim(ph, [{ r, floor: 0.3 }], photoAt + 1);
+    placeLogo(pick, x, y, right);
   };
 
   const logoTop = t.logoPosition !== "abajo-derecha";
@@ -563,7 +649,8 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
   /** Fila de abajo: pie a la izquierda (o centrado) y, si la plantilla lo pide, el logo a la derecha. */
   const bottomRow = (textX: number, textW: number, bg: string | null, logoUnder: (r: Rect) => Under) => {
     const rowBottom = h - S.bottom - barSpace;
-    const pick = !logoTop ? pickLogo(logoUnder({ x: w - m - logoMaxW, y: rowBottom - logoRow, w: logoMaxW, h: logoRow })) : null;
+    const logoRect = { x: w - m - logoMaxW, y: rowBottom - logoRow, w: logoMaxW, h: logoRow };
+    const pick = !logoTop ? pickLogo(logoUnder(logoRect)) : null;
     const footW = pick ? Math.min(textW, w - m - pick.w - gap - textX) : textW;
     const a = pick ? "left" : align;
     const footer = planFooter(footW, bg, a);
@@ -572,6 +659,8 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
       rowH,
       footW,
       footY: rowBottom - footer.h,
+      /** El logo de abajo va en blanco sobre la foto y necesita su degradado. */
+      logoScrim: pick?.scrim ? logoRect : null,
       render: () => {
         if (footer.view) nodes.push(<Abs key="foot" r={{ x: textX, y: rowBottom - footer.h, w: footW, h: footer.h }} style={{ justifyContent: a === "center" ? "center" : "flex-start" }}>{footer.view}</Abs>);
         if (pick) placeLogo(pick, w - m, rowBottom - logoRow, true);
@@ -584,6 +673,11 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
     // Foto entera con un degradado oscuro donde va el texto.
     const ph = await coverPhoto(d.photoUrl!, 0, 0, w, h, d.focus);
     nodes.push(<PhotoView key="photo" p={ph} />);
+    // Elegante: un marco fino dentro del borde.
+    if (st.frame) {
+      const fi = Math.round(m * 0.42);
+      nodes.push(<Abs key="frame" r={{ x: fi, y: fi, w: w - fi * 2, h: h - fi * 2 }} style={{ border: `${Math.max(1, Math.round(2 * u))}px solid rgba(255,255,255,0.55)` }} />);
+    }
     const textW = Math.round(wide ? (center ? w * 0.72 : w * 0.6) : w - m * 2);
     const textX = center ? Math.round((w - textW) / 2) : m;
     const row = bottomRow(textX, textW, null, (r) => photoBg(ph, r));
@@ -593,13 +687,17 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
     const blk = planBlock(textW, frameH * (t.textPosition === "centro" ? 0.82 : 0.74));
     const by = t.textPosition === "arriba" ? top : t.textPosition === "centro" ? top + (frameH - blk.height) / 2 : bottom - blk.height;
     const floor = t.overlay === "fuerte" ? 0.55 : t.overlay === "suave" ? 0.35 : 0;
+    const logoRect = { x: logoRight ? w - m - logoMaxW : m, y: S.top, w: logoMaxW, h: logoRow };
+    const topPick = logoTop ? pickLogo(photoBg(ph, logoRect)) : null;
     scrim(ph, [
       { r: { x: textX, y: by, w: textW, h: blk.height }, floor },
       { r: { x: textX, y: row.footY, w: row.footW, h: h - S.bottom - barSpace - row.footY }, floor: 0 },
-    ]);
+      ...(topPick?.scrim ? [{ r: logoRect, floor: 0.3 }] : []),
+      ...(row.logoScrim ? [{ r: row.logoScrim, floor: 0.3 }] : []),
+    ], 1);
     nodes.push(<Abs key="block" r={{ x: textX, y: by, w: textW, h: blk.height }}><BlockView p={blk} color="#ffffff" bg={deep} shadow /></Abs>);
     row.render();
-    if (logoTop) placeLogo(pickLogo(photoBg(ph, { x: logoRight ? w - m - logoMaxW : m, y: S.top, w: logoMaxW, h: logoRow })), logoRight ? w - m : m, S.top, logoRight);
+    if (topPick) placeLogo(topPick, logoRight ? w - m : m, S.top, logoRight);
     nodes.push(<ContactBar key="bar" under={deep} />);
   } else if (t.layout === "franja-abajo" && t.background === "blanco") {
     // Tarjeta blanca flotando sobre la foto.
@@ -610,29 +708,30 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
     const innerW = cardW - pad * 2;
     const footer = planFooter(innerW, "#ffffff", align);
     const avail = h - S.top - S.bottom - barSpace - logoRow - gap * 2;
-    const blk = planBlock(innerW, (wide ? avail : avail * 0.62) - pad * 2 - (footer.h ? footer.h + gap : 0), { capScale: 0.84 });
+    const inside = (k: number) => k - pad * 2 - (footer.h ? footer.h + gap : 0);
+    // La tarjeta ocupa lo justo (hasta 62% del alto); si el titular no cabe, crece antes de quitar texto.
+    let blk = planBlock(innerW, inside(wide ? avail : avail * 0.62), { capScale: 0.84, drop: wide });
+    if (blk.head.truncated && !wide) blk = planBlock(innerW, inside(avail), { capScale: 0.84 });
     const cardH = blk.height + pad * 2 + (footer.h ? footer.h + gap : 0);
     const cardY = h - S.bottom - barSpace - cardH;
     nodes.push(
-      <Abs key="card" r={{ x: m, y: cardY, w: cardW, h: cardH }} style={{ flexDirection: "column", alignItems: center ? "center" : "flex-start", background: "#ffffff", borderRadius: Math.round(28 * u), padding: pad, gap, boxShadow: "0 18px 60px rgba(0,0,0,0.28)" }}>
+      <Abs key="card" r={{ x: m, y: cardY, w: cardW, h: cardH }} style={{ flexDirection: "column", alignItems: center ? "center" : "flex-start", background: "#ffffff", borderRadius: Math.round(st.radius * u), padding: pad, gap, boxShadow: "0 12px 44px rgba(0,0,0,0.2)" }}>
         <BlockView p={blk} color={dark} bg="#ffffff" />
         {footer.view}
       </Abs>,
     );
     // El logo nunca va sobre la tarjeta: arriba; "abajo a la derecha" solo en formas anchas (al lado de la tarjeta).
-    if (!logoTop && wide) {
-      const ly = h - S.bottom - barSpace - logoRow;
-      placeLogo(pickLogo(photoBg(ph, { x: w - m - logoMaxW, y: ly, w: logoMaxW, h: logoRow })), w - m, ly, true);
-    } else {
+    if (!logoTop && wide) logoOnPhoto(ph, w - m, h - S.bottom - barSpace - logoRow, true, 0);
+    else {
       const right = logoRight || !logoTop;
-      placeLogo(pickLogo(photoBg(ph, { x: right ? w - m - logoMaxW : m, y: S.top, w: logoMaxW, h: logoRow })), right ? w - m : m, S.top, right);
+      logoOnPhoto(ph, right ? w - m : m, S.top, right, 0);
     }
     nodes.push(<ContactBar key="bar" under="#777777" />);
   } else if (t.layout === "franja-arriba" || t.layout === "franja-abajo" || t.layout === "mitad-izquierda") {
     // Bloque de color y foto. En formas anchas (y en "mitad" cuadrada) van lado a lado; en verticales, uno arriba del otro.
     // "Mitad" cuadrada: lado a lado, salvo que el titular no quepa en media imagen (entonces uno arriba del otro).
     const halfW = Math.round(w * 0.52) - m * 2;
-    const fitsHalf = () => !planBlock(halfW, h - S.top - logoRow - Math.round(gap * 1.4) - S.bottom - barSpace - Math.round(gap * 1.3) - planFooter(halfW, panelMid, align).h, { capScale: 0.84, maxLines: 5 }).head.truncated;
+    const fitsHalf = () => !planBlock(halfW, h - S.top - logoRow - Math.round(gap * 1.4) - S.bottom - barSpace - Math.round(gap * 1.3) - planFooter(halfW, panelMid, align).h, { capScale: 0.84, maxLines: 4 }).head.truncated;
     const side = wide || (t.layout === "mitad-izquierda" && !tall && fitsHalf());
     const panelFirst = t.layout !== "franja-abajo" && !(t.layout === "mitad-izquierda" && tall);
     if (side) {
@@ -646,7 +745,7 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
       const footer = planFooter(textW, panelMid, align);
       const top = S.top + logoRow + Math.round(gap * 1.4);
       const bottom = h - S.bottom - barSpace - (footer.h ? footer.h + Math.round(gap * 1.3) : 0);
-      const blk = planBlock(textW, bottom - top, { capScale: 0.84, maxLines: 5 });
+      const blk = planBlock(textW, bottom - top, { capScale: 0.84, maxLines: 4 });
       const by = top + (bottom - top - blk.height) / 2;
       nodes.push(<Abs key="block" r={{ x: textX, y: by, w: textW, h: blk.height }}><BlockView p={blk} color={panelInk} bg={panelMid} /></Abs>);
       if (footer.view) nodes.push(<Abs key="foot" r={{ x: textX, y: h - S.bottom - barSpace - footer.h, w: textW, h: footer.h }} style={{ justifyContent: center ? "center" : "flex-start" }}>{footer.view}</Abs>);
@@ -672,6 +771,7 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
       const bandY = photoFirst ? h - band : 0;
       const ph = await coverPhoto(d.photoUrl!, 0, photoFirst ? 0 : band, w, h - band - (photoFirst || story ? 0 : barH), d.focus);
       nodes.push(<Abs key="panel" r={{ x: 0, y: bandY, w, h: band }} style={panelStyle} />);
+      const photoAt = nodes.length;
       nodes.push(<PhotoView key="photo" p={ph} />);
       const line = accentFor(panelMid, panelInk);
       if (line !== panelInk) nodes.push(<Abs key="line" r={{ x: 0, y: (photoFirst ? bandY : band) - Math.round(5 * u), w, h: Math.round(10 * u) }} style={{ background: line }} />);
@@ -689,34 +789,30 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
         // Logo sobre la foto: arriba si la foto está arriba; si la foto está abajo, abajo a la derecha.
         const ly = photoFirst ? S.top : h - S.bottom - barSpace - logoRow;
         const right = photoFirst ? logoRight : true;
-        placeLogo(pickLogo(photoBg(ph, { x: right ? w - m - logoMaxW : m, y: ly, w: logoMaxW, h: logoRow })), right ? w - m : m, ly, right);
+        logoOnPhoto(ph, right ? w - m : m, ly, right, photoAt);
       }
       nodes.push(<ContactBar key="bar" under={photoFirst ? panelMid : "#777777"} />);
     }
   } else if (t.layout === "color-solido") {
-    // Una frase grande sobre el color de la marca, con detalles suaves en las esquinas (lejos del texto).
+    // Una frase grande sobre el color de la marca. Sin adornos de relleno: la letra y el aire hacen el diseño.
     const textW = Math.round(wide ? w * (center ? 0.74 : 0.66) : w - m * 2);
     const textX = center ? Math.round((w - textW) / 2) : m;
     nodes.push(<Abs key="bg" r={{ x: 0, y: 0, w, h }} style={panelStyle} />);
-    const ring = Math.round(Math.max(w, h) * 0.6);
-    const soft = t.background === "blanco" ? rgba(c1, 0.06) : rgba(panelInk === "#ffffff" ? "#ffffff" : dark, 0.06);
-    nodes.push(<Abs key="ring" r={{ x: logoRight ? -ring * 0.45 : w - ring * 0.55, y: -ring * 0.42, w: ring, h: ring }} style={{ borderRadius: ring, border: `${Math.round(54 * u)}px solid ${soft}` }} />);
-    if (t.accent === "circulos") {
-      const cs = Math.round(ring * 0.6);
-      const circle = accentOn(panelMid, [c3, c2], panelInk === "#ffffff" ? "#ffffff" : c1, 1.3);
-      nodes.push(<Abs key="dot" r={{ x: logoTop ? w - cs * 0.62 : -cs * 0.4, y: h - cs * 0.5, w: cs, h: cs }} style={{ borderRadius: cs, background: rgba(circle, 0.2) }} />);
+    if (st.frame) {
+      const fi = Math.round(m * 0.42);
+      nodes.push(<Abs key="frame" r={{ x: fi, y: fi, w: w - fi * 2, h: h - fi * 2 }} style={{ border: `${Math.max(1, Math.round(2 * u))}px solid ${rgba(panelInk, 0.35)}` }} />);
     }
     const row = bottomRow(textX, textW, panelMid, () => ({ color: panelMid }));
     const top = S.top + (logoTop ? logoRow + Math.round(gap * 1.6) : 0);
     const bottom = h - S.bottom - barSpace - (row.rowH ? row.rowH + Math.round(gap * 1.4) : 0);
-    const blk = planBlock(textW, bottom - top, { capScale: 1.06 });
+    const blk = planBlock(textW, bottom - top, { capScale: 1.18 });
     const by = top + (t.textPosition === "arriba" ? 0 : t.textPosition === "centro" ? (bottom - top - blk.height) / 2 : bottom - top - blk.height);
     nodes.push(<Abs key="block" r={{ x: textX, y: by, w: textW, h: blk.height }}><BlockView p={blk} color={panelInk} bg={panelMid} /></Abs>);
     row.render();
     if (logoTop) placeLogo(pickLogo({ color: panelMid }), logoRight ? w - m : m, S.top, logoRight);
     nodes.push(<ContactBar key="bar" under={panelMid} />);
   } else {
-    // Lista de pasos: fondo claro, titular oscuro y tarjetas numeradas.
+    // Lista de pasos: fondo claro, titular oscuro y pasos numerados separados por líneas finas (sin tarjetas).
     const soft = mix("#ffffff", c1, 0.05);
     canvasBg = soft;
     const photoSide = withPhoto && wide;
@@ -733,31 +829,40 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
     const avail = bottom - top;
     // Pasos: letra de 38 a 24 (en 1080) hasta que quepan junto con un titular que se lea.
     const num = Math.round((wide ? 52 : tall ? 68 : 60) * u);
-    const stepGap = Math.round(16 * u);
-    const cardPad = Math.round(18 * u);
-    const numGap = Math.round(22 * u);
+    const cardPad = Math.round(20 * u);
+    const numGap = Math.round(26 * u);
+    const lineH = Math.max(1, Math.round(2 * u));
     let stepFits: Fitted[] = [];
     let stepsH = 0;
     let blk = planBlock(textW, avail);
-    for (const base of [tall ? 38 : 34, 32, 30, 28, 26, 24]) {
+    // Primero se achican los pasos (sin bajar de 30); después se quita el texto corto antes de achicarlos más.
+    const tries: [number, boolean][] = [[tall ? 38 : 34, false], [32, false], [30, false], [30, true], [28, true], [26, true], [24, true]];
+    for (const [base, drop] of tries) {
       const ss = Math.round(base * u);
-      const sw = textW - num - numGap - cardPad * 2;
+      const sw = textW - num - numGap;
       stepFits = steps.map((s) => fitText({ text: s, maxW: sw, maxH: ss * 1.25 * 3, max: ss, min: Math.round(ss * 0.9), maxLines: 3, lineHeight: 1.25, measure: F.measureBody }));
-      stepsH = stepFits.reduce((a, f) => a + Math.max(num, f.height) + cardPad * 2, 0) + Math.max(0, steps.length - 1) * stepGap;
-      blk = planBlock(textW, avail - stepsH - (steps.length ? Math.round(gap * 1.2) : 0), { capScale: wide ? 0.66 : 0.82, maxLines: wide ? 3 : 4 });
+      stepsH = stepFits.reduce((a, f) => a + Math.max(num, f.height) + cardPad * 2 + lineH, 0);
+      blk = planBlock(textW, avail - stepsH - (steps.length ? Math.round(gap * 1.2) : 0), { capScale: wide ? 0.66 : 0.82, maxLines: wide ? 3 : 4, drop });
       if (!blk.head.truncated) break;
     }
     const total = blk.height + (steps.length ? Math.round(gap * 1.2) + stepsH : 0);
     const by = top + Math.max(0, (avail - total) / 2);
-    const numBg = [c1, accentOn("#ffffff", [c3, c2], c1), accentOn("#ffffff", [c2, c3], c1)];
+    const numInk = accentOn(soft, [c1, c3, c2], dark);
+    const rule = rgba(dark, 0.14);
     nodes.push(
       <Abs key="list" r={{ x: m, y: by, w: textW, h: total }} style={{ flexDirection: "column", gap: Math.round(gap * 1.2) }}>
         <BlockView p={blk} color={dark} bg={soft} />
         {steps.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", width: textW, gap: stepGap }}>
+          <div style={{ display: "flex", flexDirection: "column", width: textW }}>
             {stepFits.map((f, i) => (
-              <div key={i} style={{ display: "flex", width: textW, alignItems: "center", gap: numGap, background: "#ffffff", borderRadius: Math.round(18 * u), padding: cardPad, boxShadow: `0 4px 18px ${rgba(c1, 0.1)}` }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: num, height: num, borderRadius: num, background: numBg[i], color: pickInk(numBg[i], dark), fontFamily: F.head, fontSize: Math.round(num * 0.46), fontWeight: F.bold, flexShrink: 0 }}>{i + 1}</div>
+              <div key={i} style={{ display: "flex", width: textW, alignItems: "center", gap: numGap, padding: `${cardPad}px 0`, borderTop: `${lineH}px solid ${rule}` }}>
+                {st.radius >= 20 ? (
+                  // Fresco: número en un círculo suave del color de la marca.
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: num, height: num, borderRadius: num, background: rgba(c1, 0.12), color: numInk, fontFamily: F.head, fontSize: Math.round(num * 0.46), fontWeight: F.bold, flexShrink: 0 }}>{i + 1}</div>
+                ) : (
+                  // Los demás: «01», «02»… con la letra de los titulares.
+                  <div style={{ display: "flex", alignItems: "center", width: num, height: num, color: numInk, fontFamily: F.head, fontSize: Math.round(num * 0.62), fontWeight: headWeight, letterSpacing: Math.round(num * 0.62 * -0.02), flexShrink: 0 }}>{String(i + 1).padStart(2, "0")}</div>
+                )}
                 <div style={{ display: "flex", flexDirection: "column", fontFamily: F.body, fontSize: f.size, fontWeight: F.bodySemi, color: dark, lineHeight: 1.25 }}>
                   {f.lines.map((l, j) => (
                     <div key={j} style={{ display: "flex", whiteSpace: "pre" }}>{l}</div>
@@ -770,10 +875,8 @@ export async function renderDesign(d: DesignInput): Promise<Buffer> {
       </Abs>,
     );
     if (footer.view) nodes.push(<Abs key="foot" r={{ x: m, y: footerY, w: textW, h: footer.h }}>{footer.view}</Abs>);
-    if (photoTopH && ph) {
-      const ly = Math.min(S.top, photoTopH - logoRow - Math.round(24 * u));
-      placeLogo(pickLogo(photoBg(ph, { x: logoRight ? w - m - logoMaxW : m, y: ly, w: logoMaxW, h: logoRow })), logoRight ? w - m : m, ly, logoRight);
-    } else placeLogo(pickLogo({ color: soft }), m, S.top, false);
+    if (photoTopH && ph) logoOnPhoto(ph, logoRight ? w - m : m, Math.min(S.top, photoTopH - logoRow - Math.round(24 * u)), logoRight, 0);
+    else placeLogo(pickLogo({ color: soft }), m, S.top, false);
     nodes.push(<ContactBar key="bar" under={soft} />);
   }
 

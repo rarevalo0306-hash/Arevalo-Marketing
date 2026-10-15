@@ -7,6 +7,7 @@ import { TrackGapButton } from "@/components/seo/CompetitorsForm";
 import fold from "@/components/seo/Fold.module.css";
 import type { GapIntent, GapRow, GapType } from "@/lib/seo/gap";
 import { intlLocale } from "@/lib/i18n";
+import { DIFFICULTY_LABEL, difficultyLevel, INTENT_LABEL } from "@/lib/seo/labs-shared";
 
 type Filter = "all" | "sell" | "easy";
 
@@ -24,18 +25,11 @@ const PAGE = 10;
 
 /** Fácil (< 30), media (30 a 59) o difícil (60 o más): [estilo, español, inglés]. */
 function difficultyBadge(d: number | null): [string, string, string] | null {
-  if (d === null) return null;
-  if (d < 30) return ["done", "fácil", "easy"];
-  if (d < 60) return ["partial", "media", "medium"];
-  return ["failed", "difícil", "hard"];
+  const level = difficultyLevel(d);
+  return level ? DIFFICULTY_LABEL[level] : null;
 }
 
-const INTENT: Record<GapIntent, [string, string]> = {
-  transactional: ["quieren comprar", "ready to buy"],
-  commercial: ["comparan opciones", "comparing options"],
-  informational: ["buscan información", "looking for info"],
-  navigational: ["buscan un sitio", "looking for a site"],
-};
+const INTENT = Object.fromEntries(Object.entries(INTENT_LABEL).map(([k, v]) => [k, [v.es, v.en]])) as Record<GapIntent, [string, string]>;
 
 /** Las búsquedas de la competencia, con pestañas ("te faltan" / "estás más abajo") y filtros, sin recargar. */
 export function GapTable({ businessId, rows: related, offTopic = [], tracked, track }: Props) {

@@ -3,6 +3,7 @@
 // de fotos y las 3 direcciones de identidad que propone la IA para escoger. Sin servidor ni base de datos: se usa en
 // pantalla, en las acciones y en las pruebas.
 import { BODY_FONTS, type BodyFontId, FONTS, type FontId } from "@/lib/design-shapes";
+import { isDesignStyle, type DesignStyle } from "@/lib/design-style";
 
 export type BiText = { es: string; en: string };
 
@@ -90,6 +91,8 @@ export type BrandIdentity = {
   /** Lo que eligió el dueño: tú o usted, y hasta 3 tonos. La IA lo sigue al proponer y al escribir. */
   address: Address;
   tones: Tone[];
+  /** El estilo de los diseños que eligió el dueño ("" = el que va con su tipo de negocio; ver design-style.ts). */
+  designStyle: DesignStyle | "";
   music: IdentityMusic;
   /** Qué tipo de fotos van con la marca. */
   photoStyle: string;
@@ -200,6 +203,7 @@ export function emptyIdentity(): BrandIdentity {
     audience: "",
     address: "",
     tones: [],
+    designStyle: "",
     music: { moods: [], genres: [], bpmMin: null, bpmMax: null, energy: "", instruments: [], searchTerms: [] },
     photoStyle: "",
     proposals: [],
@@ -244,6 +248,7 @@ export function readBrandIdentity(raw: unknown): BrandIdentity {
     audience: s(o.audience, MAX_TEXT),
     address: o.address === "tu" || o.address === "usted" ? o.address : "",
     tones: readTones(o.tones),
+    designStyle: isDesignStyle(o.designStyle) ? o.designStyle : "",
     music: {
       moods: readList(music.moods, 8, 40),
       genres: readList(music.genres, 8, 40),

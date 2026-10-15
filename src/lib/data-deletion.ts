@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { requireBusiness } from '@/lib/auth';
 import { decryptJson } from '@/lib/crypto';
 import { db } from '@/lib/db';
-import { canRevokeAlone, gscCannibalQueries, scrubOnPageGsc, scrubPostedReplies, scrubSetupGsc } from '@/lib/google-data-shape';
+import { canRevokeAlone, clustersUseGsc, gscCannibalQueries, scrubOnPageGsc, scrubPostedReplies, scrubSetupGsc } from '@/lib/google-data-shape';
 import { deleteBusinessMedia } from '@/lib/media';
 import { deleteBusinessR2Files, r2Enabled } from '@/lib/r2';
 import { revokeGoogleToken } from '@/lib/google-oauth';
@@ -86,7 +86,10 @@ export async function purgeGoogleChannelData(businessId: string, channel: Google
     // rank or audit data); the plan tasks of their Search Console searches go, from any of those reviews.
     const cannibal = await db.seoReport.findMany({ where: { businessId, kind: 'cannibal', data: { path: ['source'], equals: 'gsc' } }, select: { data: true } });
     const cannibalKeys = [...new Set(cannibal.flatMap(r => gscCannibalQueries(r.data)).map(q => `cannibal:${norm(q)}`))];
+    // Topic clusters ("clusters") that grouped Search Console searches are rebuilt with one click from what is left.
+    const clusters = (await db.seoReport.findMany({ where: { businessId, kind: 'clusters' }, select: { id: true, data: true } })).filter(r => clustersUseGsc(r.data)).map(r => r.id);
     ops.push(db.seoReport.deleteMany({ where: { businessId, kind: { in: ['gsc', 'decay'] } } }));
+    if (clusters.length) ops.push(db.seoReport.deleteMany({ where: { businessId, id: { in: clusters } } }));
     ops.push(db.seoReport.deleteMany({ where: { businessId, kind: 'cannibal', data: { path: ['source'], equals: 'gsc' } } }));
     ops.push(db.actionTask.deleteMany({
       where: {

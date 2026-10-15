@@ -12,6 +12,7 @@ import { publishDue } from "@/lib/publish";
 import { runWeeklyReports } from "@/lib/seo/alerts";
 import { runDueRankChecks } from "@/lib/seo/rank";
 import { runMonthlyReports } from "@/lib/seo/report-run";
+import { runDueCompetitorWatch } from "@/lib/seo/watch";
 import { safeEqual } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -66,6 +67,13 @@ export async function GET(req: Request) {
       if (weekly?.ok) console.log("[reporte-semanal] enviado:", weekly.businessId);
     } catch (e) {
       console.error("[reporte-semanal] error:", e instanceof Error ? e.message : e);
+    }
+    // Lo que hizo la competencia (solo los negocios que encendieron «Revisar cada semana»): como mucho UN negocio por llamada.
+    try {
+      const watch = await runDueCompetitorWatch();
+      if (watch) console.log("[competencia] revisión semanal:", JSON.stringify(watch));
+    } catch (e) {
+      console.error("[competencia] error en la revisión semanal:", e instanceof Error ? e.message : e);
     }
     // Reporte en PDF de cada mes (el día 1): como mucho UN negocio por llamada.
     try {

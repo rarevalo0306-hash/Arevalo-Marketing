@@ -10,8 +10,15 @@ import { errorText, type T } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
 import { BACKLINKS_KIND, readBacklinksReport, type BacklinksReport } from "@/lib/seo/backlinks";
 import { normalizeDomain } from "@/lib/seo/competitors";
+import { logAiAction } from "@/lib/ai-actions";
+import { resolveSender, sendSeoEmail } from "@/lib/seo/alerts";
+import { linkHint } from "@/lib/seo/backlinks";
+import { MENTIONS_KIND, readMentionsReport } from "@/lib/seo/mentions";
+import { paragraphs } from "@/lib/text";
 import {
   buildOutreach,
+  canSendOutreach,
+  cleanEmail,
   mergeOutreach,
   needsEmail,
   OUTREACH_KIND,
@@ -169,4 +176,89 @@ export async function saveOutreachEdit(businessId: string, domain: string, subje
   if (!prev) return { ok: false, message: t("No encontramos ese borrador. Vuelve a presionar «Pedir enlace».", "We couldn't find that draft. Press “Ask for a link” again.") };
   await saveDrafts(businessId, [{ ...prev, subject: subject.slice(0, 200), body: body.slice(0, 5000) }]);
   return { ok: true, message: t("Guardado.", "Saved.") };
+}
+
+/**
+ * «Pedir el enlace» de una mención sin enlace (de «Quién habla de ti»): la IA escribe un correo corto que agradece la
+ * mención y pide agregar el enlace en esa misma página. Busca su correo de contacto en su página (nunca lo inventa).
+ */
+export async function draftMentionOutreach(businessId: string, url: string): Promise<OutreachResult> {
+  ensure.text(businessId, url);
+  const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
+  const [b, [row]] = await Promise.all([db.business.findUnique({ where: { id: businessId }, select: BUSINESS_FIELDS }), db.seoReport.findMany({ where: { businessId, kind: MENTIONS_KIND }, orderBy: { createdAt: "desc" }, take: 1 })]);
+  if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
+  const mention = (row ? readMentionsReport(row.data) : null)?.mentions.find((m) => m.url === url);
+  if (!mention) return { ok: false, message: t("Esa mención ya no está en la lista. Vuelve a buscar quién habla de ti.", "That mention is no longer on the list. Search who talks about you again.") };
+  const hint = linkHint(mention.domain);
+  if (needsEmail(hint) && !aiEnabled()) return { ok: false, message: noAi(t) };
+  try {
+    const draft = await buildOutreach(outreachBusiness(b), { domain: mention.domain, hint, linksTo: [], mention: { url: mention.url, title: mention.title } });
+    await saveDrafts(businessId, [draft]);
+    revalidatePath(`/b/${businessId}/seo`);
+    return {
+      ok: true,
+      message:
+        draft.type === "email"
+          ? draft.contactEmail
+            ? t(`Listo. Encontramos su correo (${draft.contactEmail}). Revisa el mensaje antes de mandarlo.`, `Done. We found their email (${draft.contactEmail}). Check the message before sending it.`)
+            : t("Listo. No encontramos un correo en su página: usa su formulario de contacto o escribe el correo abajo.", "Done. We didn't find an email on their site: use their contact form or type the email below.")
+          : t("Listo. Sigue los pasos.", "Done. Follow the steps."),
+      draft,
+    };
+  } catch (e) {
+    return { ok: false, message: errorText(e, lang) };
+  }
+}
+
+/**
+ * Manda un correo de «Pedir enlace» desde el Email conectado del negocio (así las respuestas le llegan al dueño).
+ * Solo cuando el dueño lo aprueba con el botón, una vez por sitio y como máximo 10 en 24 horas. Queda anotado.
+ */
+export async function sendOutreach(businessId: string, domain: string, to: string): Promise<OutreachResult> {
+  ensure.text(businessId, domain, to);
+  const { lang, t } = await getT();
+  if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
+  const site = normalizeDomain(domain);
+  const email = cleanEmail(to.trim());
+  if (!site) return { ok: false, message: t("Ese sitio no es válido.", "That site isn't valid.") };
+  const { store } = await latestStore(businessId);
+  const draft = store.drafts[site];
+  const check = canSendOutreach(draft, email ?? "", store);
+  if (!check.ok) {
+    const why = {
+      "not-email": t("Para ese sitio no hay correo que mandar (son pasos para registrarte).", "There's no email to send for that site (it's sign-up steps)."),
+      "no-text": t("El correo está vacío. Escríbelo o vuelve a prepararlo.", "The email is empty. Write it or prepare it again."),
+      "already-sent": t("Ya le mandaste este correo. Espera su respuesta en tu bandeja.", "You already sent this email. Wait for their reply in your inbox."),
+      "daily-limit": t("Ya mandaste 10 correos de enlaces hoy. Manda los demás mañana para no parecer spam.", "You've already sent 10 link emails today. Send the rest tomorrow so it doesn't look like spam."),
+      "bad-email": t("Escribe un correo válido para ese sitio.", "Type a valid email for that site."),
+    }[check.reason];
+    return { ok: false, message: why };
+  }
+  try {
+    const sender = await resolveSender(businessId);
+    if (sender.via !== "connection")
+      return {
+        ok: false,
+        message: t(
+          "Para mandar estos correos conecta tu Email en Conexiones (con tu dominio): así las respuestas te llegan a ti y no a la app.",
+          "To send these emails, connect your Email in Connections (with your domain): that way replies reach you, not the app.",
+        ),
+      };
+    const d = draft as OutreachDraft;
+    await sendSeoEmail({ businessId, to: [email as string], subject: d.subject as string, html: paragraphs(d.body as string), text: d.body as string });
+    const sentAt = new Date().toISOString();
+    await saveDrafts(businessId, [{ ...d, sentAt, sentTo: email as string }]);
+    await logAiAction({
+      businessId,
+      kind: "outreach-email",
+      summary: { es: `Se mandó el correo para pedir un enlace a ${site} (${email}).`, en: `The link request email was sent to ${site} (${email}).` },
+      detail: { domain: site, to: email, subject: d.subject },
+      actor: "owner",
+    });
+    revalidatePath(`/b/${businessId}/seo`);
+    return { ok: true, message: t(`Enviado a ${email} desde ${sender.email}. Las respuestas te llegan a ese correo.`, `Sent to ${email} from ${sender.email}. Replies go to that address.`), draft: { ...d, sentAt, sentTo: email as string } };
+  } catch (e) {
+    return { ok: false, message: errorText(e, lang) };
+  }
 }

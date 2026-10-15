@@ -228,3 +228,34 @@ describe("guardar y leer", () => {
     expect(pickTopGap(gaps, store, 5).map((g) => g.domain)).toEqual(["b.com", "d.com"]);
   });
 });
+
+describe("Enviar el correo para pedir el enlace", () => {
+  it("solo correos con texto, una vez por sitio y máximo 10 al día", async () => {
+    const { canSendOutreach, mergeOutreach, outreachLeftToday, OUTREACH_DAILY_MAX } = await import("@/lib/seo/outreach");
+    const base = { hint: "blog" as const, type: "email" as const, lang: "es" as const, steps: [], subject: "Hola", body: "Mensaje largo", createdAt: "2026-10-14T00:00:00.000Z" };
+    const now = Date.parse("2026-10-14T12:00:00Z");
+    const empty = { version: 1 as const, drafts: {} };
+    expect(canSendOutreach({ ...base, domain: "a.com" }, "hola@a.com", empty, now)).toEqual({ ok: true });
+    expect(canSendOutreach({ ...base, domain: "a.com", type: "signup" }, "hola@a.com", empty, now)).toEqual({ ok: false, reason: "not-email" });
+    expect(canSendOutreach({ ...base, domain: "a.com", body: " " }, "hola@a.com", empty, now)).toEqual({ ok: false, reason: "no-text" });
+    expect(canSendOutreach({ ...base, domain: "a.com", sentAt: "2026-10-13T00:00:00.000Z" }, "hola@a.com", empty, now)).toEqual({ ok: false, reason: "already-sent" });
+    expect(canSendOutreach({ ...base, domain: "a.com" }, "no-es-correo", empty, now)).toEqual({ ok: false, reason: "bad-email" });
+    const sentToday = Object.fromEntries(Array.from({ length: OUTREACH_DAILY_MAX }, (_, i) => [`s${i}.com`, { ...base, domain: `s${i}.com`, sentAt: "2026-10-14T08:00:00.000Z" }]));
+    const full = { version: 1 as const, drafts: sentToday };
+    expect(canSendOutreach({ ...base, domain: "a.com" }, "hola@a.com", full, now)).toEqual({ ok: false, reason: "daily-limit" });
+    expect(outreachLeftToday(full, now)).toBe(0);
+    expect(outreachLeftToday(empty, now)).toBe(OUTREACH_DAILY_MAX);
+    // Volver a preparar el borrador no borra que ya se mandó.
+    const store = mergeOutreach(empty, [{ ...base, domain: "a.com", sentAt: "2026-10-14T08:00:00.000Z", sentTo: "hola@a.com" }]);
+    const again = mergeOutreach(store, [{ ...base, domain: "a.com", subject: "Otra versión", createdAt: "2026-10-14T09:00:00.000Z" }]);
+    expect(again.drafts["a.com"]).toMatchObject({ subject: "Otra versión", sentAt: "2026-10-14T08:00:00.000Z", sentTo: "hola@a.com" });
+  });
+
+  it("el correo para una mención agradece y pide el enlace en esa página", async () => {
+    const { outreachPrompt } = await import("@/lib/seo/outreach");
+    const business = { name: "Joe's Roofing", website: "https://joesroofing.com", phone: "", address: "", city: "Miami", services: ["techos"], profile: "", brandVoice: "", avoid: [], lang: "es" as const, aiText: "" };
+    const p = outreachPrompt(business, { domain: "news.com", hint: "news", linksTo: [], lang: "es", mention: { url: "https://news.com/a", title: "Joe's Roofing ayuda" } });
+    expect(p.user).toContain("already mentioned the business");
+    expect(p.user).toContain("https://news.com/a");
+  });
+});

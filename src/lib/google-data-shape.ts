@@ -90,6 +90,12 @@ export function scrubOnPageGsc(data: unknown): { data: Json; urls: string[]; key
   return changed ? { data: { ...data, pages }, urls, keywords } : null;
 }
 
+/** ¿Un reporte de temas ("clusters") agrupó búsquedas que salieron de Search Console? (se arma de nuevo con un clic). */
+export function clustersUseGsc(data: unknown): boolean {
+  if (!isObj(data) || !Array.isArray(data.clusters)) return false;
+  return data.clusters.some((c) => isObj(c) && Array.isArray(c.keywords) && c.keywords.some((k) => isObj(k) && Array.isArray(k.sources) && k.sources.includes("gsc")));
+}
+
 /** Las búsquedas de Search Console de una revisión de páginas que compiten ("cannibal" con source "gsc"). */
 export function gscCannibalQueries(data: unknown): string[] {
   if (!isObj(data) || data.source !== "gsc" || !Array.isArray(data.issues)) return [];

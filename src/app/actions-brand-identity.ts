@@ -11,6 +11,7 @@ import { brandLogoColors } from "@/lib/brand-image";
 import { fromAiIdentity, fromAiProposals, type IdentityContext, identityPromptFor, IdentitySchema, proposalsPrompt, ProposalsSchema } from "@/lib/brand-identity";
 import { applyProposal, type BrandIdentity, fillEmpty, hasIdentity, identityFromForm, mergeFromBook, readBrandIdentity, readTones, withSeeds } from "@/lib/brand-identity-shape";
 import { db } from "@/lib/db";
+import { isDesignStyle } from "@/lib/design-style";
 import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
@@ -191,5 +192,17 @@ export async function saveVoicePrefs(businessId: string, address: string, tones:
   const cur = readBrandIdentity(b.brandIdentity);
   const next: BrandIdentity = { ...cur, address: address === "tu" || address === "usted" ? address : "", tones: readTones(tones), updatedAt: new Date().toISOString() };
   await store(businessId, next);
+  return { ok: true, message: t("Guardado.", "Saved.") };
+}
+
+/** El estilo de los diseños (profesional, elegante, fresco o audaz); "" vuelve al que va con el tipo de negocio. */
+export async function saveDesignStyle(businessId: string, style: string): Promise<{ ok: boolean; message: string }> {
+  ensure.text(businessId, style);
+  const { t } = await getT();
+  if (style !== "" && !isDesignStyle(style)) return { ok: false, message: t("Estilo no válido.", "Invalid style.") };
+  const b = await load(businessId, "publish");
+  if (!b) return { ok: false, message: await deniedText(businessId, "publish") };
+  const cur = readBrandIdentity(b.brandIdentity);
+  await store(businessId, { ...cur, designStyle: isDesignStyle(style) ? style : "", updatedAt: new Date().toISOString() });
   return { ok: true, message: t("Guardado.", "Saved.") };
 }

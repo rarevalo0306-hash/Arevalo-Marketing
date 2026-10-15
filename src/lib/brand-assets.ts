@@ -54,24 +54,36 @@ export type LogoFiles = { color?: string; white?: string };
  * Los logos de la marca por tipo, subidos por el dueño. El logo principal (el que va en los diseños) sigue en
  * Business.logoUrl / logoLightUrl; aquí se guarda qué tipo es (`mainType`), el isotipo y las otras versiones.
  */
-export type BrandLogos = { mainType?: LogoType; slots: Partial<Record<LogoSlot, LogoFiles>> };
+export type BrandLogos = {
+  mainType?: LogoType;
+  /** Quién dijo qué tipo es: la IA al mirar el logo, o el dueño (que corrige a la IA). */
+  mainTypeBy?: "ai" | "owner";
+  slots: Partial<Record<LogoSlot, LogoFiles>>;
+};
 
-/** Nombre y explicación corta de cada tipo de logo, con un ejemplo conocido. */
-export const LOGO_INFO: Record<LogoSlot, { name: { es: string; en: string }; what: { es: string; en: string } }> = {
+/**
+ * Cada tipo de logo: su nombre técnico, cómo es en palabras simples (`plain`, lo que se lee primero) y una explicación
+ * corta con un ejemplo conocido.
+ */
+export const LOGO_INFO: Record<LogoSlot, { name: { es: string; en: string }; plain: { es: string; en: string }; what: { es: string; en: string } }> = {
   logotipo: {
     name: { es: "Logotipo", en: "Logotype (wordmark)" },
+    plain: { es: "Solo el nombre, sin dibujo", en: "Just the name, no drawing" },
     what: { es: "Solo texto: el nombre escrito con su letra, sin símbolo. Ej.: Google.", en: "Text only: the name in its lettering, with no symbol. E.g.: Google." },
   },
   isotipo: {
     name: { es: "Isotipo", en: "Isotype (symbol)" },
+    plain: { es: "Solo el dibujo, sin el nombre", en: "Just the drawing, without the name" },
     what: { es: "Solo símbolo, sin el nombre. Ej.: el «swoosh» de Nike. Va en la foto de perfil, los íconos del sitio y la esquina de los videos.", en: "Symbol only, without the name. E.g.: the Nike swoosh. It goes on the profile picture, site icons and the corner of videos." },
   },
   imagotipo: {
     name: { es: "Imagotipo", en: "Imagotype (combination mark)" },
+    plain: { es: "Nombre y dibujo que se pueden usar por separado", en: "Name and drawing that can be used apart" },
     what: { es: "Texto y símbolo combinados: van juntos pero se pueden separar. Ej.: Rolex (la corona arriba del nombre).", en: "Text and symbol combined: they go together but can be used apart. E.g.: Rolex (the crown above the name)." },
   },
   isologo: {
     name: { es: "Isologo", en: "Isologo (emblem)" },
+    plain: { es: "Nombre y dibujo pegados en una sola pieza", en: "Name and drawing joined in one piece" },
     what: { es: "Texto y símbolo como uno solo: no se pueden separar. Ej.: Burger King (el nombre dentro de la hamburguesa).", en: "Text and symbol as one: they can't be separated. E.g.: Burger King (the name inside the burger)." },
   },
 };
@@ -153,8 +165,11 @@ function readLogos(raw: unknown): BrandLogos | undefined {
     if (files.color || files.white) slots[slot] = Object.fromEntries(Object.entries(files).filter(([, v]) => v)) as LogoFiles;
   }
   const mainType = LOGO_TYPES.find((x) => x === o.mainType);
-  return mainType || Object.keys(slots).length ? { ...(mainType ? { mainType } : {}), slots } : undefined;
+  const by = o.mainTypeBy === "ai" || o.mainTypeBy === "owner" ? o.mainTypeBy : undefined;
+  return mainType || Object.keys(slots).length ? { ...mainTypeOf(mainType, by), slots } : undefined;
 }
+
+const mainTypeOf = (mainType: LogoType | undefined, by: "ai" | "owner" | undefined) => (mainType ? { mainType, mainTypeBy: by ?? "owner" } : {});
 
 /** Guarda (o quita, con "") una versión de un tipo de logo. */
 export function setLogoSlot(cur: BrandAssets, slot: LogoSlot, variant: LogoVariant, url: string): BrandAssets {
@@ -162,13 +177,13 @@ export function setLogoSlot(cur: BrandAssets, slot: LogoSlot, variant: LogoVaria
   const files: LogoFiles = { ...(slots[slot] ?? {}), [variant]: url || undefined };
   if (files.color || files.white) slots[slot] = Object.fromEntries(Object.entries(files).filter(([, v]) => v)) as LogoFiles;
   else delete slots[slot];
-  return { ...cur, logos: { ...(cur.logos?.mainType ? { mainType: cur.logos.mainType } : {}), slots } };
+  return { ...cur, logos: { ...mainTypeOf(cur.logos?.mainType, cur.logos?.mainTypeBy), slots } };
 }
 
-/** Qué tipo es el logo principal (el que va en los diseños). */
-export function setMainLogoType(cur: BrandAssets, type: LogoType | null): BrandAssets {
+/** Qué tipo es el logo principal (el que va en los diseños), y quién lo dijo. */
+export function setMainLogoType(cur: BrandAssets, type: LogoType | null, by: "ai" | "owner" = "owner"): BrandAssets {
   const slots = cur.logos?.slots ?? {};
-  return { ...cur, logos: { ...(type ? { mainType: type } : {}), slots } };
+  return { ...cur, logos: { ...mainTypeOf(type ?? undefined, by), slots } };
 }
 
 /**

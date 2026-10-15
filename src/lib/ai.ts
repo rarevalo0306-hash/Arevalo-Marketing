@@ -961,11 +961,11 @@ export type ReplyBusiness = { name: string; website: string; phone?: string; aiP
 export type ReplyReview = Pick<GbpReview, "name" | "rating" | "text" | "originalText" | "language" | "timeAgo">;
 
 /** Instrucciones para contestar una reseña (sin red: se prueba en tests). */
-export function reviewReplyPrompt(business: ReplyBusiness, review: ReplyReview, language: "es" | "en"): { system: string; user: string } {
+export function reviewReplyPrompt(business: ReplyBusiness, review: ReplyReview, language: "es" | "en", platform = "Google"): { system: string; user: string } {
   const phone = business.phone?.trim();
   const low = review.rating !== null && review.rating <= 3;
   const name = firstName(review.name);
-  const system = `You are the owner of "${business.name}"${business.website ? ` (${business.website})` : ""} replying to a customer review on Google.
+  const system = `You are the owner of "${business.name}"${business.website ? ` (${business.website})` : ""} replying to a customer review on ${platform}.
 
 What the business told you about itself (the ONLY facts you may state about it):
 <business_profile>
@@ -1001,9 +1001,9 @@ Write the reply.`;
  * Escribe la respuesta del dueño a una reseña de Google, en el idioma de la reseña (o el del negocio si no se sabe),
  * con la firma "— Equipo <negocio>" al final.
  */
-export async function draftReviewReply(input: { business: ReplyBusiness; review: ReplyReview; lang: "es" | "en" }): Promise<string> {
+export async function draftReviewReply(input: { business: ReplyBusiness; review: ReplyReview; lang: "es" | "en"; platform?: string }): Promise<string> {
   const language = replyLanguage(input.review, input.lang);
-  const { system, user } = reviewReplyPrompt(input.business, input.review, language);
+  const { system, user } = reviewReplyPrompt(input.business, input.review, language, input.platform);
   const r = await ask(input.business.aiText ?? "", ReviewReplySchema, system, user, 4000);
   const text = finishReply(r.reply, replySignature(input.business.name, language));
   if (text.length <= replySignature(input.business.name, language).length + 5) throw invalidReply();
@@ -1013,7 +1013,7 @@ export async function draftReviewReply(input: { business: ReplyBusiness; review:
 /** Escribe las respuestas de varias reseñas (máximo `limit`, de a 3 a la vez). Las que fallan vuelven con su error. */
 export async function draftReviewReplies(input: {
   business: ReplyBusiness;
-  reviews: (ReplyReview & { id: string })[];
+  reviews: (ReplyReview & { id: string; platform?: string })[];
   lang: "es" | "en";
   limit?: number;
 }): Promise<{ id: string; text?: string; error?: { es: string; en: string } }[]> {
@@ -1023,7 +1023,7 @@ export async function draftReviewReplies(input: {
     const chunk = await Promise.all(
       list.slice(i, i + 3).map(async (review) => {
         try {
-          return { id: review.id, text: await draftReviewReply({ business: input.business, review, lang: input.lang }) };
+          return { id: review.id, text: await draftReviewReply({ business: input.business, review, lang: input.lang, platform: review.platform }) };
         } catch (e) {
           return { id: review.id, error: { es: errorText(e, "es"), en: errorText(e, "en") } };
         }

@@ -9,10 +9,11 @@
 import { bi } from "@/lib/i18n";
 import { type BiText, type CompetitorsLocation, type CompetitorsReport, isBranded, isDirectory, normalizeDomain, resolveLocation, sameSite } from "@/lib/seo/competitors";
 import { dfsPost, readTrackedKeywords, readZones } from "@/lib/seo/dataforseo";
+import { asIntent, LABS_ITEM_COST, LABS_TASK_COST, type SearchIntent } from "@/lib/seo/labs";
 import { norm, stem, STOPWORDS } from "@/lib/seo/writer";
 import { readStudy } from "@/lib/study-shape";
 
-export type GapIntent = "informational" | "navigational" | "commercial" | "transactional";
+export type GapIntent = SearchIntent;
 export type GapType = "missing" | "weak";
 
 export type GapPosition = { domain: string; position: number };
@@ -74,8 +75,7 @@ export const GAP_MISSING_MAX_RANK = 20;
 /** "Estás más abajo": solo si tú estás después del 3. */
 export const GAP_WEAK_MIN_YOUR_RANK = 3;
 /** Precio de DataForSEO Labs (dataforseo.com/pricing/dataforseo-labs): por llamada y por fila devuelta (USD). */
-export const LABS_TASK_COST = 0.012;
-export const LABS_ITEM_COST = 0.00012;
+export { LABS_ITEM_COST, LABS_TASK_COST };
 
 /** Lo máximo que puede costar una corrida: 2 llamadas por competidor, cada una con hasta `limit` filas. */
 export function gapCostEstimate(competitors: number, limit = GAP_LIMIT): number {
@@ -89,8 +89,6 @@ const num = (v: unknown): number | null => (typeof v === "number" && Number.isFi
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
-const INTENTS: GapIntent[] = ["informational", "navigational", "commercial", "transactional"];
-const asIntent = (v: unknown): GapIntent | null => (INTENTS.includes(v as GapIntent) ? (v as GapIntent) : null);
 
 /** La mejor posición de un elemento del resultado (a veces viene como lista). */
 function serpRank(v: unknown): number | null {
