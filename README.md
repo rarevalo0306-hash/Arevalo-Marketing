@@ -1,46 +1,139 @@
-# Arevalo Marketing
+# Matya
 
-Escribe una publicación una vez y sale en Facebook, Instagram, TikTok, Google, tu blog (SEO), email y mensajes de texto, para cada uno de tus negocios.
+App de marketing para manejar varios negocios desde un solo lugar: estudia cada negocio, revisa cómo sale en Google y en las IAs, arma la marca, crea y publica en todos los canales, y mide los resultados. Está en español e inglés y se puede instalar en el celular.
+
+- **La app:** `app.matya.app` (este repositorio, en Vercel).
+- **La web pública** `matya.app` y su agente 3D son otro proyecto. Ahí están las páginas de privacidad, condiciones y borrado de datos que enlaza la app.
+
+> El repositorio conserva su nombre original, `Arevalo-Marketing`.
 
 ## Qué hace
 
-- **Estudio del negocio con IA.** Un botón: la IA lee tu negocio y tu página web, investiga tu mercado local en internet (con Gemini o Claude) y arma el perfil del negocio, tu cliente ideal, las palabras clave para Google (SEO), el público para anuncios e ideas de campaña con foto y video. Todo lo que la IA escribe y diseña después sigue ese estudio. Los volúmenes de búsqueda son estimados de la IA, no datos de Google.
-- **SEO y visibilidad.** Auditoría de tu página (títulos, descripciones, enlaces rotos, sitemap, velocidad con Google PageSpeed), si ChatGPT, Gemini y Claude te recomiendan cuando un cliente pregunta, y tus búsquedas reales en Google con Search Console (activa la "Google Search Console API" en el mismo proyecto de Google Cloud del inicio de sesión con Google).
-- **Datos reales de Google (DataForSEO, pago por uso).** Cuánta gente busca cada palabra clave en tu zona, en qué lugar sales en Google (y en el mapa) cada día, y quiénes son tu competencia y por qué búsquedas salen ellos y tú no. Pon `DATAFORSEO_LOGIN` y `DATAFORSEO_PASSWORD` en Vercel.
-- **Varios negocios.** Cada negocio tiene su color, sus cuentas conectadas, sus contactos y su historial.
-- **Publicar en todos lados.** Un solo texto, con foto o video opcional. Ves cómo queda en cada canal antes de publicar y la app avisa si falta algo (TikTok necesita video, el email necesita asunto, etc.).
-- **Programar.** Elige fecha y hora; la app lo publica sola.
-- **Historial.** Qué salió en cada canal, enlaces a cada publicación, y el error exacto si algo falló, con un botón para reintentar.
-- **Contactos.** Agrega o pega tu lista desde Excel. Email y SMS solo van a quien aceptó recibirlos.
-- **Seguro.** Cada persona entra con su correo (contraseña o Google) y solo ve las empresas de sus organizaciones, según su papel (Administrador, Puede publicar o Solo ver). Los tokens de tus cuentas se guardan cifrados (AES-256-GCM).
+El menú de cada negocio está ordenado por fases de trabajo:
 
-## Canales y qué usa cada uno
+- **Centro MATYA.** Un agente de IA con el que hablas por texto o por voz. Conoce el negocio y su industria. Investiga, escribe, diseña y arma videos con las fotos y clips de la biblioteca del negocio, sin inventar escenas con IA. Lee noticias de la industria (RSS) guardando la fuente y la fecha. Cada negocio tiene su presupuesto y su permiso para publicar; de fábrica, el presupuesto es $0 y no publica. Más detalles en [docs/agent/README.md](docs/agent/README.md).
+- **Negocio.** Datos del negocio y **Conexiones** con cada canal.
+- **Diagnóstico.**
+  - Diagnóstico guiado con un plan de acción.
+  - Estudio del negocio con IA: perfil, cliente ideal, palabras clave e ideas de campaña.
+  - SEO:
+    - Posiciones en Google y en Maps, con mapa de calor.
+    - Palabras clave con búsquedas reales (DataForSEO).
+    - Auditoría de la página web (con Google PageSpeed).
+    - Search Console y Google Analytics 4.
+    - Competencia y sus visitas.
+    - Enlaces.
+    - Perfil de Google y sus reseñas.
+    - Si ChatGPT, Gemini y Claude recomiendan al negocio.
+  - Herramientas como las de Semrush: ver quién sale ahora en Google, ideas de palabras, tus temas, comparar páginas, posiciones en computadora, ¿se movió Google?, anuncios de la competencia, qué hizo tu competencia (revisión semanal), quién habla de ti, reseñas en otros sitios, visitas de Google y de las IAs a tu web, y correos para pedir enlaces.
+- **Marca.**
+  - Identidad, kit de marca y manual de marca (se sube para que la IA lo lea, o lo crea la IA).
+  - Logos por tipo.
+  - Plantillas por red y diseños maestros con IA.
+  - **Tus fotos y videos:** la biblioteca de cada negocio, desde una carpeta de Google Drive o un enlace para que los técnicos suban fotos. Incluye edición de fotos con IA.
+- **Campañas y publicación.**
+  - Campañas en tres modos: manual, con aprobación o 100 % IA.
+  - Posts, videos, e ideas y plan con IA.
+  - Anuncios pagados: nada gasta sin la confirmación del dueño.
+  - Directorios y reseñas, y artículos para la web.
+  - Historial con el error exacto de cada canal y un botón para reintentar.
+  - Contactos.
+  - **Publicar:** un solo texto con vista previa por canal, y se puede programar.
+- **Resultados.** Métricas de cada publicación, reporte diario y por fechas, propuestas de la IA, registro de lo que hizo la IA, enlaces dañinos, y reporte SEO mensual con avisos por email.
+- **Equipo y seguridad.**
+  - Cada persona entra con su correo, con contraseña propia o con Google, y solo ve las empresas de su organización.
+  - Papeles: **Administrador**, **Puede conectar**, **Puede publicar** y **Solo ver**. Los Administradores invitan a las personas y eligen a qué empresas entran.
+  - Límite de 5 intentos de entrada cada 15 minutos.
+  - Los tokens de las cuentas se guardan cifrados (AES-256-GCM).
+  - Desconectar un servicio de Google borra sus datos.
+  - YouTube solo sube un video que una persona aprobó.
+  - Ver [docs/privacy-readiness.md](docs/privacy-readiness.md).
 
-| Canal | Servicio | Qué necesitas |
+## Canales para publicar
+
+| Canal | Cómo se conecta | Ojo |
 |---|---|---|
-| Facebook | Meta Graph API | Botón **Conectar con Facebook** (necesita `META_APP_ID` y `META_APP_SECRET`), o el ID y token de la página a mano |
-| Instagram | Meta Graph API | Se conecta junto con Facebook si la cuenta profesional de Instagram está vinculada a la página |
-| TikTok | Content Posting API | App en developers.tiktok.com con `video.publish` (client key, client secret, refresh token). Mientras TikTok no audite tu app, los videos salen en privado. |
-| Google | Business Profile API | Perfil de Negocio verificado y credenciales OAuth (client ID, secret, refresh token) |
-| Sitio web / SEO | GitHub + Vercel + la IA de la app | Tu sitio en GitHub preparado para recibir artículos (`content/articles.json`) y un token de GitHub con permiso de escritura en ese repositorio. La IA de la app (Gemini, ChatGPT o Claude) redacta el artículo en español e inglés a partir de tu publicación, sin agregar datos que no escribiste. |
-| Email | Resend | API key y remitente con dominio verificado |
-| Texto (SMS) | Twilio | Account SID, auth token y número que envía (en EE. UU. requiere registro A2P 10DLC) |
+| Facebook | Botón **Conectar con Facebook** (`META_APP_ID`, `META_APP_SECRET`), o el ID y el token de la página a mano | |
+| Instagram | Se conecta junto con Facebook | Tiene que ser una cuenta profesional vinculada a la página. Necesita foto o video. |
+| Perfil de Google | Botón **Conectar con Google** (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) | El perfil tiene que estar verificado. |
+| YouTube | Botón **Conectar con Google** | Cada video necesita la aprobación de una persona (título, privacidad y si es para niños). Unas 100 subidas al día. |
+| TikTok | Client key, client secret y refresh token de una app con `video.publish` | Los videos salen en privado hasta que TikTok audite la app. |
+| LinkedIn | Token del generador de tokens de LinkedIn | El token dura 60 días. Para publicar como página de empresa, LinkedIn tiene que aprobar la app. |
+| X | Las 4 claves de la app (permiso «Read and write») | X cobra unos US$0.015 por post, o US$0.20 si lleva enlace. |
+| Sitio web | Repositorio de GitHub del sitio y un token *fine-grained* | El sitio tiene que leer `content/articles.json`. La IA escribe el artículo en español e inglés. |
+| Email | Con la clave de Brevo de la app (`BREVO_API_KEY`) cada negocio solo elige su remitente; también acepta una clave propia de Brevo o Resend | Solo va a contactos que aceptaron recibirlo. |
+| Texto (SMS) | Twilio: Account SID, auth token y número que envía | Solo a contactos que aceptaron. En EE. UU. requiere el registro A2P 10DLC. |
 
-En la pantalla **Conexiones** pegas esos datos y presionas **Guardar y probar**: la app verifica la cuenta sin publicar nada.
+Además, en **Conexiones** se conectan tres servicios que no publican, pero dan datos:
 
-> Instagram, TikTok y Google descargan tus fotos y videos desde la app, así que para esos canales la app tiene que estar publicada en internet (no solo en tu computadora), o puedes pegar un enlace público al archivo.
+- **Search Console** y **Google Analytics 4**, cada uno con su botón; los dos usan el mismo inicio de sesión con Google.
+- **Google Drive**, para la biblioteca de fotos. Usa una cuenta de servicio (`GOOGLE_SERVICE_ACCOUNT_JSON`), y el dueño comparte su carpeta con ese correo como «Lector».
+
+**Guardar y probar** verifica cada cuenta sin publicar nada.
+
+> Instagram, TikTok, YouTube y Google descargan las fotos y videos desde la app. Por eso la app tiene que estar publicada en internet; desde tu computadora no funciona.
 
 ## Ponerla en internet (Vercel + Supabase)
 
-1. **Supabase**: crea un proyecto para la app (separado del CRM y del sitio). En *Project Settings → Database* copia las cadenas de conexión: el *Transaction pooler* (puerto 6543, agrega `?pgbouncer=true`) va en `DATABASE_URL` y el *Session pooler* (puerto 5432) en `DIRECT_URL`. En *Project Settings → API* copia la URL y la *service role key* para `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY`. La app crea sola el bucket público `media` para las fotos y videos.
-2. **Vercel**: importa este repositorio como proyecto nuevo y pon todas las variables de `.env.example`. `PUBLIC_BASE_URL` es la dirección que te da Vercel (o tu dominio, por ejemplo `https://marketing.ricardopa.com`).
-3. **Crear las tablas**: una sola vez, pega `supabase/schema.sql` en el *SQL Editor* de Supabase (o corre `npm run db:push` desde tu computadora y luego la parte de seguridad al final de ese archivo). Ese archivo activa RLS y quita permisos a `anon` y `authenticated`: la app entra con su propia conexión y la API pública de Supabase no puede leer los contactos ni las credenciales.
-4. **Publicaciones programadas**: `vercel.json` llama a `/api/cron` una vez al día (13:00 UTC), que es lo máximo que permite el plan Hobby de Vercel. Para que lo programado salga a su hora exacta, crea una tarea gratis en [cron-job.org](https://cron-job.org) que llame cada minuto a `https://TU-APP.vercel.app/api/cron` con el encabezado `Authorization: Bearer <CRON_SECRET>`. Con Vercel Pro puedes cambiar el horario de `vercel.json` a `* * * * *`.
-5. **Tu sitio**: para el canal "Sitio web", tu sitio necesita leer `content/articles.json` (ver el cambio en RicardoPA-Web). En *Conexiones* pones el repositorio, la rama (`main`), la dirección del sitio y un token de GitHub *fine-grained* con permiso **Contents: Read and write** solo en ese repositorio.
+1. **Supabase.** Crea un proyecto para la app, separado del CRM y del sitio.
+   - En *Project Settings → Database* copia las cadenas de conexión: el *Transaction pooler* (puerto 6543, agrega `?pgbouncer=true`) va en `DATABASE_URL`, y el *Session pooler* (puerto 5432) en `DIRECT_URL`.
+   - En *Project Settings → API* copia la URL y la *service role key* para `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY`.
+   - La app crea sola el bucket público `media` para las fotos y videos.
+2. **Vercel.** Importa este repositorio y pon las variables (ver [Variables](#variables)). `PUBLIC_BASE_URL` es la dirección de la app, por ejemplo `https://app.matya.app`.
+3. **Crear las tablas** (una sola vez, en una base vacía):
+   - Desde tu computadora, con `DATABASE_URL` y `DIRECT_URL` de Supabase en `.env`, corre `npm run db:push`. Crea todas las tablas.
+   - Después pega esto en el *SQL Editor* de Supabase. Activa RLS y le quita los permisos a `anon` y `authenticated`: la app entra con su propia conexión, y así la API pública de Supabase no puede leer los contactos ni las credenciales.
+
+   ```sql
+   DO $$
+   DECLARE t record;
+   BEGIN
+     FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP
+       EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t.tablename);
+       EXECUTE format('REVOKE ALL ON public.%I FROM anon, authenticated', t.tablename);
+     END LOOP;
+   END $$;
+   ```
+
+   `supabase/schema.sql` es la primera versión de las tablas y ya no alcanza para una base nueva. `supabase/migrations/` guarda los cambios que se le aplicaron a la base que ya existía.
+4. **Primer acceso.** Entra con un correo de `LOGIN_EMAILS` y `APP_PASSWORD` (o con Google). El primer dueño que entra crea la organización principal y queda como Administrador. Desde **Equipo** invita a las demás personas.
+5. **Google Cloud** (para «Conectar con Google» y «Entrar con Google»):
+   - Crea un ID de cliente OAuth de tipo *Aplicación web*, con estas direcciones de regreso: `<PUBLIC_BASE_URL>/api/google/callback` y `<PUBLIC_BASE_URL>/api/auth/google/callback`.
+   - Activa en ese proyecto estas APIs: las de Business Profile (My Business Account Management, Business Information y My Business), Search Console, Google Analytics Admin y Data, y YouTube Data API v3.
+   - La app de OAuth tiene que estar **En producción**: en pruebas, los permisos vencen cada 7 días.
+6. **Meta.** En developers.facebook.com, pon `<PUBLIC_BASE_URL>/api/meta/callback` como *Valid OAuth Redirect URI*.
+7. **Publicaciones programadas.**
+   - `vercel.json` llama a `/api/cron` una vez al día (13:00 UTC), que es lo máximo que permite el plan Hobby de Vercel.
+   - Para que lo programado salga a su hora exacta, crea una tarea gratis en [cron-job.org](https://cron-job.org) que llame cada minuto a `<PUBLIC_BASE_URL>/api/cron` con el encabezado `Authorization: Bearer <CRON_SECRET>`.
+   - Con Vercel Pro puedes cambiar el horario de `vercel.json` a `* * * * *`.
+   - El agente MATYA usa su propio llamado, `/api/cron?agent=1` (ver [docs/agent/README.md](docs/agent/README.md)).
+8. **Tu sitio web** (canal «Sitio web»):
+   - El sitio tiene que leer `content/articles.json` (ver el cambio en RicardoPA-Web).
+   - En **Conexiones** pones el repositorio, la rama que publica Vercel (casi siempre `main`), la dirección del sitio y un token *fine-grained* solo para ese repositorio.
+   - Permisos del token: **Contents: Read and write**, **Pull requests: Read and write**, **Commit statuses: Read**, **Checks: Read** y **Metadata: Read**. Los de pull requests, estados y checks sirven para «Arréglalo por mí»: Matya prepara el arreglo de tu web y tú apruebas cada cambio.
+
+## Variables
+
+Todas van en Vercel (o en `.env` para correrla en tu computadora). `.env.example` explica cada una.
+
+| Para qué | Variables |
+|---|---|
+| **Obligatorias** | `DATABASE_URL`, `DIRECT_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `APP_PASSWORD`, `APP_SECRET`, `LOGIN_EMAILS`, `PUBLIC_BASE_URL`, `CRON_SECRET` |
+| IA de textos | `GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` |
+| Fotos, diseños y videos con IA | `FAL_KEY`, `IDEOGRAM_API_KEY`, `DESIGN_AI_MODELS`, `DESIGN_AI_MAX_USD`, `VIDEO_PROVIDER`, `VIDEO_MAX_USD`, `VIDEO_DAILY_MAX` |
+| Facebook, Instagram y anuncios | `META_APP_ID`, `META_APP_SECRET`, `META_CONFIG_ID`, `META_ADS_CONFIG_ID` |
+| Google | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_SERVICE_ACCOUNT_JSON` (Drive) |
+| Email de la app | `BREVO_API_KEY`, `AUTH_EMAIL_FROM` (invitaciones y contraseñas), `ALERTS_FROM` (avisos de SEO) |
+| SEO | `DATAFORSEO_LOGIN`, `DATAFORSEO_PASSWORD` (pago por uso), `PAGESPEED_API_KEY` |
+| Biblioteca de fotos (Cloudflare R2) | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_URL` |
+| Agente MATYA | `MATYA_AGENT_ENABLED`, `MATYA_AGENT_PROVIDER`, `MATYA_AGENT_MODEL`, `MATYA_AGENT_INPUT_USD_PER_MILLION`, `MATYA_AGENT_OUTPUT_USD_PER_MILLION`, `MATYA_WORKER_URL` |
+| Otras | `BUSINESS_TZ` (zona horaria; por defecto `America/New_York`), `GOOGLE_REVOKED_PURGE=off` (pausa el borrado de datos de Google sin permiso), `SCHEDULER=off` (apaga el publicador fuera de Vercel) |
+
+> **Nunca cambies `APP_SECRET`:** cifra las conexiones y, si cambia, hay que volver a conectar todo. Para sacar a todos, cambia `APP_PASSWORD`.
 
 ## Correrla en tu computadora
 
-Necesitas [Node.js 20 o más nuevo](https://nodejs.org) y una base de datos Postgres (la de Supabase sirve).
+Necesitas [Node.js 20 o más nuevo](https://nodejs.org) y una base de datos Postgres.
 
 ```bash
 npm install
@@ -49,10 +142,12 @@ npm run db:push           # crea las tablas
 npm run dev               # abre http://localhost:3000
 ```
 
-Sin `SUPABASE_URL`, las fotos y videos se guardan en la carpeta `uploads/` de tu computadora (las redes no pueden descargarlos desde ahí).
+- Sin `SUPABASE_URL`, las fotos y videos se guardan en la carpeta `uploads/` de tu computadora, y las redes no pueden descargarlos desde ahí.
+- Fuera de Vercel, la app revisa cada minuto si hay publicaciones programadas (`src/scheduler.ts`).
 
 ## Comandos
 
-- `npm test` — pruebas automáticas
-- `npm run lint` — revisión del código
-- `npm run typecheck` — revisión de tipos
+- `npm test`: pruebas automáticas. Las pruebas con base de datos real del agente solo corren con un PostgreSQL local; ver [docs/agent/testing.md](docs/agent/testing.md).
+- `npm run lint`: revisión del código.
+- `npm run typecheck`: revisión de tipos.
+- `npm run build`: compila como en Vercel.
