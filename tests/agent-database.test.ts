@@ -1665,6 +1665,12 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
           secret: "synthetic-no-provider-access",
         })),
       });
+    /** The owner last saved every connection `days` ago (a connection made just now would lift any brake). */
+    const connectedSince = (days: number) =>
+      db.connection.updateMany({
+        where: { businessId: A },
+        data: { updatedAt: agoDays(days) },
+      });
     /** A post of the agent (or any other) with one delivery to one channel. */
     const delivery = (
       id: string,
@@ -1820,6 +1826,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
 
       it("deja solo los canales permitidos, conectados, sin freno y que no son youtube", async () => {
         await connect("instagram", "linkedin", "youtube");
+        await connectedSince(10);
         // facebook: failed then sent -> fine. instagram: two failures -> braked.
         await delivery("agent-d1", "facebook", "failed", agoDays(3));
         await delivery("agent-d2", "facebook", "sent", agoDays(2));
@@ -1839,6 +1846,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       });
 
       it("el freno se levanta con un envío bueno más nuevo y no cuenta lo pendiente", async () => {
+        await connectedSince(10);
         await delivery("agent-d1", "facebook", "failed", agoDays(4));
         await delivery("agent-d2", "facebook", "failed", agoDays(3));
         expect((await limits()).channels).toEqual([]);
@@ -1847,6 +1855,33 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
         expect((await limits()).channels).toEqual([]);
         await delivery("agent-d4", "facebook", "sent", agoDays(0));
         expect((await limits()).channels).toEqual(["facebook"]);
+      });
+
+      it("reconectar el canal después del segundo fallo levanta el freno", async () => {
+        await connect("instagram", "linkedin");
+        await connectedSince(10);
+        for (const channel of ["facebook", "instagram", "linkedin"]) {
+          await delivery(`agent-${channel}-1`, channel, "failed", agoDays(4));
+          await delivery(`agent-${channel}-2`, channel, "failed", agoDays(2));
+        }
+        const all = { channels: ["facebook", "instagram", "linkedin"] };
+        expect((await limits(all)).channels).toEqual([]);
+        // The owner saves the connection again: facebook after its last failure, instagram between the two failures.
+        await db.connection.update({
+          where: { businessId_channel: { businessId: A, channel: "facebook" } },
+          data: { updatedAt: agoDays(1) },
+        });
+        await db.connection.update({
+          where: { businessId_channel: { businessId: A, channel: "instagram" } },
+          data: { updatedAt: agoDays(3) },
+        });
+        expect((await limits(all)).channels).toEqual(["facebook"]);
+        // The reconnection only lifts the brake until the next failure: that one is newer than the reconnection and the
+        // failure before it is still the second newest, so the channel is braked again. A good delivery frees it.
+        await delivery("agent-facebook-3", "facebook", "failed", agoDays(0.5));
+        expect((await limits(all)).channels).toEqual([]);
+        await delivery("agent-facebook-4", "facebook", "sent", agoDays(0.25));
+        expect((await limits(all)).channels).toEqual(["facebook"]);
       });
 
       it("agrega seo solo con artículos permitidos y la conexión del sitio web", async () => {

@@ -30,8 +30,8 @@ function topicOf(plan: unknown): string | null {
  * - `remainingPosts`: the least of the places left in the day (`maxPostsPerDay` minus what the agent already scheduled
  *   today minus the open pieces made today) and the places left in the open-work cap (8 minus every open run, the team's
  *   own run included). Never below 0.
- * - `channels`: those the owner allows and the business has connected, without the ones braked by repeated failures and
- *   never youtube; plus `seo` (the website) when web articles are allowed and the website is connected.
+ * - `channels`: those the owner allows and the business has connected, without the ones braked by repeated failures
+ *   (until the owner reconnects the channel) and never youtube; plus `seo` (the website) when web articles are allowed and the website is connected.
  * - `today`: the business's local day, the same key `AgentBudget` uses.
  * - `recentTopics`: titles of the agent's campaigns and topics of its pieces from the last 30 days.
  * Everything is read for `businessId` only.
@@ -59,7 +59,7 @@ export async function pieceLimits(
       where: { ...open, kind: "piece", createdAt: { gte: from, lt: to } },
     }),
     db.agentRun.count({ where: open }),
-    db.connection.findMany({ where: { businessId }, select: { channel: true } }),
+    db.connection.findMany({ where: { businessId }, select: { channel: true, updatedAt: true } }),
     db.campaign.findMany({
       where: { businessId, id: { startsWith: "agent-" }, createdAt: { gte: since } },
       select: { name: true },
@@ -107,7 +107,9 @@ export async function pieceLimits(
     .flat()
     // `PostTarget` has no date of its own: it was made together with its post.
     .map((t) => ({ channel: t.channel, status: t.status, createdAt: t.post.createdAt }));
-  const braked = new Set(brakedChannels(deliveries));
+  // Saving a channel's connection again (the owner reconnected it) lifts its brake: `updatedAt` is that moment.
+  const reconnectedAt = Object.fromEntries(connections.map((c) => [c.channel, c.updatedAt]));
+  const braked = new Set(brakedChannels(deliveries, reconnectedAt));
   const channels = candidates.filter((c) => !braked.has(c));
   if (ws.allowWebArticles && connected.has("seo")) channels.push("seo");
 

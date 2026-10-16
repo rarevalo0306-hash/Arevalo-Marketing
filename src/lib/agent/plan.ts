@@ -104,7 +104,8 @@ function idOf(item: unknown): string {
 /**
  * Keeps only the pieces the business allows today and says why it dropped each
  * of the others. It never throws, whatever the model proposed. Rules, in order:
- * format (including an impossible date), channel, permission, past date, repeated, quota. The first one that fails
+ * format (including an impossible date), channel (an article only goes to the website, any other format never does),
+ * permission, past date, repeated, quota. The first one that fails
  * drops the piece; a dropped piece uses no quota and does not mark its topic as seen.
  */
 export function validatePieces(
@@ -155,15 +156,16 @@ export function validatePieces(
       drop(piece.id, "formato");
       continue;
     }
-    // Never youtube, and only the channels that are connected.
+    // Never youtube, and only the channels that are connected. The website (`seo`) is the channel of articles and of
+    // nothing else: an article keeps only `seo`, every other format drops it.
+    const web = piece.format === "articulo";
     const channels = [...new Set(piece.channels)].filter(
-      (c) => c !== "youtube" && allowed.has(c),
+      (c) => c !== "youtube" && allowed.has(c) && (web ? c === "seo" : c !== "seo"),
     );
     if (!channels.length) {
       drop(piece.id, "sin canal");
       continue;
     }
-    const web = piece.format === "articulo";
     if (web ? !limits.allowWebArticles : !limits.allowSocial) {
       drop(piece.id, "no permitido");
       continue;

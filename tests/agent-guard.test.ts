@@ -76,6 +76,41 @@ describe("brakedChannels", () => {
     ).toEqual(["linkedin", "x"]);
   });
 
+  describe("reconectar el canal", () => {
+    const failed = [t("facebook", "failed", 1), t("facebook", "failed", 3)];
+
+    it("sin dato de reconexión sigue frenado", () => {
+      expect(brakedChannels(failed)).toEqual(["facebook"]);
+      expect(brakedChannels(failed, {})).toEqual(["facebook"]);
+      expect(brakedChannels(failed, { facebook: undefined })).toEqual(["facebook"]);
+    });
+
+    it("se libera si la conexión se guardó después del más nuevo de los dos fallos", () => {
+      expect(brakedChannels(failed, { facebook: at(4) })).toEqual([]);
+    });
+
+    it("sigue frenado si se reconectó antes de ese fallo, o justo en ese momento", () => {
+      // Between the two failures, or before both: the newest failure came after, so the channel still fails.
+      expect(brakedChannels(failed, { facebook: at(2) })).toEqual(["facebook"]);
+      expect(brakedChannels(failed, { facebook: at(0) })).toEqual(["facebook"]);
+      expect(brakedChannels(failed, { facebook: at(3) })).toEqual(["facebook"]);
+    });
+
+    it("la reconexión de un canal no libera a otro", () => {
+      const both = [...failed, t("x", "failed", 1), t("x", "failed", 2)];
+      expect(brakedChannels(both, { facebook: at(5) })).toEqual(["x"]);
+      expect(brakedChannels(both, { x: at(5) })).toEqual(["facebook"]);
+      // A channel name like an object key never reads from the prototype.
+      expect(brakedChannels([t("constructor", "failed", 1), t("constructor", "failed", 2)])).toEqual(["constructor"]);
+    });
+
+    it("no cambia lo que recibe", () => {
+      const reconnected = { facebook: at(4) };
+      brakedChannels(failed, reconnected);
+      expect(reconnected).toEqual({ facebook: at(4) });
+    });
+  });
+
   it("no cambia lo que recibe", () => {
     const targets = [t("facebook", "failed", 2), t("facebook", "failed", 1), t("facebook", "sent", 0)];
     const copy = targets.map((x) => ({ ...x }));

@@ -461,6 +461,46 @@ describe("piezas del equipo", () => {
   });
 });
 
+describe("el sitio web es el canal de los artículos y de nada más", () => {
+  const piece = (id: string, topic: string, format: string, channels: string[]) => ({
+    id,
+    topic,
+    channels,
+    format,
+  });
+
+  it("un artículo solo con redes sociales se descarta como sin canal", () => {
+    const r = validatePieces([piece("p1", "Guía de reclamos", "articulo", ["facebook"])], limits);
+    expect(r).toEqual({ pieces: [], dropped: [{ id: "p1", reason: "sin canal" }] });
+  });
+
+  it("una publicación pierde `seo` y conserva sus redes", () => {
+    const r = validatePieces([piece("p1", "Techos de tejas", "post", ["seo", "facebook"])], limits);
+    expect(r.pieces.map((p) => p.channels)).toEqual([["facebook"]]);
+    expect(r.dropped).toEqual([]);
+  });
+
+  it("un artículo conserva solo `seo`", () => {
+    const r = validatePieces([piece("p1", "Guía de reclamos", "articulo", ["seo", "facebook"])], limits);
+    expect(r.pieces.map((p) => p.channels)).toEqual([["seo"]]);
+  });
+
+  it("los demás formatos que solo piden `seo` también quedan sin canal", () => {
+    for (const format of ["post", "carrusel", "video"]) {
+      const r = validatePieces([piece("p1", `Tema ${format}`, format, ["seo"])], limits);
+      expect(r.dropped).toEqual([{ id: "p1", reason: "sin canal" }]);
+    }
+  });
+
+  it("sin conexión al sitio un artículo tampoco tiene canal", () => {
+    const r = validatePieces(
+      [piece("p1", "Guía de reclamos", "articulo", ["seo"])],
+      { ...limits, channels: ["facebook"] },
+    );
+    expect(r.dropped).toEqual([{ id: "p1", reason: "sin canal" }]);
+  });
+});
+
 describe("lo que pidió el Director", () => {
   it("lee el máximo de piezas de la salida del plan y nada más", () => {
     expect(directorMax({ goal: "g", maxPieces: 3, reply: "" })).toBe(3);
