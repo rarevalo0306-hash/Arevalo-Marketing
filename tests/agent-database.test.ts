@@ -1247,24 +1247,83 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
         },
       });
 
-    it("routes a team run's first step to the director, who is not available yet", async () => {
+    it("routes a team run's first step to the director agent", async () => {
       stubModel(true);
       await saveSettings(A, { ...settings, teamMode: true });
       const team = await ask("x", { kind: "team" });
+      const director = vi
+        .spyOn(AGENTS.director, "run")
+        .mockResolvedValue({ data: { goal: "Más llamadas", maxPieces: 2, reply: "" } });
       await workOne(A, executeStep, () => 0);
-      // The team kind reached its agent (and not the old `Paso desconocido.`); nothing was charged.
+      const calls = [...director.mock.calls];
+      director.mockRestore();
+      expect(calls).toHaveLength(1);
+      const input = calls[0][0];
+      expect(input.step).toEqual({ id: "plan", agent: "director", attempt: 0 });
+      expect(input.model).toMatchObject({ provider: "gemini", model: "gemini-x" });
+      expect(() => input.tools.use("renderDesign")).toThrow(/no está permitida/);
+      // The plan step is done and the run moves on to research; nothing was charged.
       expect(await row(team.id)).toMatchObject({
-        status: "uncertain",
-        stage: 0,
-        error: "Agente no disponible.",
+        status: "queued",
+        stage: 1,
         chargedCents: 0,
         reservedCents: 0,
       });
-      expect(
-        await db.agentStep.findUniqueOrThrow({
-          where: { runId_name: { runId: team.id, name: "plan" } },
-        }),
-      ).toMatchObject({ status: "uncertain", chargedCents: 0, reservedCents: 0 });
+    });
+
+    describe("with the real director and SEO agent (the provider is a stub)", () => {
+      const reply = (value: unknown) =>
+        new Response(
+          JSON.stringify({
+            candidates: [{ content: { parts: [{ text: JSON.stringify(value) }] } }],
+            usageMetadata: { promptTokenCount: 1000, candidatesTokenCount: 100 },
+          }),
+        );
+      afterEach(() => vi.unstubAllGlobals());
+
+      it("a question is answered by the director and the run ends there", async () => {
+        stubModel(true);
+        await saveSettings(A, { ...settings, teamMode: true });
+        const team = await ask("¿A qué hora abrimos?", { kind: "team" });
+        const fetchStub = vi.fn().mockResolvedValue(
+          reply({ reply: "Abrimos de 8 a 5.", goal: "Responder", maxPieces: 0 }),
+        );
+        vi.stubGlobal("fetch", fetchStub);
+        await workOne(A, executeStep, () => 10);
+        expect(fetchStub).toHaveBeenCalledTimes(1);
+        expect(await row(team.id)).toMatchObject({
+          status: "completed",
+          chargedCents: 1,
+          reservedCents: 0,
+          result: { goal: "Responder", maxPieces: 0 },
+        });
+        expect(
+          await db.agentMessage.findFirstOrThrow({ where: { runId: team.id, role: "assistant" } }),
+        ).toMatchObject({ text: "Abrimos de 8 a 5." });
+        // Nothing is left to run.
+        expect(await workOne(A, executeStep, () => 10)).toBe(false);
+      });
+
+      it("a plan continues to research, which makes no paid call without saved reports or news", async () => {
+        stubModel(true);
+        await saveSettings(A, { ...settings, teamMode: true });
+        const team = await ask("Prepara contenido de goteras", { kind: "team" });
+        const fetchStub = vi
+          .fn()
+          .mockResolvedValue(reply({ reply: "", goal: "Más llamadas por goteras", maxPieces: 3 }));
+        vi.stubGlobal("fetch", fetchStub);
+        await workOne(A, executeStep, () => 10);
+        expect(await row(team.id)).toMatchObject({ status: "queued", stage: 1, chargedCents: 1 });
+        await workOne(A, executeStep, () => 10);
+        // The research step ran (it cost nothing) and the provider was called only for the plan.
+        expect(fetchStub).toHaveBeenCalledTimes(1);
+        const step = await db.agentStep.findUniqueOrThrow({
+          where: { runId_name: { runId: team.id, name: "research" } },
+        });
+        expect(step).toMatchObject({ status: "succeeded", chargedCents: 0 });
+        expect(step.output).toEqual({ items: [], digest: [] });
+        expect(await row(team.id)).toMatchObject({ status: "queued", stage: 2, chargedCents: 1 });
+      });
     });
 
     it("routes a piece's steps to the agent of its plan", async () => {

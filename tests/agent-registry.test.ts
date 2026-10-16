@@ -92,9 +92,14 @@ describe("registro de agentes", () => {
     expect(AGENTS.review.label.es).toBe("Revisión editorial");
   });
 
-  it("mientras no existan los agentes, cada uno falla con un mensaje claro", async () => {
-    for (const a of Object.values(AGENTS))
+  it("mientras no existan los demás agentes, cada uno falla con un mensaje claro", async () => {
+    // El Director y el agente SEO ya existen (tests/agent-director-seo.test.ts); los otros cinco siguen sin hacerse.
+    const todo = Object.values(AGENTS).filter((a) => !["director", "seo"].includes(a.key));
+    expect(todo.map((a) => a.key).sort()).toEqual(["copy", "design", "review", "strategy", "video"]);
+    for (const a of todo)
       await expect(a.run({} as never)).rejects.toThrow("Agente no disponible.");
+    for (const key of ["director", "seo"] as const)
+      expect(AGENTS[key].run).not.toBe(AGENTS.copy.run);
   });
 });
 

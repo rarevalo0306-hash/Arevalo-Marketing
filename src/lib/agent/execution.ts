@@ -44,29 +44,10 @@ import { templateStoryboard, type VideoMedia } from "@/lib/video-plan";
 import { optimizeEligible } from "./optimization";
 import { designStyleOf } from "@/lib/design-style";
 import { SYSTEM, MEDIA_POLICY } from "./prompts";
+import { boundedContext } from "./bounded-context";
 import { libraryMedia } from "./library";
 import { executeTeamStep } from "./team-execution";
 
-function boundedContext(c: Context) {
-  return {
-    ...c,
-    business: {
-      ...c.business,
-      aiProfile: c.business.aiProfile.slice(0, 3000),
-      study: JSON.stringify(c.business.study).slice(0, 5000),
-    },
-    knowledge: c.knowledge
-      .filter((k) => Date.parse(k.expiresAt) > Date.now())
-      .slice(0, 12),
-    messages: c.messages.slice(-6),
-    posts: c.posts.slice(0, 6),
-    tools: c.tools.map((t) => ({
-      name: t.name,
-      href: t.href,
-      execution: t.execution,
-    })),
-  };
-}
 function mediaSelection(media: VideoMedia[]) {
   return {
     policy: "library_first",

@@ -2,11 +2,13 @@
 import { AgentError } from "../access";
 import type { AgentKey, PlanStep } from "../plan";
 import type { StepResult } from "../queue";
+import { runDirector } from "./director";
+import { runSeo } from "./seo";
 import type { AgentDef } from "./types";
 
 export type { AgentDef, AgentInput } from "./types";
 
-/** Placeholder until each agent exists (director, seo and strategy, then copy, design, video and review). */
+/** Placeholder until each agent exists (strategy, then copy, design, video and review). */
 const unavailable = async (): Promise<StepResult> => {
   throw new AgentError("Agente no disponible.");
 };
@@ -17,14 +19,14 @@ export const AGENTS: Record<Exclude<AgentKey, "matya">, AgentDef> = {
     label: { es: "Director", en: "Director" },
     tools: ["readContext", "readSignals", "readCalendar"],
     usesModel: true,
-    run: unavailable,
+    run: runDirector,
   },
   seo: {
     key: "seo",
     label: { es: "SEO e investigación", en: "SEO and research" },
     tools: ["readContext", "readSeoReports"],
     usesModel: true,
-    run: unavailable,
+    run: runSeo,
   },
   strategy: {
     key: "strategy",
