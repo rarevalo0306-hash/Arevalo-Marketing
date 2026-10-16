@@ -67,3 +67,12 @@ export function pruneModelPrices(prices: Settings["modelPrices"], models: Settin
   const used = new Set(Object.values(models).map((m) => `${m.provider}:${m.model}`));
   return Object.fromEntries(Object.entries(prices).filter(([id]) => used.has(id)));
 }
+
+/**
+ * What submitting the settings form does (a click on «Guardar» or Enter in a field). Something marked: nothing is saved and the
+ * fields that stayed quiet until touched say what is wrong. A request already running: nothing at all (no second save).
+ */
+export function submitDecision(invalid: readonly string[], busy: boolean): { save: boolean; reveal: boolean } {
+  if (busy) return { save: false, reveal: false };
+  return invalid.length ? { save: false, reveal: true } : { save: true, reveal: false };
+}

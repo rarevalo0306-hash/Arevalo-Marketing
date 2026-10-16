@@ -83,6 +83,7 @@ function RateField({
           inputMode="decimal"
           autoComplete="off"
           value={text}
+          aria-required="true"
           aria-invalid={marked}
           aria-describedby={marked ? `${id}-error` : undefined}
           onChange={(e) => {

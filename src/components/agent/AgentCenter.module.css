@@ -498,6 +498,16 @@
 .settings > button {
   align-self: flex-start;
 }
+/* «Guardar» con algo por corregir: se ve apagado pero se puede pulsar (entonces el formulario marca lo que falta); solo `disabled` lo bloquea. */
+.settings > button:global(.btn)[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.settings > button:global(.btn):global(.on)[aria-disabled="true"]:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-ink);
+}
 .formGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;

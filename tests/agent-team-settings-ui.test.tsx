@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AgentSettings, nextFormKey } from "@/components/agent/AgentSettings";
+import { AgentSettings, SaveButton, focusFirstInvalid, nextFormKey, submitSettings } from "@/components/agent/AgentSettings";
 import { I18nProvider } from "@/components/I18n";
 import { AI_AGENTS, PauseBlock, TeamSettings, pauseAll, resumeAll } from "@/components/agent/TeamSettings";
 import { DEFAULT_SETTINGS, type Snapshot } from "@/components/agent/types";
@@ -317,6 +317,14 @@ describe("Modo equipo: los precios", () => {
     expect(ids.size).toBe(2);
   });
 
+  it("both price inputs say they are required", () => {
+    const html = render({ settings: { agentModels: { copy: { provider: "claude", model: "sonnet" } } } });
+    const [row] = priceRows(html);
+    const inputs = [...row.html.matchAll(/<input[^>]*>/g)].map((m) => m[0]);
+    expect(inputs).toHaveLength(2);
+    for (const input of inputs) expect(input).toContain('aria-required="true"');
+  });
+
   it("two agents on the same model share one pair of fields; different models get one each", () => {
     const same = priceRows(
       render({
@@ -613,6 +621,111 @@ describe("Centro MATYA: la configuración", () => {
   });
 });
 
+describe("Guardar muestra lo que lo bloquea", () => {
+  const button = (props: { busy?: boolean; blocked?: boolean }, lang: "es" | "en" = "es") =>
+    renderToStaticMarkup(
+      <I18nProvider lang={lang}>
+        <SaveButton busy={props.busy ?? false} blocked={props.blocked ?? false} />
+      </I18nProvider>,
+    );
+  // A real `disabled` attribute, not the one inside `aria-disabled`.
+  const disabled = (html: string) => /\sdisabled=""/.test(html);
+
+  it("with a field to fix, Save is aria-disabled but not disabled, so a click or Enter still reaches the form", () => {
+    const html = button({ blocked: true });
+    expect(html).toContain('type="submit"');
+    expect(html).toContain('aria-disabled="true"');
+    expect(disabled(html)).toBe(false);
+    expect(html).toContain("Guardar configuración");
+  });
+
+  it("while a request runs it is really disabled, and says it is saving", () => {
+    for (const blocked of [false, true]) {
+      const html = button({ busy: true, blocked });
+      expect(disabled(html)).toBe(true);
+      expect(html).toContain("Guardando…");
+      expect(html).toContain('type="submit"');
+    }
+  });
+
+  it("with nothing to fix it is a plain, enabled submit button", () => {
+    const html = button({});
+    expect(html).toContain('type="submit"');
+    expect(html).not.toContain("disabled");
+    expect(html).not.toContain("aria-disabled");
+  });
+
+  it("says it in English too", () => {
+    expect(button({ blocked: true }, "en")).toContain("Save settings");
+    expect(button({ busy: true }, "en")).toContain("Saving…");
+  });
+
+  it("the form starts with its Save button enabled", () => {
+    const { data } = fixture();
+    const html = renderToStaticMarkup(<AgentSettings data={data} busy={false} save={async () => true} act={async () => true} saveError="" saveNotice="" />);
+    const save = [...html.matchAll(/<button[^>]*>/g)].map((m) => m[0]).filter((b) => b.includes('type="submit"'));
+    expect(save).toHaveLength(1);
+    expect(save[0]).not.toContain("disabled");
+  });
+
+  describe("what the form does when the owner submits (click or Enter)", () => {
+    const sent = (extra: Partial<Parameters<typeof submitSettings>[1]> = {}) => {
+      const event = { preventDefault: vi.fn() };
+      const save = vi.fn(async () => true);
+      const reveal = vi.fn();
+      const value: Settings = {
+        ...DEFAULT_SETTINGS,
+        agentModels: { copy: { provider: "claude", model: "sonnet" } },
+        modelPrices: { "claude:sonnet": { input: 3, output: 15 }, "claude:old": { input: 1, output: 2 } },
+      };
+      const ctx = { invalid: [] as string[], busy: false, value, save, reveal, ...extra };
+      return { event, save, reveal, value, run: () => submitSettings(event, ctx) };
+    };
+
+    it("never calls save while a field is marked, and reveals every error instead", async () => {
+      const call = sent({ invalid: ["price:claude:sonnet:output"] });
+      await call.run();
+      expect(call.event.preventDefault).toHaveBeenCalledTimes(1);
+      expect(call.save).not.toHaveBeenCalled();
+      expect(call.reveal).toHaveBeenCalledTimes(1);
+    });
+
+    it("saves what is in the form, without the prices of models nobody uses", async () => {
+      const call = sent();
+      await call.run();
+      expect(call.event.preventDefault).toHaveBeenCalledTimes(1);
+      expect(call.reveal).not.toHaveBeenCalled();
+      expect(call.save).toHaveBeenCalledTimes(1);
+      expect(call.save).toHaveBeenCalledWith({ ...call.value, modelPrices: { "claude:sonnet": { input: 3, output: 15 } } });
+    });
+
+    it("does nothing while a request is running", async () => {
+      for (const invalid of [[], ["radarHours"]]) {
+        const call = sent({ busy: true, invalid });
+        await call.run();
+        expect(call.event.preventDefault).toHaveBeenCalledTimes(1);
+        expect(call.save).not.toHaveBeenCalled();
+        expect(call.reveal).not.toHaveBeenCalled();
+      }
+    });
+  });
+
+  describe("focus on the first field to fix", () => {
+    it("looks for the first marked field in the form and focuses it", () => {
+      const focus = vi.fn();
+      const querySelector = vi.fn(() => ({ focus }));
+      focusFirstInvalid({ querySelector });
+      expect(querySelector).toHaveBeenCalledWith('[aria-invalid="true"]');
+      expect(focus).toHaveBeenCalledTimes(1);
+    });
+
+    it("does nothing when there is no form yet or nothing is marked", () => {
+      expect(() => focusFirstInvalid(null)).not.toThrow();
+      expect(() => focusFirstInvalid({ querySelector: () => null })).not.toThrow();
+    });
+  });
+});
+
 describe("la configuración sigue en su lugar cuando se pausa", () => {
   it("«Pausar todo» moves the revision, but the form keeps what the owner typed", () => {
     const start = { key: 4, revision: 4, paused: false };
@@ -684,6 +797,22 @@ describe("TeamSettings in the Team.module.css", () => {
     const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
     return (hi + 0.05) / (lo + 0.05);
   };
+
+  it("styles Save with a field to fix as disabled, without any colour of its own and without the hover of an enabled button", () => {
+    const rule = (head: string) => {
+      const at = CENTER.indexOf(head);
+      expect(at, head).toBeGreaterThanOrEqual(0);
+      return CENTER.slice(at, CENTER.indexOf("}", at));
+    };
+    const dim = rule('.settings > button:global(.btn)[aria-disabled="true"] {');
+    expect(dim).toContain("opacity: 0.5");
+    expect(dim).toContain("cursor: not-allowed");
+    const hover = rule('.settings > button:global(.btn):global(.on)[aria-disabled="true"]:hover {');
+    expect(hover).toContain("background: var(--primary)");
+    expect(hover).toContain("border-color: var(--primary)");
+    expect(hover).toContain("color: var(--primary-ink)");
+    expect(dim + hover).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+  });
 
   it("gives the field errors and the marked fields a colour that reads in the night theme, at 4.5:1 for the text and 3:1 for the border", () => {
     const nightError = block(CENTER, ':global([data-theme="noche"]) .fieldError,');

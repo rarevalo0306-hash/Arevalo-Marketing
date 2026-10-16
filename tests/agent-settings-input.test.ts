@@ -12,6 +12,7 @@ import {
   readRate,
   readUsd,
   setAgentModel,
+  submitDecision,
 } from "@/lib/agent/settings-input";
 
 describe("límites en dólares", () => {
@@ -138,5 +139,19 @@ describe("el modelo de cada agente", () => {
     expect(pruneModelPrices(prices, same)).toEqual({ "claude:sonnet": prices["claude:sonnet"] });
     // Un modelo sin precio guardado no inventa uno.
     expect(pruneModelPrices({}, models)).toEqual({});
+  });
+});
+
+describe("enviar el formulario de la configuración", () => {
+  it("sin nada por corregir y sin pedido en curso, guarda", () => {
+    expect(submitDecision([], false)).toEqual({ save: true, reveal: false });
+  });
+  it("con algo por corregir no guarda y muestra lo que falta (clic o Enter)", () => {
+    expect(submitDecision(["price:claude:sonnet:input"], false)).toEqual({ save: false, reveal: true });
+    expect(submitDecision(["radarHours", "model:copy"], false)).toEqual({ save: false, reveal: true });
+  });
+  it("con un pedido en curso no hace nada: ni guarda dos veces ni marca campos", () => {
+    expect(submitDecision([], true)).toEqual({ save: false, reveal: false });
+    expect(submitDecision(["dailyBudgetCents"], true)).toEqual({ save: false, reveal: false });
   });
 });
