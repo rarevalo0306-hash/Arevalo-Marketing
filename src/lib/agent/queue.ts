@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { Prisma, type AgentRun } from "@prisma/client";
-import { z } from "zod";
 import { db } from "@/lib/db";
 import { businessTz, localDay } from "@/lib/business-tz";
 import { AgentError } from "./access";
@@ -19,6 +18,7 @@ import { newsFresh } from "./freshness";
 import {
   Piece,
   PieceFormat,
+  ReviewProblemSchema,
   reworkSteps,
   stepsForPiece,
   stepsOfPlan,
@@ -31,6 +31,24 @@ export const json = (value: unknown) =>
   JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 export const LEASE_MS = 4 * 60000;
 const terminal = ["completed", "blocked", "uncertain", "cancelled"];
+/** Context keys that `loadContext`, `enqueue`'s own checks or `spawnPieces` set: never from a caller. */
+const OWNED_CONTEXT = new Set<string>([
+  "business",
+  "industry",
+  "revision",
+  "capturedAt",
+  "objective",
+  "memory",
+  "knowledge",
+  "connections",
+  "campaigns",
+  "posts",
+  "tools",
+  "messages",
+  "news",
+  "campaignId",
+  "piece",
+] satisfies (keyof Context | "piece")[]);
 /** The step ids of a run: its stored plan (team, piece) or the fixed recipe of its kind. */
 export function stepsOf(run: Pick<AgentRun, "kind" | "plan">): string[] {
   return stepsOfPlan(run.plan) ?? stepsFor(run.kind as RunKind) ?? [];
@@ -40,7 +58,9 @@ function piecePlan(
   run: Pick<AgentRun, "kind" | "plan">,
 ): { plan: Record<string, unknown>; steps: PlanStep[] } | null {
   if (run.kind !== "piece" || !stepsOfPlan(run.plan)) return null;
+  // stepsOfPlan also reads a team plan, which has no steps list: never map that.
   const plan = run.plan as Record<string, unknown>;
+  if (plan.kind !== "piece" || !Array.isArray(plan.steps)) return null;
   const steps = (plan.steps as Record<string, unknown>[]).map((s) => ({
     id: s.id as string,
     agent: (typeof s.agent === "string" ? s.agent : "matya") as AgentKey,
@@ -115,11 +135,13 @@ export async function enqueue(
     throw new AgentError("Ese tipo de encargo no se puede pedir directamente.");
   // Never read from `raw`: the owner's HTTP body must not pass as the daily cycle.
   const origin = opts.origin === "daily" ? "daily" : "owner";
-  // Extra keys are added; they never replace what was loaded for this business.
-  const context: Context = {
-    ...opts.extraContext,
-    ...(await loadContext(businessId)),
-  };
+  // Extra keys are added; they never replace what was loaded or checked for this business.
+  const extra = Object.fromEntries(
+    Object.entries(opts.extraContext ?? {}).filter(
+      ([k]) => !OWNED_CONTEXT.has(k),
+    ),
+  );
+  const context: Context = { ...extra, ...(await loadContext(businessId)) };
   if (input.campaignId) {
     const c = await db.campaign.findFirst({
       where: { id: input.campaignId, businessId },
@@ -160,11 +182,10 @@ export async function enqueue(
           "Activa el modo equipo para pedir trabajo al equipo.",
         );
     }
-    // A team's pieces are bounded by the daily post cap, not by this one.
+    // A team's pieces count too; `spawnPieces` itself never checks this cap.
     const pending = await tx.agentRun.count({
       where: {
         businessId,
-        kind: { not: "piece" },
         status: {
           in: ["queued", "running", "waiting_approval", "waiting_provider"],
         },
@@ -561,11 +582,6 @@ export async function changeRun(
   });
 }
 
-const Problem = z.object({
-  kind: z.string(),
-  detail: z.string(),
-  sendBackTo: z.enum(["copy", "design"]),
-});
 /** The problems a stored review output lists; anything unreadable is skipped. */
 function problemsOf(output: unknown): ReviewProblem[] {
   const list =
@@ -574,7 +590,7 @@ function problemsOf(output: unknown): ReviewProblem[] {
       : undefined;
   if (!Array.isArray(list)) return [];
   return list.flatMap((p) => {
-    const r = Problem.safeParse(p);
+    const r = ReviewProblemSchema.safeParse(p);
     return r.success ? [r.data] : [];
   });
 }
@@ -660,7 +676,7 @@ async function redo(
 /**
  * Creates the parent's pieces as child runs, once each (`requestKey = parent:pieceId`).
  * Returns them in piece order, the existing ones included. A cancelled parent creates
- * nothing. Pieces do not count toward the open-work cap: the daily post cap bounds them.
+ * nothing. It never checks the open-work cap: dispatch keeps within the daily post cap.
  */
 export async function spawnPieces(
   parent: AgentRun,

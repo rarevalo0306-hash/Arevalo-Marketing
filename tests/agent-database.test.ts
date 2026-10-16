@@ -11,6 +11,7 @@ import {
   changeRun,
   spawnPieces,
   stepsOf,
+  planStepMeta,
   type StepResult,
 } from "@/lib/agent/queue";
 import { reworkSteps, stepsForPiece } from "@/lib/agent/plan";
@@ -1049,23 +1050,164 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     expect(again.map(([c]) => c.id)).toEqual([first.id, first.id]);
     expect(await db.agentRun.count({ where: { parentRunId: parent.id } })).toBe(1);
   });
-  it("pieces skip the open-work cap but never outlive a cancelled parent", async () => {
+  it("pieces count toward the open-work cap, spawnPieces ignores it, and a cancelled parent spawns nothing", async () => {
     const parent = await teamParent();
+    const open = () =>
+      db.agentRun.count({
+        where: {
+          businessId: A,
+          status: { in: ["queued", "running", "waiting_approval", "waiting_provider"] },
+        },
+      });
     const pieces = Array.from({ length: 8 }, (_, i) => ({
       ...roof,
       id: `p${i + 1}`,
       topic: `Tema ${i + 1}`,
     }));
+    // From 1 open to 9: dispatch is bounded by the daily post cap, not by this one.
     const kids = await spawnPieces(parent, pieces);
     expect(kids.map((k) => k.requestKey)).toEqual(
       pieces.map((p) => `${parent.requestKey}:${p.id}`),
     );
-    await expect(ask("Ponme al día")).resolves.toMatchObject({ kind: "briefing" });
+    expect(await open()).toBe(9);
+    await expect(ask("Ponme al día")).rejects.toThrow("ocho trabajos abiertos");
+    expect(
+      await spawnPieces(parent, [{ ...roof, id: "p9", topic: "Otro tema" }]),
+    ).toHaveLength(1);
+    expect(await open()).toBe(10);
     // Cancelling while `dispatch` runs only flags the parent; no new piece is created.
     await changeRun(A, parent.id, "cancel");
     expect(
-      await spawnPieces(parent, [{ ...roof, id: "p9", topic: "Otro tema" }]),
+      await spawnPieces(parent, [{ ...roof, id: "p10", topic: "Tema diez" }]),
     ).toEqual([]);
-    expect(await db.agentRun.count({ where: { parentRunId: parent.id } })).toBe(8);
+    expect(await db.agentRun.count({ where: { parentRunId: parent.id } })).toBe(9);
+  });
+  it("a piece row with a team or broken plan never throws when its step settles", async () => {
+    const child = await pieceRun();
+    await db.agentRun.update({
+      where: { id: child.id },
+      data: { plan: { kind: "team" } },
+    });
+    const bad = await row(child.id);
+    expect(planStepMeta(bad)).toBeUndefined();
+    expect(stepsOf(bad)).toEqual(["plan", "research", "strategy", "dispatch"]);
+    const c = await claimRun(A);
+    expect(c?.id).toBe(child.id);
+    await beginStep(child.id, c!.leaseToken, "plan", 0);
+    await expect(
+      finishStep(child.id, c!.leaseToken, "plan", {
+        data: {},
+        insertSteps: [{ id: "copy-r1", agent: "copy", attempt: 1 }],
+      }),
+    ).resolves.toBeUndefined();
+    expect(await row(child.id)).toMatchObject({
+      status: "queued",
+      stage: 1,
+      plan: { kind: "team" },
+    });
+    expect(
+      await db.agentStep.findUniqueOrThrow({
+        where: { runId_name: { runId: child.id, name: "plan" } },
+      }),
+    ).toMatchObject({ status: "succeeded" });
+  });
+  it("ignores insertSteps returned by a team run", async () => {
+    await saveSettings(A, { ...settings, teamMode: true });
+    const team = await ask("x", { kind: "team" });
+    await workOne(
+      A,
+      async () => ({
+        data: {},
+        insertSteps: [{ id: "copy-r1", agent: "copy", attempt: 1 }],
+      }),
+      () => 0,
+    );
+    const after = await row(team.id);
+    expect(after).toMatchObject({ status: "queued", stage: 1, plan: { kind: "team" } });
+    expect(stepsOf(after)).toEqual(["plan", "research", "strategy", "dispatch"]);
+  });
+  it("extra context cannot carry a campaign, news or a piece past enqueue's checks", async () => {
+    const other = await db.campaign.create({ data: { businessId: B, name: "B only" } });
+    const extraContext = {
+      signals: { emptyDays: 1 },
+      campaignId: other.id,
+      news: { id: "fake", title: "Sin contrastar" },
+      piece: roof,
+      revision: 999,
+    };
+    // The pause guard still needs a campaign checked against this business.
+    await expect(
+      enqueue(A, { text: "Pausa", kind: "pause", requestKey: key("extra-pause") }, { extraContext }),
+    ).rejects.toThrow("Selecciona la campaña");
+    const r = await enqueue(
+      A,
+      { text: "Ponme al día", requestKey: key("extra-brief") },
+      { extraContext },
+    );
+    const ctx = r.context as Record<string, unknown>;
+    expect(ctx.signals).toEqual({ emptyDays: 1 });
+    expect(ctx).not.toHaveProperty("campaignId");
+    expect(ctx).not.toHaveProperty("news");
+    expect(ctx).not.toHaveProperty("piece");
+    expect(ctx.revision).toBe((await loadContext(A)).revision);
+  });
+  it("redo on an article piece sends everything back to the writer", async () => {
+    const parent = await teamParent();
+    const [child] = await spawnPieces(parent, [
+      { ...roof, format: "articulo", channels: ["seo"] },
+    ]);
+    expect(stepsOf(child)).toEqual(["article", "review", "article_publish"]);
+    const failed = (name: string): Record<string, StepResult> => ({
+      [name]: {
+        data: {
+          approved: false,
+          problems: [{ kind: "falta-imagen", detail: "Sin imagen", sendBackTo: "design" }],
+        },
+        state: "waiting_approval",
+      },
+    });
+    const ran: string[] = [];
+    for (let i = 0; i < 2; i++) await workOne(A, runner(failed("review"), ran), () => 0);
+    expect(await row(child.id)).toMatchObject({ status: "waiting_approval", stage: 2 });
+    await changeRun(A, child.id, "redo");
+    expect(stepsOf(await row(child.id))).toEqual([
+      "article",
+      "review",
+      "article-r1",
+      "review-r1",
+      "article_publish",
+    ]);
+    for (let i = 0; i < 2; i++) await workOne(A, runner(failed("review-r1"), ran), () => 0);
+    expect(ran).toEqual(["article", "review", "article-r1", "review-r1"]);
+    await changeRun(A, child.id, "redo");
+    const now = await row(child.id);
+    expect(stepsOf(now)).toEqual([
+      "article",
+      "review",
+      "article-r1",
+      "review-r1",
+      "article-r2",
+      "review-r2",
+      "article_publish",
+    ]);
+    expect((now.plan as { steps: unknown[] }).steps.slice(4, 6)).toEqual([
+      { id: "article-r2", agent: "copy", attempt: 2 },
+      { id: "review-r2", agent: "review", attempt: 2 },
+    ]);
+  });
+  it("refuses redo while MATYA is disabled and changes nothing", async () => {
+    const child = await pieceRun();
+    const passed: StepResult = {
+      data: { approved: true, problems: [] },
+      state: "waiting_approval",
+    };
+    for (let i = 0; i < 3; i++) await workOne(A, runner({ review: passed }), () => 0);
+    const before = await row(child.id);
+    expect(before).toMatchObject({ status: "waiting_approval", stage: 3 });
+    await saveSettings(A, { ...settings, teamMode: true, enabled: false });
+    await expect(changeRun(A, child.id, "redo")).rejects.toThrow("Activa MATYA");
+    const after = await row(child.id);
+    expect(after).toMatchObject({ status: "waiting_approval", stage: 3 });
+    expect(after.plan).toEqual(before.plan);
   });
 });

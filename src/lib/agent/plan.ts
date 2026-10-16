@@ -188,11 +188,12 @@ export function validatePieces(
   return { pieces, dropped };
 }
 
-export type ReviewProblem = {
-  kind: string;
-  detail: string;
-  sendBackTo: "copy" | "design";
-};
+export const ReviewProblemSchema = z.object({
+  kind: z.string(),
+  detail: z.string(),
+  sendBackTo: z.enum(["copy", "design"]),
+});
+export type ReviewProblem = z.infer<typeof ReviewProblemSchema>;
 
 /**
  * The only correction round: send the problems back, then review once more.
