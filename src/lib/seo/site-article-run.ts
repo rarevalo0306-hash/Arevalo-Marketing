@@ -35,6 +35,7 @@ import {
   type SitePublished,
 } from "@/lib/seo/site-article";
 import { readArticleReport, type ArticleReport } from "@/lib/seo/writer";
+import { SITE_PHOTO_PICK_MAX_TOKENS } from "@/lib/seo/writer-limits";
 import { readStudy } from "@/lib/study-shape";
 
 const BIZ = {
@@ -131,7 +132,9 @@ async function aiPickPhoto(pref: string, topic: string, ranked: { item: PhotoIte
   const system =
     "You choose the hero photo for a business's website article from its own photo library. Only choose a photo that truly shows the article's topic; if none does, answer 0. Never choose a photo that would mislead (for example a different service).";
   const user = `Article topic:\n${topic.slice(0, 1500)}\n\nPhotos:\n${list}`;
-  const out = process.env.GEMINI_API_KEY ? await askGemini(AiPhotoPick, system, user, 800) : await ask(pref, AiPhotoPick, system, user, 800);
+  const out = process.env.GEMINI_API_KEY
+    ? await askGemini(AiPhotoPick, system, user, SITE_PHOTO_PICK_MAX_TOKENS)
+    : await ask(pref, AiPhotoPick, system, user, SITE_PHOTO_PICK_MAX_TOKENS);
   return { index: Math.max(0, Math.min(ranked.length, Math.round(out.best))), why: { es: out.why_es.slice(0, 200), en: out.why_en.slice(0, 200) } };
 }
 

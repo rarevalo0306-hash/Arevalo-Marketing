@@ -8,9 +8,11 @@ import {
   articleReserve,
   articleUpTo,
   articleWrittenText,
+  sitePublishCents,
+  sitePublishCharge,
 } from "@/lib/agent/article-cost";
 import type { Piece } from "@/lib/agent/plan";
-import { SEO_ARTICLE_MAX_TOKENS } from "@/lib/seo/writer-limits";
+import { SEO_ARTICLE_MAX_TOKENS, SITE_PHOTO_PICK_MAX_TOKENS, SITE_TRANSLATION_MAX_TOKENS } from "@/lib/seo/writer-limits";
 import { TEXT_PRICES, WRITE_AI, writeAiCents } from "@/lib/rankfix-shape";
 import { SITE_TEXT_CENTS } from "@/lib/seo/site-article";
 import { WRITER_SERP_COST } from "@/lib/seo/writer";
@@ -50,10 +52,45 @@ describe("lo que se reserva y lo que se cobra", () => {
     expect(articleAiCents(null)).toBe(articleAiCents("claude"));
   });
 
-  it("se reserva Google más ese tope, hasta el centavo siguiente; con la traducción es el «hasta» que ve el dueño", () => {
+  it("la publicación en la web reserva el tope de la traducción y de la elección de la foto, según la IA del negocio (R42)", () => {
+    // The caps the code asks the provider for: the translation and the photo pick.
+    expect(SITE_TRANSLATION_MAX_TOKENS).toBe(16_000);
+    expect(SITE_PHOTO_PICK_MAX_TOKENS).toBe(800);
+    const usdOf = (p: { inputPerM: number; outputPerM: number }, input: number, output: number) =>
+      (input * p.inputPerM + output * p.outputPerM) / 1_000_000;
+    for (const [provider, price] of Object.entries(TEXT_PRICES)) {
+      // The translation reads the whole article (never longer than the writer's cap) plus its instructions, and writes up to its cap.
+      const translate = usdOf(price, SEO_ARTICLE_MAX_TOKENS + 4_000, SITE_TRANSLATION_MAX_TOKENS);
+      // The photo pick goes to Gemini when it is connected: the dearer of the two counts.
+      const pick = Math.max(usdOf(price, 4_000, SITE_PHOTO_PICK_MAX_TOKENS), usdOf(TEXT_PRICES.gemini, 4_000, SITE_PHOTO_PICK_MAX_TOKENS));
+      expect(sitePublishCents(provider)).toBe(Math.ceil((translate + pick) * 100 - 1e-9));
+      // Never the old flat cent: the translation's cap alone costs more.
+      expect(sitePublishCents(provider)).toBeGreaterThan(SITE_TEXT_CENTS);
+    }
+    expect(sitePublishCents("gemini")).toBe(6);
+    expect(sitePublishCents("openai")).toBe(5);
+    expect(sitePublishCents("claude")).toBe(58);
+    // An AI nobody knows is counted as the dearest one.
+    expect(sitePublishCents("otra")).toBe(sitePublishCents("claude"));
+    expect(sitePublishCents(null)).toBe(sitePublishCents("claude"));
+  });
+
+  it("lo que se cobra al publicar nunca pasa de lo reservado (R42)", () => {
+    for (const provider of ["gemini", "openai", "claude", "otra"]) {
+      const ceiling = sitePublishCents(provider);
+      expect(sitePublishCharge(provider, ceiling)).toBe(ceiling);
+      // A smaller reservation caps it; a bigger one is not filled: the charge is the ceiling at most.
+      expect(sitePublishCharge(provider, ceiling - 1)).toBe(ceiling - 1);
+      expect(sitePublishCharge(provider, ceiling + 50)).toBe(ceiling);
+      expect(sitePublishCharge(provider, 0)).toBe(0);
+      expect(sitePublishCharge(provider, -3)).toBe(0);
+    }
+  });
+
+  it("se reserva Google más ese tope, hasta el centavo siguiente; con la publicación en la web es el «hasta» que ve el dueño", () => {
     for (const provider of ["gemini", "openai", "claude"]) {
       expect(articleReserve(provider)).toBe(Math.ceil(WRITER_SERP_COST * 100 + articleAiCents(provider)));
-      expect(articleUpTo(provider)).toBe(articleReserve(provider) + SITE_TEXT_CENTS);
+      expect(articleUpTo(provider)).toBe(articleReserve(provider) + sitePublishCents(provider));
     }
     expect(articleReserve("otra")).toBe(articleReserve("claude"));
     expect(articleReserve("claude")).toBeGreaterThan(articleReserve("gemini"));
@@ -80,8 +117,12 @@ describe("lo que lee el dueño", () => {
   it("el estimado dice la búsqueda, el «hasta» y que la foto con IA se pide aparte", () => {
     const es = articleApprovalText("reparación de techos", "gemini", "es", false);
     expect(es).toContain("«reparación de techos»");
-    // Gemini: 7 cents of AI at most, 1 of Google and 1 to translate.
-    expect(es).toContain("Costará hasta US$0.09: la búsqueda en Google (US$0.002), la redacción con IA (hasta US$0.07) y la traducción para la web (US$0.01)");
+    // Gemini: 7 cents of AI at most, 1 of Google and up to 6 to translate and pick the photo.
+    expect(es).toContain("Costará hasta US$0.14: la búsqueda en Google (US$0.002), la redacción con IA (hasta US$0.07) y la traducción para la web (hasta US$0.06)");
+    // The amount follows the business's AI: Claude costs more to write and to translate.
+    expect(articleApprovalText("reparación de techos", "claude", "es", false)).toContain(
+      "Costará hasta US$1.27: la búsqueda en Google (US$0.002), la redacción con IA (hasta US$0.68) y la traducción para la web (hasta US$0.58)",
+    );
     expect(es).toContain("la foto con IA se te pedirá aparte");
     expect(es.endsWith("Apruébalo para empezar.")).toBe(true);
     const en = articleApprovalText("roof repair", "gemini", "en", false);

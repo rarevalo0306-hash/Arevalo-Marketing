@@ -13,7 +13,7 @@ import { AGENTS } from "@/lib/agent/agents";
 import { agentCeiling } from "@/lib/agent/models";
 import { callCeiling, MAX_OUTPUT, meteredAsk, modelConfig, usageCents } from "@/lib/agent/metered";
 import { Copy } from "@/lib/agent/schema";
-import { articleCharge, articleReserve } from "@/lib/agent/article-cost";
+import { articleCharge, articleReserve, sitePublishCents } from "@/lib/agent/article-cost";
 import { pickText } from "@/lib/ai";
 import { advanceRender, startRender } from "@/lib/video-jobs";
 import { createArticleReport } from "@/lib/seo/writer-run";
@@ -666,8 +666,10 @@ describe.skipIf(!safe)("the team end to end (local database, simulated AI)", () 
     expect(article).toMatchObject({ agent: "copy", model: "", status: "succeeded", reservedCents: estimate });
     expect(article.chargedCents).toBe(articleCharge(REPORT.cost, REPORT.provider, estimate));
     expect(article.chargedCents).toBeLessThanOrEqual(estimate);
+    // The publication reserves the translation's ceiling for the business's AI (R42) and charges no more than that.
+    const translate = sitePublishCents(pickText(business.aiText));
     const published = (await stepOf(piece.id, "article_publish"))!;
-    expect(published).toMatchObject({ agent: "matya", status: "succeeded", reservedCents: SITE_TEXT_CENTS, chargedCents: SITE_TEXT_CENTS });
+    expect(published).toMatchObject({ agent: "matya", status: "succeeded", reservedCents: translate, chargedCents: translate });
     // The published article counts as one of the day's posts.
     const posts = await db.agentBudget.aggregate({ where: { businessId: A }, _sum: { posts: true } });
     expect(posts._sum.posts).toBe(1);

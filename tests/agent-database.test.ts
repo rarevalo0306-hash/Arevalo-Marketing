@@ -44,11 +44,11 @@ import { stormSchedule } from "@/lib/storm";
 import { localToUtc } from "@/lib/time";
 import { BUILTIN_TEMPLATES } from "@/lib/design-shapes";
 import type { VideoMedia } from "@/lib/video-plan";
-import { approveCostCents, SITE_TEXT_CENTS, type SitePhoto } from "@/lib/seo/site-article";
+import { approveCostCents, type SitePhoto } from "@/lib/seo/site-article";
 import { prepareForSite, approveForSite, sitePhotoApproval, sitePhotoCents } from "@/lib/seo/site-article-run";
 import { createArticleReport } from "@/lib/seo/writer-run";
 import { bi } from "@/lib/i18n";
-import { articleAiCents, articleReserve } from "@/lib/agent/article-cost";
+import { articleAiCents, articleReserve, sitePublishCents } from "@/lib/agent/article-cost";
 vi.mock("@/lib/library-files", () => ({
   ensureStoredCopy: vi.fn().mockImplementation(async (id) =>
     `https://example.com/stored-${id}.mp4`,
@@ -3569,6 +3569,8 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     // ---------- The website article ----------
 
     const piecePhone = "305-555-0100";
+    /** What the first pass of the publication reserves and charges: the translation's ceiling for Gemini, the AI these tests use (R42). */
+    const TRANSLATE = sitePublishCents("gemini");
     beforeEach(async () => {
       vi.stubEnv("DATAFORSEO_LOGIN", "synthetic");
       vi.stubEnv("DATAFORSEO_PASSWORD", "synthetic");
@@ -3726,15 +3728,45 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       expect(await stepOf(piece.id, "article_publish")).toMatchObject({
         agent: "matya",
         status: "succeeded",
-        reservedCents: SITE_TEXT_CENTS,
-        chargedCents: SITE_TEXT_CENTS,
+        reservedCents: TRANSLATE,
+        chargedCents: TRANSLATE,
         output: { reportId: "rep1", url: "https://mio.com/es/x" },
       });
       expect(await row(piece.id)).toMatchObject({ status: "completed", reservedCents: 0 });
-      expect(await money()).toEqual({ reservedCents: 0, chargedCents: SITE_TEXT_CENTS });
+      expect(await money()).toEqual({ reservedCents: 0, chargedCents: TRANSLATE });
       // A published article is one of the day's posts, counted once.
       expect((await budget())?.posts).toBe(1);
     });
+
+    it.each([
+      ["gemini", { GEMINI_API_KEY: "synthetic-no-provider-access", ANTHROPIC_API_KEY: "" }],
+      ["claude", { GEMINI_API_KEY: "", ANTHROPIC_API_KEY: "synthetic-no-provider-access" }],
+    ] as const)(
+      "the first publication pass reserves the translation's ceiling for the business's AI (%s) and charges no more (R42)",
+      async (provider, env) => {
+        for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value);
+        await db.business.update({ where: { id: A }, data: { aiText: provider } });
+        const piece = await reviewedArticle();
+        vi.mocked(prepareForSite).mockResolvedValue(prepared(library));
+        vi.mocked(approveForSite).mockResolvedValue(published);
+        let during: Awaited<ReturnType<typeof money>> | null = null;
+        vi.mocked(prepareForSite).mockImplementationOnce(async () => {
+          during = await money();
+          return prepared(library);
+        });
+        await workOne(A);
+        const ceiling = sitePublishCents(provider);
+        // Reserved before the translation was asked for, and charged exactly that ceiling: never the old flat cent.
+        expect(during).toEqual({ reservedCents: ceiling, chargedCents: 0 });
+        const step = (await stepOf(piece.id, "article_publish"))!;
+        expect(step).toMatchObject({ status: "succeeded", reservedCents: ceiling, chargedCents: ceiling });
+        expect(step.chargedCents).toBeLessThanOrEqual(step.reservedCents);
+        expect(await money()).toEqual({ reservedCents: 0, chargedCents: ceiling });
+        expect(await row(piece.id)).toMatchObject({ status: "completed", reservedCents: 0, chargedCents: ceiling });
+        // The workspace stays on: the charge never passed the reservation.
+        expect((await db.agentWorkspace.findUniqueOrThrow({ where: { businessId: A } })).enabled).toBe(true);
+      },
+    );
 
     it("artículo que necesita generar foto espera aprobación", async () => {
       const piece = await reviewedArticle();
@@ -3745,7 +3777,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       await workOne(A);
       // The translation was paid; nothing was generated or published.
       expect(approveForSite).not.toHaveBeenCalled();
-      expect(await row(piece.id)).toMatchObject({ status: "waiting_approval", reservedCents: 0, chargedCents: SITE_TEXT_CENTS });
+      expect(await row(piece.id)).toMatchObject({ status: "waiting_approval", reservedCents: 0, chargedCents: TRANSLATE });
       const waiting = await row(piece.id);
       expect(stepsOf(waiting)[waiting.stage]).toBe("article_publish");
       expect(await stepOf(piece.id, "article_publish")).toMatchObject({ status: "succeeded", output: { photoCents: 4 } });
@@ -3768,9 +3800,9 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       await workOne(A);
       expect(prepareForSite).toHaveBeenCalledTimes(1);
       expect(approveForSite).toHaveBeenCalledExactlyOnceWith(A, "rep1", 4);
-      expect(during).toEqual({ reservedCents: 4, chargedCents: SITE_TEXT_CENTS });
+      expect(during).toEqual({ reservedCents: 4, chargedCents: TRANSLATE });
       expect(await stepOf(piece.id, "article_publish:1")).toMatchObject({ status: "succeeded", reservedCents: 4, chargedCents: 4 });
-      expect(await row(piece.id)).toMatchObject({ status: "completed", chargedCents: SITE_TEXT_CENTS + 4 });
+      expect(await row(piece.id)).toMatchObject({ status: "completed", chargedCents: TRANSLATE + 4 });
       // The article counts as one post, when it is published (not at the wait, not twice).
       expect((await budget())?.posts).toBe(1);
     });
@@ -3786,7 +3818,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       await workOne(A);
       expect(approveForSite).not.toHaveBeenCalled();
       expect(await row(piece.id)).toMatchObject({ status: "blocked", error: expect.stringContaining("precio"), reservedCents: 0 });
-      expect(await money()).toEqual({ reservedCents: 0, chargedCents: SITE_TEXT_CENTS });
+      expect(await money()).toEqual({ reservedCents: 0, chargedCents: TRANSLATE });
     });
 
     it("an already generated image still waits for the owner, and costs nothing more", async () => {
@@ -3916,7 +3948,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       expect(await db.agentStep.count({ where: { runId: piece.id, status: { in: ["blocked", "uncertain"] } } })).toBe(0);
       expect(stepsOf(end)).toEqual(["article", "review", "article_publish"]);
       const article_ = (await stepOf(piece.id, "article"))!;
-      const charged = article_.chargedCents + 3 + SITE_TEXT_CENTS;
+      const charged = article_.chargedCents + 3 + TRANSLATE;
       expect(end.chargedCents).toBe(charged);
       expect(await money()).toEqual({ reservedCents: 0, chargedCents: charged });
       expect(createArticleReport).toHaveBeenCalledTimes(1);

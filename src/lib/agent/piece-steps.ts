@@ -5,8 +5,8 @@
 //   un «hasta US$X» (el tope de lo que el código le pide al proveedor, ver `article-cost.ts`); se reserva eso y no más: si el
 //   estimado sube después de aprobarlo, se le vuelve a preguntar. Una vuelta de corrección (`article-r<n>`) es otro borrador de pago
 //   y pide su propia aprobación.
-// - `article_publish`: prepara la vista previa (la traducción, unos centavos) y, si la foto no cuesta más, publica; al publicar, el
-//   artículo cuenta como una publicación del día. Una foto que la IA tendría que crear espera la aprobación del dueño: sin ella no
+// - `article_publish`: prepara la vista previa (la traducción, que reserva su tope: `sitePublishCents`) y, si la foto no cuesta
+//   más, publica; al publicar, el artículo cuenta como una publicación del día. Una foto que la IA tendría que crear espera la aprobación del dueño: sin ella no
 //   se genera ninguna imagen. Cada pasada se liga al reporte actual del artículo: la aprobación de una foto no vale para otro borrador.
 // Todo lo que se puede rechazar se rechaza antes de reservar (`pieceStepCost`), así un "no" no cuesta nada. `approvalNeeded` es la
 // puerta de `workOne`: un paso de pago sin la aprobación del dueño deja el trabajo esperando, sin reservar ni llamar a nadie.
@@ -15,7 +15,6 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { pickText, aiEnabled } from "@/lib/ai";
 import { usd } from "@/lib/rankfix-shape";
-import { SITE_TEXT_CENTS } from "@/lib/seo/site-article";
 import { sitePhotoApproval } from "@/lib/seo/site-article-run";
 import { articleSetup } from "@/lib/seo/writer-run";
 import {
@@ -28,7 +27,13 @@ import {
 } from "@/lib/video-jobs";
 import type { Storyboard } from "@/lib/video-plan";
 import { AgentError } from "./access";
-import { articleApprovalText, articleKeyword, articleReserve } from "./article-cost";
+import {
+  articleApprovalText,
+  articleKeyword,
+  articleReserve,
+  sitePublishCents,
+  sitePublishCharge,
+} from "./article-cost";
 import {
   approvedAfterReview,
   articleRefusal,
@@ -273,10 +278,17 @@ async function publishPass(run: AgentRun): Promise<PublishPass> {
   };
 }
 
+/** The text AI the business's website version is made with (`prepareForSite` asks `pickText` of the business's choice). */
+async function siteProvider(run: AgentRun): Promise<string | null> {
+  const business = await db.business.findUnique({ where: { id: run.businessId }, select: { aiText: true } });
+  return pickText(business?.aiText ?? "");
+}
+
 /**
- * What `article_publish` reserves. First pass: the translation. Second pass (the owner approved this report's AI photo): the photo,
- * at the price the owner was shown; a price that went up since, or a preview that went stale, is refused before anything is
- * reserved or generated.
+ * What `article_publish` reserves. First pass: the most the website version can cost with the business's text AI (the
+ * translation and the photo pick, `sitePublishCents`), the same ceiling the owner was told in «Costará hasta». Second pass (the
+ * owner approved this report's AI photo): the photo, at the price the owner was shown; a price that went up since, or a preview
+ * that went stale, is refused before anything is reserved or generated.
  */
 async function publishCost(run: AgentRun): Promise<number> {
   await assertCanPublish(run);
@@ -284,7 +296,7 @@ async function publishCost(run: AgentRun): Promise<number> {
   if (!parked) {
     if (!aiEnabled())
       throw new AgentError("Falta la clave de la IA (GEMINI_API_KEY, ANTHROPIC_API_KEY u OPENAI_API_KEY) en Vercel.");
-    return SITE_TEXT_CENTS;
+    return sitePublishCents(await siteProvider(run));
   }
   const shown = field(parked.output, "photoCents");
   if (parked.status !== "succeeded" || field(parked.output, "published") !== false || typeof shown !== "number")
@@ -331,20 +343,23 @@ function publishedText(urlEs: string, urlEn: string, already: boolean, photoFail
 }
 
 /**
- * The `article_publish` step. First pass: prepares the website version (the translation, a few cents) and, when its photo costs
- * nothing extra, publishes it. When the photo is an AI image to create (or one created that the owner has not approved), it waits
- * for the owner without generating or publishing anything. Second pass (`article_publish:<n>`, after the owner's approval): it
- * authorizes the prepared version, and that is when the photo is created. The charge is the reservation: the translation, or the photo.
+ * The `article_publish` step. First pass: prepares the website version (the translation) and, when its photo costs nothing extra,
+ * publishes it. When the photo is an AI image to create (or one created that the owner has not approved), it waits for the owner
+ * without generating or publishing anything. Second pass (`article_publish:<n>`, after the owner's approval): it authorizes the
+ * prepared version, and that is when the photo is created. The charge: for the first pass the translation's ceiling, because its AI
+ * reports no usage (`sitePublishCharge`), never more than the reservation; for the second the photo the owner approved.
  */
 async function publishStep(run: AgentRun, stepId: string): Promise<StepResult> {
   const language = languageOf(run.prompt);
   const { reportId, parked } = await publishPass(run);
-  // What this pass reserved is what it costs: the translation, or the photo the owner approved (and the price it must still have).
+  // What this pass reserved bounds what it costs: the translation's ceiling, or the photo the owner approved (at the price it must
+  // still have).
   const reserved = await db.agentStep.findFirst({
     where: { runId: run.id, run: { businessId: run.businessId }, name: stepId },
     select: { reservedCents: true },
   });
-  const cents = reserved?.reservedCents ?? 0;
+  const held = reserved?.reservedCents ?? 0;
+  const cents = parked ? held : sitePublishCharge(await siteProvider(run), held);
   const tools = toolsFor({ key: "matya", tools: ["publishArticle"] }, run);
   const beforePublish = () => claimPostSlot(run);
   const r = await tools.use("publishArticle")(

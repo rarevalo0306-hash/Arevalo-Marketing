@@ -2,11 +2,11 @@
 // El escritor de artículos no usa el modelo del agente: paga la consulta de Google (DataForSEO) y la IA de texto del negocio, y esa
 // IA no devuelve cuántos tokens usó. El código sí fija lo que le pide al proveedor: como mucho `SEO_ARTICLE_MAX_TOKENS` de salida
 // (el razonamiento incluido) y los precios de lista de cada IA (`TEXT_PRICES`). Con eso se calcula un «hasta US$X» que el dueño
-// aprueba antes de que se llame al escritor, y lo que se reserva es exactamente lo que se le dijo.
+// aprueba antes de que se llame al escritor, y lo que se reserva es exactamente lo que se le dijo. La publicación en la web (la
+// traducción y, si hace falta, la elección de la foto) tampoco informa su consumo: se reserva y se cobra su tope del mismo modo.
 import { TEXT_PRICES, usd, WRITE_AI } from "@/lib/rankfix-shape";
-import { SITE_TEXT_CENTS } from "@/lib/seo/site-article";
 import { WRITER_SERP_COST } from "@/lib/seo/writer";
-import { SEO_ARTICLE_MAX_TOKENS } from "@/lib/seo/writer-limits";
+import { SEO_ARTICLE_MAX_TOKENS, SITE_PHOTO_PICK_MAX_TOKENS, SITE_TRANSLATION_MAX_TOKENS } from "@/lib/seo/writer-limits";
 import type { Piece } from "./plan";
 
 /** The search an article is written for: the piece's keyword, or its topic when it has none. */
@@ -32,9 +32,46 @@ export function articleAiCents(provider: string | null | undefined): number {
 export const articleReserve = (provider: string | null | undefined): number =>
   Math.ceil(SERP_CENTS + articleAiCents(provider));
 
-/** Lo que puede costar el artículo entero hasta quedar en la web, sin foto con IA: escribirlo y traducirlo. */
+type Price = { inputPerM: number; outputPerM: number };
+/** Dólares de una llamada con esos tokens de entrada y de salida, a precio de lista. */
+const callUsd = (price: Price, input: number, output: number) =>
+  (input * price.inputPerM + output * price.outputPerM) / 1_000_000;
+
+/** Lo que lee la IA al traducir, además del artículo: las instrucciones, el esquema de la respuesta y los datos del negocio. */
+const SITE_PROMPT_TOKENS = 4_000;
+/** Lo que lee la IA al elegir la foto: el tema (1.500 letras como mucho) y las seis fotos mejor puntuadas, con su descripción. */
+const PHOTO_PICK_INPUT_TOKENS = 4_000;
+
+/**
+ * Lo más que puede costar la primera pasada de la publicación en la web (centavos, hacia arriba), sin la foto con IA, que se aprueba
+ * aparte. Son dos llamadas que no informan su consumo:
+ * - la traducción con la IA de texto del negocio: toda su salida permitida (`SITE_TRANSLATION_MAX_TOKENS`) y, como entrada, el
+ *   artículo entero (no puede ser más largo de lo que el escritor puede escribir, `SEO_ARTICLE_MAX_TOKENS`) con sus instrucciones;
+ * - la elección de la foto entre las de la biblioteca, cuando la mejor no es clara (`SITE_PHOTO_PICK_MAX_TOKENS`). Va a Gemini
+ *   cuando está conectada y si no a la IA del negocio, así que se cuenta a la más cara de las dos.
+ * Una IA que no se conoce se cuenta como la más cara. Como en `articleAiCents`: la salida tiene tope en el proveedor; la entrada y
+ * el precio de lista son lo que el código sabe, no una garantía del proveedor.
+ */
+export function sitePublishCents(provider: string | null | undefined): number {
+  const price = TEXT_PRICES[provider ?? ""] ?? TEXT_PRICES.claude;
+  const translate = callUsd(price, SEO_ARTICLE_MAX_TOKENS + SITE_PROMPT_TOKENS, SITE_TRANSLATION_MAX_TOKENS);
+  const pick = Math.max(
+    callUsd(price, PHOTO_PICK_INPUT_TOKENS, SITE_PHOTO_PICK_MAX_TOKENS),
+    callUsd(TEXT_PRICES.gemini, PHOTO_PICK_INPUT_TOKENS, SITE_PHOTO_PICK_MAX_TOKENS),
+  );
+  return Math.max(1, Math.ceil((translate + pick) * 100 - 1e-9));
+}
+
+/**
+ * Lo que se cobra al presupuesto por la primera pasada de la publicación: su tope (`sitePublishCents`), porque la IA no informa su
+ * consumo, y nunca más de lo reservado (`reserved`): un paso que cobra de más bloquea el trabajo y apaga a MATYA.
+ */
+export const sitePublishCharge = (provider: string | null | undefined, reserved: number): number =>
+  Math.max(0, Math.min(Number.isFinite(reserved) ? Math.floor(reserved) : 0, sitePublishCents(provider)));
+
+/** Lo que puede costar el artículo entero hasta quedar en la web, sin foto con IA: escribirlo y publicarlo (traducirlo). */
 export const articleUpTo = (provider: string | null | undefined): number =>
-  articleReserve(provider) + SITE_TEXT_CENTS;
+  articleReserve(provider) + sitePublishCents(provider);
 
 /**
  * Lo que se cobra al presupuesto cuando el artículo ya está escrito: lo que Google cobró de verdad (`googleUsd`, el costo del
@@ -54,7 +91,7 @@ export function articleApprovalText(
 ): string {
   const search = usd(SERP_CENTS);
   const write = usd(articleAiCents(provider));
-  const translate = usd(SITE_TEXT_CENTS);
+  const translate = usd(sitePublishCents(provider));
   const upTo = usd(articleUpTo(provider));
   const again = changed
     ? language === "en"
@@ -62,8 +99,8 @@ export function articleApprovalText(
       : "El costo estimado cambió desde que lo viste, así que te lo vuelvo a preguntar. "
     : "";
   return again + (language === "en"
-    ? `${rework ? `You asked to redo the article "${keyword}": writing another draft is a new paid call.` : `I am going to write the article "${keyword}" for your website.`} It will cost up to ${upTo}: the Google search (${search}), the AI writing (up to ${write}) and the translation for the web (${translate}). If no photo in your library fits the topic, an AI photo will be asked for separately. Approve it to start.`
-    : `${rework ? `Pediste rehacer el artículo «${keyword}»: escribir otro borrador es una nueva llamada de pago.` : `Voy a escribir el artículo «${keyword}» para tu web.`} Costará hasta ${upTo}: la búsqueda en Google (${search}), la redacción con IA (hasta ${write}) y la traducción para la web (${translate}). Si ninguna foto de tu biblioteca va con el tema, la foto con IA se te pedirá aparte. Apruébalo para empezar.`);
+    ? `${rework ? `You asked to redo the article "${keyword}": writing another draft is a new paid call.` : `I am going to write the article "${keyword}" for your website.`} It will cost up to ${upTo}: the Google search (${search}), the AI writing (up to ${write}) and the translation for the web (up to ${translate}). If no photo in your library fits the topic, an AI photo will be asked for separately. Approve it to start.`
+    : `${rework ? `Pediste rehacer el artículo «${keyword}»: escribir otro borrador es una nueva llamada de pago.` : `Voy a escribir el artículo «${keyword}» para tu web.`} Costará hasta ${upTo}: la búsqueda en Google (${search}), la redacción con IA (hasta ${write}) y la traducción para la web (hasta ${translate}). Si ninguna foto de tu biblioteca va con el tema, la foto con IA se te pedirá aparte. Apruébalo para empezar.`);
 }
 
 /** Lo que lee el dueño cuando el artículo quedó escrito. */
