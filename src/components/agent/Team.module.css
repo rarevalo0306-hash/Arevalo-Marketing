@@ -1,4 +1,4 @@
-/* La pestaña Hoy del Centro MATYA. Va dentro de `.root` de AgentCenter.module.css: de ahí hereda --agent-accent y --agent-tint. */
+/* Las pestañas Hoy y Equipo del Centro MATYA. Van dentro de `.root` de AgentCenter.module.css: de ahí hereda --agent-accent y --agent-tint. */
 .today {
   display: grid;
   gap: 32px;
@@ -293,6 +293,110 @@
   margin: 2px 0 0;
 }
 
+/* Equipo: una fila por agente (nombre, IA, estado, gasto) y el total del día. Solo usa los colores del tema, así que el tema noche no necesita los suyos. */
+.roster {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+}
+.roster h2 {
+  font-size: 18px;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.agents {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.agentRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 1.8fr) minmax(88px, auto);
+  grid-template-areas: "name ai status spend";
+  align-items: start;
+  gap: 8px 16px;
+  min-width: 0;
+  padding: 14px 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+.agentName {
+  grid-area: name;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.agentAi {
+  grid-area: ai;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.model {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.note {
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.agentStatus {
+  grid-area: status;
+  min-width: 0;
+}
+.agentStatus .state {
+  font-size: 13px;
+  font-weight: 600;
+}
+.agentStatus .error {
+  margin-top: 2px;
+}
+.agentSpend {
+  grid-area: spend;
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  min-width: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.agentSpend strong {
+  font-size: 14px;
+}
+.total {
+  min-width: 0;
+  padding: 14px 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.totalLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+  margin: 0;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.totalLine strong {
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+
 /* Pantallas medianas: las columnas pasan a filas de varias, para que cada una conserve un ancho que se pueda leer */
 @media (max-width: 1100px) {
   .board {
@@ -315,6 +419,14 @@
   .actions :global(.btn) {
     flex: 1 1 auto;
     min-height: 44px;
+  }
+  /* Cada agente es una tarjeta: nombre y gasto arriba, y debajo su IA y su estado a todo el ancho. */
+  .agentRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "name spend"
+      "ai ai"
+      "status status";
   }
 }
 

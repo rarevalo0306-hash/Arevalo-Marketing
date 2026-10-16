@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useT } from "@/components/I18n";
 import { AgentSettings } from "./AgentSettings";
 import { Output, labels, safeHref, stepNames, usd } from "./shared";
+import { TeamRoster } from "./TeamRoster";
 import { TeamToday } from "./TeamToday";
 import { useVoice } from "./useVoice";
 import { teamWorking } from "@/lib/agent/team-view";
@@ -200,8 +201,8 @@ export function AgentCenter({
       </section>
     );
   const teamOn = !!data.settings?.teamMode;
-  // The Hoy tab exists only with team mode on: if it turns off while the owner is there, the view goes back to the conversation.
-  const tab = chosenTab === "today" && !teamOn ? "activity" : chosenTab;
+  // The Hoy and Equipo tabs exist only with team mode on: if it turns off while the owner is there, the view goes back to the conversation.
+  const tab = (chosenTab === "today" || chosenTab === "team") && !teamOn ? "activity" : chosenTab;
   const active = data.runs.find((r) => r.status === "running");
   const working = !!active || teamWork.running;
   const exceptions = data.posts.filter((p) =>
@@ -254,7 +255,12 @@ export function AgentCenter({
       <nav className={s.tabs} aria-label={t("Centro MATYA", "MATYA workspace")}>
         {[
           ["activity", "Conversación", "Conversation"],
-          ...(teamOn ? [["today", "Hoy", "Today"]] : []),
+          ...(teamOn
+            ? [
+                ["today", "Hoy", "Today"],
+                ["team", "Equipo", "Team"],
+              ]
+            : []),
           ["knowledge", "Conocimiento", "Knowledge"],
           ["news", "Noticias", "News"],
           ["results", "Resultados", "Results"],
@@ -572,6 +578,7 @@ export function AgentCenter({
           onSettings={() => setTab("settings")}
         />
       )}
+      {tab === "team" && <TeamRoster data={data} />}
       {tab === "knowledge" && (
         <section className={s.knowledge}>
           <div className={s.sectionTitle}>

@@ -1,10 +1,12 @@
-// La pestaña Hoy del Centro MATYA: avisos, el plan de hoy, «Necesita tu sí» y el tablero del equipo.
+// Las pestañas Hoy y Equipo del Centro MATYA. Hoy: avisos, el plan de hoy, «Necesita tu sí» y el tablero del equipo.
+// Equipo: una fila por agente con su IA, si está listo, sus pasos de hoy y su gasto.
 // Se pinta con `renderToStaticMarkup` (sin DOM) y el CSS Module simulado, como tests/youtube-fields.test.tsx.
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentCenter } from "@/components/agent/AgentCenter";
 import { I18nProvider } from "@/components/I18n";
+import { TeamRoster } from "@/components/agent/TeamRoster";
 import { TeamToday, redoBody } from "@/components/agent/TeamToday";
 import { DEFAULT_SETTINGS, type Snapshot } from "@/components/agent/types";
 import type { TeamAgentView, TeamRunView, TeamSnapshot, TeamStepView } from "@/lib/agent/team-view";
@@ -540,5 +542,168 @@ describe("Team.module.css", () => {
       ["night muted on the page", night.muted, night.ground],
     ];
     for (const [name, text, background] of pairs) expect(contrast(text, background), `${name}: ${text} on ${background}`).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe("Equipo", () => {
+  const roster = (over: Parameters<typeof snap>[0] = {}, lang: "es" | "en" = "es") =>
+    renderToStaticMarkup(
+      <I18nProvider lang={lang}>
+        <TeamRoster data={snap(over)} />
+      </I18nProvider>,
+    );
+  /** The markup of each agent row, in page order. */
+  const rows = (html: string) => [...html.matchAll(/<li class="agentRow"[\s\S]*?<\/li>/g)].map((m) => m[0]);
+  const count = (html: string, text: string) => html.split(text).length - 1;
+  const NO_AI = "Sin IA (biblioteca y plantillas)";
+  const DEFAULT_MODEL = "Usa el modelo por defecto";
+
+  it("lists the seven agents in order with their model or 'Sin IA'", () => {
+    // SEO chose its own model; Copy and the others use the default one; Director has none to show.
+    const agents = AGENTS.map((a) => (a.key === "seo" ? { ...a, own: true, model: "openai:gpt-5-mini" } : a));
+    const html = roster({ team: { agents } });
+    const list = rows(html);
+    expect(list).toHaveLength(7);
+    ["Director", "SEO", "Estratega", "Redactor", "Diseñador", "Video", "Revisor"].forEach((name, i) => expect(list[i], name).toContain(`>${name}<`));
+    // The model is what the agent works with; "Sin IA" is only for Diseño and Video.
+    expect(list[1]).toContain("openai:gpt-5-mini");
+    expect(list[3]).toContain("claude:sonnet");
+    expect(count(html, NO_AI)).toBe(2);
+    expect(list[4]).toContain(NO_AI);
+    expect(list[5]).toContain(NO_AI);
+    list.filter((_, i) => i !== 4 && i !== 5).forEach((row) => expect(row).not.toContain(NO_AI));
+    // The default-model note appears for the AI agents that did not choose one, never for the one that did or for the two without AI.
+    expect(count(html, DEFAULT_MODEL)).toBe(4);
+    expect(list[1]).not.toContain(DEFAULT_MODEL);
+    expect(list[3]).toContain(DEFAULT_MODEL);
+    expect(list[4]).not.toContain(DEFAULT_MODEL);
+    expect(list[5]).not.toContain(DEFAULT_MODEL);
+  });
+
+  it("an agent with a problem shows the message", () => {
+    const message = "Falta la clave de IA del proveedor de Redacción.";
+    const agents = AGENTS.map((a) => (a.key === "copy" ? { ...a, ready: false, problem: message } : a));
+    const list = rows(roster({ team: { agents } }));
+    expect(list[3]).toContain(message);
+    expect(list[3]).toContain("Aviso");
+    expect(list[3]).not.toContain("Listo");
+    // The six agents that can work say so, and carry no warning.
+    list.filter((_, i) => i !== 3).forEach((row) => {
+      expect(row).toContain("Listo");
+      expect(row).not.toContain("Aviso");
+    });
+    // Not ready without a message still warns, in words.
+    const silent = rows(roster({ team: { agents: AGENTS.map((a) => (a.key === "seo" ? { ...a, ready: false } : a)) } }));
+    expect(silent[1]).toContain("Aviso");
+    expect(silent[1]).toContain("No está listo.");
+    expect(silent[1]).not.toContain("Listo");
+  });
+
+  it("the total adds the agents' cents", () => {
+    const agents = AGENTS.map((a) => (a.key === "copy" ? { ...a, steps: 3, cents: 12 } : a.key === "review" ? { ...a, steps: 1, cents: 30 } : a.key === "seo" ? { ...a, steps: 2, cents: 1 } : a));
+    const html = roster({ settings: { dailyBudgetCents: 500 }, team: { agents } });
+    const list = rows(html);
+    // Each row has its own steps and spend.
+    expect(list[3]).toContain("3 pasos hoy");
+    expect(list[3]).toContain("$0.12");
+    expect(list[6]).toContain("1 paso hoy");
+    expect(list[6]).toContain("$0.30");
+    expect(list[1]).toContain("2 pasos hoy");
+    expect(list[0]).toContain("0 pasos hoy");
+    expect(list[0]).toContain("$0.00");
+    // 12 + 30 + 1 = 43 cents of a $5.00 day.
+    const total = html.slice(html.indexOf('class="total"'));
+    expect(total).toContain("$0.43");
+    expect(total).toContain("$5.00");
+    expect(total).not.toContain("agentRow");
+    // The total comes after the last agent.
+    expect(html.indexOf('class="total"')).toBeGreaterThan(html.lastIndexOf("agentRow"));
+  });
+
+  it("says when the whole day's spend is higher than the agents' (the conversation spends too)", () => {
+    const agents = AGENTS.map((a) => (a.key === "copy" ? { ...a, steps: 1, cents: 12 } : a));
+    const base = snap({ settings: { dailyBudgetCents: 500 }, team: { agents } });
+    const higher = renderToStaticMarkup(<TeamRoster data={{ ...base, budget: { chargedCents: 250, reservedCents: 0, posts: 0 } }} />);
+    expect(higher).toContain("$2.50");
+    for (const same of [{ chargedCents: 12, reservedCents: 0, posts: 0 }, { chargedCents: 0, reservedCents: 0, posts: 0 }, null]) {
+      const html = renderToStaticMarkup(<TeamRoster data={{ ...base, budget: same }} />);
+      expect(html).not.toContain("$2.50");
+      expect(html).toContain("$0.12");
+    }
+  });
+
+  it("shows the model and the problem as escaped text", () => {
+    const agents = AGENTS.map((a) =>
+      a.key === "copy" ? { ...a, model: "<img src=x onerror=alert(1)>:model", ready: false, problem: "<script>alert(1)</script> sin clave" } : a,
+    );
+    const html = roster({ team: { agents } });
+    expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt; sin clave");
+    expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;:model");
+    expect(html).not.toContain("<script");
+    expect(html).not.toContain("<img");
+  });
+
+  it("shows an empty state, not a broken list, while the team has no agents", () => {
+    for (const team of [null, { agents: [] }]) {
+      const html = roster({ team });
+      expect(html).toContain("Todavía no hay datos del equipo.");
+      expect(rows(html)).toHaveLength(0);
+    }
+  });
+
+  it("shows every fixed text in English when the app is in English", () => {
+    const agents = AGENTS.map((a) => (a.key === "copy" ? { ...a, ready: false, problem: "Missing key", steps: 1, cents: 5 } : { ...a, steps: 2 }));
+    const base = snap({ settings: { dailyBudgetCents: 500 }, team: { agents } });
+    const html = renderToStaticMarkup(
+      <I18nProvider lang="en">
+        <TeamRoster data={{ ...base, budget: { chargedCents: 300, reservedCents: 0, posts: 0 } }} />
+      </I18nProvider>,
+    );
+    for (const text of ["The team", "Director", "No AI (library and templates)", "Uses the default model", "Ready", "Warning", "Missing key", "2 steps today", "1 step today", "Team total today", "$0.05", "$5.00", "$3.00"])
+      expect(html, text).toContain(text);
+    for (const text of ["Sin IA", "Usa el modelo", "Listo", "Aviso", "pasos hoy", "Total del equipo"]) expect(html, text).not.toContain(text);
+    expect(roster({ team: null }, "en")).toContain("There is no team data yet.");
+  });
+
+  const center = (settings: Record<string, unknown>) => renderToStaticMarkup(<AgentCenter businessId="b1" initial={snap({ settings })} />);
+
+  it("AgentCenter has no Equipo tab when teamMode is off", () => {
+    expect(center({ teamMode: false })).not.toContain(">Equipo<");
+  });
+
+  it("has the Equipo tab right after Hoy when teamMode is on", () => {
+    const html = center({ teamMode: true });
+    const order = ["Conversación", "Hoy", "Equipo", "Conocimiento"].map((name) => html.indexOf(`>${name}<`));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
+  describe("Team.module.css", () => {
+    const TEAM = readFileSync(new URL("../src/components/agent/Team.module.css", import.meta.url), "utf8");
+    const section = TEAM.slice(TEAM.indexOf("/* Equipo"), TEAM.indexOf("/* Pantallas medianas"));
+
+    it("styles the roster with the theme tokens only, so the night theme needs no colours of its own", () => {
+      expect(section.length).toBeGreaterThan(0);
+      expect(section).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+      expect(section).not.toMatch(/\b(rgb|hsl)a?\(/i);
+    });
+
+    it("stacks each row on phones and lets long model ids and messages wrap", () => {
+      const at = TEAM.indexOf("@media (max-width: 719px)");
+      const phones = TEAM.slice(at, TEAM.indexOf("\n}\n", at));
+      const row = /\.agentRow \{([^}]*)\}/.exec(phones)?.[1] ?? "";
+      expect(row).toContain("grid-template-areas");
+      expect(row).toContain("grid-template-columns: minmax(0, 1fr)");
+      // The list and its container are one shrinkable column, so a long model id cannot widen the page.
+      for (const selector of [".roster {", ".agents {"]) {
+        const rule = section.slice(section.indexOf(selector), section.indexOf("}", section.indexOf(selector)));
+        expect(rule, selector).toContain("grid-template-columns: minmax(0, 1fr)");
+      }
+      for (const selector of [".agentRow {", ".model {", ".agentStatus {"]) {
+        const rule = section.slice(section.indexOf(selector), section.indexOf("}", section.indexOf(selector)));
+        expect(rule, selector).toContain("min-width: 0");
+      }
+      expect(section).toContain("overflow-wrap: anywhere");
+    });
   });
 });
