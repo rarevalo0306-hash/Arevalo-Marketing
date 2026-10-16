@@ -10,7 +10,7 @@ import {
   articleWrittenText,
 } from "@/lib/agent/article-cost";
 import type { Piece } from "@/lib/agent/plan";
-import { SEO_ARTICLE_MAX_TOKENS } from "@/lib/ai";
+import { SEO_ARTICLE_MAX_TOKENS } from "@/lib/seo/writer-limits";
 import { TEXT_PRICES, WRITE_AI, writeAiCents } from "@/lib/rankfix-shape";
 import { SITE_TEXT_CENTS } from "@/lib/seo/site-article";
 import { WRITER_SERP_COST } from "@/lib/seo/writer";

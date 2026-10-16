@@ -1665,9 +1665,11 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     });
 
     it("readSeoReports reads only this business's latest reports of a kind", async () => {
+      // Distinct creation times: reports created in the same millisecond have no order to read "the latest" from.
+      const at = (n: number) => new Date(Date.now() - 60000 + n * 1000);
       for (const [businessId, n] of [[A, 1], [A, 2], [A, 3], [B, 9]] as const)
-        await db.seoReport.create({ data: { businessId, kind: "keywords", data: { n } } });
-      await db.seoReport.create({ data: { businessId: A, kind: "audit", data: { n: 7 } } });
+        await db.seoReport.create({ data: { businessId, kind: "keywords", data: { n }, createdAt: at(n) } });
+      await db.seoReport.create({ data: { businessId: A, kind: "audit", data: { n: 7 }, createdAt: at(7) } });
       const use = toolsFor(AGENTS.seo, await ask()).use("readSeoReports");
       expect((await use("keywords")).map((r) => r.data)).toEqual([{ n: 3 }]);
       expect((await use("keywords", 2)).map((r) => r.data)).toEqual([{ n: 3 }, { n: 2 }]);
@@ -3620,7 +3622,10 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       expect(approveForSite).toHaveBeenCalledTimes(1);
     });
 
-    it("an article piece goes from the owner's approval to the website, and every cent is counted once", async () => {
+    it.each([
+      ["", false],
+      [", also when the settings were saved during the draft's wait", true],
+    ])("an article piece goes from the owner's approval to the website, and every cent is counted once%s", async (_name, save) => {
       for (const [k, v] of Object.entries({ MATYA_AGENT_PROVIDER: "gemini", MATYA_AGENT_MODEL: "gemini-x" })) vi.stubEnv(k, v);
       vi.mocked(createArticleReport).mockImplementation(async () => {
         await saveReport("Una gotera en el techo necesita revisión pronto. Llama al 305-555-0100 para una inspección.");
@@ -3637,10 +3642,13 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       const costOf = (name: string, run: AgentRun) => (name === "review" ? 10 : stepCost(name, run));
       await workOne(A, executeStep, costOf);
       expect(await row(piece.id)).toMatchObject({ status: "waiting_approval", stage: 0 });
+      // The owner saves the settings while the draft waits: the approval that follows still takes the piece to the end.
+      if (save) await saveSettings(A, { ...settings, teamMode: true, objective: "Otro objetivo" });
       await changeRun(A, piece.id, "approve");
       for (let i = 0; i < 3; i++) await workOne(A, executeStep, costOf);
       const end = await row(piece.id);
       expect(end).toMatchObject({ status: "completed", reservedCents: 0 });
+      expect(await db.agentStep.count({ where: { runId: piece.id, status: { in: ["blocked", "uncertain"] } } })).toBe(0);
       expect(stepsOf(end)).toEqual(["article", "review", "article_publish"]);
       const article_ = (await stepOf(piece.id, "article"))!;
       const charged = article_.chargedCents + 3 + SITE_TEXT_CENTS;
@@ -3732,6 +3740,34 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       await workOne(A, exec, cost);
       expect(startRender).toHaveBeenCalledTimes(1);
       expect(await row(piece.id)).toMatchObject({ status: "queued", reservedCents: 0 });
+    });
+
+    it("a settings save during the video's quote wait never strands the piece: render, wait, review, prepare, schedule and verify all run", async () => {
+      vi.mocked(advanceRender).mockResolvedValue({ status: "ready", videoUrl: "https://example.com/piece.mp4", storyboard: { texts: {} } } as never);
+      vi.mocked(meteredAsk).mockResolvedValueOnce({
+        value: { approved: true, problems: [] },
+        usage: { inputTokens: 100, outputTokens: 50, cents: 3, model: "gemini-x" },
+      });
+      const piece = await quoted();
+      const { cents } = await quoteOf(piece.id);
+      await saveSettings(A, { ...settings, teamMode: true, objective: "Otro objetivo" });
+      await changeRun(A, piece.id, "approve");
+      // The review is the one step of the model; it reserves its call as the engine will (Task 13 wires this).
+      const costOf = (name: string, run: AgentRun) => (name.startsWith("review") ? 10 : cost(name, run));
+      const ran: string[] = [];
+      for (let i = 0; i < 5; i++)
+        await workOne(A, (run, name) => (ran.push(name), exec(run, name)), costOf);
+      expect(ran).toEqual(["render", "video_wait:0", "review", "prepare", "schedule"]);
+      const post = await db.post.findUniqueOrThrow({ where: { id: `agent-${piece.id}` } });
+      expect(post).toMatchObject({ status: "scheduled", kind: "video", mediaUrl: "https://example.com/piece.mp4" });
+      // The channel confirms it and the last step checks it.
+      await db.postTarget.updateMany({ where: { postId: post.id }, data: { status: "sent", externalId: "piece-confirmation" } });
+      await db.post.update({ where: { id: post.id }, data: { status: "done" } });
+      await workOne(A, exec, costOf);
+      const end = await row(piece.id);
+      expect(end).toMatchObject({ status: "completed", reservedCents: 0, chargedCents: cents + 3 });
+      expect(await db.agentStep.count({ where: { runId: piece.id, status: { in: ["blocked", "uncertain"] } } })).toBe(0);
+      expect(await money()).toEqual({ reservedCents: 0, chargedCents: cents + 3 });
     });
 
     it("the render is still refused when the settings saved meanwhile turned team mode off", async () => {

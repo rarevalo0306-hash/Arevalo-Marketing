@@ -283,15 +283,18 @@ export async function beginStep(
     });
     const context = run.context as unknown as Context;
     // A piece's prepare and schedule only use what its earlier steps saved, and the guard checks every current setting when
-    // the piece is scheduled: a settings save since the piece was asked for does not stop them. The steps that spend money on a
-    // piece (the render, an article's draft and its publication, with its second pass `article_publish:<n>`) are the same: each
-    // one re-reads the current switches before it reserves anything (`pieceStepCost`), and a wait for the owner's approval can
-    // last a day, so a save in between must not strand the piece.
+    // the piece is scheduled: a settings save since the piece was asked for does not stop them. The same goes for every step
+    // after a wait for the owner's approval, which can last a day: the steps that spend money on a piece (the render, an article's
+    // draft and its publication, with its second pass `article_publish:<n>`) re-read the current switches before they reserve
+    // anything (`pieceStepCost`), and the render's wait (`video_wait:<n>`) and the review (`review`, `review-r<n>`) that follow
+    // only read what the earlier steps saved. A save in between must not leave a piece charged for a step and blocked at the next.
     const guardedLater =
       run.kind === "piece" &&
       (name === "prepare" ||
         name === "schedule" ||
         name === "render" ||
+        /^video_wait(:\d+)?$/.test(name) ||
+        /^review(-r\d+)?$/.test(name) ||
         isArticleStep(name) ||
         /^article_publish(:\d+)?$/.test(name));
     if (

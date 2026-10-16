@@ -3,10 +3,10 @@
 // IA no devuelve cuántos tokens usó. El código sí fija lo que le pide al proveedor: como mucho `SEO_ARTICLE_MAX_TOKENS` de salida
 // (el razonamiento incluido) y los precios de lista de cada IA (`TEXT_PRICES`). Con eso se calcula un «hasta US$X» que el dueño
 // aprueba antes de que se llame al escritor, y lo que se reserva es exactamente lo que se le dijo.
-import { SEO_ARTICLE_MAX_TOKENS } from "@/lib/ai";
 import { TEXT_PRICES, usd, WRITE_AI } from "@/lib/rankfix-shape";
 import { SITE_TEXT_CENTS } from "@/lib/seo/site-article";
 import { WRITER_SERP_COST } from "@/lib/seo/writer";
+import { SEO_ARTICLE_MAX_TOKENS } from "@/lib/seo/writer-limits";
 import type { Piece } from "./plan";
 
 /** The search an article is written for: the piece's keyword, or its topic when it has none. */

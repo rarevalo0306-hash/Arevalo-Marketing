@@ -10,6 +10,7 @@ import { FONTS, TemplateSpec } from "@/lib/design-shapes";
 import { bi, errorText, type UiLang } from "@/lib/i18n";
 import { finishReply, firstName, type GbpReview, replyLanguage, replySignature } from "@/lib/seo/gbp-shared";
 import { customersText, GOALS, type Interview, InterviewSchema, jsonSafe, type SavedStudy, type StudyInput, StudySchema, type StudySource, studyContext, type WebProfile, WebProfileSchema } from "@/lib/study-shape";
+import { SEO_ARTICLE_MAX_TOKENS } from "@/lib/seo/writer-limits";
 import { readWebsite, type SiteRead, siteDigest } from "@/lib/study-web";
 
 export const TEXT_PROVIDERS = [
@@ -845,9 +846,6 @@ How the top pages are organized:
 ${brief.competitors.length ? brief.competitors.map((c, i) => `${i + 1}. "${c.h1 || c.title}" (${c.words} words): ${c.headings.slice(0, 12).join(" | ") || "no subheadings"}`).join("\n") : "(couldn't read them)"}
 ${brief.aiOverview ? "\nGoogle shows an AI overview for this search: give clear, direct answers right under each heading." : ""}`;
 }
-
-/** Lo más que escribe la IA en un artículo (tokens de salida, razonamiento incluido): el tope que se le pide al proveedor. */
-export const SEO_ARTICLE_MAX_TOKENS = 24000;
 
 /** Escribe un artículo para el sitio pensado para salir en Google con esa búsqueda. Puede tardar 1 a 2 minutos. */
 export async function writeSeoArticle(input: { business: SeoBusiness; keyword: string; language: "es" | "en"; brief: SeoBrief }): Promise<SeoArticle> {
