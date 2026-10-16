@@ -5,13 +5,14 @@ import type { StepResult } from "../queue";
 import { runCopy } from "./copy";
 import { runDesign } from "./design";
 import { runDirector } from "./director";
+import { runReview } from "./review";
 import { runSeo } from "./seo";
 import { runStrategy } from "./strategy";
 import type { AgentDef } from "./types";
 
 export type { AgentDef, AgentInput } from "./types";
 
-/** Placeholder until each agent exists (video and review). */
+/** Placeholder until each agent exists (video). */
 const unavailable = async (): Promise<StepResult> => {
   throw new AgentError("Agente no disponible.");
 };
@@ -71,7 +72,7 @@ export const AGENTS: Record<Exclude<AgentKey, "matya">, AgentDef> = {
     label: { es: "Revisión editorial", en: "Editorial review" },
     tools: ["readContext", "readStepOutput", "channelRules", "readCalendar"],
     usesModel: true,
-    run: unavailable,
+    run: runReview,
   },
 };
 

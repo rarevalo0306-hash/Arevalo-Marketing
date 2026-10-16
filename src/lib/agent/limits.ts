@@ -26,6 +26,50 @@ function topicOf(plan: unknown): string | null {
 }
 
 /**
+ * The topics already used: titles of the agent's campaigns and topics of its pieces from the last 30 days, newest first and
+ * without repeats. Read for `businessId` only. `exceptRunId` is a piece run whose own topic and own `agent-<runId>` campaign
+ * do not count (the editorial review asks about the piece it is reviewing).
+ */
+export async function recentTopicsOf(
+  businessId: string,
+  now: Date,
+  exceptRunId?: string,
+): Promise<string[]> {
+  const since = new Date(now.getTime() - RECENT_DAYS * DAY);
+  const [campaigns, pieces] = await Promise.all([
+    db.campaign.findMany({
+      where: {
+        businessId,
+        id: { startsWith: "agent-", ...(exceptRunId ? { not: `agent-${exceptRunId}` } : {}) },
+        createdAt: { gte: since },
+      },
+      select: { name: true },
+      orderBy: { createdAt: "desc" },
+      take: TOPIC_ROWS,
+    }),
+    db.agentRun.findMany({
+      where: {
+        businessId,
+        kind: "piece",
+        createdAt: { gte: since },
+        ...(exceptRunId ? { id: { not: exceptRunId } } : {}),
+      },
+      select: { plan: true },
+      orderBy: { createdAt: "desc" },
+      take: TOPIC_ROWS,
+    }),
+  ]);
+  return [
+    ...new Set(
+      [...campaigns.map((c) => c.name), ...pieces.map((p) => topicOf(p.plan))]
+        .filter((t): t is string => typeof t === "string")
+        .map((t) => t.trim().slice(0, TOPIC_MAX))
+        .filter(Boolean),
+    ),
+  ];
+}
+
+/**
  * What a team may create today for this business.
  * - `remainingPosts`: the least of the places left in the day (`maxPostsPerDay` minus what the agent already scheduled
  *   today minus the open pieces made today) and the places left in the open-work cap (8 minus every open run, the team's
@@ -51,28 +95,16 @@ export async function pieceLimits(
   const tz = businessTz(business);
   const today = localDay(now, tz);
   const { from, to } = dayRange(tz, today);
-  const since = new Date(now.getTime() - RECENT_DAYS * DAY);
   const open = { businessId, status: { in: [...OPEN_STATUSES] } };
 
-  const [budget, openToday, openAll, connections, campaigns, pieces] = await Promise.all([
+  const [budget, openToday, openAll, connections, recentTopics] = await Promise.all([
     db.agentBudget.findUnique({ where: { businessId_day: { businessId, day: today } } }),
     db.agentRun.count({
       where: { ...open, kind: "piece", createdAt: { gte: from, lt: to } },
     }),
     db.agentRun.count({ where: open }),
     db.connection.findMany({ where: { businessId }, select: { channel: true, updatedAt: true } }),
-    db.campaign.findMany({
-      where: { businessId, id: { startsWith: "agent-" }, createdAt: { gte: since } },
-      select: { name: true },
-      orderBy: { createdAt: "desc" },
-      take: TOPIC_ROWS,
-    }),
-    db.agentRun.findMany({
-      where: { businessId, kind: "piece", createdAt: { gte: since } },
-      select: { plan: true },
-      orderBy: { createdAt: "desc" },
-      take: TOPIC_ROWS,
-    }),
+    recentTopicsOf(businessId, now),
   ]);
 
   const remainingPosts = Math.max(
@@ -117,15 +149,6 @@ export async function pieceLimits(
   const braked = new Set(brakedChannels(deliveries, reconnectedAt));
   const channels = candidates.filter((c) => !braked.has(c));
   if (ws.allowWebArticles && connected.has("seo")) channels.push("seo");
-
-  const recentTopics = [
-    ...new Set(
-      [...campaigns.map((c) => c.name), ...pieces.map((p) => topicOf(p.plan))]
-        .filter((t): t is string => typeof t === "string")
-        .map((t) => t.trim().slice(0, TOPIC_MAX))
-        .filter(Boolean),
-    ),
-  ];
 
   return {
     remainingPosts,

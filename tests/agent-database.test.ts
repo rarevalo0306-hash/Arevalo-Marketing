@@ -19,7 +19,7 @@ import type { AgentRun } from "@prisma/client";
 import { workOne, executeStep, analyzeResults } from "@/lib/agent/execution";
 import { claimAgentPost } from "@/lib/agent/publication";
 import { loadContext } from "@/lib/agent/context";
-import { pieceLimits } from "@/lib/agent/limits";
+import { pieceLimits, recentTopicsOf } from "@/lib/agent/limits";
 import { localDay } from "@/lib/business-tz";
 import { DEFAULT_SETTINGS } from "@/components/agent/types";
 import { collectNews } from "@/lib/agent/news";
@@ -1451,20 +1451,30 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     it("routes a piece's steps to the agent of its plan", async () => {
       stubModel(true);
       const child = await pieceRun();
-      // Copy and design are stubbed; the review agent does not exist yet, so its step fails with a clear message.
+      // Copy and design are stubbed; the review step is routed to the review agent, whose run is a spy here.
       const stubbed = async (run: AgentRun, name: string): Promise<StepResult> =>
         ["copy", "design"].includes(name) ? { data: {} } : executeStep(run, name);
-      for (let i = 0; i < 3; i++) await workOne(A, stubbed, () => 0);
-      expect(await row(child.id)).toMatchObject({
-        status: "uncertain",
-        error: "Agente no disponible.",
-        chargedCents: 0,
-      });
+      const review = vi
+        .spyOn(AGENTS.review, "run")
+        .mockResolvedValue({ data: { approved: true, problems: [], ruleProblems: [] } });
+      let calls: typeof review.mock.calls;
+      try {
+        for (let i = 0; i < 3; i++) await workOne(A, stubbed, () => 0);
+        calls = [...review.mock.calls];
+      } finally {
+        review.mockRestore();
+      }
+      expect(calls).toHaveLength(1);
+      const input = calls[0][0];
+      expect(input.step).toEqual({ id: "review", agent: "review", attempt: 0 });
+      expect(input.model).toMatchObject({ provider: "gemini", model: "gemini-x" });
+      expect(() => input.tools.use("renderDesign")).toThrow(/no está permitida/);
+      expect(await row(child.id)).toMatchObject({ status: "queued", stage: 3, chargedCents: 0 });
       expect(
         await db.agentStep.findUniqueOrThrow({
           where: { runId_name: { runId: child.id, name: "review" } },
         }),
-      ).toMatchObject({ agent: "review", status: "uncertain" });
+      ).toMatchObject({ agent: "review", attempt: 0, status: "succeeded" });
     });
 
     it("stops on the model's own setup error before the agent runs", async () => {
@@ -2363,6 +2373,216 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
         // A run with no parent only reads its own steps.
         expect(await readStepOutput({ id: child.id, businessId: A, parentRunId: null }, "plan")).toBeNull();
         expect(await readStepOutput({ id: child.id, businessId: A }, "plan")).toBeNull();
+      });
+    });
+  });
+
+  describe("the editorial review of a piece", () => {
+    const modelEnv = {
+      MATYA_AGENT_PROVIDER: "gemini",
+      MATYA_AGENT_MODEL: "gemini-x",
+      MATYA_AGENT_INPUT_USD_PER_MILLION: "0.3",
+      MATYA_AGENT_OUTPUT_USD_PER_MILLION: "2.5",
+      GEMINI_API_KEY: "synthetic-no-provider-access",
+    };
+    const usage = { inputTokens: 100, outputTokens: 50, cents: 3, model: "gemini-x" };
+    const approve = { value: { approved: true, problems: [] }, usage };
+    const GOOD = {
+      ...copy,
+      title: "Techos",
+      headline: "¿Cómo cuidas tu techo?",
+      variants: { ...copy.variants, facebook: "Cuida tu techo antes de la lluvia. Llama al 305-555-0100." },
+    };
+    const WRONG = { ...GOOD, variants: { ...GOOD.variants, facebook: "Cuida tu techo antes de la lluvia. Llama al 305-000-0000." } };
+    const DESIGN = {
+      assets: [{ shape: "square", url: "https://example.com/d.jpg", rights: "Foto de la biblioteca", alt: "Techo con la marca" }],
+      mediaSelection: { source: "library", libraryItems: [], generatedFromScratch: false },
+    };
+    beforeEach(async () => {
+      for (const [k, v] of Object.entries(modelEnv)) vi.stubEnv(k, v);
+      await db.business.update({ where: { id: A }, data: { phone: "305-555-0100", website: "https://mio.com" } });
+    });
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      vi.mocked(meteredAsk).mockReset();
+    });
+    /** Copy and design are stubbed (the writer's round `copy-r1` answers `fixed`); the review is the real agent. */
+    const exec =
+      (first: object, fixed: object = first, ran: string[] = []) =>
+      async (run: AgentRun, name: string): Promise<StepResult> => {
+        ran.push(name);
+        if (name === "copy") return { data: first };
+        if (name.startsWith("copy-r")) return { data: fixed };
+        if (name.startsWith("design")) return { data: DESIGN };
+        return executeStep(run, name);
+      };
+    /** The review steps reserve a paid call; everything else is free. */
+    const cost = (name: string) => (name.startsWith("review") ? 10 : 0);
+    const stepOf = (runId: string, name: string) =>
+      db.agentStep.findUniqueOrThrow({ where: { runId_name: { runId, name } } });
+    const SEQUENCE = ["copy", "design", "review", "copy-r1", "design-r1", "review-r1"];
+
+    it("a wrong phone sends the piece back once without an AI call, and the fixed piece goes on to prepare", async () => {
+      const child = await pieceRun();
+      vi.mocked(meteredAsk).mockResolvedValueOnce(approve);
+      const ran: string[] = [];
+      for (let i = 0; i < 6; i++) await workOne(A, exec(WRONG, GOOD, ran), cost);
+      expect(ran).toEqual(SEQUENCE);
+      const first = await stepOf(child.id, "review");
+      expect(first).toMatchObject({
+        agent: "review",
+        attempt: 0,
+        status: "succeeded",
+        chargedCents: 0,
+        output: {
+          approved: false,
+          problems: [{ kind: "telefono", sendBackTo: "copy" }],
+          ruleProblems: [{ kind: "telefono", sendBackTo: "copy" }],
+        },
+      });
+      expect(stepsOf(await row(child.id))).toEqual([...SEQUENCE, "prepare", "schedule", "verify"]);
+      // The only paid call is the second review, and it saw the corrected text.
+      expect(meteredAsk).toHaveBeenCalledTimes(1);
+      const [, , payload] = vi.mocked(meteredAsk).mock.calls[0];
+      expect((payload as { copy: { texts: { facebook: string } } }).copy.texts.facebook).toBe(GOOD.variants.facebook);
+      expect(await stepOf(child.id, "review-r1")).toMatchObject({
+        agent: "review",
+        attempt: 1,
+        chargedCents: 3,
+        output: { approved: true, problems: [], ruleProblems: [], usage },
+      });
+      // Mode auto: it goes on, and the next step is prepare.
+      expect(await row(child.id)).toMatchObject({ status: "queued", stage: 6, chargedCents: 3, reservedCents: 0 });
+      expect(stepsOf(await row(child.id))[6]).toBe("prepare");
+    });
+
+    it("a piece that fails twice waits for the owner with the problems, and a redo reads the stored problems", async () => {
+      const child = await pieceRun();
+      const ran: string[] = [];
+      for (let i = 0; i < 6; i++) await workOne(A, exec(WRONG, WRONG, ran), cost);
+      expect(ran).toEqual(SEQUENCE);
+      expect(meteredAsk).not.toHaveBeenCalled();
+      expect(await row(child.id)).toMatchObject({ status: "waiting_approval", stage: 6, chargedCents: 0, reservedCents: 0 });
+      expect(await stepOf(child.id, "review-r1")).toMatchObject({
+        status: "succeeded",
+        attempt: 1,
+        chargedCents: 0,
+        output: { approved: false, problems: [{ kind: "telefono" }] },
+      });
+      const message = await db.agentMessage.findFirstOrThrow({ where: { runId: child.id, role: "assistant" } });
+      expect(message.text).toContain("no pasó la revisión editorial");
+      expect(message.text).toContain("305-000-0000");
+      // The owner asks for one more round: it is built from the problems the review stored.
+      await changeRun(A, child.id, "redo");
+      expect(stepsOf(await row(child.id))).toEqual([
+        ...SEQUENCE,
+        "copy-r2",
+        "design-r2",
+        "review-r2",
+        "prepare",
+        "schedule",
+        "verify",
+      ]);
+    });
+
+    it("in approval mode a piece that passes waits for the owner right after its review", async () => {
+      const child = await pieceRun();
+      await db.agentWorkspace.update({ where: { businessId: A }, data: { mode: "approval" } });
+      vi.mocked(meteredAsk).mockResolvedValueOnce(approve);
+      for (let i = 0; i < 3; i++) await workOne(A, exec(GOOD), cost);
+      expect(await row(child.id)).toMatchObject({ status: "waiting_approval", stage: 3, chargedCents: 3 });
+      expect(stepsOf(await row(child.id))[3]).toBe("prepare");
+      const message = await db.agentMessage.findFirstOrThrow({ where: { runId: child.id, role: "assistant" } });
+      expect(message.text).toContain("lista para tu aprobación");
+      await changeRun(A, child.id, "approve");
+      expect(await row(child.id)).toMatchObject({ status: "queued", stage: 3, approvedAt: expect.any(Date) });
+    });
+
+    it("in auto mode a piece that passes goes straight on, and one the AI rejects gets its one round", async () => {
+      const child = await pieceRun();
+      const rejected = {
+        value: { approved: false, problems: [{ kind: "ortografia", detail: "Hay una falta de ortografía.", sendBackTo: "copy" }] },
+        usage,
+      };
+      vi.mocked(meteredAsk).mockResolvedValueOnce(rejected).mockResolvedValueOnce(approve);
+      for (let i = 0; i < 3; i++) await workOne(A, exec(GOOD), cost);
+      expect(await row(child.id)).toMatchObject({ status: "queued", stage: 3, chargedCents: 3 });
+      expect(stepsOf(await row(child.id)).slice(3, 6)).toEqual(["copy-r1", "design-r1", "review-r1"]);
+      expect(await stepOf(child.id, "review")).toMatchObject({
+        chargedCents: 3,
+        output: { approved: false, problems: [{ kind: "ortografia" }], ruleProblems: [] },
+      });
+      for (let i = 0; i < 3; i++) await workOne(A, exec(GOOD), cost);
+      expect(await row(child.id)).toMatchObject({ status: "queued", stage: 6, chargedCents: 6 });
+      expect(stepsOf(await row(child.id))[6]).toBe("prepare");
+    });
+
+    it("the piece's phone and website are the business's own, not another business's", async () => {
+      // Business B has another phone; A's copy uses A's.
+      await db.business.update({ where: { id: B }, data: { phone: "305-000-0000" } });
+      const child = await pieceRun();
+      vi.mocked(meteredAsk).mockResolvedValueOnce(approve);
+      for (let i = 0; i < 3; i++) await workOne(A, exec(GOOD), cost);
+      expect((await stepOf(child.id, "review")).output).toMatchObject({ approved: true });
+      expect(meteredAsk).toHaveBeenCalledTimes(1);
+      const sent = vi.mocked(meteredAsk).mock.calls[0][2] as { business: { phone: string; website: string } };
+      expect(sent.business).toMatchObject({ phone: "305-555-0100", website: "https://mio.com" });
+    });
+
+    describe("recent topics", () => {
+      async function withSibling(topic: string) {
+        const child = await pieceRun();
+        const parent = await db.agentRun.findUniqueOrThrow({ where: { id: child.parentRunId! } });
+        const [, sibling] = await spawnPieces(parent, [roof, { ...roof, id: "p2", topic }]);
+        // Only the first piece is worked on.
+        await db.agentRun.update({ where: { id: sibling.id }, data: { status: "cancelled" } });
+        return { child, sibling };
+      }
+
+      it("the topic of another piece of the business is a repeat; the piece's own topic and campaign are not", async () => {
+        const { child } = await withSibling("Techos");
+        await db.campaign.create({ data: { id: `agent-${child.id}`, businessId: A, name: "Techos" } });
+        vi.mocked(meteredAsk).mockResolvedValueOnce(approve);
+        for (let i = 0; i < 3; i++) await workOne(A, exec(GOOD, GOOD), cost);
+        // The sibling has the same topic: a repeat, found without a paid call, sent back to the writer.
+        expect((await stepOf(child.id, "review")).output).toMatchObject({
+          approved: false,
+          problems: [{ kind: "repetido", sendBackTo: "copy" }],
+        });
+        expect(meteredAsk).not.toHaveBeenCalled();
+        expect(stepsOf(await row(child.id)).slice(3, 6)).toEqual(["copy-r1", "design-r1", "review-r1"]);
+      });
+
+      it("with nothing else using the topic, the piece's own run and campaign do not count", async () => {
+        const { child, sibling } = await withSibling("Goteras");
+        await db.campaign.create({ data: { id: `agent-${child.id}`, businessId: A, name: "Techos" } });
+        await db.campaign.create({ data: { id: `agent-${sibling.id}`, businessId: A, name: "Goteras" } });
+        vi.mocked(meteredAsk).mockResolvedValueOnce(approve);
+        for (let i = 0; i < 3; i++) await workOne(A, exec(GOOD, GOOD), cost);
+        expect((await stepOf(child.id, "review")).output).toMatchObject({ approved: true, ruleProblems: [] });
+        expect(meteredAsk).toHaveBeenCalledTimes(1);
+      });
+
+      it("recentTopicsOf leaves out the given piece, its campaign, old topics and other businesses", async () => {
+        const { child, sibling } = await withSibling("Goteras");
+        await db.campaign.createMany({
+          data: [
+            { id: `agent-${child.id}`, businessId: A, name: "Campaña propia" },
+            { id: "agent-other-run", businessId: A, name: "Campaña de otro encargo" },
+            { id: "agent-old", businessId: A, name: "Campaña vieja", createdAt: new Date(Date.now() - 40 * 86400000) },
+            { id: "manual-campaign", businessId: A, name: "No es del agente" },
+            { id: "agent-of-b", businessId: B, name: "Campaña de B" },
+          ],
+        });
+        const now = new Date();
+        const all = await recentTopicsOf(A, now);
+        expect(all.sort()).toEqual(["Campaña de otro encargo", "Campaña propia", "Goteras", "Techos"]);
+        const except = await recentTopicsOf(A, now, child.id);
+        expect(except.sort()).toEqual(["Campaña de otro encargo", "Goteras"]);
+        // pieceLimits sees exactly what recentTopicsOf sees.
+        const ws = await db.agentWorkspace.findUniqueOrThrow({ where: { businessId: A } });
+        expect((await pieceLimits(A, ws, now)).recentTopics.sort()).toEqual(all.sort());
+        expect(await recentTopicsOf(B, now, sibling.id)).toEqual(["Campaña de B"]);
       });
     });
   });

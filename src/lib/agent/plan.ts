@@ -87,7 +87,8 @@ export const DROP_REASONS = [
 ] as const;
 export type DropReason = (typeof DROP_REASONS)[number];
 
-const normalizeTopic = (s: string) =>
+/** A topic as it is compared: without accents, in lower case and with one space between words. */
+export const normalizeTopic = (s: string) =>
   s
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")

@@ -93,16 +93,16 @@ describe("registro de agentes", () => {
     expect(AGENTS.review.label.es).toBe("Revisión editorial");
   });
 
-  it("mientras no existan los demás agentes, cada uno falla con un mensaje claro", async () => {
-    // El Director, el agente SEO, el de estrategia, el de redacción y el de diseño ya existen (tests/agent-director-seo.test.ts,
-    // tests/agent-strategy.test.ts, tests/agent-copy-design.test.ts); los otros dos siguen sin hacerse.
-    const done = ["director", "seo", "strategy", "copy", "design"];
+  it("mientras no exista el agente de video, falla con un mensaje claro", async () => {
+    // Ya existen el Director, el agente SEO, el de estrategia, el de redacción, el de diseño y el de revisión
+    // (tests/agent-director-seo.test.ts, agent-strategy.test.ts, agent-copy-design.test.ts, agent-review.test.ts).
+    const done = ["director", "seo", "strategy", "copy", "design", "review"];
     const todo = Object.values(AGENTS).filter((a) => !done.includes(a.key));
-    expect(todo.map((a) => a.key).sort()).toEqual(["review", "video"]);
+    expect(todo.map((a) => a.key).sort()).toEqual(["video"]);
     for (const a of todo)
       await expect(a.run({} as never)).rejects.toThrow("Agente no disponible.");
-    for (const key of done as ("director" | "seo" | "strategy" | "copy" | "design")[])
-      expect(AGENTS[key].run).not.toBe(AGENTS.review.run);
+    for (const key of done as ("director" | "seo" | "strategy" | "copy" | "design" | "review")[])
+      expect(AGENTS[key].run).not.toBe(AGENTS.video.run);
   });
 });
 
