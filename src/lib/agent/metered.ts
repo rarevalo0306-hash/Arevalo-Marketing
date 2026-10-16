@@ -32,16 +32,22 @@ export function modelConfig(env: Record<string, string | undefined> = process.en
       "Falta configurar el modelo y sus tarifas verificadas para MATYA. El resumen de actividad sigue disponible.",
     );
   const p = parsed.data;
-  const key =
-    env[
-      p.provider === "openai"
-        ? "OPENAI_API_KEY"
-        : p.provider === "claude"
-          ? "ANTHROPIC_API_KEY"
-          : "GEMINI_API_KEY"
-    ];
+  const key = keyFor(p.provider, env);
   if (!key) throw new AgentError("Falta la conexión del modelo de MATYA.");
   return { ...p, key };
+}
+/** The API key of a provider, or undefined when it is not connected. */
+export function keyFor(
+  provider: ModelConfig["provider"],
+  env: Record<string, string | undefined>,
+) {
+  return env[
+    provider === "openai"
+      ? "OPENAI_API_KEY"
+      : provider === "claude"
+        ? "ANTHROPIC_API_KEY"
+        : "GEMINI_API_KEY"
+  ];
 }
 export function usageCents(
   c: Pick<ModelConfig, "inputRate" | "outputRate">,
