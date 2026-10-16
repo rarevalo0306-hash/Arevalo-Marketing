@@ -76,10 +76,19 @@ export type PieceLimits = {
 const normalizeTopic = (s: string) =>
   s
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();
+
+/** True when YYYY-MM-DD is a real calendar day (2026-02-30 and 2026-13-45 are not). */
+function isRealDate(s: string): boolean {
+  const [y, m, d] = s.split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d));
+  return (
+    t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d
+  );
+}
 
 /** The id of whatever the model sent, or "?"; never throws (getters, proxies). */
 function idOf(item: unknown): string {
@@ -95,7 +104,7 @@ function idOf(item: unknown): string {
 /**
  * Keeps only the pieces the business allows today and says why it dropped each
  * of the others. It never throws, whatever the model proposed. Rules, in order:
- * format, channel, permission, date, repeated, quota. The first one that fails
+ * format (including an impossible date), channel, permission, past date, repeated, quota. The first one that fails
  * drops the piece; a dropped piece uses no quota and does not mark its topic as seen.
  */
 export function validatePieces(
@@ -141,6 +150,11 @@ export function validatePieces(
       continue;
     }
     const piece = parsed.data;
+    // The date is later turned into a schedule time: it must be a real day.
+    if (piece.date !== undefined && !isRealDate(piece.date)) {
+      drop(piece.id, "formato");
+      continue;
+    }
     // Never youtube, and only the channels that are connected.
     const channels = [...new Set(piece.channels)].filter(
       (c) => c !== "youtube" && allowed.has(c),
@@ -184,6 +198,8 @@ export type ReviewProblem = {
  * The only correction round: send the problems back, then review once more.
  * Never adds `video`, `render` or `video_wait`; a video piece only redoes
  * its text and image. An article has no design, so everything goes to the writer.
+ * `[]` means "no automatic round; the caller sends the piece to approval"
+ * (the round was already used, or no problem can be routed).
  */
 export function reworkSteps(
   problems: ReviewProblem[],
@@ -215,7 +231,8 @@ export function stepsOfPlan(plan: unknown): string[] | null {
       return null;
     const { kind, steps } = plan as { kind?: unknown; steps?: unknown };
     if (kind === "team") return [...TEAM_STEPS];
-    if (kind !== "piece" || !Array.isArray(steps)) return null;
+    // An empty piece plan is corrupt: null makes the caller block it loudly.
+    if (kind !== "piece" || !Array.isArray(steps) || !steps.length) return null;
     const ids: string[] = [];
     for (const s of steps) {
       if (typeof s !== "object" || s === null) return null;

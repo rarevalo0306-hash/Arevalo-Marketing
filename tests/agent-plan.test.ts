@@ -191,6 +191,75 @@ describe("piezas del equipo", () => {
     ]);
   });
 
+  it("una fecha que no existe en el calendario es formato; el 29 de febrero bisiesto sirve", () => {
+    const at = (id: string, topic: string, date: string) => ({
+      id,
+      topic,
+      channels: ["facebook"],
+      format: "post",
+      date,
+    });
+    const r = validatePieces(
+      [
+        at("p1", "Febrero treinta", "2026-02-30"),
+        at("p2", "Noviembre treinta y uno", "2026-11-31"),
+        at("p3", "Mes trece", "2026-13-45"),
+        at("p4", "Mes cero", "2026-00-10"),
+        at("p5", "Día cero", "2026-10-00"),
+        at("p6", "No bisiesto", "2027-02-29"),
+        at("p7", "Siglo sin bisiesto", "2100-02-29"),
+        at("p8", "Año cero", "0000-01-01"),
+        at("p9", "Bisiesto", "2028-02-29"),
+      ],
+      { ...limits, remainingPosts: 5 },
+    );
+    expect(r.pieces.map((p) => [p.id, p.date])).toEqual([["p9", "2028-02-29"]]);
+    expect(r.dropped).toEqual(
+      ["p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8"].map((id) => ({
+        id,
+        reason: "formato",
+      })),
+    );
+    // Una fecha imposible es formato aunque el canal tampoco sirva.
+    expect(
+      validatePieces(
+        [{ ...at("p1", "Canal malo", "2026-02-30"), channels: ["youtube"] }],
+        limits,
+      ).dropped,
+    ).toEqual([{ id: "p1", reason: "formato" }]);
+  });
+
+  it("el orden de las reglas: canal, permiso, fecha pasada, repetido", () => {
+    const past = "2026-10-01";
+    const one = (extra: Record<string, unknown>, over = {}) =>
+      validatePieces(
+        [
+          {
+            id: "p1",
+            topic: "Deducible de viento",
+            channels: ["facebook"],
+            format: "post",
+            ...extra,
+          },
+        ],
+        { ...limits, ...over },
+      ).dropped;
+    // sin canal antes que no permitido
+    expect(one({ channels: ["tiktok"] }, { allowSocial: false })).toEqual([
+      { id: "p1", reason: "sin canal" },
+    ]);
+    // no permitido antes que fecha pasada
+    expect(
+      one({ topic: "Tema nuevo", date: past }, { allowSocial: false }),
+    ).toEqual([{ id: "p1", reason: "no permitido" }]);
+    // fecha pasada antes que repetido (el tema ya está en recentTopics)
+    expect(one({ date: past })).toEqual([{ id: "p1", reason: "fecha pasada" }]);
+    // repetido antes que sin cupo
+    expect(one({}, { remainingPosts: 0 })).toEqual([
+      { id: "p1", reason: "repetido" },
+    ]);
+  });
+
   it("el artículo también gasta cupo", () => {
     const r = validatePieces(
       [
@@ -369,6 +438,7 @@ describe("piezas del equipo", () => {
       {},
       { kind: "otra" },
       { kind: "piece" },
+      { kind: "piece", steps: [] },
       { kind: "piece", steps: "copy" },
       { kind: "piece", steps: { id: "copy" } },
       { kind: "piece", steps: [null] },
