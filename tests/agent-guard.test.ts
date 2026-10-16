@@ -455,6 +455,41 @@ describe("pieceScheduleAt", () => {
     expect(pieceScheduleAt({ storm: old }, sunday, ny, GENERAL)).toEqual(new Date(sunday.getTime() + 60000));
   });
 
+  it("a public adjuster's storm piece never posts on a Sunday, even in the safety phase (R43)", () => {
+    const old = { event: "huracan", at: "2026-10-10T19:00:00Z" };
+    const sunday = new Date("2026-10-18T15:00:00Z"); // Sunday 11 am in Miami
+    // The storm is old: the wait is over and the time lands on a Sunday. A public adjuster waits for Monday 9 am...
+    expect(pieceScheduleAt({ storm: old }, sunday, ny, PA)).toEqual(new Date("2026-10-19T13:00:00Z"));
+    expect(pieceScheduleAt({ storm: { ...old, phase: "seguridad" } }, sunday, ny, PA)).toEqual(new Date("2026-10-19T13:00:00Z"));
+    // ...also when the piece was made for one and the setting changed after.
+    expect(pieceScheduleAt({ storm: old, industry: { key: PA } }, sunday, ny, GENERAL)).toEqual(new Date("2026-10-19T13:00:00Z"));
+    // Any other business may post its safety piece on a Sunday, as before.
+    expect(pieceScheduleAt({ storm: old }, sunday, ny, GENERAL)).toEqual(new Date(sunday.getTime() + 60000));
+    expect(pieceScheduleAt({ storm: { ...old, phase: "seguridad" } }, sunday, ny, "commercial-security-ni")).toEqual(
+      new Date(sunday.getTime() + 60000),
+    );
+  });
+
+  it("the storm's own wait is kept: only the window changes for a public adjuster (R43)", () => {
+    // A storm on Sunday at 9 am in Miami: the safety post may go out an hour later, at 10 am (still Sunday).
+    const at = "2026-10-18T13:00:00Z";
+    const now = new Date("2026-10-18T13:05:00Z");
+    expect(pieceScheduleAt({ storm: { event: "huracan", at } }, now, ny, GENERAL)).toEqual(stormSchedule(new Date(at), 0, "seguridad", ny));
+    expect(stormSchedule(new Date(at), 0, "seguridad", ny)).toEqual(new Date("2026-10-18T14:00:00Z"));
+    // For a public adjuster that Sunday time moves to Monday 9 am.
+    expect(pieceScheduleAt({ storm: { event: "huracan", at } }, now, ny, PA)).toEqual(new Date("2026-10-19T13:00:00Z"));
+    // On a weekday the safety wait (an hour) is the same for both: the window does not add the offer's 49 hours.
+    const friday = "2026-10-16T13:30:00Z"; // Friday 9:30 am
+    const fridayNow = new Date("2026-10-16T14:00:00Z");
+    expect(pieceScheduleAt({ storm: { event: "huracan", at: friday } }, fridayNow, ny, PA)).toEqual(
+      stormSchedule(new Date(friday), 0, "seguridad", ny),
+    );
+    // An offer keeps its 49-hour wait, as before.
+    expect(pieceScheduleAt({ storm: { event: "huracan", at: friday, phase: "oferta" } }, fridayNow, ny, PA)).toEqual(
+      stormSchedule(new Date(friday), 0, "oferta", ny),
+    );
+  });
+
   it("a storm piece uses the business's own time zone", () => {
     const old = { storm: { event: "huracan", at: "2026-10-01T19:00:00Z" } };
     // 7:30 pm in Miami is already late; it is 6:30 pm in Chicago, still within the hours.

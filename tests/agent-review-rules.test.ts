@@ -199,15 +199,56 @@ describe("reglas de la revisión editorial", () => {
         expect(detail).not.toContain("«305-555-0100");
         expect(phoneDetail("Llama al 305 555 0100 786 000 0000")).toContain("«786 000 0000»");
         expect(phoneDetail("Llama al +1 786 000 0000 +1 305 555 0100")).toContain("«+1 786 000 0000»");
-        // Two local numbers of 7 digits are two numbers, not one of 14.
-        expect(
-          reviewRules(base({ business: { phone: "555-0100", website: "https://mio.com" }, variants: { facebook: "Llama al 555-0100 555-0199" } }))
-            .find((p) => p.kind === "telefono")?.detail,
-        ).toContain("«555-0199»");
+        // A year written right before a number is not part of it.
+        const year = phoneDetail("Desde 1998 786-000-0000");
+        expect(year).toContain("«786-000-0000»");
+        expect(year).not.toContain("1998");
         // Both are the business's: nothing wrong.
         expect(kinds(base({ variants: { facebook: "Llama al 305-555-0100 305 555 0100" } }))).toEqual([]);
         // A number written in groups is still one number.
         expect(kinds(base({ variants: { facebook: "Llama al +1 305 555 0100 o al (305) 555 0100" } }))).toEqual([]);
+      });
+
+      it.each([
+        "Licencia de ajustador público W-1234567",
+        "Lic. W123456",
+        "License #W123456",
+        "Licencia P-123456789",
+        "Lic.W-1234567",
+        // Even an ID as long as a phone: a lone letter (with or without a separator) before the digits is an ID's prefix.
+        "Licencia W-1234567890",
+        "Licencia W.1234567890",
+        "Licencia W/1234567890",
+        "Lic.W-1234567890",
+        "License #W1234567890",
+      ])("un número de licencia no es un teléfono (R43): %s", (text) => {
+        expect(kinds(base({ variants: { facebook: `Ajustador con licencia en Florida. ${text}` } }))).toEqual([]);
+      });
+
+      it.each(["Llama al 555-0199", "Llama al 2222-3333", "Oficina 12-345-678", "Pedido 53050000000", "Ref. 230-500-000-00"])(
+        "un número que no tiene 10 cifras (u 11 empezando por 1) no es un teléfono (R43): %s",
+        (text) => {
+          expect(kinds(base({ variants: { facebook: text } }))).toEqual([]);
+        },
+      );
+
+      it.each(["Llama al +1 305-000-0000", "Llama al 1-305-000-0000", "Llama al 1 (305) 000-0000", "Llama al 3050000000"])(
+        "10 cifras, u 11 empezando por 1, sí son un teléfono (R43): %s",
+        (text) => {
+          expect(kinds(base({ variants: { facebook: text } }))).toEqual(["telefono"]);
+        },
+      );
+
+      it("el titular (el primer texto revisado) sigue la misma regla estricta que los canales (R43)", () => {
+        expect(kinds(base({ copy: { headline: "Licencia W-1234567" } }))).toEqual([]);
+        expect(kinds(base({ copy: { headline: "Llama al 555-0199" } }))).toEqual([]);
+        expect(kinds(base({ copy: { headline: "Llama al 305-000-0000" } }))).toEqual(["telefono"]);
+      });
+
+      it("una licencia junto a un teléfono ajeno: solo el teléfono es un problema (R43)", () => {
+        const detail = phoneDetail("Licencia W-1234567. Tel.305-000-0000");
+        expect(detail).toContain("«305-000-0000»");
+        expect(detail).not.toContain("1234567");
       });
 
       it("un código postal con sus cuatro cifras (ZIP+4) no es un teléfono", () => {

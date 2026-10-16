@@ -329,20 +329,20 @@ export const OFFER_INDUSTRY = "public-adjusting-fl";
  * industry, or the industry the piece was made for, `context.industry.key`, is `OFFER_INDUSTRY`) posts as an offer of
  * services, so never on a Sunday either (Florida 626.854: no contact to offer services from 8 pm to 8 am, nor on Sundays);
  * any other business may post on a Sunday.
- * After a storm (`context.storm.at`, a date) it is never before what the storm rules allow (`stormSchedule`, with the phase
- * "seguridad" unless the context says "oferta"), and always inside that phase's hours (`stormWindow`: 9 am to 7 pm, an offer
- * never on a Sunday), even when the storm is old and that time already passed.
+ * After a storm (`context.storm.at`, a date) it is never before what the storm rules allow (`stormSchedule`: an hour after the
+ * storm in the phase "seguridad", 49 hours in "oferta", the phase "seguridad" unless the context says "oferta"), even when the
+ * storm is old and that time already passed; and it goes out inside the window: the offer's for a public adjuster in any phase
+ * (R43: a safety piece of a public adjuster never goes out on a Sunday either), the phase's own for any other business.
  */
 export function pieceScheduleAt(context: unknown, now: Date, tz: string, industry: string): Date {
   const soon = new Date(now.getTime() + 60000);
+  const offer = industry === OFFER_INDUSTRY || field(field(context, "industry"), "key") === OFFER_INDUSTRY;
   const storm = field(context, "storm");
   const at = field(storm, "at");
   const time = typeof at === "string" ? Date.parse(at) : NaN;
-  if (Number.isNaN(time)) {
-    const offer = industry === OFFER_INDUSTRY || field(field(context, "industry"), "key") === OFFER_INDUSTRY;
-    return stormWindow(soon, offer ? "oferta" : "seguridad", tz);
-  }
+  if (Number.isNaN(time)) return stormWindow(soon, offer ? "oferta" : "seguridad", tz);
   const phase = field(storm, "phase") === "oferta" ? "oferta" : "seguridad";
+  // The wait follows the storm's phase; the window is the offer's for a public adjuster, whatever the phase.
   const allowed = stormSchedule(new Date(time), 0, phase, tz);
-  return stormWindow(allowed.getTime() > soon.getTime() ? allowed : soon, phase, tz);
+  return stormWindow(allowed.getTime() > soon.getTime() ? allowed : soon, offer ? "oferta" : phase, tz);
 }

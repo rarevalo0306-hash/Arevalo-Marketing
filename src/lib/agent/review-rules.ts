@@ -59,10 +59,12 @@ const plainSeparators = (text: string): string =>
     .replace(/\u00b7/g, ".");
 
 /**
- * A run of digits with phone separators (never across a line), not glued to a word, a price, a date or a link. A dot, a dash or a
- * slash right before it is allowed only after a letter: «Tel.305…», «WhatsApp/305…», «Cel-305…» are phones; «1.305…» is not.
+ * A run of digits with phone separators (never across a line), not glued to a word (any letter), a price, a date or a link. A
+ * dot, a dash or a slash right before it is allowed only after a word of two letters or more: «Tel.305…», «WhatsApp/305…»,
+ * «Cel-305…» are phones; after a lone letter («W-1234567», «Lic.W-1234567», a Florida license) the digits are an ID, and glued
+ * to a letter («W123456») they are one too.
  */
-const PHONE = /(?:(?<![\w$€£.,/=#-])|(?<=\p{L}[./-]))\+?\(?\d[\d ().-]{5,}\d(?!\w)/gu;
+const PHONE = /(?:(?<![\p{L}\p{N}_$€£.,/=#-])|(?<=\p{L}\p{L}[./-]))\+?\(?\d[\d ().-]{5,}\d(?![\p{L}\p{N}_])/gu;
 /** What looks like a phone but is a date, a year range, a price with thousands separators or a ZIP+4 code (33101-1234). */
 const NOT_A_PHONE = [
   /^\d{4}-\d{1,2}-\d{1,2}$/,
@@ -74,41 +76,49 @@ const NOT_A_PHONE = [
 
 type Phone = { shown: string; digits: string };
 
-const digitCount = (s: string) => s.replace(/\D/g, "").length;
+/** The most digits a number can have: 11 when it starts with the country code 1, else 10. */
+const longest = (digits: string) => (digits.startsWith("1") ? 11 : 10);
 
 /**
  * The numbers one run holds, by its space-separated groups: a run may join two numbers with a space («305-555-0100 786-555-0199»,
- * «305 555 0100 786 555 0199»). A group of 7 digits or more after a number of 7 or more starts a new number; short groups
- * («+1», «(305)», «555») join the ones after them; a number ends once it has 10 digits; and none goes past 15.
+ * «305 555 0100 786 555 0199») or put a year or a street number before one («Desde 1998 305-555-0100»). Short groups («+1»,
+ * «(305)», «555») join the ones after them until the number is complete (10 digits, or 11 starting with 1); a group that would
+ * make it longer, or one of 7 digits or more after a number of 7 or more, starts a new number.
  */
 function numbersOf(run: string): string[] {
   const numbers: string[] = [];
   let groups: string[] = [];
-  let count = 0;
+  let digits = "";
   const end = () => {
     if (groups.length) numbers.push(groups.join(" "));
     groups = [];
-    count = 0;
+    digits = "";
   };
   for (const group of run.split(" ").filter(Boolean)) {
-    const digits = digitCount(group);
-    if (count > 0 && (count + digits > 15 || (count >= 7 && digits >= 7))) end();
+    const own = group.replace(/\D/g, "");
+    if (digits && (digits.length + own.length > longest(digits) || (digits.length >= 7 && own.length >= 7))) end();
     groups.push(group);
-    count += digits;
-    if (count >= 10) end();
+    digits += own;
+    if (digits.length >= longest(digits)) end();
   }
   end();
   return numbers;
 }
 
-/** The phone numbers in a text, as written (with plain separators) and as digits (7 to 15 of them). */
-function phonesIn(text: string): Phone[] {
+/**
+ * The phone numbers in a text, as written (with plain separators) and as digits. In the text under review (`strict`) a phone has
+ * 10 digits, or 11 starting with the country code 1 (R43): shorter or other numbers (a license, an order, a local number) are not
+ * checked. What the business confirmed (its phone, its facts) is read leniently, 7 to 15 digits: it only makes more numbers known.
+ */
+function phonesIn(text: string, strict = true): Phone[] {
   const found: Phone[] = [];
   for (const [raw] of plainSeparators(text).matchAll(PHONE))
     for (const shown of numbersOf(raw.replace(/\s+/g, " ").trim())) {
       const digits = shown.replace(/\D/g, "");
-      if (digits.length < 7 || digits.length > 15) continue;
-      if (NOT_A_PHONE.some((re) => re.test(shown))) continue;
+      const phone = strict
+        ? digits.length === 10 || (digits.length === 11 && digits.startsWith("1"))
+        : digits.length >= 7 && digits.length <= 15;
+      if (!phone || NOT_A_PHONE.some((re) => re.test(shown))) continue;
       found.push({ shown, digits });
     }
   return found;
@@ -238,9 +248,9 @@ export function reviewRules(input: ReviewRulesInput): ReviewProblem[] {
   const published = unique([copy.headline, copy.script, ...channels.map(textOf)]);
   const linked = unique([copy.headline, copy.script, ...channels.filter((c) => c !== "seo").map(textOf)]);
 
-  const knownPhones = [business.phone, ...knownFacts].flatMap(phonesIn);
+  const knownPhones = [business.phone, ...knownFacts].flatMap((t) => phonesIn(t, false));
   const wrongPhones = new Map<string, string>();
-  for (const phone of published.flatMap(phonesIn))
+  for (const phone of published.flatMap((t) => phonesIn(t)))
     if (!knownPhones.some((k) => samePhone(k.digits, phone.digits))) wrongPhones.set(phone.digits, phone.shown);
   if (wrongPhones.size) {
     const mine = business.phone.trim();
