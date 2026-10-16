@@ -1,9 +1,13 @@
 import { db } from "@/lib/db";
-import { localDay } from "@/lib/business-tz";
+import { businessTz, dayRange, localDay } from "@/lib/business-tz";
 import { publishPost } from "@/lib/publish";
 import { AgentError } from "./access";
+import { AGENTS } from "./agents";
 import { modelConfig } from "./metered";
-import { enqueue, json, stepsOf } from "./queue";
+import { resolveModel } from "./models";
+import { OPEN_STATUSES, enqueue, json, stepsOf } from "./queue";
+import { AgentKeyEnum, ModelChoice } from "./schema";
+import type { TeamAgentView, TeamRunView, TeamSnapshot } from "./team-view";
 import { enqueueDailyPlans } from "./daily";
 import { drain } from "./execution";
 import { loadContext } from "./context";
@@ -11,12 +15,167 @@ import { industryFor, toolCatalog } from "./industry";
 import { readSource, sourceUrl } from "./network";
 import { plain } from "./news";
 
+/** The most runs the team's view loads: today's and the open ones, the newest of them. */
+const TEAM_RUNS_MAX = 40;
+const objectOrNull = (value: unknown): Record<string, unknown> | null =>
+  typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+
+/**
+ * The team's runs for the board: the team requests and pieces created today (the business's local day) plus the open ones of
+ * any day, at most `TEAM_RUNS_MAX` (the newest when there are more), oldest first, each with its steps and the message the owner
+ * reads (its last `assistant` one). The alerts and the daily report read the same list.
+ */
+export async function loadTeamRuns(
+  businessId: string,
+  now = new Date(),
+): Promise<{ today: string; tz: string; runs: TeamRunView[] }> {
+  const business = await db.business.findUnique({
+    where: { id: businessId },
+    select: { timezone: true },
+  });
+  const tz = businessTz(business);
+  const today = localDay(now, tz);
+  const { from, to } = dayRange(tz, today);
+  const rows = await db.agentRun.findMany({
+    where: {
+      businessId,
+      kind: { in: ["team", "piece"] },
+      OR: [
+        { createdAt: { gte: from, lt: to } },
+        { status: { in: [...OPEN_STATUSES] } },
+      ],
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: TEAM_RUNS_MAX,
+    select: {
+      id: true,
+      kind: true,
+      origin: true,
+      parentRunId: true,
+      status: true,
+      stage: true,
+      plan: true,
+      error: true,
+      chargedCents: true,
+      createdAt: true,
+      steps: {
+        orderBy: { createdAt: "asc" },
+        select: {
+          name: true,
+          agent: true,
+          model: true,
+          attempt: true,
+          status: true,
+          output: true,
+          error: true,
+          chargedCents: true,
+          createdAt: true,
+          finishedAt: true,
+        },
+      },
+    },
+  });
+  const messages = rows.length
+    ? await db.agentMessage.findMany({
+        where: { businessId, runId: { in: rows.map((r) => r.id) }, role: "assistant" },
+        select: { runId: true, text: true },
+      })
+    : [];
+  const said = new Map(messages.map((m) => [m.runId, m.text]));
+  return {
+    today,
+    tz,
+    runs: rows.reverse().map((r) => ({
+      id: r.id,
+      kind: r.kind === "team" ? "team" : "piece",
+      origin: r.origin,
+      parentRunId: r.parentRunId,
+      status: r.status,
+      stage: r.stage,
+      plan: r.plan,
+      error: r.error,
+      chargedCents: r.chargedCents,
+      createdAt: r.createdAt.toISOString(),
+      message: said.get(r.id) ?? "",
+      steps: r.steps.map((s) => ({
+        name: s.name,
+        agent: s.agent,
+        model: s.model,
+        attempt: s.attempt,
+        status: s.status,
+        output: objectOrNull(s.output),
+        error: s.error,
+        chargedCents: s.chargedCents,
+        createdAt: s.createdAt.toISOString(),
+        finishedAt: s.finishedAt?.toISOString() ?? null,
+      })),
+    })),
+  };
+}
+
+/**
+ * The team's view of a business: its runs (`loadTeamRuns`) and its seven agents with the model each works with, whether it can
+ * work yet (and why not) and what it did today.
+ */
+export async function teamSnapshot(
+  businessId: string,
+  now = new Date(),
+): Promise<TeamSnapshot> {
+  const { today, tz, runs } = await loadTeamRuns(businessId, now);
+  const [ws, spent] = await Promise.all([
+    db.agentWorkspace.findUnique({
+      where: { businessId },
+      select: { agentModels: true, modelPrices: true },
+    }),
+    // `budgetDay` is the local day the step reserved on: the same key as the daily budget.
+    db.agentStep.groupBy({
+      by: ["agent"],
+      where: { budgetDay: today, run: { businessId } },
+      _count: { _all: true },
+      _sum: { chargedCents: true },
+    }),
+  ]);
+  const models = { agentModels: ws?.agentModels ?? {}, modelPrices: ws?.modelPrices ?? {} };
+  const fallback = ModelChoice.safeParse({
+    provider: process.env.MATYA_AGENT_PROVIDER,
+    model: process.env.MATYA_AGENT_MODEL,
+  }).data;
+  const agents = AgentKeyEnum.options.map((key): TeamAgentView => {
+    const { label, usesModel } = AGENTS[key];
+    const chosen = ModelChoice.safeParse(objectOrNull(models.agentModels)?.[key]).data;
+    const choice = chosen ?? fallback;
+    let problem = "";
+    // An agent that makes no AI call does not need a model.
+    if (usesModel)
+      try {
+        resolveModel(key, models);
+      } catch (error) {
+        problem = error instanceof AgentError ? error.message : "No se pudo comprobar el modelo.";
+      }
+    const used = spent.find((s) => s.agent === key);
+    return {
+      key,
+      label,
+      usesModel,
+      model: usesModel && choice ? `${choice.provider}:${choice.model}` : "",
+      own: chosen !== undefined,
+      ready: problem === "",
+      problem,
+      steps: used?._count._all ?? 0,
+      cents: used?._sum.chargedCents ?? 0,
+    };
+  });
+  return { today, tz, runs, agents };
+}
+
 export async function snapshot(businessId: string) {
+  const now = new Date();
   const [context, settings, runs, messages, news] = await Promise.all([
     loadContext(businessId),
     db.agentWorkspace.findUnique({ where: { businessId } }),
     db.agentRun.findMany({
-      where: { businessId },
+      // The pieces of a team request are its own cards (`team`): the recent list keeps the requests.
+      where: { businessId, parentRunId: null },
       orderBy: { createdAt: "desc" },
       take: 20,
       select: {
@@ -68,10 +227,14 @@ export async function snapshot(businessId: string) {
   } catch {
     /* visible setup state */
   }
-  const day = localDay(new Date(), context.business.timezone);
-  const budget = await db.agentBudget.findUnique({
-    where: { businessId_day: { businessId, day } },
-  });
+  const day = localDay(now, context.business.timezone);
+  // The team's view comes with the workspace, team mode on or off: the settings show each agent's readiness before it is turned on.
+  const [budget, team] = await Promise.all([
+    db.agentBudget.findUnique({
+      where: { businessId_day: { businessId, day } },
+    }),
+    settings ? teamSnapshot(businessId, now) : null,
+  ]);
   return JSON.parse(
     JSON.stringify({
       business: context.business,
@@ -82,6 +245,7 @@ export async function snapshot(businessId: string) {
       news,
       budget,
       aiReady,
+      team,
       tools: toolCatalog(businessId),
       connections: context.connections,
       posts: context.posts,

@@ -1,4 +1,5 @@
 import type { Settings, Context } from "@/lib/agent/schema";
+import type { TeamSnapshot } from "@/lib/agent/team-view";
 export type RunView = {
   id: string;
   kind: string;
@@ -33,7 +34,9 @@ export type NewsView = {
 export type Snapshot = {
   business: Context["business"];
   industry: Context["industry"];
-  settings: (Settings & { revision: number }) | null;
+  /** `pausedAt`: since when everything is paused; `tickAt`: the worker's last minute tick (both null until they happen). */
+  settings: (Settings & { revision: number; pausedAt: string | null; tickAt: string | null }) | null;
+  /** The recent runs, without the pieces of a team request (those are in `team`). */
   runs: RunView[];
   messages: {
     id: string;
@@ -45,6 +48,8 @@ export type Snapshot = {
   news: NewsView[];
   budget: { chargedCents: number; reservedCents: number; posts: number } | null;
   aiReady: boolean;
+  /** The team's runs and agents; null while the business has no workspace yet. */
+  team: TeamSnapshot | null;
   tools: Context["tools"];
   connections: string[];
   posts: Context["posts"];

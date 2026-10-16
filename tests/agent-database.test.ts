@@ -24,7 +24,8 @@ import { workOne, executeStep, analyzeResults, stepCost, drain, type StepCost } 
 import { stepModel } from "@/lib/agent/team-execution";
 import { enqueueDailyPlans } from "@/lib/agent/daily";
 import { collectSignals } from "@/lib/agent/signals";
-import { runAgentCycle } from "@/lib/agent/service";
+import { runAgentCycle, loadTeamRuns, snapshot, teamSnapshot } from "@/lib/agent/service";
+import { boardColumn, needsYou } from "@/lib/agent/team-view";
 import { claimAgentPost } from "@/lib/agent/publication";
 import { loadContext } from "@/lib/agent/context";
 import { pieceLimits, recentTopicsOf } from "@/lib/agent/limits";
@@ -36,7 +37,7 @@ import { storeDesign } from "@/lib/media-formats";
 import { ensureStoredCopy } from "@/lib/library-files";
 import { AgentError } from "@/lib/agent/access";
 import { AGENTS } from "@/lib/agent/agents";
-import { Copy as CopySchema, type Context } from "@/lib/agent/schema";
+import { AgentKeyEnum, Copy as CopySchema, type Context } from "@/lib/agent/schema";
 import { boundedContext } from "@/lib/agent/bounded-context";
 import { meteredAsk, modelConfig, type ModelConfig } from "@/lib/agent/metered";
 import { MEDIA_POLICY, SYSTEM } from "@/lib/agent/prompts";
@@ -5379,6 +5380,205 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       const lease = (await claimRun(A))!;
       await saveSettings(A, { ...settings, teamMode: true, objective: "Otro objetivo" });
       await expect(beginStep(piece.id, lease.leaseToken, "copy", 0)).rejects.toThrow("cambiaron");
+    });
+  });
+
+  describe("the team view: its runs, its agents and the snapshot", () => {
+    const NOW = new Date("2026-10-16T14:00:00Z"); // 10:00 in New York (A): today is 2026-10-16, from 04:00Z to 04:00Z of the next day
+    const TODAY = "2026-10-16";
+    const modelEnv = {
+      MATYA_AGENT_PROVIDER: "gemini",
+      MATYA_AGENT_MODEL: "gemini-x",
+      MATYA_AGENT_INPUT_USD_PER_MILLION: "0.3",
+      MATYA_AGENT_OUTPUT_USD_PER_MILLION: "2.5",
+      GEMINI_API_KEY: "synthetic-no-provider-access",
+    };
+    const stubEnv = (env: Record<string, string>) => {
+      for (const [k, v] of Object.entries(env)) vi.stubEnv(k, v);
+    };
+    afterEach(() => vi.unstubAllEnvs());
+    let seq = 0;
+    /** A run of the team (or any other kind) created at `createdAt`, the way the engine stores it. */
+    const viewRun = (businessId: string, kind: string, createdAt: string, extra: Record<string, unknown> = {}) =>
+      db.agentRun.create({
+        data: {
+          businessId,
+          requestKey: `view-${seq++}-${crypto.randomUUID()}`,
+          kind,
+          prompt: "x",
+          context: {},
+          createdAt: new Date(createdAt),
+          ...(kind === "team" ? { plan: { kind: "team" } } : kind === "piece" ? { plan: { kind: "piece", piece: roof, steps: stepsForPiece("post") } } : {}),
+          ...extra,
+        },
+      });
+    const viewStep = (runId: string, name: string, extra: Record<string, unknown> = {}) =>
+      db.agentStep.create({ data: { runId, name, specialist: "matya", budgetDay: TODAY, status: "succeeded", ...extra } });
+    const ids = (runs: { id: string }[]) => runs.map((r) => r.id);
+
+    it("teamSnapshot: today's team and pieces, an open piece from yesterday, agents with steps and cents of today", async () => {
+      stubEnv({ ...modelEnv, ANTHROPIC_API_KEY: "synthetic-no-provider-access", OPENAI_API_KEY: "" });
+      await saveSettings(A, {
+        ...settings,
+        teamMode: true,
+        agentModels: {
+          copy: { provider: "claude", model: "claude-x" },
+          seo: { provider: "openai", model: "gpt-x" },
+          strategy: { provider: "openai", model: "gpt-y" },
+        },
+        modelPrices: { "claude:claude-x": { input: 1, output: 5 }, "openai:gpt-y": { input: 1, output: 4 } },
+      });
+      const yesterdayOpen = await viewRun(A, "piece", "2026-10-15T15:00:00Z", { status: "queued" });
+      await viewStep(yesterdayOpen.id, "copy", { agent: "copy", budgetDay: "2026-10-15", chargedCents: 7 });
+      await viewRun(A, "piece", "2026-10-15T16:00:00Z", { status: "completed", stage: 6 });
+      const team = await viewRun(A, "team", "2026-10-16T11:00:00Z", { status: "completed", stage: 4 });
+      const piece = await viewRun(A, "piece", "2026-10-16T12:00:00Z", { status: "waiting_approval", stage: 3, parentRunId: team.id });
+      await viewRun(A, "campaign", "2026-10-16T12:30:00Z", { status: "queued" });
+      const other = await viewRun(B, "piece", "2026-10-16T12:00:00Z", { status: "queued" });
+      await viewStep(other.id, "copy", { agent: "copy", chargedCents: 9 });
+      await db.agentMessage.createMany({
+        data: [
+          { businessId: A, runId: piece.id, role: "user", text: "Plan del día" },
+          { businessId: A, runId: piece.id, role: "assistant", text: "Todo listo: apruébalo para programar." },
+        ],
+      });
+      const at = (minute: number) => new Date(Date.UTC(2026, 9, 16, 12, minute));
+      await viewStep(piece.id, "copy", { agent: "copy", model: "gemini:gemini-x", chargedCents: 3, output: { title: "Techos" }, createdAt: at(1), finishedAt: at(2) });
+      await viewStep(piece.id, "design", { agent: "design", chargedCents: 0, createdAt: at(3) });
+      await viewStep(piece.id, "copy-r1", { agent: "copy", attempt: 1, chargedCents: 4, status: "failed", error: "Sin respuesta", createdAt: at(4) });
+      await viewStep(piece.id, "old", { agent: "", chargedCents: 2, createdAt: at(5) });
+
+      const view = await teamSnapshot(A, NOW);
+      expect(view).toMatchObject({ today: TODAY, tz: "America/New_York" });
+      // The pieces of yesterday that are done and the other kinds of run stay out; another business's runs too. Oldest first.
+      expect(ids(view.runs)).toEqual([yesterdayOpen.id, team.id, piece.id]);
+      expect(view.runs[1]).toEqual({
+        id: team.id,
+        kind: "team",
+        origin: "owner",
+        parentRunId: null,
+        status: "completed",
+        stage: 4,
+        plan: { kind: "team" },
+        error: "",
+        chargedCents: 0,
+        createdAt: "2026-10-16T11:00:00.000Z",
+        message: "",
+        steps: [],
+      });
+      expect(view.runs[2]).toMatchObject({
+        parentRunId: team.id,
+        status: "waiting_approval",
+        stage: 3,
+        message: "Todo listo: apruébalo para programar.",
+        plan: { kind: "piece", piece: { topic: "Techos" } },
+      });
+      expect(view.runs[2].steps).toEqual([
+        {
+          name: "copy",
+          agent: "copy",
+          model: "gemini:gemini-x",
+          attempt: 0,
+          status: "succeeded",
+          output: { title: "Techos" },
+          error: "",
+          chargedCents: 3,
+          createdAt: at(1).toISOString(),
+          finishedAt: at(2).toISOString(),
+        },
+        expect.objectContaining({ name: "design", output: null, finishedAt: null }),
+        expect.objectContaining({ name: "copy-r1", attempt: 1, status: "failed", error: "Sin respuesta" }),
+        expect.objectContaining({ name: "old", agent: "" }),
+      ]);
+      expect(needsYou(view.runs)).toMatchObject([{ runId: piece.id, kind: "publicar", text: "Todo listo: apruébalo para programar.", canRedo: true }]);
+      expect(view.runs.map(boardColumn)).toEqual(["redaccion", "estrategia", "revision"]);
+
+      // Seven agents, in the engine's order. Steps and cents are today's, this business's and each agent's own.
+      const base = { own: false, ready: true, problem: "", steps: 0, cents: 0 };
+      const agent = (key: keyof typeof AGENTS) => ({ key, label: AGENTS[key].label, usesModel: AGENTS[key].usesModel });
+      expect(view.agents).toEqual([
+        { ...agent("director"), ...base, model: "gemini:gemini-x" },
+        { ...agent("seo"), ...base, model: "openai:gpt-x", own: true, ready: false, problem: "Falta el precio verificado del modelo openai:gpt-x para el agente seo." },
+        { ...agent("strategy"), ...base, model: "openai:gpt-y", own: true, ready: false, problem: "Falta la conexión del modelo de strategy." },
+        { ...agent("copy"), ...base, model: "claude:claude-x", own: true, steps: 2, cents: 7 },
+        { ...agent("design"), ...base, model: "", steps: 1 },
+        { ...agent("video"), ...base, model: "" },
+        { ...agent("review"), ...base, model: "gemini:gemini-x" },
+      ]);
+    });
+
+    it("teamSnapshot of a team-mode business with nothing today is empty lists and seven agents", async () => {
+      stubEnv(Object.fromEntries(Object.keys(modelEnv).map((k) => [k, ""])));
+      await saveSettings(A, { ...settings, teamMode: true });
+      const view = await teamSnapshot(A, NOW);
+      expect(view).toMatchObject({ today: TODAY, tz: "America/New_York", runs: [] });
+      expect(view.agents.map((a) => a.key)).toEqual([...AgentKeyEnum.options]);
+      for (const a of view.agents) {
+        expect(a).toMatchObject({ label: AGENTS[a.key as keyof typeof AGENTS].label, own: false, steps: 0, cents: 0 });
+        // Without a model in the environment the agents that call an AI cannot work yet and say why; the others do not need one.
+        if (a.usesModel) {
+          expect(a).toMatchObject({ ready: false, model: "" });
+          expect(a.problem).toContain("Falta configurar el modelo");
+        } else expect(a).toMatchObject({ ready: true, problem: "", model: "" });
+      }
+      expect(await loadTeamRuns(A, NOW)).toEqual({ today: TODAY, tz: "America/New_York", runs: [] });
+    });
+
+    it("loadTeamRuns keeps the 40 newest runs, oldest first", async () => {
+      await db.agentRun.createMany({
+        data: Array.from({ length: 45 }, (_, i) => ({
+          businessId: A,
+          requestKey: `many-${i}-${crypto.randomUUID()}`,
+          kind: "piece",
+          prompt: "x",
+          context: {},
+          status: "completed",
+          createdAt: new Date(Date.UTC(2026, 9, 16, 10, i)),
+        })),
+      });
+      const { runs } = await loadTeamRuns(A, NOW);
+      expect(runs).toHaveLength(40);
+      expect(runs.map((r) => r.createdAt)).toEqual(Array.from({ length: 40 }, (_, i) => new Date(Date.UTC(2026, 9, 16, 10, i + 5)).toISOString()));
+    });
+
+    it("a run created at 23:30 local yesterday and already completed is not today's", async () => {
+      // 00:10 on 2026-10-16 in New York (04:10Z): the UTC date is the same as the local one, but 23:30 yesterday (03:30Z) is not today.
+      vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-16T04:10:00Z"), shouldAdvanceTime: true });
+      const lateDone = await viewRun(A, "piece", "2026-10-16T03:30:00Z", { status: "completed", stage: 6 });
+      const lateOpen = await viewRun(A, "piece", "2026-10-16T03:31:00Z", { status: "waiting_approval", stage: 3 });
+      const after = await viewRun(A, "piece", "2026-10-16T04:05:00Z", { status: "completed", stage: 6 });
+      const { today, tz, runs } = await loadTeamRuns(A);
+      expect({ today, tz }).toEqual({ today: TODAY, tz: "America/New_York" });
+      expect(ids(runs)).toEqual([lateOpen.id, after.id]);
+      expect(ids(runs)).not.toContain(lateDone.id);
+      expect(ids((await teamSnapshot(A)).runs)).toEqual([lateOpen.id, after.id]);
+    });
+
+    it("snapshot's recent runs leave child pieces out", async () => {
+      await saveSettings(A, { ...settings, teamMode: true });
+      const team = await viewRun(A, "team", new Date().toISOString(), { status: "running" });
+      const child = await viewRun(A, "piece", new Date().toISOString(), { status: "queued", parentRunId: team.id });
+      const campaign = await viewRun(A, "campaign", new Date().toISOString(), { status: "queued" });
+      const snap = await snapshot(A);
+      expect(snap.runs.map((r: { id: string }) => r.id).sort()).toEqual([team.id, campaign.id].sort());
+      expect(snap.team.runs.map((r: { id: string }) => r.id).sort()).toEqual([team.id, child.id].sort());
+      expect(snap.team).toMatchObject({ today: localDay(new Date(), "America/New_York"), tz: "America/New_York" });
+      expect(snap.team.agents).toHaveLength(7);
+      // The workspace's pause and the worker's last tick travel with the settings (null until they happen).
+      expect(snap.settings).toMatchObject({ teamMode: true, pausedAt: null, tickAt: null });
+    });
+
+    it("snapshot has the team view whenever the business has a workspace, team mode on or off, and null without one", async () => {
+      const off = await snapshot(A);
+      expect(off.settings.teamMode).toBe(false);
+      expect(off.team).toMatchObject({ runs: [] });
+      expect(off.team.agents.map((a: { key: string }) => a.key)).toEqual([...AgentKeyEnum.options]);
+      await saveSettings(A, { ...settings, teamMode: true });
+      expect((await snapshot(A)).team).not.toBeNull();
+      await db.agentWorkspace.delete({ where: { businessId: B } });
+      const none = await snapshot(B);
+      expect(none.settings).toBeNull();
+      expect(none.team).toBeNull();
     });
   });
 });
