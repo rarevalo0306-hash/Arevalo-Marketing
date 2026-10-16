@@ -14,6 +14,8 @@ import {
   spawnPieces,
   stepsOf,
   planStepMeta,
+  DAY_BUDGET_ERROR,
+  RUN_BUDGET_ERROR,
   type StepResult,
 } from "@/lib/agent/queue";
 import { reworkSteps, stepsForPiece, validatePieces, type ReviewProblem } from "@/lib/agent/plan";
@@ -635,6 +637,63 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     expect(
       await db.agentRun.findUnique({ where: { id: second.id } }),
     ).toMatchObject({ status: "blocked" });
+  });
+  it("a step over the daily budget is refused with DAY_BUDGET_ERROR, over the run budget with RUN_BUDGET_ERROR", async () => {
+    const day = localDay(new Date(), "America/New_York");
+    expect(DAY_BUDGET_ERROR).not.toBe(RUN_BUDGET_ERROR);
+    // Each case: the settings' caps, what the day has already charged, the step's reservation and the refusal it earns.
+    const cases: [{ run: number; daily: number }, number, number, string][] = [
+      [{ run: 100, daily: 100 }, 60, 60, DAY_BUDGET_ERROR], // only the day is over: run 60/100, day 120/100
+      [{ run: 50, daily: 100 }, 0, 60, RUN_BUDGET_ERROR], // only the run is over: run 60/50, day 60/100
+      [{ run: 50, daily: 100 }, 60, 60, DAY_BUDGET_ERROR], // both are over, the day wins: run 60/50, day 120/100
+    ];
+    for (const [caps, spentToday, cost, expected] of cases) {
+      await db.agentRun.deleteMany({ where: { businessId: A } });
+      await db.agentBudget.deleteMany({ where: { businessId: A } });
+      await saveSettings(A, { ...settings, runBudgetCents: caps.run, dailyBudgetCents: caps.daily });
+      if (spentToday) await db.agentBudget.create({ data: { businessId: A, day, chargedCents: spentToday } });
+      const r = await ask();
+      const execute = vi.fn();
+      await workOne(A, execute, () => cost);
+      expect(execute).not.toHaveBeenCalled();
+      expect(await db.agentRun.findUniqueOrThrow({ where: { id: r.id } })).toMatchObject({
+        status: "blocked",
+        error: expected,
+        reservedCents: 0,
+        chargedCents: 0,
+      });
+      expect(await db.agentStep.count({ where: { runId: r.id } })).toBe(0);
+    }
+  });
+  it("the global agent tick stamps tickAt on every workspace; an owner's cycle does not", async () => {
+    const tickAt = async (businessId: string) =>
+      (await db.agentWorkspace.findUniqueOrThrow({ where: { businessId } })).tickAt;
+    const revisions = async () =>
+      (await db.agentWorkspace.findMany({ where: { businessId: { in: [A, B] } }, orderBy: { businessId: "asc" } })).map((w) => w.revision);
+    expect(await tickAt(A)).toBeNull();
+    expect(await tickAt(B)).toBeNull();
+    const before = await revisions();
+
+    vi.mocked(drain).mockResolvedValueOnce(0);
+    await runAgentCycle();
+    for (const id of [A, B]) {
+      const at = await tickAt(id);
+      expect(at).not.toBeNull();
+      expect(Math.abs(Date.now() - at!.getTime())).toBeLessThan(5000);
+    }
+    // The tick is a heartbeat, not a settings change: the revision a run is checked against does not move.
+    expect(await revisions()).toEqual(before);
+
+    // An owner's button runs the cycle of one business: it is not the worker's heartbeat.
+    await db.agentWorkspace.update({ where: { businessId: A }, data: { tickAt: null } });
+    vi.mocked(drain).mockResolvedValueOnce(0);
+    await runAgentCycle(A);
+    expect(await tickAt(A)).toBeNull();
+
+    // Behind the switch, like the rest of the cycle.
+    process.env.MATYA_AGENT_ENABLED = "false";
+    await runAgentCycle();
+    expect(await tickAt(A)).toBeNull();
   });
   it("executes a campaign through real preparation/scheduling and per-channel verification", async () => {
     const r = await prepared();

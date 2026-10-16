@@ -40,6 +40,13 @@ export const OPEN_STATUSES = [
   "waiting_approval",
   "waiting_provider",
 ] as const;
+/** Why a step was refused before any paid call: the run's own cap, the business's cap for the day, or a charge over the reservation. */
+export const RUN_BUDGET_ERROR =
+  "El encargo alcanzó el límite de gasto. No se hizo una nueva llamada de pago.";
+export const DAY_BUDGET_ERROR =
+  "Se acabó el presupuesto de IA de hoy. No se hizo una nueva llamada de pago.";
+export const OVER_RESERVATION_ERROR =
+  "El consumo superó la reserva: revisa las tarifas antes de continuar.";
 /** Most open runs a business may have at once (`enqueue` refuses the next one; a team's pieces count too). */
 export const OPEN_RUN_CAP = 8;
 /** The owner's requests that stay what they are with team mode on: they are not work for the team. */
@@ -359,16 +366,13 @@ export async function beginStep(
       create: { businessId: run.businessId, day },
       update: {},
     });
-    if (
-      cost &&
-      (current.chargedCents + current.reservedCents + cost >
-        settings.runBudgetCents ||
-        budget.chargedCents + budget.reservedCents + cost >
-          settings.dailyBudgetCents)
-    )
-      throw new AgentError(
-        "El encargo alcanzó el límite de gasto. No se hizo una nueva llamada de pago.",
-      );
+    if (cost) {
+      // The day's cap goes first: when both are over, what the owner can act on is that the day's money is gone.
+      if (budget.chargedCents + budget.reservedCents + cost > settings.dailyBudgetCents)
+        throw new AgentError(DAY_BUDGET_ERROR);
+      if (current.chargedCents + current.reservedCents + cost > settings.runBudgetCents)
+        throw new AgentError(RUN_BUDGET_ERROR);
+    }
     await tx.agentBudget.update({
       where: { id: budget.id },
       data: { reservedCents: { increment: cost } },
@@ -488,9 +492,7 @@ export async function finishStep(
         leaseUntil: null,
         reservedCents: { decrement: step.reservedCents },
         chargedCents: { increment: cents },
-        error: over
-          ? "El consumo superó la reserva: revisa las tarifas antes de continuar."
-          : "",
+        error: over ? OVER_RESERVATION_ERROR : "",
       },
     });
     if (over)

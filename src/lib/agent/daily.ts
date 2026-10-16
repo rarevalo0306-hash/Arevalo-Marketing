@@ -8,7 +8,7 @@ import { enqueue, OPEN_RUN_CAP, OPEN_STATUSES } from "./queue";
 import { collectSignals } from "./signals";
 
 /** Minutes shown by the business's wall clock since its midnight (07:30 is 450 whatever the day's length). */
-function clockMinutes(tz: string, now: Date): number {
+export function clockMinutes(tz: string, now: Date): number {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", hour: "2-digit", minute: "2-digit" }).formatToParts(now);
   const at = (type: string) => Number(parts.find((p) => p.type === type)?.value);
   return at("hour") * 60 + at("minute");
@@ -29,13 +29,13 @@ export function isDailyDue(dailyHour: number, tz: string, now: Date, lastDay: st
 }
 
 /** The request key of a business's plan for a local day: the day is what makes it once a day. */
-const planKey = (businessId: string, day: string) => `daily-${businessId}-${day}`;
+export const dailyPlanKey = (businessId: string, day: string) => `daily-${businessId}-${day}`;
 const DAILY_KEY = /^daily-.+-(\d{4}-\d{2}-\d{2})$/;
 
 /** The day of the business's latest morning plan (read from its request key), or null when it never had one. */
 async function lastDailyDay(businessId: string): Promise<string | null> {
   const last = await db.agentRun.findFirst({
-    where: { businessId, kind: "team", origin: "daily", requestKey: { startsWith: planKey(businessId, "") } },
+    where: { businessId, kind: "team", origin: "daily", requestKey: { startsWith: dailyPlanKey(businessId, "") } },
     orderBy: { createdAt: "desc" },
     select: { requestKey: true },
   });
@@ -82,7 +82,7 @@ export async function enqueueDailyPlans(now = new Date(), businessId?: string): 
         const signals = await collectSignals(w.businessId, now);
         await enqueue(
           w.businessId,
-          { kind: "team", text: "Plan del día", requestKey: planKey(w.businessId, day) },
+          { kind: "team", text: "Plan del día", requestKey: dailyPlanKey(w.businessId, day) },
           { origin: "daily", extraContext: { signals } },
         );
         queued++;

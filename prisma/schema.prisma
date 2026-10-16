@@ -460,6 +460,8 @@ model AgentWorkspace {
   allowSocial Boolean @default(true)
   allowWebArticles Boolean @default(true)
   pausedAt DateTime?
+  /// The last minute tick of the worker (`/api/cron?agent=1`): the same for every workspace, the owner's cycles do not move it.
+  tickAt DateTime?
   revision Int @default(1)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

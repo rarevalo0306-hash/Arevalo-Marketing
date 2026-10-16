@@ -4,10 +4,26 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/db", () => ({ db: {} }));
 
-import { isDailyDue } from "@/lib/agent/daily";
+import { clockMinutes, dailyPlanKey, isDailyDue } from "@/lib/agent/daily";
 import { summarizeSignals, type SignalInput } from "@/lib/agent/signals";
 import { addDays, localDay } from "@/lib/business-tz";
 import { readRankReport } from "@/lib/seo/rank";
+
+describe("clockMinutes", () => {
+  it("clockMinutes reads the wall clock: 07:30 is 450 on a DST day", () => {
+    const ny = "America/New_York";
+    expect(clockMinutes(ny, new Date("2026-11-01T12:30:00Z"))).toBe(450); // 07:30 EST, the day of 25 hours
+    expect(clockMinutes(ny, new Date("2026-03-08T11:30:00Z"))).toBe(450); // 07:30 EDT, the day of 23 hours
+    expect(clockMinutes(ny, new Date("2026-11-02T05:00:00Z"))).toBe(0); // midnight is 0, not 1440
+    expect(clockMinutes(ny, new Date("2026-11-02T04:59:00Z"))).toBe(1439);
+  });
+});
+
+describe("dailyPlanKey", () => {
+  it("is the request key of the business's plan for that local day", () => {
+    expect(dailyPlanKey("biz1", "2026-10-16")).toBe("daily-biz1-2026-10-16");
+  });
+});
 
 describe("isDailyDue", () => {
   it("una sola vez por día local, también el día del cambio de horario", () => {

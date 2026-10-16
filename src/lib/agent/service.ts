@@ -164,6 +164,10 @@ const notNow = (error: unknown) =>
 export async function runAgentCycle(businessId?: string) {
   if (process.env.MATYA_AGENT_ENABLED !== "true")
     return { steps: 0, published: 0 };
+  // Only the worker's per-minute tick leaves its mark: an owner's cycle (`businessId`) is not the heartbeat. The revision stays
+  // where it is, because a tick is not a settings change.
+  if (businessId === undefined)
+    await db.agentWorkspace.updateMany({ data: { tickAt: new Date() } });
   const workspaces = await db.agentWorkspace.findMany({
     // A paused workspace asks for nothing (`enqueue` refuses): no radar, no news checks.
     where: {

@@ -11,13 +11,15 @@ Para una prueba local equivalente:
 1. Iniciar PostgreSQL en loopback, puerto 55439, base `matya_agent`, con credenciales exclusivas de prueba. En esta sesión se utilizó `embedded-postgres@18.4.0-beta.17` instalado en un directorio temporal fuera del proyecto.
 2. Exportar `DATABASE_URL`, `DIRECT_URL` y `MATYA_TEST_DATABASE_URL` con la misma conexión local.
 3. Extraer `prisma/schema.prisma` del commit `9e191ac89d2120ee803b73aeccc9b7a162791b99`; aplicar `prisma db push --schema <archivo> --skip-generate` **solo a la base local vacía**.
-4. Crear los roles `anon` y `authenticated`, aplicar `supabase/migrations/20261012084743_matya_agent_workspace.sql`, después `supabase/migrations/20261012190000_users_organizations.sql`, `supabase/migrations/20261012230000_team_invitations.sql` y `supabase/migrations/20261016120000_matya_team.sql`, y ejecutar `npx prisma generate`.
+4. Crear los roles `anon` y `authenticated`, aplicar `supabase/migrations/20261012084743_matya_agent_workspace.sql`, después `supabase/migrations/20261012190000_users_organizations.sql`, `supabase/migrations/20261012230000_team_invitations.sql`, `supabase/migrations/20261016120000_matya_team.sql` y `supabase/migrations/20261017120000_matya_tick.sql`, y ejecutar `npx prisma generate`.
 5. Ejecutar `npm test`. La integración comprueba RLS, aislamiento, reservas concurrentes, reclamación única, recuperación, aprobación, cancelación, límites de envío, render con cotización exacta, noticias y medición insuficiente.
 6. `node scripts/agent-seed-local.mjs` crea dos negocios sintéticos para revisar la interfaz. También rechaza cualquier base fuera de esa conexión local.
 
 ## Migración del modo equipo
 
 `supabase/migrations/20261016120000_matya_team.sql` agrega las columnas del modo equipo (`teamMode`, `dailyHour`, `agentModels`, `modelPrices`, `allowSocial`, `allowWebArticles` y `pausedAt` en AgentWorkspace; `plan`, `parentRunId` y `origin` en AgentRun; `agent`, `model` y `attempt` en AgentStep; `alerts` en AgentBudget) y un índice. Es aditiva, mantiene RLS y quita los permisos de `anon` y `authenticated`. Se aplica en la base local de pruebas (paso 4) y en Supabase **antes** de desplegar el código: Prisma lee todas las columnas, así que sin ella el Centro MATYA falla aunque el modo equipo esté apagado.
+
+`supabase/migrations/20261017120000_matya_tick.sql` agrega `tickAt` a AgentWorkspace: la última vez que corrió la vuelta de cada minuto del trabajador (`/api/cron?agent=1`). Es aditiva e idempotente, y la tabla conserva su RLS y sus permisos. Se aplica en Supabase **antes** de desplegar el código, por la misma razón: Prisma lee todas las columnas, así que sin ella falla la lectura de AgentWorkspace aunque el modo equipo esté apagado.
 
 `agent-team-e2e.test.ts` recorre el equipo de punta a punta con la misma base local (y la misma condición: se omite fuera de `127.0.0.1:55439/matya_agent`). Usa su propio negocio sintético `matya-e2e-a`, para no cruzarse con `agent-database.test.ts`, que corre al mismo tiempo. La IA se simula al nivel del proveedor: el costo de cada paso, la reserva y el cobro son los reales.
 
