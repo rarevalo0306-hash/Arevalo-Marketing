@@ -6544,7 +6544,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       });
     });
 
-    it("the global tick runs the team's daily reports after the alerts; an owner's cycle does not, and a failure never breaks the cycle", async () => {
+    it("the global tick publishes the agent's posts and sweeps the channel waits, then sends the alerts, then the team's daily reports; an owner's cycle does not, and a failure never breaks the cycle", async () => {
       vi.useRealTimers();
       // Off, so the cycle makes no morning plan of its own.
       await saveSettings(A, { ...settings, teamMode: true, enabled: false });
@@ -6555,13 +6555,32 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       await runAgentCycle(A);
       expect(runDailyReports).not.toHaveBeenCalled();
 
-      vi.mocked(drain).mockResolvedValueOnce(0);
-      expect(await runAgentCycle()).toEqual({ steps: 0, published: 0 });
+      // The reads of the publishing (the agent's due posts) and of the sweep (the runs waiting for a channel), to see when they run.
+      const postReads = vi.spyOn(db.post, "findMany");
+      const runReads = vi.spyOn(db.agentRun, "findMany");
+      try {
+        vi.mocked(drain).mockResolvedValueOnce(0);
+        expect(await runAgentCycle()).toEqual({ steps: 0, published: 0 });
+        const orderOf = (spy: { mock: { calls: unknown[][]; invocationCallOrder: number[] } }, text: string) => {
+          const i = spy.mock.calls.findIndex(([query]) => JSON.stringify(query).includes(text));
+          expect(i, text).toBeGreaterThanOrEqual(0);
+          return spy.mock.invocationCallOrder[i];
+        };
+        const publishing = orderOf(postReads, '"agentRunId":{"not":null}');
+        const sweep = orderOf(runReads, '"status":"waiting_provider"');
+        const alerts = vi.mocked(sendAgentAlerts).mock.invocationCallOrder[0];
+        const reports = vi.mocked(runDailyReports).mock.invocationCallOrder[0];
+        expect(publishing).toBeLessThan(sweep);
+        expect(sweep).toBeLessThan(alerts);
+        expect(alerts).toBeLessThan(reports);
+      } finally {
+        postReads.mockRestore();
+        runReads.mockRestore();
+      }
       expect(runDailyReports).toHaveBeenCalledTimes(1);
       const [at, opts] = vi.mocked(runDailyReports).mock.calls[0];
       expect(at).toBeInstanceOf(Date);
       expect(opts).toEqual({ max: 2, budgetMs: 15000, teamOnly: true });
-      expect(vi.mocked(sendAgentAlerts).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(runDailyReports).mock.invocationCallOrder[0]);
 
       const log = vi.spyOn(console, "error").mockImplementation(() => {});
       try {

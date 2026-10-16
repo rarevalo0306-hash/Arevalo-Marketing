@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { AgentCenter } from "@/components/agent/AgentCenter";
-import { requireAgentOwner } from "@/lib/agent/access";
+import { isMissingMigration, requireAgentOwner } from "@/lib/agent/access";
 import { snapshot } from "@/lib/agent/service";
 import { pageBusiness } from "@/lib/auth";
 import { roleAllows } from "@/lib/roles";
@@ -26,7 +26,7 @@ export default async function MatyaPage({
       <AgentCenter key={id} businessId={id} initial={await snapshot(id)} tab={tab} />
     );
   } catch (e) {
-    if (typeof e === "object" && e && "code" in e && e.code === "P2021")
+    if (isMissingMigration(e))
       return (
         <AgentCenter
           businessId={id}

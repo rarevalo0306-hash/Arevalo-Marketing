@@ -307,22 +307,6 @@ export async function runAgentCycle(businessId?: string) {
     console.error("MATYA daily plans did not complete");
   }
   const steps = await drain(businessId, 80000);
-  // The team's email alerts go out from the worker's tick only (an owner's cycle is not it), after the queue was worked, and they
-  // can never take the cycle down: the publishing below still runs.
-  if (businessId === undefined)
-    try {
-      await sendAgentAlerts(new Date());
-    } catch (error) {
-      console.error("MATYA alerts did not complete", error instanceof Error ? error.name : "unknown");
-    }
-  // The daily report of the businesses with team mode goes out from here too, once their morning plan is done (the cron of the
-  // platform may run only once a day). It has its own try/catch: neither it nor the alerts can take the cycle down.
-  if (businessId === undefined)
-    try {
-      await runDailyReports(new Date(), { max: 2, budgetMs: 15000, teamOnly: true });
-    } catch (error) {
-      console.error("MATYA daily reports did not complete", error instanceof Error ? error.name : "unknown");
-    }
   // Only agent-owned posts; the legacy scheduler continues to own every other post.
   const posts = await db.post.findMany({
     where: {
@@ -397,5 +381,21 @@ export async function runAgentCycle(businessId?: string) {
         },
       });
   }
+  // The team's email alerts go out from the worker's tick only (an owner's cycle is not it), after the queue was worked, the agent's
+  // posts went out and the channel waits were swept, so they tell what is true now. They can never take the cycle down.
+  if (businessId === undefined)
+    try {
+      await sendAgentAlerts(new Date());
+    } catch (error) {
+      console.error("MATYA alerts did not complete", error instanceof Error ? error.name : "unknown");
+    }
+  // The daily report of the businesses with team mode goes out from here too, once their morning plan is done (the cron of the
+  // platform may run only once a day). It has its own try/catch: neither it nor the alerts can take the cycle down.
+  if (businessId === undefined)
+    try {
+      await runDailyReports(new Date(), { max: 2, budgetMs: 15000, teamOnly: true });
+    } catch (error) {
+      console.error("MATYA daily reports did not complete", error instanceof Error ? error.name : "unknown");
+    }
   return { steps, published };
 }

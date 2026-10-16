@@ -37,7 +37,7 @@ vi.mock("@/lib/agent/service", () => ({
 }));
 
 import { AgentError } from "@/lib/agent/access";
-import { POST } from "@/app/api/agent/[id]/route";
+import { GET, POST } from "@/app/api/agent/[id]/route";
 
 const ORIGIN = "https://app.example";
 const send = (body: unknown, headers: Record<string, string> = { origin: ORIGIN }) =>
@@ -179,5 +179,45 @@ describe("POST /api/agent/[id]: pause all, resume and redo", () => {
     expect(res.status).toBe(400);
     expect(await json(res)).toEqual({ error: expect.stringContaining("Solo se puede rehacer") });
     expect(mocks.runAgentCycle).not.toHaveBeenCalled();
+  });
+});
+
+describe("the MATYA migration not applied in this environment", () => {
+  const MISSING = "Falta aplicar la migración del centro de MATYA en este entorno.";
+  const load = () => GET(new Request(`${ORIGIN}/api/agent/biz1`), { params: Promise.resolve({ id: "biz1" }) });
+  /** What Prisma throws for a table (P2021) or a column (P2022) that is not in the database. */
+  const prismaError = (code: string) => Object.assign(new Error("The column `AgentWorkspace.tickAt` does not exist"), { code });
+
+  it.each(["P2021", "P2022"])("%s on GET is the migration message (503), not a generic failure", async (code) => {
+    mocks.snapshot.mockRejectedValue(prismaError(code));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const res = await load();
+      expect(res.status).toBe(503);
+      expect(await json(res)).toEqual({ error: MISSING });
+      expect(log).not.toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it.each(["P2021", "P2022"])("%s on an action is the same message", async (code) => {
+    mocks.pauseAll.mockRejectedValue(prismaError(code));
+    const res = await send({ action: "pause_all" });
+    expect(res.status).toBe(503);
+    expect(await json(res)).toEqual({ error: MISSING });
+  });
+
+  it("any other database error is still the generic failure (500), logged by its name only", async () => {
+    mocks.snapshot.mockRejectedValue(prismaError("P2002"));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const res = await load();
+      expect(res.status).toBe(500);
+      expect(await json(res)).toEqual({ error: "No se pudo completar la solicitud. Tus datos guardados se conservan." });
+      expect(log).toHaveBeenCalledWith("MATYA request failed", "Error");
+    } finally {
+      log.mockRestore();
+    }
   });
 });

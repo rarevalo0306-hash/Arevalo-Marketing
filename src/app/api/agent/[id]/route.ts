@@ -1,6 +1,6 @@
 import { after, NextResponse } from "next/server";
 import { z } from "zod";
-import { AgentError, requireAgentOwner, sameOrigin } from "@/lib/agent/access";
+import { AgentError, isMissingMigration, requireAgentOwner, sameOrigin } from "@/lib/agent/access";
 import {
   changeRun,
   enqueue,
@@ -20,7 +20,7 @@ function failure(e: unknown) {
   if (e instanceof AgentError) return response({ error: e.message }, e.status);
   if (e instanceof z.ZodError || e instanceof SyntaxError)
     return response({ error: "Revisa los campos del formulario." }, 400);
-  if (typeof e === "object" && e && "code" in e && e.code === "P2021")
+  if (isMissingMigration(e))
     return response(
       {
         error:
