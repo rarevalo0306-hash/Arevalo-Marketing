@@ -1,4 +1,4 @@
-// Runs once before the whole suite (vitest.config.mts → globalSetup).
+// Runs once before the database suites (vitest.config.mts → the `database` project's globalSetup), which run one file at a time.
 // The local database may hold the demo of scripts/agent-seed-local.mjs: `matya-demo-fl` with team mode on and a piece that waits for
 // its owner. The database suites count every business with team mode on (the alert tick, the morning plan), so the demo would change
 // their numbers. It is put aside for the run (team mode off) and put back when the run ends. This only happens against the isolated

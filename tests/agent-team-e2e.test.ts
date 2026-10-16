@@ -280,6 +280,12 @@ describe.skipIf(!safe)("the team end to end (local database, simulated AI)", () 
     await db.business.create({
       data: { id: A, organizationId: ORG, name: "Techos e2e · fixture", timezone: "America/New_York", aiProfile: "Techos en Florida" },
     });
+    // Other test files run the cron for every business at once: this business's morning plan is marked as already made, for a
+    // day (9999-12-31) always after today, so `isDailyDue` never fires for it and no cycle elsewhere queues one mid-test. The mark
+    // goes in before team mode is turned on: in between, a cycle elsewhere could queue a real morning plan here.
+    await db.agentRun.create({
+      data: { businessId: A, requestKey: `daily-${A}-9999-12-31`, kind: "team", origin: "daily", status: "completed", prompt: "Plan del día", context: {} },
+    });
     await saveSettings(A, settings);
     await db.connection.create({ data: { businessId: A, channel: "facebook", secret: "synthetic-no-provider-access" } });
     // A saved SEO report, so the research step has something to read (and makes its paid call).
@@ -297,11 +303,6 @@ describe.skipIf(!safe)("the team end to end (local database, simulated AI)", () 
           createdAt: REPORT_AT.toISOString(),
         },
       },
-    });
-    // Other test files run the cron for every business at once: this business's morning plan is marked as already made, for a
-    // day (9999-12-31) always after today, so `isDailyDue` never fires for it and no cycle elsewhere queues one mid-test.
-    await db.agentRun.create({
-      data: { businessId: A, requestKey: `daily-${A}-9999-12-31`, kind: "team", origin: "daily", status: "completed", prompt: "Plan del día", context: {} },
     });
   });
   afterEach(() => {
