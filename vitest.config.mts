@@ -5,5 +5,6 @@ export default defineConfig({
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   // tsconfig tiene jsx "preserve" (lo compila Next); en las pruebas los .tsx (el PDF) usan el JSX automático de React.
   oxc: { jsx: { runtime: "automatic" } },
-  test: { environment: "node" },
+  // globalSetup: sets the demo of scripts/agent-seed-local.mjs aside while the database suites run (see tests/global-setup.ts).
+  test: { environment: "node", globalSetup: ["./tests/global-setup.ts"] },
 });

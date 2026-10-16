@@ -184,10 +184,11 @@
   resize: vertical;
 }
 
-/* Tablero: siete columnas en pantalla ancha, una debajo de otra en la angosta */
+/* Tablero: tantas columnas como quepan con un ancho que se pueda leer (hasta las siete), una debajo de otra en la angosta. Se reparte por el ancho
+   de la zona y no por el de la pantalla: el menú lateral le quita unos 270 px, y siete columnas fijas quedaban de 115 px en una pantalla de 1280. */
 .board {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
   gap: 12px;
   align-items: start;
 }
@@ -397,12 +398,7 @@
   letter-spacing: -0.02em;
 }
 
-/* Pantallas medianas: las columnas pasan a filas de varias, para que cada una conserve un ancho que se pueda leer */
-@media (max-width: 1100px) {
-  .board {
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr));
-  }
-}
+/* Pantallas medianas y angostas: las columnas del tablero ya pasan a filas de varias por su ancho mínimo (arriba); en el teléfono se apilan */
 @media (max-width: 719px) {
   .board {
     display: flex;
