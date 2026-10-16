@@ -461,8 +461,18 @@ export async function finishStep(
       });
   });
 }
-/** Unknown provider outcomes retain the full charge reservation; never auto-repeat them. */
-export async function failRun(runId: string, token: string, message: string) {
+/**
+ * Unknown provider outcomes retain the full charge reservation; never auto-repeat them.
+ * `refused`: the step refused before it wrote or spent anything (a `Refusal`, such as the guard's). Then a running step
+ * that reserved nothing is settled as `blocked`, with nothing charged, and the run ends `blocked`, not `uncertain`. A step
+ * that holds a reservation is still uncertain: its outcome is not known.
+ */
+export async function failRun(
+  runId: string,
+  token: string,
+  message: string,
+  opts: { refused?: boolean } = {},
+) {
   const r = await db.agentRun.findUniqueOrThrow({ where: { id: runId } });
   return locked(r.businessId, async (tx) => {
     const run = await tx.agentRun.findUniqueOrThrow({ where: { id: runId } });
@@ -471,7 +481,16 @@ export async function failRun(runId: string, token: string, message: string) {
       where: { runId, status: "running" },
     });
     let charged = 0;
+    let held = 0;
     for (const step of open) {
+      if (opts.refused && step.reservedCents === 0) {
+        await tx.agentStep.update({
+          where: { id: step.id },
+          data: { status: "blocked", error: message, finishedAt: new Date() },
+        });
+        continue;
+      }
+      held++;
       charged += step.reservedCents;
       await tx.agentBudget.update({
         where: {
@@ -494,7 +513,7 @@ export async function failRun(runId: string, token: string, message: string) {
     }
     const status = run.cancelRequested
       ? "cancelled"
-      : open.length
+      : held
         ? "uncertain"
         : "blocked";
     await tx.agentRun.update({

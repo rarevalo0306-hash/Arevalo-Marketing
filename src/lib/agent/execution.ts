@@ -1,4 +1,4 @@
-import type { AgentRun } from "@prisma/client";
+import type { AgentRun, Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { notesFor, type ChannelId } from "@/lib/channels";
 import { localDay } from "@/lib/business-tz";
@@ -44,9 +44,19 @@ import {
   mediaSelection,
   writeCopy,
 } from "./content-steps";
-import { executeTeamStep } from "./team-execution";
+import { executeTeamStep, registerMatyaStep } from "./team-execution";
 // The team's plain-code steps register themselves when their module loads: this is what makes `dispatch` available.
 import "./dispatch";
+import {
+  approvedAfterReview,
+  assertCanSchedule,
+  pieceScheduleAt,
+  Refusal,
+  todayOf,
+} from "./guard";
+import { Piece } from "./plan";
+import { channelTexts } from "./review-rules";
+import { readStepOutput } from "./tools";
 
 // The copy and design steps live in `content-steps` (the team's agents use them too); they are part of this module's API.
 export { designAssets, writeCopy } from "./content-steps";
@@ -250,31 +260,7 @@ export async function executeStep(
   }
   if (name === "prepare") return prepareCampaign(run);
   if (name === "schedule") return scheduleCampaign(run);
-  if (name === "verify") {
-    const p = await db.post.findFirstOrThrow({
-      where: { id: `agent-${run.id}`, businessId: run.businessId },
-      include: { targets: true },
-    });
-    const channels = p.targets.map((t) => ({
-      channel: t.channel,
-      status: t.status,
-      url: t.externalUrl,
-      externalId: t.externalId,
-      detail: t.detail,
-    }));
-    const sent = channels.filter((t) => t.status === "sent").length;
-    return {
-      data: {
-        postId: p.id,
-        campaignId: p.campaignId,
-        channels,
-        text: `${sent} de ${channels.length} canales confirmaron el envío. Consulta Historial para ver cada resultado.`,
-        verification:
-          "Respuesta del publicador; no equivale a verificar la página final de un despliegue web.",
-      },
-      text: `La campaña terminó su distribución: ${sent} de ${channels.length} canales confirmaron el envío. ${sent < channels.length ? "Quedaron canales que requieren atención." : ""} Puedes ver el detalle en Historial.`,
-    };
-  }
+  if (name === "verify") return verifyCampaign(run);
   if (name === "radar") {
     const news = await collectNews(run.businessId, c);
     return {
@@ -296,6 +282,173 @@ export async function executeStep(
   }
   if (name === "optimize") return analyzeResults(run.businessId, c.revision);
   throw new AgentError("Paso desconocido.");
+}
+/** What `saveDraft` saves: the campaign's and the post's fields, the texts of each channel and the image or video. */
+type Draft = {
+  title: string;
+  alt: string;
+  goal: string;
+  mode: string;
+  keywords: string[];
+  channels: string[];
+  /** The post's main text (`Post.text`); a channel with no variant of its own uses it. */
+  text: string;
+  variants: Record<string, string>;
+  video: boolean;
+  media: string;
+};
+
+/**
+ * The core that campaigns and pieces share: every channel's text must pass that channel's blocking rules, and then one draft
+ * campaign and one draft post `agent-<runId>` are saved (once: a second call leaves them as they are), under the business
+ * lock and never for a cancelled run. The ids are what `claimAgentPost` recognizes when the post is about to be published.
+ */
+async function saveDraft(
+  run: AgentRun,
+  d: Draft,
+): Promise<{ campaignId: string; postId: string }> {
+  for (const channel of d.channels) {
+    const text = d.variants[channel];
+    const notes = notesFor(channel as ChannelId, {
+      text,
+      subject: d.title,
+      seoTitle: d.title,
+      mediaType: d.video ? "video" : "photo",
+    }).filter((n) => n.blocking);
+    if (notes.length)
+      throw new AgentError(
+        `Revisa el texto de ${channel}: ${notes.map((n) => n.text).join(" ")}`,
+      );
+  }
+  const campaignId = `agent-${run.id}`;
+  const postId = `agent-${run.id}`;
+  await locked(run.businessId, async (tx) => {
+    const r = await tx.agentRun.findUniqueOrThrow({ where: { id: run.id } });
+    if (r.cancelRequested) throw new AgentError("Trabajo cancelado.");
+    await tx.campaign.upsert({
+      where: { id: campaignId },
+      create: {
+        id: campaignId,
+        businessId: run.businessId,
+        agentRunId: run.id,
+        name: d.title,
+        goal: d.goal,
+        mode: d.mode,
+        status: "draft",
+        channels: d.channels,
+        keywords: d.keywords,
+        perWeek: 1,
+      },
+      update: {},
+    });
+    await tx.post.upsert({
+      where: { id: postId },
+      create: {
+        id: postId,
+        businessId: run.businessId,
+        campaignId,
+        text: d.text,
+        subject: d.title,
+        seoTitle: d.title,
+        variants: json(d.variants),
+        mediaType: d.video ? "video" : "photo",
+        kind: d.video ? "video" : "post",
+        mediaUrl: d.media,
+        altText: d.alt,
+        status: "draft",
+        source: "ai",
+        targets: { create: d.channels.map((channel) => ({ channel })) },
+      },
+      update: {},
+    });
+  });
+  return { campaignId, postId };
+}
+/** The channels a piece's post can go to: what has a text of its own in `Copy` (never the website, an article's), or for a video what takes one. Never YouTube. */
+const PIECE_CHANNELS = {
+  photo: Object.keys(Copy.shape.variants.shape).filter((c) => c !== "seo"),
+  video: ["facebook", "instagram", "tiktok"],
+};
+
+/**
+ * The `prepare` step of a piece: its draft post with the piece's latest copy and design (a rework round wins), or its video.
+ * It goes only to the piece's own channels that take that kind of post (the others are listed as blocked), each with the text
+ * the editorial review read (`channelTexts`): never an empty one. An article is published on the website, not prepared here.
+ * Whether those channels may be used now is the guard's decision when the post is scheduled.
+ */
+async function preparePiece(run: AgentRun): Promise<StepResult> {
+  const piece = Piece.safeParse(
+    (run.context as unknown as Record<string, unknown> | null)?.piece,
+  );
+  if (!piece.success) throw new Refusal("La pieza no tiene un plan válido.");
+  if (piece.data.format === "articulo")
+    throw new Refusal("Un artículo se publica en el sitio web; no se programa como publicación.");
+  const copy = Copy.safeParse(await readStepOutput(run, "copy"));
+  if (!copy.success) throw new Refusal("Falta completar el paso anterior.");
+  const video = piece.data.format === "video";
+  const media = video
+    ? await pieceVideo(run)
+    : squareOf(await readStepOutput(run, "design"));
+  if (!media)
+    throw new Refusal(video ? "El video de la pieza no está listo." : "El diseño no está listo.");
+  const supported = video ? PIECE_CHANNELS.video : PIECE_CHANNELS.photo;
+  const own = [...new Set(piece.data.channels)];
+  const channels = own.filter((c) => supported.includes(c));
+  const blocked = own.filter((c) => !channels.includes(c));
+  if (!channels.length)
+    throw new Refusal(
+      "No hay canales compatibles para esta pieza. Revisa sus canales y el formato.",
+    );
+  const texts = channelTexts(copy.data, channels);
+  const empty = channels.filter((c) => !texts[c]?.trim());
+  if (empty.length)
+    throw new Refusal(
+      `Falta el texto de ${empty.join(", ")} en esta pieza. No se preparó la publicación.`,
+    );
+  const s = await db.agentWorkspace.findUniqueOrThrow({
+    where: { businessId: run.businessId },
+  });
+  const { campaignId, postId } = await saveDraft(run, {
+    title: copy.data.title,
+    alt: copy.data.alt,
+    goal: run.prompt,
+    mode: s.mode,
+    keywords: piece.data.keyword ? [piece.data.keyword] : [],
+    channels,
+    text: texts[channels[0]],
+    variants: texts,
+    video,
+    media,
+  });
+  return {
+    data: { campaignId, postId, channels, blockedChannels: blocked, media },
+    text: `Preparé el borrador de «${copy.data.title}» para ${channels.join(", ")}.${blocked.length ? ` No se usará en ${blocked.join(", ")} porque ese canal no admite este formato.` : ""}`,
+  };
+}
+/** The URL of the square image of a stored design output, or undefined. Never throws (stored JSON). */
+function squareOf(design: unknown): string | undefined {
+  try {
+    const assets = (design as { assets?: unknown } | null)?.assets;
+    if (!Array.isArray(assets)) return undefined;
+    const url = assets.find((a) => a?.shape === "square")?.url;
+    return typeof url === "string" && url ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+/** The video URL of the piece's latest finished render wait (`video_wait:<n>`), as the campaign's video does; undefined if none. */
+async function pieceVideo(run: AgentRun): Promise<string | undefined> {
+  const step = await db.agentStep.findFirst({
+    where: {
+      runId: run.id,
+      run: { businessId: run.businessId },
+      name: { startsWith: "video_wait" },
+      status: "succeeded",
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  const url = (step?.output as { videoUrl?: unknown } | null)?.videoUrl;
+  return typeof url === "string" && url ? url : undefined;
 }
 async function prepareCampaign(run: AgentRun): Promise<StepResult> {
   const copy = Copy.parse(await output(run.id, "copy"));
@@ -358,60 +511,17 @@ async function prepareCampaign(run: AgentRun): Promise<StepResult> {
       ? videoData?.videoUrl
       : design.assets.find((x) => x.shape === "square")?.url;
   if (!image) throw new AgentError("El diseño no está listo.");
-  for (const channel of channels) {
-    const text = variants[channel as keyof typeof variants];
-    const notes = notesFor(channel as ChannelId, {
-      text,
-      subject: copy.title,
-      seoTitle: copy.title,
-      mediaType: run.kind === "video" ? "video" : "photo",
-    }).filter((n) => n.blocking);
-    if (notes.length)
-      throw new AgentError(
-        `Revisa el texto de ${channel}: ${notes.map((n) => n.text).join(" ")}`,
-      );
-  }
-  const campaignId = `agent-${run.id}`;
-  const postId = `agent-${run.id}`;
-  await locked(run.businessId, async (tx) => {
-    const r = await tx.agentRun.findUniqueOrThrow({ where: { id: run.id } });
-    if (r.cancelRequested) throw new AgentError("Trabajo cancelado.");
-    await tx.campaign.upsert({
-      where: { id: campaignId },
-      create: {
-        id: campaignId,
-        businessId: run.businessId,
-        agentRunId: run.id,
-        name: copy.title,
-        goal: run.prompt,
-        mode: s.mode,
-        status: "draft",
-        channels,
-        keywords: research.keywords,
-        perWeek: 1,
-      },
-      update: {},
-    });
-    await tx.post.upsert({
-      where: { id: postId },
-      create: {
-        id: postId,
-        businessId: run.businessId,
-        campaignId,
-        text: copy.variants.facebook,
-        subject: copy.title,
-        seoTitle: copy.title,
-        variants: json(variants),
-        mediaType: run.kind === "video" ? "video" : "photo",
-        kind: run.kind === "video" ? "video" : "post",
-        mediaUrl: image,
-        altText: copy.alt,
-        status: "draft",
-        source: "ai",
-        targets: { create: channels.map((channel) => ({ channel })) },
-      },
-      update: {},
-    });
+  const { campaignId, postId } = await saveDraft(run, {
+    title: copy.title,
+    alt: copy.alt,
+    goal: run.prompt,
+    mode: s.mode,
+    keywords: research.keywords,
+    channels,
+    text: copy.variants.facebook,
+    variants,
+    video: run.kind === "video",
+    media: image,
   });
   return {
     data: {
@@ -443,15 +553,10 @@ async function scheduleCampaign(run: AgentRun): Promise<StepResult> {
       throw new AgentError(
         "La publicación no está autorizada con los permisos actuales.",
       );
-    if (c.news) {
-      const news = await tx.agentNews.findFirst({
-        where: { id: c.news.id, businessId: run.businessId },
-      });
-      if (!news || !newsFresh(news) || news.revision !== c.news.revision)
-        throw new AgentError(
-          "La noticia cambió o requiere una nueva verificación.",
-        );
-    }
+    if (await newsChanged(tx, run.businessId, c))
+      throw new AgentError(
+        "La noticia cambió o requiere una nueva verificación.",
+      );
     const day = localDay(new Date(), c.business.timezone);
     const budget = await tx.agentBudget.upsert({
       where: { businessId_day: { businessId: run.businessId, day } },
@@ -478,33 +583,133 @@ async function scheduleCampaign(run: AgentRun): Promise<StepResult> {
       )
     )
       throw new AgentError("Una conexión o un canal autorizado cambió.");
-    const changed = await tx.post.updateMany({
-      where: { id: post.id, businessId: run.businessId, status: "draft" },
-      data: { status: "scheduled", scheduledAt: new Date(Date.now() + 60000) },
-    });
-    if (changed.count)
-      await tx.agentBudget.update({
-        where: { id: budget.id },
-        data: { posts: { increment: 1 } },
-      });
-    await tx.campaign.updateMany({
-      where: {
-        id: post.campaignId!,
-        businessId: run.businessId,
-        status: "draft",
-      },
-      data: { status: "active" },
-    });
-    return {
-      data: {
-        postId: post.id,
-        campaignId: post.campaignId,
-        status: "scheduled",
-      },
-      text: "La publicación quedó programada. MATYA espera la confirmación de cada canal; puedes seguirla en Historial.",
-    };
+    return markScheduled(tx, run, post, budget.id, new Date(Date.now() + 60000));
   });
 }
+/** Whether the run's news (if it has one) changed or is no longer fresh enough to publish on. Read for the run's business. */
+async function newsChanged(
+  tx: Prisma.TransactionClient,
+  businessId: string,
+  c: Context,
+): Promise<boolean> {
+  if (!c.news) return false;
+  const news = await tx.agentNews.findFirst({
+    where: { id: c.news.id, businessId },
+  });
+  return !news || !newsFresh(news) || news.revision !== c.news.revision;
+}
+/**
+ * The write that campaigns and pieces share, inside the caller's business lock and after its checks: the draft post
+ * `agent-<runId>` is scheduled at `at` and counted once in the day's posts (`budgetId`, the day's `AgentBudget` row), and its
+ * campaign becomes active. A post that is no longer a draft is neither scheduled again nor counted again. The publishing
+ * claim (`claimAgentPost`) counts deliveries apart, so a post is never counted twice in `posts`.
+ */
+async function markScheduled(
+  tx: Prisma.TransactionClient,
+  run: AgentRun,
+  post: { id: string; campaignId: string | null },
+  budgetId: string,
+  at: Date,
+): Promise<StepResult> {
+  const changed = await tx.post.updateMany({
+    where: { id: post.id, businessId: run.businessId, status: "draft" },
+    data: { status: "scheduled", scheduledAt: at },
+  });
+  if (changed.count)
+    await tx.agentBudget.update({
+      where: { id: budgetId },
+      data: { posts: { increment: 1 } },
+    });
+  await tx.campaign.updateMany({
+    where: {
+      id: post.campaignId!,
+      businessId: run.businessId,
+      status: "draft",
+    },
+    data: { status: "active" },
+  });
+  return {
+    data: {
+      postId: post.id,
+      campaignId: post.campaignId,
+      status: "scheduled",
+    },
+    text: "La publicación quedó programada. MATYA espera la confirmación de cada canal; puedes seguirla en Historial.",
+  };
+}
+/**
+ * The `schedule` step of a piece. One business-locked transaction checks the run, its news and the guard
+ * (`assertCanSchedule`: switches, approval, channels, brakes and the day's count), then schedules the draft and counts it:
+ * two pieces scheduled at the same time are checked and counted one after the other, so together they never pass
+ * `maxPostsPerDay`. Any refusal leaves the draft as it is and the piece `blocked`.
+ */
+async function schedulePiece(run: AgentRun): Promise<StepResult> {
+  return locked(run.businessId, async (tx) => {
+    const current = await tx.agentRun.findFirstOrThrow({
+      where: { id: run.id, businessId: run.businessId },
+    });
+    const ws = await tx.agentWorkspace.findUniqueOrThrow({
+      where: { businessId: run.businessId },
+    });
+    const c = run.context as unknown as Context;
+    if (current.cancelRequested || ws.revision !== c.revision)
+      throw new Refusal(
+        "La publicación no está autorizada con los permisos actuales.",
+      );
+    if (await newsChanged(tx, run.businessId, c))
+      throw new Refusal("La noticia cambió o requiere una nueva verificación.");
+    const post = await tx.post.findFirst({
+      where: { id: `agent-${run.id}`, businessId: run.businessId },
+      include: { targets: true },
+    });
+    if (!post) throw new Refusal("Falta la publicación preparada de esta pieza.");
+    const now = new Date();
+    await assertCanSchedule(
+      tx,
+      current,
+      ws,
+      post.targets.map((t) => t.channel),
+      now,
+    );
+    const day = await todayOf(tx, run.businessId, now);
+    const budget = await tx.agentBudget.upsert({
+      where: { businessId_day: { businessId: run.businessId, day } },
+      create: { businessId: run.businessId, day },
+      update: {},
+    });
+    return markScheduled(tx, run, post, budget.id, pieceScheduleAt(current.context, now));
+  });
+}
+/** The `verify` step: what each channel answered for the post `agent-<runId>` (campaigns and pieces alike). */
+async function verifyCampaign(run: AgentRun): Promise<StepResult> {
+  const p = await db.post.findFirstOrThrow({
+    where: { id: `agent-${run.id}`, businessId: run.businessId },
+    include: { targets: true },
+  });
+  const channels = p.targets.map((t) => ({
+    channel: t.channel,
+    status: t.status,
+    url: t.externalUrl,
+    externalId: t.externalId,
+    detail: t.detail,
+  }));
+  const sent = channels.filter((t) => t.status === "sent").length;
+  return {
+    data: {
+      postId: p.id,
+      campaignId: p.campaignId,
+      channels,
+      text: `${sent} de ${channels.length} canales confirmaron el envío. Consulta Historial para ver cada resultado.`,
+      verification:
+        "Respuesta del publicador; no equivale a verificar la página final de un despliegue web.",
+    },
+    text: `La campaña terminó su distribución: ${sent} de ${channels.length} canales confirmaron el envío. ${sent < channels.length ? "Quedaron canales que requieren atención." : ""} Puedes ver el detalle en Historial.`,
+  };
+}
+// A piece's last steps are MATYA's own code: its draft, the guarded schedule and the per-channel check.
+registerMatyaStep("prepare", preparePiece);
+registerMatyaStep("schedule", schedulePiece);
+registerMatyaStep("verify", verifyCampaign);
 export async function analyzeResults(
   businessId: string,
   revision?: number,
@@ -613,7 +818,13 @@ export async function workOne(
       const s = await db.agentWorkspace.findUniqueOrThrow({
         where: { businessId: run.businessId },
       });
-      if (!s.allowPublish || (s.mode === "approval" && !run.approvedAt)) {
+      // A piece needs an approval given after its last review: an earlier one (a video's cost) is not one to publish.
+      if (
+        run.kind === "piece"
+          ? !s.allowPublish ||
+            (s.mode === "approval" && !(await approvedAfterReview(db, run)))
+          : !s.allowPublish || (s.mode === "approval" && !run.approvedAt)
+      ) {
         await db.agentRun.updateMany({
           where: { id: run.id, leaseToken: run.leaseToken, status: "running" },
           data: {
@@ -661,7 +872,10 @@ export async function workOne(
       error instanceof AgentError
         ? error.message
         : "No pude completar este paso. Conservé el resultado anterior y detuve los reintentos automáticos; revisa el detalle del trabajo.";
-    await failRun(run.id, run.leaseToken, message);
+    // A refusal (the guard's) changed nothing: the piece is blocked, not left with an outcome to check.
+    await failRun(run.id, run.leaseToken, message, {
+      refused: error instanceof Refusal,
+    });
     // No raw provider bodies, secrets, prompts or customer records in logs.
     console.error("MATYA step failed", {
       runId: run.id,

@@ -1,5 +1,18 @@
-// El guardia del equipo: lo que decide, con reglas simples, si MATYA puede seguir enviando a un canal.
-// Esta parte es pura (sin base de datos ni red). La lee `pieceLimits` para no proponer piezas a un canal frenado.
+// El guardia del equipo: lo que decide, con reglas simples, si MATYA puede programar una pieza, a qué hora sale y si puede
+// seguir enviando a un canal. `brakedChannels`, `refusalOf`, `approvedAfterReviews` y `pieceScheduleAt` son puras (sin base
+// de datos ni red); las demás leen con el cliente que les pasan (la transacción de quien llama, dentro del candado del
+// negocio, o `db`), nunca con otra conexión. `pieceLimits` lee `brakedOf` para no proponer piezas a un canal frenado.
+import type { AgentRun, AgentWorkspace, Prisma } from "@prisma/client";
+import { businessTz, localDay } from "@/lib/business-tz";
+import { stormSchedule } from "@/lib/storm";
+import { AgentError } from "./access";
+import { Piece, type PieceFormat } from "./plan";
+
+/**
+ * A refusal before anything was written or spent: the step that throws it reserved nothing and its transaction rolled back.
+ * `workOne` ends the run `blocked` (not `uncertain`, which is for an outcome nobody knows) and the draft stays a draft.
+ */
+export class Refusal extends AgentError {}
 
 /**
  * Los canales cuyos **dos** últimos envíos del agente fallaron (`failed`): se frenan hasta que el dueño revise la conexión.
@@ -34,4 +47,221 @@ export function brakedChannels(
     if (last?.status === "failed" && before?.status === "failed") braked.push(channel);
   }
   return braked.sort();
+}
+
+/**
+ * The braked channels among `channels` for one business: the agent's last two settled deliveries (sent or failed) of each
+ * channel, timed by when their post went out, against when the owner last saved that channel's connection. Read with
+ * `client` for `businessId` only; queries one channel after another (it may be a transaction's client).
+ */
+export async function brakedOf(
+  client: Prisma.TransactionClient,
+  businessId: string,
+  channels: string[],
+  connections: { channel: string; updatedAt: Date }[],
+): Promise<string[]> {
+  const deliveries: { channel: string; status: string; createdAt: Date }[] = [];
+  for (const channel of new Set(channels)) {
+    const rows = await client.postTarget.findMany({
+      where: {
+        channel,
+        status: { in: ["sent", "failed"] },
+        post: { businessId, id: { startsWith: "agent-" } },
+      },
+      select: { channel: true, status: true, post: { select: { scheduledAt: true } } },
+      orderBy: { post: { scheduledAt: "desc" } },
+      take: 2,
+    });
+    // `PostTarget` has no date of its own: a delivery happens when its post goes out, so its time is the post's
+    // `scheduledAt` (never null). Not `createdAt`: the agent makes the post as a draft and schedules it later, possibly
+    // days later after an approval wait.
+    deliveries.push(...rows.map((t) => ({ channel: t.channel, status: t.status, createdAt: t.post.scheduledAt })));
+  }
+  // Saving a channel's connection again (the owner reconnected it) restarts its brake count: `updatedAt` is that moment.
+  // This relies on one invariant: only an owner's save moves `Connection.updatedAt`. The background writers that rewrite a
+  // connection (`writeConnection` in google-data.ts) keep `updatedAt` on purpose; any new writer must do the same.
+  return brakedChannels(deliveries, Object.fromEntries(connections.map((c) => [c.channel, c.updatedAt])));
+}
+
+const REVIEW_STEP = /^review(-r\d+)?$/;
+
+/**
+ * Whether `approvedAt` is an approval of the reviewed piece: later than the end of every review of it (`review`,
+ * `review-r<n>`). An earlier approval, such as a video's cost, does not count; a review that has not finished lets nothing
+ * through. A run with no review only needs the approval.
+ */
+export function approvedAfterReviews(
+  approvedAt: Date | null,
+  reviews: { name: string; finishedAt: Date | null }[],
+): boolean {
+  if (!approvedAt) return false;
+  const own = reviews.filter((r) => REVIEW_STEP.test(r.name));
+  if (own.some((r) => !r.finishedAt)) return false;
+  return own.every((r) => approvedAt.getTime() > r.finishedAt!.getTime());
+}
+
+/** `approvedAfterReviews` for a run, reading its review steps with `client` (scoped to the run's business). */
+export async function approvedAfterReview(
+  client: Prisma.TransactionClient,
+  run: Pick<AgentRun, "id" | "businessId" | "approvedAt">,
+): Promise<boolean> {
+  if (!run.approvedAt) return false;
+  const reviews = await client.agentStep.findMany({
+    where: { runId: run.id, run: { businessId: run.businessId }, name: { startsWith: "review" } },
+    select: { name: true, finishedAt: true },
+  });
+  return approvedAfterReviews(run.approvedAt, reviews);
+}
+
+/** The business's local day of `now` (`AgentBudget.day`), the same key `beginStep` and `claimAgentPost` use. */
+export async function todayOf(
+  client: Prisma.TransactionClient,
+  businessId: string,
+  now: Date,
+): Promise<string> {
+  const business = await client.business.findUniqueOrThrow({
+    where: { id: businessId },
+    select: { timezone: true },
+  });
+  return localDay(now, businessTz(business));
+}
+
+/** What the guard decides on, already read. */
+export type GuardFacts = {
+  ws: Pick<
+    AgentWorkspace,
+    | "pausedAt"
+    | "teamMode"
+    | "enabled"
+    | "allowPublish"
+    | "mode"
+    | "allowSocial"
+    | "allowWebArticles"
+    | "channels"
+    | "maxPostsPerDay"
+  >;
+  /** The piece's format; null when the run is no piece we can read (it then follows the rules of a social post). */
+  format: PieceFormat | null;
+  /** The run has an approval given after its last review (`approvedAfterReviews`). */
+  approved: boolean;
+  /** Where the post would go (its targets). */
+  channels: string[];
+  /** The business's connected channels. */
+  connected: string[];
+  /** The braked channels (`brakedOf`). */
+  braked: string[];
+  /** The agent's posts already scheduled today (`AgentBudget.posts`). */
+  posts: number;
+};
+
+const KEEP = " La publicación quedó como borrador.";
+const list = (channels: string[]) => channels.join(", ");
+
+/**
+ * Why a piece may not be scheduled, or null when it may. The checks go in this order and the first one that fails is the
+ * answer: everything paused; team mode, MATYA or the publishing permission off; approval mode without an approval after the
+ * review; a social piece (anything but `articulo`) without permission for social posts; no channel, YouTube (never the
+ * agent's), a channel the owner does not allow (the website `seo` is only an article's, and only with web articles allowed;
+ * an article goes nowhere else), one that is not connected or one that is braked; and the day's limit of posts.
+ */
+export function refusalOf(f: GuardFacts): string | null {
+  const { ws } = f;
+  const article = f.format === "articulo";
+  if (ws.pausedAt) return "MATYA está en pausa: no se programa nada hasta que la reanudes." + KEEP;
+  if (!ws.teamMode) return "El modo equipo está apagado: las piezas del equipo no se programan." + KEEP;
+  if (!ws.enabled) return "MATYA está apagada: actívala para programar sus piezas." + KEEP;
+  if (!ws.allowPublish) return "El permiso de publicación de MATYA está apagado." + KEEP;
+  if (ws.mode === "approval" && !f.approved)
+    return "La pieza necesita tu aprobación después de su revisión para programarse." + KEEP;
+  if (!article && !ws.allowSocial)
+    return "Las publicaciones en redes sociales no están permitidas para MATYA." + KEEP;
+  const channels = [...new Set(f.channels)];
+  if (!channels.length) return "La pieza no tiene canales a los que publicar." + KEEP;
+  if (channels.includes("youtube"))
+    return "MATYA nunca publica en YouTube: esa subida la aprueba una persona." + KEEP;
+  const permitted = (c: string) =>
+    c === "seo" ? article && ws.allowWebArticles : !article && ws.channels.includes(c);
+  const outside = channels.filter((c) => !permitted(c));
+  if (outside.length) return `MATYA no tiene permiso para publicar en ${list(outside)}.` + KEEP;
+  const offline = channels.filter((c) => !f.connected.includes(c));
+  if (offline.length)
+    return `Estos canales no están conectados: ${list(offline)}. Revisa Conexiones.` + KEEP;
+  const braked = channels.filter((c) => f.braked.includes(c));
+  if (braked.length)
+    return (
+      `Estos canales están frenados porque sus dos últimos envíos fallaron: ${list(braked)}. Revisa la conexión y vuelve a guardarla.` +
+      KEEP
+    );
+  if (f.posts >= ws.maxPostsPerDay) return "Se alcanzó el límite diario de publicaciones de MATYA." + KEEP;
+  return null;
+}
+
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** `v[key]` of whatever it is, or undefined; never throws (stored JSON, getters). */
+function field(v: unknown, key: string): unknown {
+  try {
+    return isObject(v) ? v[key] : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Checks, inside the caller's transaction (it must hold the business lock, as the schedule step's does), that the piece
+ * `run` may be scheduled to `channels` now. Throws a `Refusal` with the reason (`refusalOf`) and writes nothing. `run` and
+ * `ws` should be read inside that same transaction; every query is for `run.businessId` only. The day's count is read here
+ * and the caller adds the post to it in the same transaction, so two pieces scheduled at the same time never pass
+ * `maxPostsPerDay` together. `now` is the moment the caller schedules at (it picks the business's day).
+ */
+export async function assertCanSchedule(
+  tx: Prisma.TransactionClient,
+  run: AgentRun,
+  ws: AgentWorkspace,
+  channels: string[],
+  now: Date = new Date(),
+): Promise<void> {
+  if (ws.businessId !== run.businessId)
+    throw new Refusal("El espacio de trabajo no corresponde a este negocio.");
+  const businessId = run.businessId;
+  const piece = Piece.safeParse(field(run.context, "piece"));
+  const connections = await tx.connection.findMany({
+    where: { businessId },
+    select: { channel: true, updatedAt: true },
+  });
+  const day = await todayOf(tx, businessId, now);
+  const budget = await tx.agentBudget.findUnique({
+    where: { businessId_day: { businessId, day } },
+    select: { posts: true },
+  });
+  const refusal = refusalOf({
+    ws,
+    format: piece.success ? piece.data.format : null,
+    approved: ws.mode === "approval" ? await approvedAfterReview(tx, run) : false,
+    channels,
+    connected: connections.map((c) => c.channel),
+    braked: await brakedOf(tx, businessId, channels, connections),
+    posts: budget?.posts ?? 0,
+  });
+  if (refusal) throw new Refusal(refusal);
+}
+
+/**
+ * When a piece's post goes out: in a minute, as the agent's campaigns (the piece's own `date` is advisory). After a storm
+ * (`context.storm.at`, a date) it is never before what the storm rules allow (`stormSchedule`, with the phase "seguridad"
+ * unless the context says "oferta"); an old storm changes nothing.
+ */
+export function pieceScheduleAt(context: unknown, now: Date): Date {
+  const soon = new Date(now.getTime() + 60000);
+  const storm = field(context, "storm");
+  const at = field(storm, "at");
+  const time = typeof at === "string" ? Date.parse(at) : NaN;
+  if (Number.isNaN(time)) return soon;
+  const allowed = stormSchedule(
+    new Date(time),
+    0,
+    field(storm, "phase") === "oferta" ? "oferta" : "seguridad",
+  );
+  return allowed.getTime() > soon.getTime() ? allowed : soon;
 }

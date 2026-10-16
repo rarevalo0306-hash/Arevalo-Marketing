@@ -4,7 +4,7 @@ import type { AgentWorkspace } from "@prisma/client";
 import { businessTz, dayRange, localDay } from "@/lib/business-tz";
 import { db } from "@/lib/db";
 import { AgentError } from "./access";
-import { brakedChannels } from "./guard";
+import { brakedOf } from "./guard";
 import type { PieceLimits } from "./plan";
 import { OPEN_RUN_CAP, OPEN_STATUSES } from "./queue";
 
@@ -120,33 +120,9 @@ export async function pieceLimits(
   const candidates = [...new Set(ws.channels)].filter(
     (c) => c !== "youtube" && c !== "seo" && connected.has(c),
   );
-  // The agent's last two settled deliveries of each channel (a post still waiting to go out is not one yet).
-  const deliveries = (
-    await Promise.all(
-      candidates.map((channel) =>
-        db.postTarget.findMany({
-          where: {
-            channel,
-            status: { in: ["sent", "failed"] },
-            post: { businessId, id: { startsWith: "agent-" } },
-          },
-          select: { channel: true, status: true, post: { select: { scheduledAt: true } } },
-          orderBy: { post: { scheduledAt: "desc" } },
-          take: 2,
-        }),
-      ),
-    )
-  )
-    .flat()
-    // `PostTarget` has no date of its own: a delivery happens when its post goes out, so its time is the post's
-    // `scheduledAt` (never null). Not `createdAt`: the agent makes the post as a draft and schedules it later, possibly
-    // days later after an approval wait.
-    .map((t) => ({ channel: t.channel, status: t.status, createdAt: t.post.scheduledAt }));
-  // Saving a channel's connection again (the owner reconnected it) restarts its brake count: `updatedAt` is that moment.
-  // This relies on one invariant: only an owner's save moves `Connection.updatedAt`. The background writers that rewrite a
-  // connection (`writeConnection` in google-data.ts) keep `updatedAt` on purpose; any new writer must do the same.
-  const reconnectedAt = Object.fromEntries(connections.map((c) => [c.channel, c.updatedAt]));
-  const braked = new Set(brakedChannels(deliveries, reconnectedAt));
+  // The agent's last two settled deliveries of each channel (a post still waiting to go out is not one yet), counted only
+  // after the owner last saved the connection: the same brake the guard applies when a piece is scheduled.
+  const braked = new Set(await brakedOf(db, businessId, candidates, connections));
   const channels = candidates.filter((c) => !braked.has(c));
   if (ws.allowWebArticles && connected.has("seo")) channels.push("seo");
 

@@ -32,6 +32,9 @@ import { boundedContext } from "@/lib/agent/bounded-context";
 import { meteredAsk, modelConfig } from "@/lib/agent/metered";
 import { MEDIA_POLICY, SYSTEM } from "@/lib/agent/prompts";
 import { CALENDAR_LIMITS, readStepOutput, toolsFor } from "@/lib/agent/tools";
+import { assertCanSchedule, Refusal } from "@/lib/agent/guard";
+import { locked } from "@/lib/agent/queue";
+import { stormSchedule } from "@/lib/storm";
 import { BUILTIN_TEMPLATES } from "@/lib/design-shapes";
 import type { VideoMedia } from "@/lib/video-plan";
 vi.mock("@/lib/library-files", () => ({
@@ -2584,6 +2587,353 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
         expect((await pieceLimits(A, ws, now)).recentTopics.sort()).toEqual(all.sort());
         expect(await recentTopicsOf(B, now, sibling.id)).toEqual(["Campaña de B"]);
       });
+    });
+  });
+
+  describe("the central guard: pieces are prepared and scheduled under the shared caps", () => {
+    /** The copy of a facebook piece: the other channels' variants are empty, as the writer leaves them. */
+    const SOCIAL = {
+      ...copy,
+      title: "Techos",
+      headline: "Cuida tu techo",
+      variants: { facebook: "Cuida tu techo antes de la lluvia.", instagram: "", google: "", linkedin: "", x: "", seo: "" },
+    };
+    const DESIGN = {
+      assets: [
+        { shape: "story", url: "https://example.com/piece-story.jpg" },
+        { shape: "square", url: "https://example.com/piece-square.jpg" },
+      ],
+      mediaSelection: { source: "brand_template", libraryItems: [], generatedFromScratch: false },
+    };
+    const goteras = { ...roof, id: "p2", topic: "Goteras" };
+    const done = (runId: string, name: string, output: unknown) =>
+      db.agentStep.create({
+        data: {
+          runId,
+          name,
+          specialist: "matya",
+          budgetDay: localDay(new Date(), "America/New_York"),
+          status: "succeeded",
+          output: output as never,
+          finishedAt: new Date(),
+        },
+      });
+    /** Pieces whose copy, design (and video) and review already passed: the next step of each is `prepare`. */
+    async function reviewed(pieces: (typeof roof | Record<string, unknown>)[] = [roof]) {
+      const runs = await spawnPieces(await teamParent(), pieces as never);
+      for (const r of runs) {
+        await done(r.id, "copy", SOCIAL);
+        await done(r.id, "design", DESIGN);
+        await done(r.id, "review", { approved: true, problems: [], ruleProblems: [] });
+        await db.agentRun.update({ where: { id: r.id }, data: { stage: stepsOf(r).indexOf("prepare") } });
+      }
+      return Promise.all(runs.map((r) => row(r.id)));
+    }
+    /** Pieces with their draft already prepared: the next step of each is `schedule`. */
+    async function drafted(pieces: (typeof roof)[] = [roof]) {
+      const runs = await reviewed(pieces);
+      for (const r of runs) {
+        await executeStep(r, "prepare");
+        await db.agentRun.update({ where: { id: r.id }, data: { stage: stepsOf(r).indexOf("schedule") } });
+      }
+      return Promise.all(runs.map((r) => row(r.id)));
+    }
+    const postOf = (runId: string) =>
+      db.post.findUnique({ where: { id: `agent-${runId}` }, include: { targets: true } });
+    const stepOf = (runId: string, name: string) =>
+      db.agentStep.findUnique({ where: { runId_name: { runId, name } } });
+    const budget = () => db.agentBudget.findFirst({ where: { businessId: A } });
+    const workspace = (data: Record<string, unknown>) => db.agentWorkspace.update({ where: { businessId: A }, data });
+
+    it("prepares the piece's draft with only its channels' texts, schedules it through the guard and counts it once", async () => {
+      const [piece] = await reviewed();
+      await workOne(A);
+      const draft = await postOf(piece.id);
+      expect(draft).toMatchObject({
+        status: "draft",
+        kind: "post",
+        mediaType: "photo",
+        mediaUrl: "https://example.com/piece-square.jpg",
+        text: SOCIAL.variants.facebook,
+        subject: "Techos",
+        altText: SOCIAL.alt,
+        campaignId: `agent-${piece.id}`,
+      });
+      // Only the piece's own channel: none of the other channels' empty variants.
+      expect(draft!.variants).toEqual({ facebook: SOCIAL.variants.facebook });
+      expect(draft!.targets.map((t) => t.channel)).toEqual(["facebook"]);
+      expect(await db.campaign.findUnique({ where: { id: `agent-${piece.id}` } })).toMatchObject({
+        status: "draft",
+        agentRunId: piece.id,
+        name: "Techos",
+        channels: ["facebook"],
+      });
+      expect(await stepOf(piece.id, "prepare")).toMatchObject({
+        status: "succeeded",
+        agent: "matya",
+        output: { postId: `agent-${piece.id}`, campaignId: `agent-${piece.id}`, channels: ["facebook"], blockedChannels: [] },
+      });
+
+      const before = Date.now();
+      await workOne(A);
+      const scheduled = await postOf(piece.id);
+      expect(scheduled?.status).toBe("scheduled");
+      // Like the agent's campaigns: in a minute (the piece's date is advisory).
+      expect(scheduled!.scheduledAt.getTime()).toBeGreaterThanOrEqual(before + 60000);
+      expect(scheduled!.scheduledAt.getTime()).toBeLessThanOrEqual(Date.now() + 60000);
+      expect(await db.campaign.findUnique({ where: { id: `agent-${piece.id}` } })).toMatchObject({ status: "active" });
+      expect(await row(piece.id)).toMatchObject({ status: "queued", stage: 5 });
+      // Counted once when it was scheduled; the publishing claim counts the delivery apart.
+      expect(await budget()).toMatchObject({ posts: 1, deliveries: 0, reservedCents: 0 });
+      expect(await claimAgentPost(`agent-${piece.id}`)).toEqual({ count: 1 });
+      expect(await claimAgentPost(`agent-${piece.id}`)).toEqual({ count: 0 });
+      expect(await budget()).toMatchObject({ posts: 1, deliveries: 1 });
+
+      // The channel confirms it: the piece verifies each channel and completes.
+      await db.postTarget.updateMany({
+        where: { postId: `agent-${piece.id}` },
+        data: { status: "sent", externalId: "piece-confirmation" },
+      });
+      await db.post.update({ where: { id: `agent-${piece.id}` }, data: { status: "done" } });
+      await workOne(A);
+      const end = await row(piece.id);
+      expect(end.status).toBe("completed");
+      expect(JSON.stringify(end.result)).toContain("piece-confirmation");
+    });
+
+    it("two pieces at once never pass maxPostsPerDay: one is scheduled, the other is blocked with the daily limit", async () => {
+      const [x, y] = await drafted([roof, goteras]);
+      await workspace({ maxPostsPerDay: 1 });
+      // Two cron ticks at the same time, again and again (a tick that loses the claim to the other does nothing).
+      for (let i = 0; i < 4; i++) await Promise.all([workOne(A), workOne(A)]);
+      const posts = await db.post.findMany({ where: { id: { in: [`agent-${x.id}`, `agent-${y.id}`] } } });
+      expect(posts.map((p) => p.status).sort()).toEqual(["draft", "scheduled"]);
+      const loser = posts.find((p) => p.status === "draft")!.id.slice("agent-".length);
+      expect(await row(loser)).toMatchObject({
+        status: "blocked",
+        error: expect.stringContaining("límite diario"),
+        reservedCents: 0,
+      });
+      expect(await stepOf(loser, "schedule")).toMatchObject({ status: "blocked", chargedCents: 0 });
+      expect(await budget()).toMatchObject({ posts: 1, reservedCents: 0, chargedCents: 0 });
+    });
+
+    it("even when both schedule steps run at the very same time, only one passes the daily limit", async () => {
+      const [x, y] = await drafted([roof, goteras]);
+      await workspace({ maxPostsPerDay: 1 });
+      // Both pieces wait at the door of their schedule step, then go in together.
+      let arrived = 0;
+      let release!: () => void;
+      let first!: () => void;
+      const together = new Promise<void>((r) => (release = r));
+      const firstIn = new Promise<void>((r) => (first = r));
+      const exec = async (run: AgentRun, name: string): Promise<StepResult> => {
+        if (name === "schedule") {
+          arrived++;
+          if (arrived === 1) first();
+          if (arrived === 2) release();
+          await together;
+        }
+        return executeStep(run, name);
+      };
+      const one = workOne(A, exec);
+      // The second tick starts once the first holds its piece, so it claims the other one.
+      await firstIn;
+      const two = workOne(A, exec);
+      await Promise.all([one, two]);
+      expect(arrived).toBe(2);
+      const posts = await db.post.findMany({ where: { id: { in: [`agent-${x.id}`, `agent-${y.id}`] } } });
+      expect(posts.map((p) => p.status).sort()).toEqual(["draft", "scheduled"]);
+      const runs = await Promise.all([row(x.id), row(y.id)]);
+      expect(runs.map((r) => r.status).sort()).toEqual(["blocked", "queued"]);
+      expect(runs.find((r) => r.status === "blocked")?.error).toContain("límite diario");
+      expect(await budget()).toMatchObject({ posts: 1 });
+    });
+
+    it("with everything paused the schedule step fails with the pause and nothing is scheduled", async () => {
+      const [piece] = await drafted();
+      await workspace({ pausedAt: new Date() });
+      await workOne(A);
+      expect(await row(piece.id)).toMatchObject({ status: "blocked", error: expect.stringContaining("pausa") });
+      expect(await stepOf(piece.id, "schedule")).toMatchObject({ status: "blocked", error: expect.stringContaining("pausa") });
+      expect(await postOf(piece.id)).toMatchObject({ status: "draft" });
+      expect(await db.post.count({ where: { businessId: A, status: "scheduled" } })).toBe(0);
+      expect(await budget()).toMatchObject({ posts: 0 });
+      const message = await db.agentMessage.findFirstOrThrow({ where: { runId: piece.id, role: "assistant" } });
+      expect(message.text).toContain("pausa");
+    });
+
+    it("in approval mode an approval given before the review does not schedule the piece; one after it does", async () => {
+      const [piece] = await reviewed();
+      await workspace({ mode: "approval" });
+      const review = await stepOf(piece.id, "review");
+      // An earlier approval (a video's cost, say): older than the piece's review.
+      await db.agentRun.update({
+        where: { id: piece.id },
+        data: { approvedAt: new Date(review!.finishedAt!.getTime() - 60000) },
+      });
+      await workOne(A);
+      expect(await postOf(piece.id)).toMatchObject({ status: "draft" });
+      await workOne(A);
+      expect(await row(piece.id)).toMatchObject({ status: "waiting_approval", stage: 4 });
+      expect(await stepOf(piece.id, "schedule")).toBeNull();
+      expect(await postOf(piece.id)).toMatchObject({ status: "draft" });
+      // The owner approves the reviewed piece.
+      await changeRun(A, piece.id, "approve");
+      await workOne(A);
+      expect(await postOf(piece.id)).toMatchObject({ status: "scheduled" });
+      expect(await row(piece.id)).toMatchObject({ status: "queued", stage: 5 });
+    });
+
+    it("without permission to publish a piece waits with its draft ready, in any mode", async () => {
+      const [piece] = await drafted();
+      await workspace({ allowPublish: false });
+      await workOne(A);
+      expect(await row(piece.id)).toMatchObject({ status: "waiting_approval", stage: 4 });
+      expect(await postOf(piece.id)).toMatchObject({ status: "draft" });
+    });
+
+    it("without permission for social posts a post piece is blocked and stays a draft", async () => {
+      const [piece] = await drafted();
+      await workspace({ allowSocial: false });
+      await workOne(A);
+      expect(await row(piece.id)).toMatchObject({ status: "blocked", error: expect.stringContaining("redes sociales") });
+      expect(await postOf(piece.id)).toMatchObject({ status: "draft" });
+      expect(await budget()).toMatchObject({ posts: 0 });
+    });
+
+    it("a braked channel blocks the piece", async () => {
+      const [piece] = await drafted();
+      // The connection was saved long ago; since then the agent's last two deliveries to facebook failed.
+      await db.connection.update({
+        where: { businessId_channel: { businessId: A, channel: "facebook" } },
+        data: { updatedAt: new Date(Date.now() - 10 * 86400000) },
+      });
+      for (const days of [3, 2])
+        await db.post.create({
+          data: {
+            id: `agent-failed-${days}`,
+            businessId: A,
+            text: "t",
+            status: "failed",
+            scheduledAt: new Date(Date.now() - days * 86400000),
+            targets: { create: [{ channel: "facebook", status: "failed" }] },
+          },
+        });
+      await workOne(A);
+      expect(await row(piece.id)).toMatchObject({ status: "blocked", error: expect.stringContaining("frenados") });
+      expect(await postOf(piece.id)).toMatchObject({ status: "draft" });
+    });
+
+    it("a piece channel with an empty text fails before any post or campaign is made", async () => {
+      const [piece] = await reviewed([{ ...roof, channels: ["facebook", "instagram"] }]);
+      await workOne(A);
+      expect(await row(piece.id)).toMatchObject({ status: "blocked", error: expect.stringContaining("instagram") });
+      expect(await stepOf(piece.id, "prepare")).toMatchObject({ status: "blocked" });
+      expect(await postOf(piece.id)).toBeNull();
+      expect(await db.campaign.findUnique({ where: { id: `agent-${piece.id}` } })).toBeNull();
+    });
+
+    it("a video piece's draft carries its video and the reviewed texts, only to channels that take a video", async () => {
+      const [piece] = await reviewed([{ ...roof, format: "video", channels: ["facebook", "tiktok", "linkedin"] }]);
+      expect(stepsOf(piece)[piece.stage]).toBe("prepare");
+      await done(piece.id, "video_wait:0", {
+        projectId: "fixture-project",
+        status: "ready",
+        videoUrl: "https://example.com/piece-video.mp4",
+        texts: { title: "x", description: "d", instagram: "IG", tiktok: "TT del storyboard", facebook: "FB del storyboard" },
+      });
+      await workOne(A);
+      const draft = await postOf(piece.id);
+      expect(draft).toMatchObject({
+        status: "draft",
+        kind: "video",
+        mediaType: "video",
+        mediaUrl: "https://example.com/piece-video.mp4",
+      });
+      // What goes out is what the review read: TikTok has no text of its own, so it takes the piece's base text.
+      expect(draft!.variants).toEqual({ facebook: SOCIAL.variants.facebook, tiktok: SOCIAL.variants.facebook });
+      expect(draft!.targets.map((t) => t.channel).sort()).toEqual(["facebook", "tiktok"]);
+      expect(await stepOf(piece.id, "prepare")).toMatchObject({ output: { blockedChannels: ["linkedin"] } });
+    });
+
+    it("after a storm the piece is scheduled for the time the storm rules allow", async () => {
+      const [piece] = await drafted();
+      const at = new Date(Date.now() - 30 * 60000).toISOString();
+      await db.agentRun.update({
+        where: { id: piece.id },
+        data: { context: { ...(piece.context as object), storm: { event: "huracan", at, phase: "oferta" } } },
+      });
+      await workOne(A);
+      expect((await postOf(piece.id))?.scheduledAt).toEqual(stormSchedule(new Date(at), 0, "oferta"));
+    });
+
+    it("a refusal settles only a step that reserved nothing; a step holding a reservation is still uncertain", async () => {
+      const refuse = async (): Promise<StepResult> => {
+        throw new Refusal("No se puede ahora.");
+      };
+      const free = await ask();
+      await workOne(A, refuse, () => 0);
+      expect(await row(free.id)).toMatchObject({ status: "blocked", error: "No se puede ahora.", chargedCents: 0 });
+      expect(await stepOf(free.id, "research")).toMatchObject({ status: "blocked", chargedCents: 0, finishedAt: expect.any(Date) });
+      // A reservation is held as before: nobody knows what the paid call did.
+      const paid = await ask();
+      await workOne(A, refuse, () => 5);
+      expect(await row(paid.id)).toMatchObject({ status: "uncertain", chargedCents: 5, reservedCents: 0 });
+      expect(await stepOf(paid.id, "research")).toMatchObject({ status: "uncertain", chargedCents: 5 });
+      // Any other error keeps today's path, even with nothing reserved.
+      const other = await ask();
+      await workOne(A, async () => {
+        throw new Error("boom");
+      }, () => 0);
+      expect(await row(other.id)).toMatchObject({ status: "uncertain" });
+      expect(await budget()).toMatchObject({ reservedCents: 0, chargedCents: 5 });
+    });
+
+    it("assertCanSchedule reads this business's connections, brakes, approval and day inside the lock, and writes nothing", async () => {
+      const [piece] = await drafted();
+      const ws = await db.agentWorkspace.findUniqueOrThrow({ where: { businessId: A } });
+      const check = (w = ws, channels = ["facebook"], run: AgentRun = piece) =>
+        locked(A, (tx) => assertCanSchedule(tx, run, w, channels));
+      await expect(check()).resolves.toBeUndefined();
+      // Every refusal is a Refusal: the run ends blocked, not uncertain.
+      await expect(check({ ...ws, pausedAt: new Date() })).rejects.toBeInstanceOf(Refusal);
+      // Another business's workspace never decides for this one.
+      await expect(check({ ...ws, businessId: B })).rejects.toThrow("no corresponde");
+      // Another business's connection does not count.
+      await db.connection.create({ data: { businessId: B, channel: "instagram", secret: "synthetic-no-provider-access" } });
+      const both = { ...ws, channels: ["facebook", "instagram"] };
+      await expect(check(both, ["facebook", "instagram"])).rejects.toThrow("no están conectados: instagram");
+      // Today's posts, in the business's own day; another business's count does not matter.
+      const day = localDay(new Date(), "America/New_York");
+      await db.agentBudget.create({ data: { businessId: B, day, posts: 99 } });
+      await expect(check()).resolves.toBeUndefined();
+      await db.agentBudget.upsert({
+        where: { businessId_day: { businessId: A, day } },
+        create: { businessId: A, day, posts: ws.maxPostsPerDay },
+        update: { posts: ws.maxPostsPerDay },
+      });
+      await expect(check()).rejects.toThrow("límite diario");
+      await db.agentBudget.update({ where: { businessId_day: { businessId: A, day } }, data: { posts: 0 } });
+      // Approval mode: only an approval after the last review counts.
+      const approval = { ...ws, mode: "approval" };
+      await expect(check(approval)).rejects.toThrow("aprobación");
+      const review = await stepOf(piece.id, "review");
+      await expect(
+        check(approval, ["facebook"], { ...piece, approvedAt: new Date(review!.finishedAt!.getTime() - 1) }),
+      ).rejects.toThrow("aprobación");
+      await expect(
+        check(approval, ["facebook"], { ...piece, approvedAt: new Date(review!.finishedAt!.getTime() + 1) }),
+      ).resolves.toBeUndefined();
+      // A later review round needs a later approval.
+      await done(piece.id, "review-r1", { approved: true, problems: [] });
+      const r1 = await stepOf(piece.id, "review-r1");
+      await expect(
+        check(approval, ["facebook"], { ...piece, approvedAt: new Date(r1!.finishedAt!.getTime() - 1) }),
+      ).rejects.toThrow("aprobación");
+      // Nothing was scheduled or counted by the checks.
+      expect(await postOf(piece.id)).toMatchObject({ status: "draft" });
+      expect(await db.agentBudget.findUnique({ where: { businessId_day: { businessId: A, day } } })).toMatchObject({ posts: 0 });
     });
   });
 });
