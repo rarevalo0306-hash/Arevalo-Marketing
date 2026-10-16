@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentSettings, nextFormKey } from "@/components/agent/AgentSettings";
 import { I18nProvider } from "@/components/I18n";
-import { AI_AGENTS, TeamSettings } from "@/components/agent/TeamSettings";
+import { AI_AGENTS, PauseBlock, TeamSettings, pauseAll, resumeAll } from "@/components/agent/TeamSettings";
 import { DEFAULT_SETTINGS, type Snapshot } from "@/components/agent/types";
 import type { Settings } from "@/lib/agent/schema";
 import { isTickStale, type TeamAgentView } from "@/lib/agent/team-view";
@@ -72,11 +72,11 @@ const fixture = (over: Over = {}) => {
   } as Snapshot;
   return { value, data };
 };
-const render = (over: Over = {}, { busy = false, lang = "es" as "es" | "en" } = {}) => {
+const render = (over: Over = {}, { busy = false, lang = "es" as "es" | "en", reveal = false } = {}) => {
   const { value, data } = fixture(over);
   return renderToStaticMarkup(
     <I18nProvider lang={lang}>
-      <TeamSettings value={value} set={() => {}} data={data} busy={busy} act={async () => true} onInvalid={() => {}} />
+      <TeamSettings value={value} set={() => {}} data={data} busy={busy} act={async () => true} onInvalid={() => {}} revealErrors={reveal} />
     </I18nProvider>,
   );
 };
@@ -250,23 +250,71 @@ describe("Modo equipo: los precios", () => {
     expect(rows[0].html).not.toContain("fieldError");
   });
 
-  it("a chosen model without a price shows both fields empty and marked, with how to fill them", () => {
+  it("an untouched new price row shows both fields empty and no error text, so the layout does not jump while the owner types the model", () => {
     const html = render({ settings: { agentModels: { review: { provider: "gemini", model: "gemini-2.5-pro" } } } });
     const [row] = priceRows(html);
     expect(row.id).toBe("gemini:gemini-2.5-pro");
-    expect([...row.html.matchAll(/<input[^>]*aria-invalid="true"[^>]*value=""/g)]).toHaveLength(2);
-    expect(count(row.html, 'class="fieldError"')).toBe(2);
-    expect(row.html).toContain("Escribe el precio en dólares entre $0.0001 y $1000, por ejemplo 0.15 o 3.");
-    expect(row.html).toContain("Escribe el precio en dólares entre $0.0001 y $2000, por ejemplo 0.15 o 3.");
-    // A half-filled pair still has the empty side marked.
+    expect([...row.html.matchAll(/<input[^>]*aria-invalid="false"[^>]*value=""/g)]).toHaveLength(2);
+    expect(row.html).not.toContain("fieldError");
+    expect(row.html).not.toContain("Escribe el precio");
+    expect(row.html).not.toContain('aria-invalid="true"');
+    expect(row.html).not.toContain("aria-describedby");
+    // A saved pair that does not read (a zero) is just as quiet until the owner touches it.
     const half = priceRows(
       render({
         settings: { agentModels: { review: { provider: "gemini", model: "x" } }, modelPrices: { "gemini:x": { input: 0.15, output: 0 } } },
       }),
     )[0];
+    expect(half.html).not.toContain("fieldError");
+    expect(half.html).not.toContain('aria-invalid="true"');
+  });
+
+  it("after a Save attempt every price that does not read shows how to fill it", () => {
+    const html = render({ settings: { agentModels: { review: { provider: "gemini", model: "gemini-2.5-pro" } } } }, { reveal: true });
+    const [row] = priceRows(html);
+    expect([...row.html.matchAll(/<input[^>]*aria-invalid="true"[^>]*value=""/g)]).toHaveLength(2);
+    expect(count(row.html, 'class="fieldError"')).toBe(2);
+    expect(row.html).toContain("Escribe el precio en dólares entre $0.0001 y $1000, por ejemplo 0.15 o 3.");
+    expect(row.html).toContain("Escribe el precio en dólares entre $0.0001 y $2000, por ejemplo 0.15 o 3.");
+    // Only the side that does not read is marked.
+    const half = priceRows(
+      render(
+        { settings: { agentModels: { review: { provider: "gemini", model: "x" } }, modelPrices: { "gemini:x": { input: 0.15, output: 0 } } } },
+        { reveal: true },
+      ),
+    )[0];
     expect(half.html).toMatch(/aria-invalid="false"[^>]*value="0\.15"/);
     expect(half.html).toMatch(/aria-invalid="true"[^>]*value="0"/);
     expect(count(half.html, 'class="fieldError"')).toBe(1);
+    // A pair that reads has nothing to reveal.
+    const ok = priceRows(
+      render({ settings: { agentModels: { copy: { provider: "claude", model: "sonnet" } }, modelPrices: { "claude:sonnet": { input: 3, output: 15 } } } }, { reveal: true }),
+    )[0];
+    expect(ok.html).not.toContain("fieldError");
+  });
+
+  it("each pair of prices is a group named after its model, so the two fields are announced with the model", () => {
+    const html = render({
+      settings: {
+        agentModels: { copy: { provider: "claude", model: "sonnet" }, review: { provider: "openai", model: "gpt-5-mini" } },
+        modelPrices: { "claude:sonnet": { input: 3, output: 15 }, "openai:gpt-5-mini": { input: 0.25, output: 2 } },
+      },
+    });
+    const rows = priceRows(html);
+    expect(rows).toHaveLength(2);
+    const ids = new Set<string>();
+    for (const row of rows) {
+      const group = /<div class="priceFields" role="group" aria-labelledby="([^"]+)"/.exec(row.html);
+      expect(group, row.id).not.toBeNull();
+      const name = new RegExp(`<strong id="${group![1]}"[^>]*>${row.id}</strong>`).exec(row.html);
+      expect(name, row.id).not.toBeNull();
+      // Both inputs are inside the group.
+      expect(row.html.slice(row.html.indexOf("role=\"group\""))).toContain("Entrada (USD por millón de tokens)");
+      expect(row.html.slice(row.html.indexOf("role=\"group\""))).toContain("Salida (USD por millón de tokens)");
+      ids.add(group![1]);
+    }
+    // Each group points at its own name.
+    expect(ids.size).toBe(2);
   });
 
   it("two agents on the same model share one pair of fields; different models get one each", () => {
@@ -418,6 +466,101 @@ describe("Modo equipo: «Pausar todo»", () => {
     expect(paused).toContain("Paused since");
     expect(paused).toContain("Resume");
     expect(paused).not.toContain("Pause everything");
+  });
+
+  it("shows no error line until a pause or a resume fails", () => {
+    expect(render()).not.toContain("role=\"alert\"");
+    expect(render({ server: { pausedAt: PAUSED_AT } })).not.toContain("role=\"alert\"");
+  });
+});
+
+describe("Modo equipo: pausar sin que el error se pierda", () => {
+  const pause = (props: Partial<Parameters<typeof PauseBlock>[0]> = {}, lang: "es" | "en" = "es") =>
+    renderToStaticMarkup(
+      <I18nProvider lang={lang}>
+        <PauseBlock paused={false} since="" busy={false} pending={null} failed={null} onPause={() => {}} onResume={() => {}} {...props} />
+      </I18nProvider>,
+    );
+  const buttons = (html: string) => [...html.matchAll(/<button[^>]*>[^<]*<\/button>/g)].map((m) => m[0]);
+
+  it("a failed pause shows its own line inside the block, as an alert, next to the button", () => {
+    const html = pause({ failed: "pause" });
+    expect(html).toMatch(/<p[^>]*role="alert"[^>]*>No se pudo pausar\. Intenta de nuevo\.<\/p>/);
+    // The line is inside the block that holds the button.
+    const block = html.slice(html.indexOf('class="pauseBlock"'));
+    expect(block).toContain("No se pudo pausar. Intenta de nuevo.");
+    expect(html).toContain("Pausar todo");
+    expect(html).not.toContain("No se pudo reanudar");
+  });
+
+  it("a failed resume shows its own line, and a failure of the other kind is not shown", () => {
+    const html = pause({ paused: true, since: "16 oct 2026, 2:30 p. m.", failed: "resume" });
+    expect(html).toMatch(/<p[^>]*role="alert"[^>]*>No se pudo reanudar\. Intenta de nuevo\.<\/p>/);
+    expect(html).toContain("Reanudar");
+    expect(html).not.toContain("No se pudo pausar");
+    // It is already paused (the pause went through meanwhile): the old pause failure would only confuse.
+    expect(pause({ paused: true, since: "x", failed: "pause" })).not.toContain("role=\"alert\"");
+    expect(pause({ paused: false, failed: "resume" })).not.toContain("role=\"alert\"");
+  });
+
+  it("while the request runs the button says so and is disabled", () => {
+    const pausing = buttons(pause({ pending: "pause" }));
+    expect(pausing).toHaveLength(1);
+    expect(pausing[0]).toContain("Pausando…");
+    expect(pausing[0]).toContain('disabled=""');
+    expect(pausing[0]).toContain('type="button"');
+    const resuming = buttons(pause({ paused: true, since: "x", pending: "resume" }));
+    expect(resuming[0]).toContain("Reanudando…");
+    expect(resuming[0]).toContain('disabled=""');
+    // Idle: the plain names, enabled.
+    expect(buttons(pause())[0]).not.toContain("disabled");
+    expect(buttons(pause())[0]).toContain(">Pausar todo<");
+    expect(buttons(pause({ paused: true, since: "x" }))[0]).toContain(">Reanudar<");
+    // Busy with something else: disabled, but still its own name.
+    expect(buttons(pause({ busy: true }))[0]).toContain('disabled=""');
+    expect(buttons(pause({ busy: true }))[0]).toContain(">Pausar todo<");
+  });
+
+  it("says all of it in English too", () => {
+    expect(pause({ failed: "pause" }, "en")).toContain("Could not pause. Try again.");
+    expect(pause({ paused: true, since: "x", failed: "resume" }, "en")).toContain("Could not resume. Try again.");
+    expect(buttons(pause({ pending: "pause" }, "en"))[0]).toContain("Pausing…");
+    expect(buttons(pause({ paused: true, since: "x", pending: "resume" }, "en"))[0]).toContain("Resuming…");
+  });
+
+  describe("pauseAll and resumeAll", () => {
+    it("pauseAll sends nothing when the owner does not confirm", async () => {
+      const act = vi.fn(async () => true);
+      const confirm = vi.fn(() => false);
+      expect(await pauseAll(act, confirm)).toBe("cancelled");
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(act).not.toHaveBeenCalled();
+    });
+
+    it("pauseAll sends pause_all once the owner confirms: ok when it went through, failed when it did not", async () => {
+      const ok = vi.fn(async () => true);
+      expect(await pauseAll(ok, () => true)).toBe("ok");
+      expect(ok).toHaveBeenCalledTimes(1);
+      expect(ok).toHaveBeenCalledWith({ action: "pause_all" });
+      const no = vi.fn(async () => false);
+      expect(await pauseAll(no, () => true)).toBe("failed");
+      expect(no).toHaveBeenCalledWith({ action: "pause_all" });
+    });
+
+    it("resumeAll asks nothing and sends resume_all", async () => {
+      const ok = vi.fn(async () => true);
+      expect(await resumeAll(ok)).toBe("ok");
+      expect(ok).toHaveBeenCalledWith({ action: "resume_all" });
+      expect(await resumeAll(async () => false)).toBe("failed");
+    });
+
+    it("a request that throws is a failure, not an unhandled rejection", async () => {
+      const boom = async () => {
+        throw new Error("sin red");
+      };
+      expect(await pauseAll(boom, () => true)).toBe("failed");
+      expect(await resumeAll(boom)).toBe("failed");
+    });
   });
 });
 

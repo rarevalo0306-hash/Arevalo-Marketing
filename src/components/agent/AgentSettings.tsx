@@ -120,6 +120,8 @@ export function AgentSettings({
   // Fields whose text cannot be saved as it is yet (a number that does not read, a model without a name, a price left empty):
   // saving waits until they are fixed.
   const [invalid, setInvalid] = useState<string[]>([]);
+  // The owner tried to save while something was marked: the fields that stayed quiet until touched now say what is wrong.
+  const [attempted, setAttempted] = useState(false);
   const markInvalid = useCallback(
     (key: string, bad: boolean) =>
       setInvalid((old) => (bad ? (old.includes(key) ? old : [...old, key]) : old.includes(key) ? old.filter((k) => k !== key) : old)),
@@ -134,7 +136,10 @@ export function AgentSettings({
       className={s.settings}
       onSubmit={async (e) => {
         e.preventDefault();
-        if (invalid.length) return;
+        if (invalid.length) {
+          setAttempted(true);
+          return;
+        }
         // A price stays in the form while its model is not chosen (to come back to), but it is not saved.
         await save({ ...value, modelPrices: pruneModelPrices(value.modelPrices, value.agentModels) });
       }}
@@ -306,7 +311,7 @@ export function AgentSettings({
           {t("Activar radar periódico", "Enable periodic news radar")}
         </label>
       </div>
-      <TeamSettings value={value} set={set} data={data} busy={busy} act={act} onInvalid={markInvalid} />
+      <TeamSettings value={value} set={set} data={data} busy={busy} act={act} onInvalid={markInvalid} revealErrors={attempted} />
       <div className={s.sectionTitle}>
         <h2>{t("Fuentes de la industria", "Industry sources")}</h2>
         <p>

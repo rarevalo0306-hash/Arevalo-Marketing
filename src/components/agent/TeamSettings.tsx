@@ -49,12 +49,29 @@ function useReportInvalid(key: string, bad: boolean, onInvalid: (key: string, ba
   useEffect(() => () => onInvalid(key, false), [key, onInvalid]);
 }
 
-/** One side of a model's price, in dollars per million tokens. The text stays as typed; the pair is saved once both sides read. */
-function RateField({ label, side, text, onText }: { label: string; side: keyof typeof RATE_MAX; text: string; onText: (text: string) => void }) {
+/**
+ * One side of a model's price, in dollars per million tokens. The text stays as typed; the pair is saved once both sides read. The
+ * error shows only once the owner has been in the field (edited or left it) or tried to save: a new row starts quiet, so it does not
+ * flash red and push the page down while the owner is still typing the model above it. «Guardar» waits for it either way.
+ */
+function RateField({
+  label,
+  side,
+  text,
+  reveal,
+  onText,
+}: {
+  label: string;
+  side: keyof typeof RATE_MAX;
+  text: string;
+  reveal: boolean;
+  onText: (text: string) => void;
+}) {
   const { t } = useT();
   const id = useId();
+  const [touched, setTouched] = useState(false);
   const value = readPrice(text, side);
-  const valid = value !== null;
+  const marked = value === null && (touched || reveal);
   return (
     <div className={s.numberField}>
       <label htmlFor={id}>{label}</label>
@@ -66,15 +83,19 @@ function RateField({ label, side, text, onText }: { label: string; side: keyof t
           inputMode="decimal"
           autoComplete="off"
           value={text}
-          aria-invalid={!valid}
-          aria-describedby={valid ? undefined : `${id}-error`}
-          onChange={(e) => onText(e.target.value)}
+          aria-invalid={marked}
+          aria-describedby={marked ? `${id}-error` : undefined}
+          onChange={(e) => {
+            setTouched(true);
+            onText(e.target.value);
+          }}
           onBlur={() => {
+            setTouched(true);
             if (value !== null) onText(formatRate(value));
           }}
         />
       </span>
-      {!valid && (
+      {marked && (
         <p id={`${id}-error`} className={s.fieldError}>
           {t(
             `Escribe el precio en dólares entre $0.0001 y $${RATE_MAX[side]}, por ejemplo 0.15 o 3.`,
@@ -91,16 +112,20 @@ function PriceRow({
   id,
   users,
   initial,
+  reveal,
   onPrice,
   onInvalid,
 }: {
   id: string;
   users: string;
   initial: { input: number; output: number } | undefined;
+  /** The owner tried to save: show what is missing even in the fields not touched yet. */
+  reveal: boolean;
   onPrice: (id: string, price: { input: number; output: number }) => void;
   onInvalid: (key: string, bad: boolean) => void;
 }) {
   const { t } = useT();
+  const nameId = useId();
   const [input, setInput] = useState(initial ? formatRate(initial.input) : "");
   const [output, setOutput] = useState(initial ? formatRate(initial.output) : "");
   useReportInvalid(`price:${id}:input`, readPrice(input, "input") === null, onInvalid);
@@ -115,20 +140,24 @@ function PriceRow({
   return (
     <li className={tm.priceRow} data-model={id}>
       <div>
-        <strong className={tm.priceId}>{id}</strong>
+        <strong id={nameId} className={tm.priceId}>
+          {id}
+        </strong>
         <p className={tm.note}>{users}</p>
       </div>
-      <div className={tm.priceFields}>
+      <div className={tm.priceFields} role="group" aria-labelledby={nameId}>
         <RateField
           label={t("Entrada (USD por millón de tokens)", "Input (USD per million tokens)")}
           side="input"
           text={input}
+          reveal={reveal}
           onText={(text) => change(text, output)}
         />
         <RateField
           label={t("Salida (USD por millón de tokens)", "Output (USD per million tokens)")}
           side="output"
           text={output}
+          reveal={reveal}
           onText={(text) => change(input, text)}
         />
       </div>
@@ -229,6 +258,98 @@ function ModelRow({
   );
 }
 
+type PauseKind = "pause" | "resume";
+type PauseResult = "cancelled" | "ok" | "failed";
+
+/** Sends one pause action: asks first when `confirm` is given (no → nothing is sent); `act` resolves to whether it went through. */
+async function sendPause(
+  action: "pause_all" | "resume_all",
+  act: (body: Record<string, unknown>) => Promise<boolean>,
+  confirm?: () => boolean,
+): Promise<PauseResult> {
+  if (confirm && !confirm()) return "cancelled";
+  try {
+    return (await act({ action })) ? "ok" : "failed";
+  } catch {
+    return "failed";
+  }
+}
+/** «Pausar todo»: after the owner confirms. */
+export const pauseAll = (act: (body: Record<string, unknown>) => Promise<boolean>, confirm: () => boolean) => sendPause("pause_all", act, confirm);
+/** «Reanudar»: no question, the owner is undoing a stop. */
+export const resumeAll = (act: (body: Record<string, unknown>) => Promise<boolean>) => sendPause("resume_all", act);
+
+/**
+ * The pause block: «Pausar todo», or «En pausa desde …» with «Reanudar». Its buttons never submit the form. While a request runs
+ * (`pending`) the button says what it is doing, and a request that failed (`failed`) says so here, next to the button.
+ */
+export function PauseBlock({
+  paused,
+  since,
+  busy,
+  pending,
+  failed,
+  onPause,
+  onResume,
+}: {
+  paused: boolean;
+  /** When the pause began, already written in the business's time zone. */
+  since: string;
+  busy: boolean;
+  pending: PauseKind | null;
+  failed: PauseKind | null;
+  onPause: () => void;
+  onResume: () => void;
+}) {
+  const { t } = useT();
+  const id = useId();
+  // The failure of the other kind is old news (the pause went through meanwhile, or was lifted): it is not shown.
+  const failure = failed === (paused ? "resume" : "pause") ? failed : null;
+  return (
+    <div className={tm.pauseBlock} role="group" aria-labelledby={`${id}-pause`}>
+      <div className={tm.pauseText}>
+        <h3 id={`${id}-pause`}>{t("Pausa", "Pause")}</h3>
+        {paused ? (
+          <>
+            <p>
+              <strong>{t(`En pausa desde ${since}`, `Paused since ${since}`)}</strong>
+            </p>
+            <p className={tm.note}>
+              {t(
+                "MATYA no empieza trabajo nuevo ni publica. Lo que se canceló no vuelve solo.",
+                "MATYA starts no new work and publishes nothing. What was cancelled does not come back on its own.",
+              )}
+            </p>
+          </>
+        ) : (
+          <p>
+            {t(
+              "Detiene todo el trabajo de MATYA de una vez. Se aplica al momento, sin esperar a «Guardar configuración».",
+              "Stops all of MATYA's work at once. It applies right away, without waiting for «Save settings».",
+            )}
+          </p>
+        )}
+        {failure && (
+          <p role="alert" className={tm.error}>
+            {failure === "pause"
+              ? t("No se pudo pausar. Intenta de nuevo.", "Could not pause. Try again.")
+              : t("No se pudo reanudar. Intenta de nuevo.", "Could not resume. Try again.")}
+          </p>
+        )}
+      </div>
+      {paused ? (
+        <button type="button" className="btn on" disabled={busy || pending !== null} onClick={onResume}>
+          {pending === "resume" ? t("Reanudando…", "Resuming…") : t("Reanudar", "Resume")}
+        </button>
+      ) : (
+        <button type="button" className="btn danger" disabled={busy || pending !== null} onClick={onPause}>
+          {pending === "pause" ? t("Pausando…", "Pausing…") : t("Pausar todo", "Pause everything")}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function TeamSettings({
   value,
   set,
@@ -236,6 +357,7 @@ export function TeamSettings({
   busy,
   act,
   onInvalid,
+  revealErrors = false,
 }: {
   value: Settings;
   set: <K extends keyof Settings>(key: K, v: Settings[K]) => void;
@@ -244,6 +366,8 @@ export function TeamSettings({
   act: (body: Record<string, unknown>) => Promise<boolean>;
   /** Marks (or clears) a field that cannot be saved as it is; the form's «Guardar» waits while any is marked. Keep its identity stable. */
   onInvalid: (key: string, bad: boolean) => void;
+  /** The owner tried to save while a field was marked: the price fields show their errors even if untouched. */
+  revealErrors?: boolean;
 }) {
   const { t, lang } = useT();
   const id = useId();
@@ -266,6 +390,27 @@ export function TeamSettings({
   }
   const setPrice = (model: string, price: { input: number; output: number }) =>
     set("modelPrices", { ...value.modelPrices, [model]: price });
+  // The pause is not part of the form: its own request, its own wait and its own error, shown by the button (the form's save error is
+  // at the foot of a long page and worded as a failed save).
+  const [pending, setPending] = useState<PauseKind | null>(null);
+  const [failed, setFailed] = useState<PauseKind | null>(null);
+  const run = async (kind: PauseKind) => {
+    setFailed(null);
+    setPending(kind);
+    const result =
+      kind === "pause"
+        ? await pauseAll(act, () =>
+            window.confirm(
+              t(
+                "Se cancela todo lo abierto y lo programado vuelve a borrador. ¿Pausar?",
+                "Everything open is cancelled and scheduled posts go back to draft. Pause?",
+              ),
+            ),
+          )
+        : await resumeAll(act);
+    setPending(null);
+    if (result === "failed") setFailed(kind);
+  };
   return (
     <section className={tm.config} aria-labelledby={`${id}-title`}>
       <div className={s.sectionTitle}>
@@ -371,58 +516,20 @@ export function TeamSettings({
           </p>
           <ul className={tm.priceList}>
             {[...models].map(([model, users]) => (
-              <PriceRow key={model} id={model} users={users.join(", ")} initial={value.modelPrices[model]} onPrice={setPrice} onInvalid={onInvalid} />
+              <PriceRow key={model} id={model} users={users.join(", ")} initial={value.modelPrices[model]} reveal={revealErrors} onPrice={setPrice} onInvalid={onInvalid} />
             ))}
           </ul>
         </div>
       )}
-      <div className={tm.pauseBlock} role="group" aria-labelledby={`${id}-pause`}>
-        <div className={tm.pauseText}>
-          <h3 id={`${id}-pause`}>{t("Pausa", "Pause")}</h3>
-          {paused && server?.pausedAt ? (
-            <>
-              <p>
-                <strong>
-                  {t(`En pausa desde ${fmtDateTime(server.pausedAt, lang, tz)}`, `Paused since ${fmtDateTime(server.pausedAt, lang, tz)}`)}
-                </strong>
-              </p>
-              <p className={tm.note}>
-                {t(
-                  "MATYA no empieza trabajo nuevo ni publica. Lo que se canceló no vuelve solo.",
-                  "MATYA starts no new work and publishes nothing. What was cancelled does not come back on its own.",
-                )}
-              </p>
-            </>
-          ) : (
-            <p>
-              {t(
-                "Detiene todo el trabajo de MATYA de una vez. Se aplica al momento, sin esperar a «Guardar configuración».",
-                "Stops all of MATYA's work at once. It applies right away, without waiting for «Save settings».",
-              )}
-            </p>
-          )}
-        </div>
-        {paused ? (
-          <button type="button" className="btn on" disabled={busy} onClick={() => void act({ action: "resume_all" })}>
-            {t("Reanudar", "Resume")}
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="btn danger"
-            disabled={busy}
-            onClick={() => {
-              const question = t(
-                "Se cancela todo lo abierto y lo programado vuelve a borrador. ¿Pausar?",
-                "Everything open is cancelled and scheduled posts go back to draft. Pause?",
-              );
-              if (window.confirm(question)) void act({ action: "pause_all" });
-            }}
-          >
-            {t("Pausar todo", "Pause everything")}
-          </button>
-        )}
-      </div>
+      <PauseBlock
+        paused={paused}
+        since={server?.pausedAt ? fmtDateTime(server.pausedAt, lang, tz) : ""}
+        busy={busy}
+        pending={pending}
+        failed={failed}
+        onPause={() => void run("pause")}
+        onResume={() => void run("resume")}
+      />
     </section>
   );
 }
