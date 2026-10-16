@@ -42,7 +42,8 @@ import type { VideoMedia } from "@/lib/video-plan";
 import { approveCostCents, SITE_TEXT_CENTS, type SitePhoto } from "@/lib/seo/site-article";
 import { prepareForSite, approveForSite, sitePhotoApproval, sitePhotoCents } from "@/lib/seo/site-article-run";
 import { createArticleReport } from "@/lib/seo/writer-run";
-import { writeAiCents } from "@/lib/rankfix-shape";
+import { bi } from "@/lib/i18n";
+import { articleAiCents, articleReserve } from "@/lib/agent/article-cost";
 vi.mock("@/lib/library-files", () => ({
   ensureStoredCopy: vi.fn().mockImplementation(async (id) =>
     `https://example.com/stored-${id}.mp4`,
@@ -3386,6 +3387,8 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       const text = (await message(piece.id))!.text;
       expect(text).toContain("hasta US$");
       expect(text).toContain("reparación de techos");
+      // The run remembers what it asked, to check the approval against it.
+      expect((await row(piece.id)).result).toMatchObject({ asked: { step: "article", cents: Math.ceil(0.2 + articleAiCents("gemini")), at: expect.any(String) } });
       // Asking again does not write either.
       await db.agentRun.update({ where: { id: piece.id }, data: { status: "queued" } });
       await workOne(A);
@@ -3396,7 +3399,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       expect(createArticleReport).toHaveBeenCalledExactlyOnceWith(A, "reparación de techos", "es");
       expect(await stepOf(piece.id, "article")).toMatchObject({ agent: "copy", status: "succeeded", output: { reportId: "rep1" } });
       // Reserves the estimate it asked for, and charges Google's real cost plus the AI at the estimate it announced.
-      const ai = writeAiCents("gemini");
+      const ai = articleAiCents("gemini");
       const step = await stepOf(piece.id, "article");
       expect(step!.reservedCents).toBe(Math.ceil(0.2 + ai));
       expect(step!.chargedCents).toBe(Math.min(step!.reservedCents, 1 + ai));
@@ -3411,6 +3414,11 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       ["the website is not connected", () => db.connection.deleteMany({ where: { businessId: A, channel: "seo" } }), "no están conectados"],
       ["web articles are off", () => workspace({ allowWebArticles: false }), "permiso para publicar en seo"],
       ["MATYA is paused", () => workspace({ pausedAt: new Date() }), "pausa"],
+      [
+        "the day's limit of posts is reached",
+        () => db.agentBudget.create({ data: { businessId: A, day: localDay(new Date(), "America/New_York"), posts: settings.maxPostsPerDay } }),
+        "límite diario",
+      ],
     ])("an article that cannot be written costs nothing: %s", async (_name, setup, expected) => {
       vi.mocked(createArticleReport).mockResolvedValue(REPORT);
       const piece = await article();
@@ -3472,6 +3480,8 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       });
       expect(await row(piece.id)).toMatchObject({ status: "completed", reservedCents: 0 });
       expect(await money()).toEqual({ reservedCents: 0, chargedCents: SITE_TEXT_CENTS });
+      // A published article is one of the day's posts, counted once.
+      expect((await budget())?.posts).toBe(1);
     });
 
     it("artículo que necesita generar foto espera aprobación", async () => {
@@ -3488,6 +3498,8 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       expect(stepsOf(waiting)[waiting.stage]).toBe("article_publish");
       expect(await stepOf(piece.id, "article_publish")).toMatchObject({ status: "succeeded", output: { photoCents: 4 } });
       expect((await message(piece.id))!.text).toContain("US$0.04");
+      // Waiting for the photo is not publishing: it takes no place among the day's posts.
+      expect((await budget())?.posts ?? 0).toBe(0);
 
       // Without the owner's click it stays put and spends nothing.
       await db.agentRun.update({ where: { id: piece.id }, data: { status: "queued" } });
@@ -3507,6 +3519,8 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       expect(during).toEqual({ reservedCents: 4, chargedCents: SITE_TEXT_CENTS });
       expect(await stepOf(piece.id, "article_publish:1")).toMatchObject({ status: "succeeded", reservedCents: 4, chargedCents: 4 });
       expect(await row(piece.id)).toMatchObject({ status: "completed", chargedCents: SITE_TEXT_CENTS + 4 });
+      // The article counts as one post, when it is published (not at the wait, not twice).
+      expect((await budget())?.posts).toBe(1);
     });
 
     it("an image whose price went up since the owner approved it is not generated", async () => {
@@ -3556,7 +3570,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       expect(await money()).toEqual({ reservedCents: 0, chargedCents: 0 });
     });
 
-    it("in approval mode an article is published only with an approval given after its review", async () => {
+    it("in approval mode an article without an approval after its review waits for the owner, like a post's schedule step", async () => {
       vi.mocked(prepareForSite).mockResolvedValue(prepared(library));
       vi.mocked(approveForSite).mockResolvedValue(published);
       // Each piece is made (team mode is saved with it), then put in approval mode and worked.
@@ -3568,17 +3582,26 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
         await db.agentRun.update({ where: { id: piece.id }, data: { approvedAt } });
         await workspace({ mode: "approval" });
         await workOne(A);
-        return row(piece.id);
+        return piece;
       };
-      // No approval, or one older than the review (the cost of the draft): nothing is prepared or published.
-      expect(await waiting("p4", null)).toMatchObject({ status: "blocked", error: expect.stringContaining("aprobación") });
-      expect(await waiting("p5", new Date(Date.now() - 60000))).toMatchObject({ status: "blocked" });
+      // No approval, or one older than the review (the cost of the draft): nothing is prepared or published, and the run waits.
+      const none = await waiting("p4", null);
+      expect(await row(none.id)).toMatchObject({ status: "waiting_approval", reservedCents: 0, chargedCents: 0 });
+      expect((await message(none.id))!.text).toContain("aprobación después de su revisión");
+      const old = await waiting("p5", new Date(Date.now() - 60000));
+      expect(await row(old.id)).toMatchObject({ status: "waiting_approval" });
       expect(prepareForSite).not.toHaveBeenCalled();
       expect(approveForSite).not.toHaveBeenCalled();
       expect(await money()).toEqual({ reservedCents: 0, chargedCents: 0 });
-      // An approval after the review lets it through.
-      expect(await waiting("p6", new Date(Date.now() + 1000))).toMatchObject({ status: "completed" });
+      // The owner's approval (after the review) lets it through.
+      await changeRun(A, none.id, "approve");
+      await workOne(A);
+      expect(await row(none.id)).toMatchObject({ status: "completed" });
       expect(approveForSite).toHaveBeenCalledTimes(1);
+      // An approval after the review given beforehand does as well.
+      const ok = await waiting("p6", new Date(Date.now() + 1000));
+      expect(await row(ok.id)).toMatchObject({ status: "completed" });
+      expect(approveForSite).toHaveBeenCalledTimes(2);
     });
 
     it("a settings save after the article was asked for does not strand its publication: the guard checks the current settings", async () => {
@@ -3630,6 +3653,295 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       expect(await db.agentWorkspace.findUniqueOrThrow({ where: { businessId: A } })).toMatchObject({ enabled: true });
     });
 
+    // ---------- Fix round: passes, waits across settings saves, the day's posts, estimates ----------
+
+    const generate: SitePhoto = { kind: "generate", idea: "A roof" };
+    /** The day the business is in, the key of its budget row. */
+    const today = () => localDay(new Date(), "America/New_York");
+    const postsToday = async () => (await budget())?.posts ?? 0;
+
+    it("redoing an article at its AI-photo wait: the new draft gets a fresh first pass and the old photo approval pays for nothing", async () => {
+      vi.mocked(prepareForSite).mockResolvedValue(prepared(generate));
+      vi.mocked(approveForSite).mockResolvedValue(published);
+      vi.mocked(sitePhotoApproval).mockResolvedValue({ photo: generate, cents: 4 });
+      vi.mocked(createArticleReport).mockResolvedValue({ ...REPORT, id: "rep2" });
+      const piece = await reviewedArticle();
+      await workOne(A);
+      expect(await stepOf(piece.id, "article_publish")).toMatchObject({ output: { reportId: "rep1", published: false } });
+      // Rehacer while the first draft's photo waits.
+      await changeRun(A, piece.id, "redo");
+      expect(stepsOf(await row(piece.id))).toEqual(["article", "review", "article-r1", "review-r1", "article_publish"]);
+      const exec = (run: AgentRun, name: string): Promise<StepResult> =>
+        name === "review-r1"
+          ? Promise.resolve({ data: { approved: true, problems: [], ruleProblems: [] } })
+          : executeStep(run, name);
+      // The new draft is paid and asks for its own approval.
+      await workOne(A, exec);
+      expect(createArticleReport).not.toHaveBeenCalled();
+      await changeRun(A, piece.id, "approve");
+      await workOne(A, exec);
+      await workOne(A, exec);
+      expect(createArticleReport).toHaveBeenCalledTimes(1);
+      // Its publication starts again: a fresh first pass on the NEW report, not the photo approval of the old one.
+      await workOne(A, exec);
+      expect(prepareForSite).toHaveBeenCalledTimes(2);
+      expect(prepareForSite).toHaveBeenLastCalledWith(A, "rep2");
+      expect(approveForSite).not.toHaveBeenCalled();
+      expect(sitePhotoApproval).not.toHaveBeenCalled();
+      expect(await row(piece.id)).toMatchObject({ status: "waiting_approval", reservedCents: 0 });
+      expect(await stepOf(piece.id, "article_publish:1")).toMatchObject({ status: "succeeded", output: { reportId: "rep2", published: false, photoCents: 4 } });
+      expect(await postsToday()).toBe(0);
+      // Only the owner's click on this draft's photo authorizes it, as its own second pass.
+      await changeRun(A, piece.id, "approve");
+      await workOne(A, exec);
+      expect(approveForSite).toHaveBeenCalledExactlyOnceWith(A, "rep2", 4);
+      expect(await stepOf(piece.id, "article_publish:2")).toMatchObject({ status: "succeeded", reservedCents: 4, chargedCents: 4 });
+      expect(await row(piece.id)).toMatchObject({ status: "completed" });
+      expect(await postsToday()).toBe(1);
+    });
+
+    it("a draft-cost approval is never the AI-photo approval", async () => {
+      vi.mocked(prepareForSite).mockResolvedValue(prepared(generate));
+      vi.mocked(sitePhotoApproval).mockResolvedValue({ photo: generate, cents: 4 });
+      vi.mocked(createArticleReport).mockResolvedValue({ ...REPORT, id: "rep2" });
+      const piece = await reviewedArticle();
+      await workOne(A);
+      await changeRun(A, piece.id, "redo");
+      const exec = (run: AgentRun, name: string): Promise<StepResult> =>
+        name === "review-r1"
+          ? Promise.resolve({ data: { approved: true, problems: [], ruleProblems: [] } })
+          : executeStep(run, name);
+      await workOne(A, exec);
+      await changeRun(A, piece.id, "approve");
+      await workOne(A, exec);
+      await workOne(A, exec);
+      // That approval was for the draft's cost. The publication's first pass for the new report runs on its own (the translation),
+      // and what follows needs an approval given after it.
+      await workOne(A, exec);
+      await db.agentRun.update({ where: { id: piece.id }, data: { status: "queued" } });
+      await workOne(A, exec);
+      expect(approveForSite).not.toHaveBeenCalled();
+      expect(await row(piece.id)).toMatchObject({ status: "waiting_approval" });
+      expect(await db.agentStep.count({ where: { runId: piece.id, name: { startsWith: "article_publish" } } })).toBe(2);
+    });
+
+    it("a settings save while the video waits for its approval does not block the render, but the switches still decide", async () => {
+      const piece = await quoted();
+      await saveSettings(A, { ...settings, teamMode: true, objective: "Otro objetivo" });
+      await changeRun(A, piece.id, "approve");
+      await workOne(A, exec, cost);
+      expect(startRender).toHaveBeenCalledTimes(1);
+      expect(await row(piece.id)).toMatchObject({ status: "queued", reservedCents: 0 });
+    });
+
+    it("the render is still refused when the settings saved meanwhile turned team mode off", async () => {
+      const piece = await quoted();
+      await changeRun(A, piece.id, "approve");
+      await saveSettings(A, { ...settings, teamMode: false });
+      await workOne(A, exec, cost);
+      expect(startRender).not.toHaveBeenCalled();
+      expect(await row(piece.id)).toMatchObject({ status: "blocked", error: expect.stringContaining("modo equipo"), reservedCents: 0 });
+      expect(await money()).toEqual({ reservedCents: 0, chargedCents: 0 });
+    });
+
+    it.each([
+      ["paused", { pausedAt: new Date() }, "pausa"],
+      ["team mode off", { teamMode: false }, "modo equipo"],
+      ["the publishing permission off", { allowPublish: false }, "permiso de publicación"],
+    ])("the video step does not ask for a quote's approval while MATYA is %s", async (_name, data, expected) => {
+      const [piece] = await spawnPieces(await teamParent(), [VIDEO]);
+      await workspace(data);
+      for (let i = 0; i < 3; i++) await workOne(A, exec, cost);
+      expect(await row(piece.id)).toMatchObject({ status: "blocked", error: expect.stringContaining(expected), reservedCents: 0, chargedCents: 0 });
+      expect(await stepOf(piece.id, "video")).toBeNull();
+      expect(await db.agentMessage.findFirst({ where: { runId: piece.id, role: "assistant" } })).toMatchObject({ text: expect.stringContaining(expected) });
+    });
+
+    it("a settings save while an article draft waits for its approval does not block it, but the switches still decide", async () => {
+      vi.mocked(createArticleReport).mockResolvedValue(REPORT);
+      const [first, second] = await spawnPieces(await teamParent(), [ARTICLE, { ...ARTICLE, id: "p5", topic: "Otro artículo de techos", keyword: "otra búsqueda" }]);
+      await workOne(A);
+      await workOne(A);
+      expect(await row(first.id)).toMatchObject({ status: "waiting_approval" });
+      expect(await row(second.id)).toMatchObject({ status: "waiting_approval" });
+      await saveSettings(A, { ...settings, teamMode: true, objective: "Otro objetivo" });
+      await changeRun(A, first.id, "approve");
+      await workOne(A);
+      expect(createArticleReport).toHaveBeenCalledTimes(1);
+      expect(await stepOf(first.id, "article")).toMatchObject({ status: "succeeded" });
+      // The other one: the save turned web articles off before its approval was used.
+      await changeRun(A, first.id, "cancel");
+      await changeRun(A, second.id, "approve");
+      await saveSettings(A, { ...settings, teamMode: true, allowWebArticles: false });
+      await workOne(A);
+      expect(createArticleReport).toHaveBeenCalledTimes(1);
+      expect(await row(second.id)).toMatchObject({ status: "blocked", error: expect.stringContaining("permiso para publicar en seo"), reservedCents: 0 });
+    });
+
+    it("a published article is one of the day's posts: with the limit reached it is refused before anything is spent", async () => {
+      vi.mocked(prepareForSite).mockResolvedValue(prepared(library));
+      vi.mocked(approveForSite).mockResolvedValue(published);
+      const piece = await reviewedArticle();
+      await workspace({ maxPostsPerDay: 1 });
+      // One social post is already scheduled today.
+      await db.agentBudget.create({ data: { businessId: A, day: today(), posts: 1 } });
+      await workOne(A);
+      expect(await row(piece.id)).toMatchObject({ status: "blocked", error: expect.stringContaining("límite diario de publicaciones"), reservedCents: 0, chargedCents: 0 });
+      expect(prepareForSite).not.toHaveBeenCalled();
+      expect(approveForSite).not.toHaveBeenCalled();
+      expect(await stepOf(piece.id, "article_publish")).toBeNull();
+      expect(await postsToday()).toBe(1);
+    });
+
+    it("an article published with room left counts exactly one post, and a post scheduled after it sees the limit", async () => {
+      vi.mocked(prepareForSite).mockResolvedValue(prepared(library));
+      vi.mocked(approveForSite).mockResolvedValue(published);
+      const piece = await reviewedArticle();
+      await workspace({ maxPostsPerDay: 2 });
+      await db.agentBudget.create({ data: { businessId: A, day: today(), posts: 1 } });
+      await workOne(A);
+      expect(await row(piece.id)).toMatchObject({ status: "completed" });
+      expect(await postsToday()).toBe(2);
+      // The day is full now: the next piece's guard refuses (here the same article again, already counted).
+      await locked(A, async (tx) => {
+        const ws = await tx.agentWorkspace.findUniqueOrThrow({ where: { businessId: A } });
+        await expect(assertCanSchedule(tx, await tx.agentRun.findUniqueOrThrow({ where: { id: piece.id } }), ws, ["seo"])).rejects.toThrow("límite diario");
+      });
+    });
+
+    it("two articles published at the very same time never pass maxPostsPerDay together", async () => {
+      const [x, y] = await spawnPieces(await teamParent(), [ARTICLE, { ...ARTICLE, id: "p5", topic: "Otro artículo de techos" }]);
+      for (const p of [x, y]) {
+        await done(p.id, "article", { reportId: "rep1" });
+        await done(p.id, "review", { approved: true, problems: [] });
+        await goTo(p, "article_publish");
+      }
+      await workspace({ maxPostsPerDay: 1 });
+      vi.mocked(approveForSite).mockResolvedValue(published);
+      // Both pass the early check (no post yet) and prepare their preview; only then do they take their place.
+      let arrived = 0;
+      let release!: () => void;
+      let first!: () => void;
+      const together = new Promise<void>((r) => (release = r));
+      const firstIn = new Promise<void>((r) => (first = r));
+      vi.mocked(prepareForSite).mockImplementation(async () => {
+        arrived++;
+        if (arrived === 1) first();
+        if (arrived === 2) release();
+        await together;
+        return prepared(library);
+      });
+      const one = workOne(A);
+      await firstIn;
+      const two = workOne(A);
+      await Promise.all([one, two]);
+      expect(arrived).toBe(2);
+      expect(approveForSite).toHaveBeenCalledTimes(1);
+      const runs = await Promise.all([row(x.id), row(y.id)]);
+      expect(runs.map((r) => r.status).sort()).toEqual(["completed", "uncertain"]);
+      expect(runs.find((r) => r.status === "uncertain")?.error).toContain("límite diario");
+      expect(await postsToday()).toBe(1);
+    });
+
+    it("the AI-photo approval authorizes at the cents that were reserved, even if the owner picked a cheaper photo meanwhile", async () => {
+      vi.mocked(prepareForSite).mockResolvedValue(prepared(generate));
+      vi.mocked(approveForSite).mockResolvedValue(published);
+      vi.mocked(sitePhotoApproval).mockResolvedValue({ photo: generate, cents: 4 });
+      const piece = await reviewedArticle();
+      await workOne(A);
+      await changeRun(A, piece.id, "approve");
+      // In the articles page the owner chose a photo from the library: it costs nothing.
+      vi.mocked(sitePhotoApproval).mockResolvedValue({ photo: library, cents: 0 });
+      await workOne(A);
+      expect(approveForSite).toHaveBeenCalledExactlyOnceWith(A, "rep1", 0);
+      expect(await stepOf(piece.id, "article_publish:1")).toMatchObject({ reservedCents: 0, chargedCents: 0 });
+      expect(await row(piece.id)).toMatchObject({ status: "completed" });
+    });
+
+    it("a stale preview (the article changed after it was prepared) is refused before anything is reserved or generated", async () => {
+      vi.mocked(prepareForSite).mockResolvedValue(prepared(generate));
+      vi.mocked(sitePhotoApproval).mockResolvedValue({ photo: generate, cents: 4 });
+      const piece = await reviewedArticle();
+      await workOne(A);
+      await changeRun(A, piece.id, "approve");
+      vi.mocked(sitePhotoApproval).mockRejectedValue(bi("El artículo cambió después de preparar la vista previa. Prepárala otra vez.", "The article changed."));
+      await workOne(A);
+      expect(approveForSite).not.toHaveBeenCalled();
+      expect(await row(piece.id)).toMatchObject({ status: "blocked", error: expect.stringContaining("cambió después de preparar"), reservedCents: 0 });
+      expect(await stepOf(piece.id, "article_publish:1")).toBeNull();
+    });
+
+    it("sitePhotoApproval itself refuses a missing or stale preview, and reads a fresh one", async () => {
+      const real = await vi.importActual<typeof import("@/lib/seo/site-article-run")>("@/lib/seo/site-article-run");
+      const saved = await saveReport("Una gotera en el techo necesita revisión pronto.");
+      const data = saved.data as Record<string, unknown>;
+      await expect(real.sitePhotoApproval(A, "rep1")).rejects.toThrow("Primero toca");
+      const copy = { slug: "x", seoTitle: "T", title: "T", description: "d", category: "c", sections: [{ title: "s", text: "t" }] };
+      const prep = (draftAt: unknown) => ({
+        at: new Date().toISOString(),
+        draftAt,
+        mode: "new",
+        photoKey: "review",
+        es: copy,
+        en: copy,
+        urlEs: "https://mio.com/es/x",
+        urlEn: "https://mio.com/en/x",
+        photo: generate,
+        imageIdea: "A roof",
+        options: [],
+        photoWhy: { es: "x", en: "x" },
+        spentCents: 0,
+      });
+      await db.seoReport.update({ where: { id: "rep1" }, data: { data: { ...data, site: { prepared: prep("2020-01-01T00:00:00.000Z") } } as never } });
+      await expect(real.sitePhotoApproval(A, "rep1")).rejects.toThrow("cambió después de preparar");
+      await db.seoReport.update({ where: { id: "rep1" }, data: { data: { ...data, site: { prepared: prep(data.createdAt) } } as never } });
+      const fresh = await real.sitePhotoApproval(A, "rep1");
+      expect(fresh.photo).toMatchObject({ kind: "generate" });
+      expect(Number.isInteger(fresh.cents)).toBe(true);
+      // Another business's report is not found.
+      await expect(real.sitePhotoApproval(B, "rep1")).rejects.toThrow();
+    });
+
+    it("an estimate that went up after the owner saw it asks again instead of reserving more", async () => {
+      vi.mocked(createArticleReport).mockResolvedValue(REPORT);
+      const piece = await article();
+      await workOne(A);
+      const first = (await row(piece.id)).result as { asked: { cents: number } };
+      expect(first.asked.cents).toBe(articleReserve("gemini"));
+      await changeRun(A, piece.id, "approve");
+      // The business now writes with Claude, whose ceiling is far higher than what the owner approved.
+      vi.stubEnv("ANTHROPIC_API_KEY", "synthetic-no-provider-access");
+      await db.business.update({ where: { id: A }, data: { aiText: "claude" } });
+      await workOne(A);
+      expect(createArticleReport).not.toHaveBeenCalled();
+      expect(await row(piece.id)).toMatchObject({ status: "waiting_approval", reservedCents: 0, chargedCents: 0 });
+      expect(await stepOf(piece.id, "article")).toBeNull();
+      expect((await message(piece.id))!.text).toContain("El costo estimado cambió");
+      expect((await row(piece.id)).result).toMatchObject({ asked: { step: "article", cents: articleReserve("claude") } });
+      expect(articleReserve("claude")).toBeGreaterThan(first.asked.cents);
+      // The old approval does not cover the new estimate; a new one does, and it reserves exactly what was shown.
+      await db.agentRun.update({ where: { id: piece.id }, data: { status: "queued" } });
+      await workOne(A);
+      expect(createArticleReport).not.toHaveBeenCalled();
+      await changeRun(A, piece.id, "approve");
+      await workOne(A);
+      expect(createArticleReport).toHaveBeenCalledTimes(1);
+      expect(await stepOf(piece.id, "article")).toMatchObject({ reservedCents: articleReserve("claude"), status: "succeeded" });
+    });
+
+    it("an estimate that went down is fine: it reserves the lower figure under the owner's approval", async () => {
+      vi.stubEnv("ANTHROPIC_API_KEY", "synthetic-no-provider-access");
+      await db.business.update({ where: { id: A }, data: { aiText: "claude" } });
+      vi.mocked(createArticleReport).mockResolvedValue({ ...REPORT, provider: "claude" });
+      const piece = await article();
+      await workOne(A);
+      await changeRun(A, piece.id, "approve");
+      await db.business.update({ where: { id: A }, data: { aiText: "gemini" } });
+      await workOne(A);
+      expect(createArticleReport).toHaveBeenCalledTimes(1);
+      expect(await stepOf(piece.id, "article")).toMatchObject({ reservedCents: articleReserve("gemini") });
+    });
+
     it("a website that failed to publish keeps the reservation as uncertain and never repeats", async () => {
       const piece = await reviewedArticle();
       vi.mocked(prepareForSite).mockResolvedValue(prepared(library));
@@ -3640,7 +3952,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       expect(approveForSite).toHaveBeenCalledTimes(1);
     });
 
-    it("the review reads the article report's text: a wrong phone in the article is caught without an AI call", async () => {
+    it("the review reads the article report's text: a wrong phone is caught without an AI call and the owner decides, with no automatic paid draft", async () => {
       await saveReport("Para reparar tu techo llama al 305-000-0000 hoy mismo.");
       const piece = await article();
       await done(piece.id, "article", { reportId: "rep1" });
@@ -3654,8 +3966,50 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
         output: { approved: false, problems: [{ kind: "telefono", sendBackTo: "copy" }] },
       });
       expect(meteredAsk).not.toHaveBeenCalled();
-      // The article goes back to its writer once, then is reviewed again.
-      expect(stepsOf(await row(piece.id))).toEqual(["article", "review", "article-r1", "review-r1", "article_publish"]);
+      // No second draft on its own: it waits for the owner with the problems.
+      const waiting = await row(piece.id);
+      expect(stepsOf(waiting)).toEqual(["article", "review", "article_publish"]);
+      expect(waiting).toMatchObject({ status: "waiting_approval", stage: 2, reservedCents: 0 });
+      expect((await message(piece.id))!.text).toContain("305-000-0000");
+      expect(createArticleReport).not.toHaveBeenCalled();
+      expect(await money()).toEqual({ reservedCents: 0, chargedCents: 0 });
+    });
+
+    it("after a failed review the owner can publish the article as it is, or redo it (a paid draft that asks for its own approval)", async () => {
+      vi.mocked(prepareForSite).mockResolvedValue(prepared(library));
+      vi.mocked(approveForSite).mockResolvedValue(published);
+      vi.mocked(createArticleReport).mockResolvedValue({ ...REPORT, id: "rep2" });
+      await saveReport("Para reparar tu techo llama al 305-000-0000 hoy mismo.");
+      const asIs = await article();
+      await done(asIs.id, "article", { reportId: "rep1" });
+      await goTo(asIs, "review");
+      await workOne(A, executeStep, () => 0);
+      expect(await row(asIs.id)).toMatchObject({ status: "waiting_approval" });
+      // Approve as it is: R5 wants an approval after the review, and it is that one.
+      await changeRun(A, asIs.id, "approve");
+      await workOne(A);
+      expect(approveForSite).toHaveBeenCalledExactlyOnceWith(A, "rep1", 0);
+      expect(await row(asIs.id)).toMatchObject({ status: "completed" });
+
+      vi.mocked(approveForSite).mockClear();
+      const redone = await article({ id: "p5", topic: "Otro tema de techos" });
+      await done(redone.id, "article", { reportId: "rep1" });
+      await goTo(redone, "review");
+      await workOne(A, executeStep, () => 0);
+      expect(await row(redone.id)).toMatchObject({ status: "waiting_approval" });
+      await changeRun(A, redone.id, "redo");
+      expect(stepsOf(await row(redone.id))).toEqual(["article", "review", "article-r1", "review-r1", "article_publish"]);
+      // The new draft is paid: it waits for its own approval and writes nothing before it.
+      await workOne(A);
+      expect(createArticleReport).not.toHaveBeenCalled();
+      expect(await row(redone.id)).toMatchObject({ status: "waiting_approval", reservedCents: 0 });
+      expect((await message(redone.id))!.text).toContain("Pediste rehacer");
+      // And it cannot be sent back again while it waits for that approval.
+      await expect(changeRun(A, redone.id, "redo")).rejects.toThrow("Solo se puede rehacer");
+      await changeRun(A, redone.id, "approve");
+      await workOne(A);
+      expect(createArticleReport).toHaveBeenCalledTimes(1);
+      expect(await stepOf(redone.id, "article-r1")).toMatchObject({ status: "succeeded", output: { reportId: "rep2" } });
     });
 
     it("the review judges an article with the right phone, sending the AI the article's own text", async () => {
@@ -3680,7 +4034,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     it("an article's report of another business is never read", async () => {
       await saveReport("Llama al 305-555-0100.");
       const piece = await article();
-      // The report belongs to A; a run of B pointing at it finds nothing.
+      // The report belongs to B, so the review of A's piece, which points at it, finds nothing.
       await db.seoReport.update({ where: { id: "rep1" }, data: { businessId: B } });
       await done(piece.id, "article", { reportId: "rep1" });
       await goTo(piece, "review");

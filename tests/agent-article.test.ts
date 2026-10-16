@@ -10,7 +10,6 @@ const m = vi.hoisted(() => ({
   createArticleReport: vi.fn(),
   prepareForSite: vi.fn(),
   approveForSite: vi.fn(),
-  sitePhotoApproval: vi.fn(),
   sitePhotoCents: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({
@@ -20,7 +19,6 @@ vi.mock("@/lib/seo/writer-run", () => ({ createArticleReport: m.createArticleRep
 vi.mock("@/lib/seo/site-article-run", () => ({
   prepareForSite: m.prepareForSite,
   approveForSite: m.approveForSite,
-  sitePhotoApproval: m.sitePhotoApproval,
   sitePhotoCents: m.sitePhotoCents,
 }));
 
@@ -28,7 +26,7 @@ import { AgentError } from "@/lib/agent/access";
 import { AGENTS } from "@/lib/agent/agents";
 import { runCopy } from "@/lib/agent/agents/copy";
 import type { AgentInput } from "@/lib/agent/agents/types";
-import { articleCharge } from "@/lib/agent/article-cost";
+import { articleAiCents, articleCharge } from "@/lib/agent/article-cost";
 import type { Piece } from "@/lib/agent/plan";
 import { toolsFor, type Tools } from "@/lib/agent/tools";
 import { bi } from "@/lib/i18n";
@@ -96,9 +94,11 @@ describe("el paso article del agente de redacción", () => {
   });
 
   it("cobra a Google lo que cobró y a la IA lo que se le anunció al dueño, nunca más de lo que el paso reservó", async () => {
-    const run1 = await runCopy(setup().input);
-    expect(run1.cents).toBe(articleCharge(0.002, "gemini", 5));
-    expect(run1.cents).toBe(5);
+    const reserved = 1 + articleAiCents("gemini");
+    m.stepFirst.mockResolvedValue({ reservedCents: reserved });
+    const full = await runCopy(setup().input);
+    expect(full.cents).toBe(articleCharge(0.002, "gemini", reserved));
+    expect(full.cents).toBe(reserved);
     // A smaller reservation caps the charge (finishStep would otherwise block the work and turn MATYA off).
     m.stepFirst.mockResolvedValue({ reservedCents: 2 });
     expect((await runCopy(setup().input)).cents).toBe(2);
@@ -191,7 +191,6 @@ describe("la herramienta publishArticle", () => {
       expect(m.approveForSite).toHaveBeenCalledExactlyOnceWith("b1", "rep1", approveCostCents(photo, 0));
       expect(approveCostCents(photo, 0)).toBe(0);
     }
-    expect(m.sitePhotoApproval).not.toHaveBeenCalled();
   });
 
   it("una foto que la IA tiene que crear (o ya creó) espera: no se autoriza ni se genera nada, y se dice cuánto costaría", async () => {
@@ -209,12 +208,35 @@ describe("la herramienta publishArticle", () => {
     expect(m.approveForSite).not.toHaveBeenCalled();
   });
 
-  it("con la aprobación del dueño autoriza la vista previa guardada al precio que tiene ahora, sin prepararla otra vez", async () => {
-    m.sitePhotoApproval.mockResolvedValue({ photo: generate, cents: 4 });
-    expect(await tool()("rep1", { approved: true })).toMatchObject({ published: true, url: out.url });
-    expect(m.sitePhotoApproval).toHaveBeenCalledExactlyOnceWith("b1", "rep1");
+  it("con la aprobación del dueño autoriza la vista previa guardada por los centavos que se reservaron, sin prepararla otra vez", async () => {
+    expect(await tool()("rep1", { approved: true, expectedCents: 4 })).toMatchObject({ published: true, url: out.url });
+    // approveForSite itself refuses the authorization if the photo's price is no longer these cents.
     expect(m.approveForSite).toHaveBeenCalledExactlyOnceWith("b1", "rep1", 4);
     expect(m.prepareForSite).not.toHaveBeenCalled();
+  });
+
+  it("el lugar entre las publicaciones del día se toma justo antes de autorizar, y nunca para una vista previa que espera", async () => {
+    const order: string[] = [];
+    const beforePublish = vi.fn(async () => void order.push("claim"));
+    m.approveForSite.mockImplementation(async () => (order.push("approve"), out));
+    m.prepareForSite.mockImplementation(async () => (order.push("prepare"), prepared(library)));
+    await tool()("rep1", { beforePublish });
+    expect(order).toEqual(["prepare", "claim", "approve"]);
+    order.length = 0;
+    await tool()("rep1", { approved: true, expectedCents: 4, beforePublish });
+    expect(order).toEqual(["claim", "approve"]);
+    // A photo that waits for the owner takes no place.
+    beforePublish.mockClear();
+    m.prepareForSite.mockResolvedValue(prepared(generate));
+    expect(await tool()("rep1", { beforePublish })).toMatchObject({ published: false });
+    expect(beforePublish).not.toHaveBeenCalled();
+    // A refusal there stops before anything is authorized or generated.
+    m.prepareForSite.mockResolvedValue(prepared(library));
+    m.approveForSite.mockClear();
+    const refusal = new AgentError("Se alcanzó el límite diario de publicaciones de MATYA.");
+    await expect(tool()("rep1", { beforePublish: async () => { throw refusal; } })).rejects.toBe(refusal);
+    await expect(tool()("rep1", { approved: true, expectedCents: 4, beforePublish: async () => { throw refusal; } })).rejects.toBe(refusal);
+    expect(m.approveForSite).not.toHaveBeenCalled();
   });
 
   it("lo que dice la web (en los dos idiomas) llega como un AgentError en español", async () => {
@@ -224,8 +246,7 @@ describe("la herramienta publishArticle", () => {
     expect((e as Error).message).toBe("Tu web no está conectada.");
     expect(m.approveForSite).not.toHaveBeenCalled();
     m.approveForSite.mockRejectedValue(bi("El costo cambió.", "The cost changed."));
-    m.sitePhotoApproval.mockResolvedValue({ photo: generate, cents: 4 });
-    await expect(tool()("rep1", { approved: true })).rejects.toThrow("El costo cambió.");
+    await expect(tool()("rep1", { approved: true, expectedCents: 4 })).rejects.toThrow("El costo cambió.");
   });
 
   it("ningún agente con modelo tiene la herramienta que publica", () => {

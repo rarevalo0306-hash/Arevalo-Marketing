@@ -846,10 +846,13 @@ ${brief.competitors.length ? brief.competitors.map((c, i) => `${i + 1}. "${c.h1 
 ${brief.aiOverview ? "\nGoogle shows an AI overview for this search: give clear, direct answers right under each heading." : ""}`;
 }
 
+/** Lo más que escribe la IA en un artículo (tokens de salida, razonamiento incluido): el tope que se le pide al proveedor. */
+export const SEO_ARTICLE_MAX_TOKENS = 24000;
+
 /** Escribe un artículo para el sitio pensado para salir en Google con esa búsqueda. Puede tardar 1 a 2 minutos. */
 export async function writeSeoArticle(input: { business: SeoBusiness; keyword: string; language: "es" | "en"; brief: SeoBrief }): Promise<SeoArticle> {
   const { business, keyword, language, brief } = input;
-  return ask(business.aiText ?? "", SeoArticleSchema, seoWriterRules(business, keyword, language, brief), `${seoBriefText(keyword, brief)}\n\nWrite the article.`, 24000);
+  return ask(business.aiText ?? "", SeoArticleSchema, seoWriterRules(business, keyword, language, brief), `${seoBriefText(keyword, brief)}\n\nWrite the article.`, SEO_ARTICLE_MAX_TOKENS);
 }
 
 /** Reescribe el artículo para arreglar lo que falta en la revisión, sin cambiar lo que ya está bien. */
@@ -882,7 +885,7 @@ An SEO check found these problems:
 ${failing.map((f) => `- ${f}`).join("\n") || "- (none: just polish it)"}
 
 Rewrite the article to fix every problem above. Keep what already works, the same facts and the same language. Return all fields.`;
-  return ask(business.aiText ?? "", SeoArticleSchema, seoWriterRules(business, keyword, language, brief), user, 24000);
+  return ask(business.aiText ?? "", SeoArticleSchema, seoWriterRules(business, keyword, language, brief), user, SEO_ARTICLE_MAX_TOKENS);
 }
 
 // ---------- Revisión de páginas: título, descripción y subtítulos para una página que ya existe ----------

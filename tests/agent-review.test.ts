@@ -640,13 +640,36 @@ describe("la revisión de un artículo guardado como reporte", () => {
     expect(ask.mock.calls[0][1]).toContain("article");
   });
 
-  it("un teléfono que no es del negocio dentro del artículo se atrapa sin llamar a la IA y el artículo vuelve a su redactor", async () => {
+  it("un teléfono que no es del negocio dentro del artículo se atrapa sin llamar a la IA y el artículo espera al dueño, sin una vuelta automática", async () => {
     db.report.mockResolvedValue(report("Si ves una gotera llama al 305-000-0000 hoy mismo. ".repeat(10)));
     const result = await runReview(setup({ piece, outputs }).input);
     expect(ask).not.toHaveBeenCalled();
     expect(result.cents).toBe(0);
     expect(result.data).toMatchObject({ approved: false, problems: [{ kind: "telefono", sendBackTo: "copy" }] });
-    expect(result.insertSteps?.map((x) => x.id)).toEqual(["article-r1", "review-r1"]);
+    // Another draft is a paid call: the owner decides first (approve it as it is, or redo it).
+    expect(result.insertSteps).toBeUndefined();
+    expect(result.state).toBe("waiting_approval");
+    expect(result.text).toContain("no pasó la revisión editorial y espera tu decisión");
+    expect(result.text).toContain("305-000-0000");
+    expect(result.text).not.toContain("ni después de corregirla");
+    // A post still gets its one automatic round (and a redo's round reaches the owner without another).
+    const post = await runReview(setup({ outputs: { copy: { ...COPY, variants: { ...COPY.variants, facebook: "Llama al 305-000-0000" }, usage }, design: DESIGN, research: RESEARCH } }).input);
+    expect(post.insertSteps?.map((x) => x.id)).toEqual(["copy-r1", "design-r1", "review-r1"]);
+    const round = await runReview(setup({ piece, outputs, attempt: 1 }).input);
+    expect(round.insertSteps).toBeUndefined();
+    expect(round.state).toBe("waiting_approval");
+    expect(round.text).toContain("ni después de corregirla");
+  });
+
+  it("la IA que no aprueba un artículo también lo deja esperando al dueño", async () => {
+    db.report.mockResolvedValue(report());
+    ask.mockResolvedValue({ value: REJECTED, usage });
+    const result = await runReview(setup({ piece, outputs }).input);
+    expect(ask).toHaveBeenCalledTimes(1);
+    expect(result.cents).toBe(4);
+    expect(result.insertSteps).toBeUndefined();
+    expect(result.state).toBe("waiting_approval");
+    expect(result.data).toMatchObject({ approved: false, problems: [{ kind: "ortografia" }, { kind: "incoherente" }] });
   });
 
   it("un dato inventado o una web ajena en el artículo también se atrapan; un enlace a una fuente en el artículo no", async () => {

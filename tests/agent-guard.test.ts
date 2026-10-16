@@ -298,6 +298,16 @@ describe("articleRefusal", () => {
     expect(articleRefusal({ ...ws, mode: "auto" }, website)).toBeNull();
   });
 
+  it("no deja gastar en un artículo si el día ya llegó a su límite de publicaciones: publicarlo contaría una más", () => {
+    const two = { ...ws, maxPostsPerDay: 2 };
+    expect(articleRefusal(two, website)).toBeNull();
+    expect(articleRefusal(two, website, 1)).toBeNull();
+    expect(articleRefusal(two, website, 2)).toBe("Se alcanzó el límite diario de publicaciones de MATYA.");
+    expect(articleRefusal(two, website, 5)).toContain("límite diario");
+    // The switches still go first.
+    expect(articleRefusal({ ...two, pausedAt: new Date() }, website, 2)).toContain("pausa");
+  });
+
   it("no deja gastar en un artículo que no se podría publicar, con las mismas palabras del guardia y sin «borrador»", () => {
     const off = (w: Partial<GuardFacts["ws"]>, connected = website) => articleRefusal({ ...ws, ...w }, connected);
     expect(off({ pausedAt: new Date() })).toContain("pausa");

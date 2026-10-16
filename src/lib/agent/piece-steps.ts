@@ -1,11 +1,13 @@
 // Los pasos de una pieza que mueven dinero: el render del video, el artículo para la web y su publicación. Son código de MATYA (sin
 // IA), menos la redacción del artículo, que hace el agente de redacción. Cada uno cuesta algo que el dueño debe haber visto:
 // - `render`: reserva exactamente lo que el paso `video` cotizó (y el dueño aprobó), y no empieza si pasa del máximo por video.
-// - `article`: es de pago (Google y la IA del negocio) y esa IA no informa su consumo, así que no hay un tope que el código pueda
-//   garantizar. Antes de llamar al escritor el dueño aprueba un estimado «hasta US$X»; se reserva ese estimado y se cobra lo que
-//   costó (ver `article-cost.ts`). Una vuelta de corrección (`article-r<n>`) es otro borrador de pago: pide otra aprobación.
-// - `article_publish`: prepara la vista previa (la traducción, unos centavos) y, si la foto no cuesta más, publica. Una foto que la IA
-//   tendría que crear espera la aprobación del dueño: sin ella no se genera ninguna imagen.
+// - `article`: es de pago (Google y la IA del negocio) y esa IA no informa su consumo. Antes de llamar al escritor el dueño aprueba
+//   un «hasta US$X» (el tope de lo que el código le pide al proveedor, ver `article-cost.ts`); se reserva eso y no más: si el
+//   estimado sube después de aprobarlo, se le vuelve a preguntar. Una vuelta de corrección (`article-r<n>`) es otro borrador de pago
+//   y pide su propia aprobación.
+// - `article_publish`: prepara la vista previa (la traducción, unos centavos) y, si la foto no cuesta más, publica; al publicar, el
+//   artículo cuenta como una publicación del día. Una foto que la IA tendría que crear espera la aprobación del dueño: sin ella no
+//   se genera ninguna imagen. Cada pasada se liga al reporte actual del artículo: la aprobación de una foto no vale para otro borrador.
 // Todo lo que se puede rechazar se rechaza antes de reservar (`pieceStepCost`), así un "no" no cuesta nada. `approvalNeeded` es la
 // puerta de `workOne`: un paso de pago sin la aprobación del dueño deja el trabajo esperando, sin reservar ni llamar a nadie.
 import type { AgentRun } from "@prisma/client";
@@ -27,9 +29,17 @@ import {
 import type { Storyboard } from "@/lib/video-plan";
 import { AgentError } from "./access";
 import { articleApprovalText, articleKeyword, articleReserve } from "./article-cost";
-import { approvedAfterReview, articleRefusal, refusalOf, Refusal, switchesRefusal } from "./guard";
+import {
+  approvedAfterReview,
+  articleRefusal,
+  assertCanSchedule,
+  refusalOf,
+  Refusal,
+  switchesRefusal,
+  todayOf,
+} from "./guard";
 import { isArticleStep, Piece } from "./plan";
-import type { StepResult } from "./queue";
+import { json, locked, type StepResult } from "./queue";
 import { languageOf } from "./schema";
 import { registerMatyaStep } from "./team-execution";
 import { agentErrorOf, readStepOutput, toolsFor } from "./tools";
@@ -160,11 +170,12 @@ function articlePiece(run: AgentRun): Piece {
  */
 async function articleCost(run: AgentRun): Promise<number> {
   const piece = articlePiece(run);
-  const [ws, connections] = await Promise.all([
+  const [ws, connections, posts] = await Promise.all([
     db.agentWorkspace.findUniqueOrThrow({ where: { businessId: run.businessId } }),
     db.connection.findMany({ where: { businessId: run.businessId }, select: { channel: true } }),
+    postsToday(run),
   ]);
-  const refusal = articleRefusal(ws, connections.map((c) => c.channel));
+  const refusal = articleRefusal(ws, connections.map((c) => c.channel), posts);
   if (refusal) throw new Refusal(refusal);
   try {
     const { business } = await articleSetup(run.businessId, articleKeyword(piece));
@@ -174,26 +185,63 @@ async function articleCost(run: AgentRun): Promise<number> {
   }
 }
 
-/** Why an article may not be published now (the guard's rules for a website article), as a `Refusal`; nothing is spent. */
+/** The posts MATYA already scheduled or published today in the business's own day (`AgentBudget.posts`); an article counts as one. */
+async function postsToday(run: AgentRun): Promise<number> {
+  const { day } = await todayOf(db, run.businessId, new Date());
+  const budget = await db.agentBudget.findUnique({
+    where: { businessId_day: { businessId: run.businessId, day } },
+    select: { posts: true },
+  });
+  return budget?.posts ?? 0;
+}
+
+/**
+ * Why an article may not be published now (the guard's rules for a website article, the day's limit of posts included), as a
+ * `Refusal`; nothing is spent. The approval after the review is not asked here: a piece without it waits for the owner instead
+ * (`approvalNeeded`). The binding check is `claimPostSlot`, under the business lock.
+ */
 async function assertCanPublish(run: AgentRun): Promise<void> {
-  const [ws, connections] = await Promise.all([
+  const [ws, connections, posts] = await Promise.all([
     db.agentWorkspace.findUniqueOrThrow({ where: { businessId: run.businessId } }),
     db.connection.findMany({ where: { businessId: run.businessId }, select: { channel: true } }),
+    postsToday(run),
   ]);
   const refusal = refusalOf({
     ws,
     format: "articulo",
-    // In approval mode the owner's approval must come after the review (a draft's cost is not one).
-    approved: ws.mode === "approval" ? await approvedAfterReview(db, run) : false,
+    approved: true,
     channels: ["seo"],
     connected: connections.map((c) => c.channel),
     braked: [],
-    posts: 0,
+    posts,
   });
   if (refusal) throw new Refusal(refusal);
 }
 
-/** The runs of `article_publish` already made for this piece (the first one prepares; the second authorizes an AI photo). */
+/**
+ * Takes the article's place among today's posts, inside the business lock and with the guard's full check (including the approval
+ * after the review in approval mode and the day's limit): two articles, or an article and a post, published at the same time
+ * never pass `maxPostsPerDay` together. It runs right before the article is authorized, so it counts once, when it is published;
+ * a preview that waits for the owner's photo approval counts nothing. A refusal here comes after the translation was paid, so
+ * that step holds its reservation (uncertain), as any step that fails after spending does.
+ */
+async function claimPostSlot(run: AgentRun): Promise<void> {
+  await locked(run.businessId, async (tx) => {
+    const current = await tx.agentRun.findFirstOrThrow({ where: { id: run.id, businessId: run.businessId } });
+    if (current.cancelRequested) throw new Refusal("Trabajo cancelado.");
+    const ws = await tx.agentWorkspace.findUniqueOrThrow({ where: { businessId: run.businessId } });
+    const now = new Date();
+    await assertCanSchedule(tx, current, ws, ["seo"], now);
+    const { day } = await todayOf(tx, run.businessId, now);
+    await tx.agentBudget.upsert({
+      where: { businessId_day: { businessId: run.businessId, day } },
+      create: { businessId: run.businessId, day, posts: 1 },
+      update: { posts: { increment: 1 } },
+    });
+  });
+}
+
+/** The records of `article_publish` already made for this piece, oldest first. */
 const earlierPublish = (run: AgentRun) =>
   db.agentStep.findMany({
     where: { runId: run.id, run: { businessId: run.businessId }, name: { startsWith: "article_publish" } },
@@ -201,25 +249,49 @@ const earlierPublish = (run: AgentRun) =>
     select: { name: true, status: true, output: true, finishedAt: true },
   });
 
+type PublishPass = {
+  /** The record name of this pass: the first keeps the step's name, every later one adds `:<n>`. */
+  name: string;
+  /** The article report this pass publishes: the one of the piece's latest `article` step. */
+  reportId: string;
+  /** The pass that already prepared THIS report and is waiting for the owner's approval of its photo, if any. */
+  parked: { status: string; output: unknown; finishedAt: Date | null } | null;
+};
+
 /**
- * What `article_publish` reserves. First pass: the translation. Second pass (the owner approved an AI photo): the photo, at the
- * price the owner was shown; a price that went up since is refused before anything is reserved or generated.
+ * Which pass of `article_publish` this is. It belongs to the CURRENT article report: only an earlier pass that prepared this very
+ * report counts (its output carries the report's id), so after a redo (a new draft, a new report) the publication starts again
+ * with a fresh first pass, and the approval of an earlier draft's photo never authorizes this one.
+ */
+async function publishPass(run: AgentRun): Promise<PublishPass> {
+  const [reportId, before] = await Promise.all([articleReportId(run), earlierPublish(run)]);
+  const mine = before.filter((b) => field(b.output, "reportId") === reportId);
+  return {
+    name: before.length ? `article_publish:${before.length}` : "article_publish",
+    reportId,
+    parked: mine.length ? mine[mine.length - 1] : null,
+  };
+}
+
+/**
+ * What `article_publish` reserves. First pass: the translation. Second pass (the owner approved this report's AI photo): the photo,
+ * at the price the owner was shown; a price that went up since, or a preview that went stale, is refused before anything is
+ * reserved or generated.
  */
 async function publishCost(run: AgentRun): Promise<number> {
   await assertCanPublish(run);
-  const before = await earlierPublish(run);
-  if (!before.length) {
+  const { reportId, parked } = await publishPass(run);
+  if (!parked) {
     if (!aiEnabled())
       throw new AgentError("Falta la clave de la IA (GEMINI_API_KEY, ANTHROPIC_API_KEY u OPENAI_API_KEY) en Vercel.");
     return SITE_TEXT_CENTS;
   }
-  const last = before[before.length - 1];
-  const shown = field(last.output, "photoCents");
-  if (last.status !== "succeeded" || field(last.output, "published") !== false || typeof shown !== "number")
+  const shown = field(parked.output, "photoCents");
+  if (parked.status !== "succeeded" || field(parked.output, "published") !== false || typeof shown !== "number")
     throw new AgentError("Este artículo no espera la aprobación de una foto.");
   let current: number;
   try {
-    current = (await sitePhotoApproval(run.businessId, await articleReportId(run))).cents;
+    current = (await sitePhotoApproval(run.businessId, reportId)).cents;
   } catch (e) {
     throw agentErrorOf(e);
   }
@@ -230,10 +302,9 @@ async function publishCost(run: AgentRun): Promise<number> {
   return current;
 }
 
-/** The record name of this pass of `article_publish`: the first keeps the step's name, the later ones add `:<n>`. */
+/** The record name of this pass of `article_publish` (see `publishPass`). */
 export async function publishStepName(run: AgentRun): Promise<string> {
-  const tries = (await earlierPublish(run)).length;
-  return tries ? `article_publish:${tries}` : "article_publish";
+  return (await publishPass(run)).name;
 }
 
 /** What the owner reads when an article waits for the approval of its AI photo. */
@@ -267,16 +338,19 @@ function publishedText(urlEs: string, urlEn: string, already: boolean, photoFail
  */
 async function publishStep(run: AgentRun, stepId: string): Promise<StepResult> {
   const language = languageOf(run.prompt);
-  const second = /:\d+$/.test(stepId);
-  const reportId = await articleReportId(run);
-  const tools = toolsFor({ key: "matya", tools: ["publishArticle"] }, run);
-  const r = await tools.use("publishArticle")(reportId, { approved: second });
-  // What this pass reserved is what it costs: the translation, or the photo the owner approved.
+  const { reportId, parked } = await publishPass(run);
+  // What this pass reserved is what it costs: the translation, or the photo the owner approved (and the price it must still have).
   const reserved = await db.agentStep.findFirst({
     where: { runId: run.id, run: { businessId: run.businessId }, name: stepId },
     select: { reservedCents: true },
   });
   const cents = reserved?.reservedCents ?? 0;
+  const tools = toolsFor({ key: "matya", tools: ["publishArticle"] }, run);
+  const beforePublish = () => claimPostSlot(run);
+  const r = await tools.use("publishArticle")(
+    reportId,
+    parked ? { approved: true, expectedCents: cents, beforePublish } : { beforePublish },
+  );
   if (!r.published)
     return {
       data: { reportId, published: false, photo: r.photo, photoCents: r.photoCents, title: r.title, urlEs: r.urlEs, urlEn: r.urlEn },
@@ -301,6 +375,8 @@ async function publishStep(run: AgentRun, stepId: string): Promise<StepResult> {
 export async function pieceStepCost(name: string, run: AgentRun): Promise<number | null> {
   // The video step only quotes: the render configuration is checked here so nobody is asked to approve what cannot be made.
   if (name === "video") {
+    const off = switchesRefusal(await db.agentWorkspace.findUniqueOrThrow({ where: { businessId: run.businessId } }));
+    if (off) throw new Refusal(off);
     if (videoBlocker()) throw new AgentError(NO_RENDER);
     return 0;
   }
@@ -329,54 +405,99 @@ async function lastFinished(run: AgentRun, name?: string): Promise<Date | null> 
 const approvedSince = (run: AgentRun, since: Date | null) =>
   run.approvedAt !== null && (since === null || run.approvedAt.getTime() >= since.getTime());
 
+/** What `workOne` tells the owner when a step must wait, and what it asked (so a changed ask is noticed when they approve). */
+export type OwnerWait = { text: string; asked?: { step: string; cents: number } };
+
+/** What the run asked the owner for the step `name` the last time it waited, or null. */
+function askedOf(run: AgentRun, name: string): { cents: number; at: Date } | null {
+  const asked = field(run.result, "asked");
+  const at = typeof field(asked, "at") === "string" ? new Date(field(asked, "at") as string) : null;
+  const cents = field(asked, "cents");
+  return field(asked, "step") === name && typeof cents === "number" && at !== null && !Number.isNaN(at.getTime())
+    ? { cents, at }
+    : null;
+}
+
 /**
  * Whether the piece's step `name`, which would reserve `cost`, must wait for the owner first, and what to tell them. null: it
- * may go on. A paid step needs an approval given after the step before it finished, because that is when it asked for it:
+ * may go on. A paid step needs an approval given after the moment it asked for it:
  * - `render` (it costs): after the video's quote.
- * - `article`, `article-r<n>` (they cost): after the previous step (the first draft's approval does not pay for a rework draft).
- * - the second pass of `article_publish` (an AI photo): after the first pass that showed its price.
+ * - `article`, `article-r<n>` (they cost): after the run last asked for that draft, and for no more than it asked (a dearer
+ *   estimate, such as another AI provider, asks again). The first draft's approval does not pay for a rework draft.
+ * - `article_publish`: in approval mode after an approval given after the review; its second pass (an AI photo) after the first
+ *   pass of the same article report that showed its price.
  * A step that costs nothing never waits, and nothing here reserves or calls anyone.
  */
-export async function approvalNeeded(run: AgentRun, name: string, cost: number): Promise<string | null> {
+export async function approvalNeeded(run: AgentRun, name: string, cost: number): Promise<OwnerWait | null> {
   const language = languageOf(run.prompt);
   if (name === "render" && cost > 0) {
     if (approvedSince(run, await lastFinished(run, "video"))) return null;
-    return language === "en"
-      ? `The video needs your approval before it is generated (${usd(cost)}). Approve it to start.`
-      : `El video necesita tu aprobación antes de generarse (${usd(cost)}). Apruébalo para empezar.`;
+    return {
+      text:
+        language === "en"
+          ? `The video needs your approval before it is generated (${usd(cost)}). Approve it to start.`
+          : `El video necesita tu aprobación antes de generarse (${usd(cost)}). Apruébalo para empezar.`,
+    };
   }
   if (isArticleStep(name) && cost > 0) {
-    if (approvedSince(run, await lastFinished(run))) return null;
+    const asked = askedOf(run, name);
+    const approved = asked !== null && approvedSince(run, asked.at);
+    if (approved && cost <= asked.cents) return null;
     const business = await db.business.findUnique({ where: { id: run.businessId }, select: { aiText: true } });
-    return articleApprovalText(
-      articleKeyword(articlePiece(run)),
-      pickText(business?.aiText ?? ""),
-      language,
-      name !== "article",
-    );
+    return {
+      text: articleApprovalText(
+        articleKeyword(articlePiece(run)),
+        pickText(business?.aiText ?? ""),
+        language,
+        name !== "article",
+        approved,
+      ),
+      asked: { step: name, cents: cost },
+    };
   }
   if (name === "article_publish") {
-    const before = await earlierPublish(run);
-    const last = before[before.length - 1];
-    if (!last || approvedSince(run, last.finishedAt)) return null;
-    return language === "en"
-      ? "The article's photo needs your approval before it is created. Approve it to publish."
-      : "La foto del artículo necesita tu aprobación antes de crearse. Apruébalo para publicar.";
+    const [ws, pass] = await Promise.all([
+      db.agentWorkspace.findUniqueOrThrow({ where: { businessId: run.businessId } }),
+      publishPass(run),
+    ]);
+    // Like a post's schedule step: a piece that reaches its publication without the approval it needs waits for it.
+    if (ws.mode === "approval" && !(await approvedAfterReview(db, run)))
+      return {
+        text:
+          language === "en"
+            ? "The article needs your approval after its review before it is published. Approve it to publish."
+            : "El artículo necesita tu aprobación después de su revisión para publicarse. Apruébalo para publicarlo.",
+      };
+    if (pass.parked && !approvedSince(run, pass.parked.finishedAt))
+      return {
+        text:
+          language === "en"
+            ? "The article's photo needs your approval before it is created. Approve it to publish."
+            : "La foto del artículo necesita tu aprobación antes de crearse. Apruébalo para publicar.",
+      };
   }
   return null;
 }
 
-/** Leaves the run waiting for the owner with `text` (their next read), without a step: nothing was reserved or started. */
-export async function waitForOwner(run: AgentRun, text: string): Promise<void> {
+/**
+ * Leaves the run waiting for the owner with `text` (their next read), without a step: nothing was reserved or started. `asked`
+ * is remembered in the run's result with the moment, so the approval that follows is checked against what was asked.
+ */
+export async function waitForOwner(run: AgentRun, wait: OwnerWait): Promise<void> {
   const parked = await db.agentRun.updateMany({
     where: { id: run.id, businessId: run.businessId, leaseToken: run.leaseToken, status: "running" },
-    data: { status: "waiting_approval", leaseToken: "", leaseUntil: null },
+    data: {
+      status: "waiting_approval",
+      leaseToken: "",
+      leaseUntil: null,
+      ...(wait.asked ? { result: json({ asked: { ...wait.asked, at: new Date().toISOString() } }) } : {}),
+    },
   });
   if (!parked.count) return;
   await db.agentMessage.upsert({
     where: { runId_role: { runId: run.id, role: "assistant" } },
-    create: { businessId: run.businessId, runId: run.id, role: "assistant", text: text.slice(0, 6000) },
-    update: { text: text.slice(0, 6000) },
+    create: { businessId: run.businessId, runId: run.id, role: "assistant", text: wait.text.slice(0, 6000) },
+    update: { text: wait.text.slice(0, 6000) },
   });
 }
 

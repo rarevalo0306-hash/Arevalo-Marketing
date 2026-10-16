@@ -1,7 +1,8 @@
 // El agente de revisión editorial: antes de preparar una pieza comprueba su texto y su imagen. Primero las reglas del código
 // (canal, imagen o video, teléfono, web, datos inventados, tema repetido); si alguna falla no se llama a la IA y no cuesta.
 // Si pasan, una sola llamada pagada juzga lo que el código no puede (datos, ortografía, coherencia entre texto e imagen).
-// Si la pieza no pasa, una sola vuelta de corrección (`reworkSteps`); si vuelve a fallar espera al dueño. En modo con aprobación
+// Si la pieza no pasa, una sola vuelta de corrección (`reworkSteps`); si vuelve a fallar espera al dueño. Un artículo que no pasa
+// espera al dueño de una vez: su vuelta sería otro borrador de pago, y la pide el dueño con «Rehacer». En modo con aprobación
 // una pieza que pasa también espera al dueño, justo después de la revisión.
 import { z } from "zod";
 import { db } from "@/lib/db";
@@ -321,8 +322,9 @@ export async function runReview(input: AgentInput): Promise<StepResult> {
       return ws.mode === "approval"
         ? { ...base, state: "waiting_approval", text: approvedText(title, language) }
         : base;
-    // The round goes to the writer, the designer or both; none is left on the round after it, and the owner decides.
-    const round = reworkSteps(problems, attempt, piece.data.format);
+    // The round goes to the writer, the designer or both; none is left on the round after it, and the owner decides. An article
+    // never gets one on its own: its round is a new paid draft, so the owner decides first (approve it as it is, or redo it).
+    const round = article ? [] : reworkSteps(problems, attempt, piece.data.format);
     return round.length
       ? { ...base, insertSteps: round }
       : { ...base, state: "waiting_approval", text: rejectedText(title, problems, attempt, language) };

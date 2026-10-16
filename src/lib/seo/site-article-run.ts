@@ -394,11 +394,10 @@ export async function sitePhotoCents(businessId: string): Promise<number> {
 
 /**
  * Lo que costaría autorizar ahora el artículo con la foto que quedó en su vista previa guardada: la misma cuenta que hace
- * `approveForSite` para comparar con lo que se le pasa. Es de solo lectura y gratis; no crea ni publica nada.
+ * `approveForSite` para comparar con lo que se le pasa. Es de solo lectura y gratis; no crea ni publica nada. Como `approveForSite`,
+ * rechaza una vista previa que falta o que quedó vieja porque el artículo cambió después de prepararla.
  */
 export async function sitePhotoApproval(businessId: string, reportId: string): Promise<{ photo: SitePhoto; cents: number }> {
-  const { b, site } = await load(businessId, reportId);
-  const prepared = site.prepared;
-  if (!prepared) throw bi("Primero toca «Publicar en mi web» para preparar la vista previa.", "First tap “Publish on my website” to prepare the preview.");
+  const { b, prepared } = await loadPrepared(businessId, reportId);
   return { photo: prepared.photo, cents: approveCostCents(prepared.photo, imageCents(b.aiImage)) };
 }

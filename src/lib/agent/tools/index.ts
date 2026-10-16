@@ -11,7 +11,7 @@ import type { PhotoMeta } from "@/lib/photo-meta";
 import { BiError } from "@/lib/i18n";
 import { latestReports, type SeoKind } from "@/lib/seo/reports";
 import { approveCostCents, type SitePhoto } from "@/lib/seo/site-article";
-import { approveForSite, prepareForSite, sitePhotoApproval, sitePhotoCents } from "@/lib/seo/site-article-run";
+import { approveForSite, prepareForSite, sitePhotoCents } from "@/lib/seo/site-article-run";
 import type { WriterLang } from "@/lib/seo/writer";
 import { createArticleReport } from "@/lib/seo/writer-run";
 import {
@@ -107,6 +107,18 @@ export type ArticlePublish =
   | { published: false; photo: SitePhoto["kind"]; photoCents: number; title: string; urlEs: string; urlEn: string }
   | { published: true; url: string; urlEn: string; costCents: number; photoFailed: boolean; already: boolean };
 
+/**
+ * How `publishArticle` goes about it. The default: prepares the preview (the translation, a few cents) and publishes it with
+ * `approveForSite` when its photo costs nothing extra; an AI photo waits (`published: false`). `{ approved: true, expectedCents }`:
+ * the owner approved that photo's cost, so it authorizes the already prepared preview, and `approveForSite` refuses it if the
+ * price is no longer `expectedCents` (what the step reserved). `beforePublish` runs right before the article is authorized (never
+ * for a preview that waits), so the caller can take its place in the day's posts under the business lock.
+ */
+export type PublishOptions = { beforePublish?: () => Promise<void> } & (
+  | { approved?: false }
+  | { approved: true; expectedCents: number }
+);
+
 /** What each tool is, once it is bound to a run. The types of the later tasks' tools are refined by them. */
 export type ToolImpl = {
   readContext: () => Promise<Context>;
@@ -141,12 +153,7 @@ export type ToolImpl = {
    * business's customers search in unless given. The caller must have reserved and been allowed to spend: this reserves nothing.
    */
   writeArticle: (keyword: string, language?: WriterLang) => Promise<ArticleMade>;
-  /**
-   * The website part of an article. `{ approved: false }` (the default): prepares the preview (the translation, a few cents) and
-   * publishes it with `approveForSite` when its photo costs nothing extra; an AI photo waits (`published: false`).
-   * `{ approved: true }`: the owner approved that photo's cost, so it authorizes the already prepared preview at its price now.
-   */
-  publishArticle: (reportId: string, options?: { approved?: boolean }) => Promise<ArticlePublish>;
+  publishArticle: (reportId: string, options?: PublishOptions) => Promise<ArticlePublish>;
 };
 export type Tools = { use<T extends ToolName>(name: T): ToolImpl[T] };
 
@@ -394,8 +401,8 @@ const IMPLS: { [K in ToolName]: (run: AgentRun) => ToolImpl[K] } = {
     try {
       const businessId = run.businessId;
       if (options.approved) {
-        const { cents } = await sitePhotoApproval(businessId, reportId);
-        return publishedOf(await approveForSite(businessId, reportId, cents));
+        await options.beforePublish?.();
+        return publishedOf(await approveForSite(businessId, reportId, options.expectedCents));
       }
       const prepared = await prepareForSite(businessId, reportId);
       if (photoNeedsApproval(prepared.photo))
@@ -407,6 +414,7 @@ const IMPLS: { [K in ToolName]: (run: AgentRun) => ToolImpl[K] } = {
           urlEs: prepared.urlEs,
           urlEn: prepared.urlEn,
         };
+      await options.beforePublish?.();
       return publishedOf(await approveForSite(businessId, reportId, approveCostCents(prepared.photo, 0)));
     } catch (e) {
       throw agentErrorOf(e);

@@ -214,14 +214,16 @@ export function refusalOf(f: GuardFacts): string | null {
 }
 
 /**
- * Why an article may not be written now, or null: the guard's own checks for a website article without the ones that only
- * matter when it is published (an approval after the review, the day's count). Everything paused; team mode, MATYA or the
- * publishing permission off; web articles not allowed; the website not connected. Nothing is spent for an article that could
- * not be published afterwards. Same words as `refusalOf`, without its "stayed as a draft": nothing exists yet.
+ * Why an article may not be written now, or null: the guard's own checks for a website article without the one that only
+ * matters when it is published (an approval after the review). Everything paused; team mode, MATYA or the publishing permission
+ * off; web articles not allowed; the website not connected; the day's limit of posts already reached (`posts`: a published
+ * article counts as one, so an article that could not be published today is not paid for). Same words as `refusalOf`, without
+ * its "stayed as a draft": nothing exists yet.
  */
 export function articleRefusal(
   ws: GuardFacts["ws"],
   connected: string[],
+  posts = 0,
 ): string | null {
   const refusal = refusalOf({
     ws: { ...ws, mode: "auto" },
@@ -230,7 +232,7 @@ export function articleRefusal(
     channels: ["seo"],
     connected,
     braked: [],
-    posts: 0,
+    posts,
   });
   return refusal === null ? null : refusal.replace(KEEP, "");
 }

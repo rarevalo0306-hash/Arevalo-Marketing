@@ -16,6 +16,7 @@ import {
 import { sourceUrl } from "./network";
 import { newsFresh } from "./freshness";
 import {
+  isArticleStep,
   Piece,
   PieceFormat,
   problemsOf,
@@ -282,12 +283,17 @@ export async function beginStep(
     });
     const context = run.context as unknown as Context;
     // A piece's prepare and schedule only use what its earlier steps saved, and the guard checks every current setting when
-    // the piece is scheduled: a settings save since the piece was asked for does not stop them. An article's publication
-    // (`article_publish`, and its second pass `article_publish:<n>`) is the same: it publishes what the article step saved, after
-    // the same guard check of the current settings.
+    // the piece is scheduled: a settings save since the piece was asked for does not stop them. The steps that spend money on a
+    // piece (the render, an article's draft and its publication, with its second pass `article_publish:<n>`) are the same: each
+    // one re-reads the current switches before it reserves anything (`pieceStepCost`), and a wait for the owner's approval can
+    // last a day, so a save in between must not strand the piece.
     const guardedLater =
       run.kind === "piece" &&
-      (name === "prepare" || name === "schedule" || /^article_publish(:\d+)?$/.test(name));
+      (name === "prepare" ||
+        name === "schedule" ||
+        name === "render" ||
+        isArticleStep(name) ||
+        /^article_publish(:\d+)?$/.test(name));
     if (
       !["briefing", "pause"].includes(run.kind) &&
       !guardedLater &&
@@ -627,12 +633,15 @@ async function redo(
 ) {
   const piece = piecePlan(run);
   const previous = piece?.steps[run.stage - 1];
+  // A piece waiting for the approval of a paid article draft has already been sent back: it cannot be sent back again.
+  const waiting = piece?.steps[run.stage];
   if (
     !piece ||
     run.status !== "waiting_approval" ||
     run.cancelRequested ||
     !previous ||
-    !/^review(-r\d+)?$/.test(previous.id)
+    !/^review(-r\d+)?$/.test(previous.id) ||
+    (waiting && isArticleStep(waiting.id))
   )
     throw new AgentError(
       "Solo se puede rehacer una pieza que espera tu aprobación después de su revisión.",
