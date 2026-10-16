@@ -90,6 +90,7 @@ export async function POST(
     let runId: string | undefined;
     if (["cancel", "approve", "refresh", "redo"].includes(body.action))
       await changeRun(id, z.string().max(100).parse(body.runId), body.action);
+    // A morning plan cancelled by the pause is not queued again the same day; the next local day brings the next one.
     else if (body.action === "resume_all") await resumeAll(id);
     else if (body.action === "message") runId = (await enqueue(id, body)).id;
     else if (body.action !== "work")

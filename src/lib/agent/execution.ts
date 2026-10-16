@@ -828,6 +828,13 @@ export async function analyzeResults(
   };
 }
 export type Executor = (run: AgentRun, name: string) => Promise<StepResult>;
+/**
+ * A wait that did not take because the run was cancelled (the owner's "Cancelar" or "Pausar todo") after it was claimed and
+ * before the wait was recorded: the run ends cancelled and its lease is released, instead of waiting for something nobody
+ * will give. Nothing happens if the lease was lost to someone else (`failRun` only settles the lease it is given).
+ */
+const stopCancelled = (run: AgentRun) =>
+  failRun(run.id, run.leaseToken, "Trabajo cancelado.");
 export async function workOne(
   businessId?: string,
   execute: Executor = executeStep,
@@ -850,14 +857,20 @@ export async function workOne(
             (s.mode === "approval" && !(await approvedAfterReview(db, run)))
           : !s.allowPublish || (s.mode === "approval" && !run.approvedAt)
       ) {
-        await db.agentRun.updateMany({
-          where: { id: run.id, leaseToken: run.leaseToken, status: "running" },
+        const parked = await db.agentRun.updateMany({
+          where: {
+            id: run.id,
+            leaseToken: run.leaseToken,
+            status: "running",
+            cancelRequested: false,
+          },
           data: {
             status: "waiting_approval",
             leaseToken: "",
             leaseUntil: null,
           },
         });
+        if (!parked.count) await stopCancelled(run);
         return true;
       }
     }
@@ -867,14 +880,15 @@ export async function workOne(
         select: { status: true },
       });
       if (p && ["scheduled", "publishing"].includes(p.status)) {
-        await db.agentRun.updateMany({
-          where: { id: run.id, leaseToken: run.leaseToken },
+        const parked = await db.agentRun.updateMany({
+          where: { id: run.id, leaseToken: run.leaseToken, cancelRequested: false },
           data: {
             status: "waiting_provider",
             leaseToken: "",
             leaseUntil: null,
           },
         });
+        if (!parked.count) await stopCancelled(run);
         return true;
       }
     }
@@ -883,7 +897,7 @@ export async function workOne(
       // A piece's paid step goes on only with the owner's approval of that cost; without it nothing is reserved or called.
       const waiting = await approvalNeeded(run, name, cost);
       if (waiting !== null) {
-        await waitForOwner(run, waiting);
+        if (!(await waitForOwner(run, waiting))) await stopCancelled(run);
         return true;
       }
       // The second pass of an article's publication (an AI photo the owner approved) is its own record.

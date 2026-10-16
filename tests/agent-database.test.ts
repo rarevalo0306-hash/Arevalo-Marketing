@@ -59,6 +59,11 @@ vi.mock("@/lib/media-formats", async (original) => ({
     `https://example.com/fixture-${input.shape}.jpg`,
   ),
 }));
+// The real claim and enqueue, unless a test hooks them (a cancel or a pause that lands between the claim and the step).
+vi.mock("@/lib/agent/queue", async (original) => {
+  const real = await original<typeof import("@/lib/agent/queue")>();
+  return { ...real, claimRun: vi.fn(real.claimRun), enqueue: vi.fn(real.enqueue) };
+});
 // The real queue draining, unless a test replaces it once (the morning plan must exist before the cycle drains).
 vi.mock("@/lib/agent/execution", async (original) => {
   const real = await original<typeof import("@/lib/agent/execution")>();
@@ -935,6 +940,16 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       return byName[name] ?? { data: {} };
     };
   const row = (id: string) => db.agentRun.findUniqueOrThrow({ where: { id } });
+  /** Runs `flip` right after the next claim: a cancel or a pause that lands between the claim and the step. */
+  const afterNextClaim = (flip: () => Promise<unknown>) => {
+    const claim = vi.mocked(claimRun);
+    const real = claim.getMockImplementation()!;
+    claim.mockImplementationOnce(async (businessId) => {
+      const run = await real(businessId);
+      await flip();
+      return run;
+    });
+  };
   it("refuses direct piece requests, team requests without team mode and a spoofed origin", async () => {
     await expect(ask("x", { kind: "piece" })).rejects.toThrow("directamente");
     await expect(ask("x", { kind: "team" })).rejects.toThrow("modo equipo");
@@ -3624,6 +3639,20 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       expect(approveForSite).toHaveBeenCalledTimes(2);
     });
 
+    it("a cancel that lands between the claim and the owner's wait ends the run cancelled, not waiting for approval", async () => {
+      const piece = await article();
+      await done(piece.id, "article", { reportId: "rep1" });
+      await done(piece.id, "review", { approved: true, problems: [] });
+      await goTo(piece, "article_publish");
+      await workspace({ mode: "approval" });
+      afterNextClaim(() => changeRun(A, piece.id, "cancel"));
+      await workOne(A);
+      expect(await row(piece.id)).toMatchObject({ status: "cancelled", leaseToken: "", reservedCents: 0, error: "Trabajo cancelado." });
+      expect(await money()).toEqual({ reservedCents: 0, chargedCents: 0 });
+      expect(await claimRun(A)).toBeNull();
+      expect(approveForSite).not.toHaveBeenCalled();
+    });
+
     it("a settings save after the article was asked for does not strand its publication: the guard checks the current settings", async () => {
       vi.mocked(prepareForSite).mockResolvedValue(prepared(library));
       vi.mocked(approveForSite).mockResolvedValue(published);
@@ -4614,6 +4643,82 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       vi.mocked(drain).mockResolvedValueOnce(0);
       await expect(runAgentCycle(A)).resolves.toEqual({ steps: 0, published: 0 });
       expect(await db.agentRun.count({ where: { businessId: A } })).toBe(0);
+    });
+
+    // ---------- A cancel or a pause between the claim and the wait ----------
+
+    it("a pause that lands between the claim and the approval gate ends the run cancelled, not waiting", async () => {
+      const r = await prepared("approval");
+      expect(stepsOf(await row(r.id))[(await row(r.id)).stage]).toBe("schedule");
+      afterNextClaim(() => pauseAll(A));
+      await workOne(A, executeStep, () => 0);
+      expect(await row(r.id)).toMatchObject({ status: "cancelled", leaseToken: "", leaseUntil: null, reservedCents: 0, error: "Trabajo cancelado." });
+      expect(await db.agentStep.count({ where: { runId: r.id, name: "schedule" } })).toBe(0);
+      expect(await post(`agent-${r.id}`)).toMatchObject({ status: "draft" }); // prepared, never scheduled
+      expect(await claimRun(A)).toBeNull();
+    });
+
+    it("a cancel that lands between the claim and the verify wait ends the run cancelled, not waiting for the provider", async () => {
+      const r = await scheduled();
+      // A plain flag, so the post is still scheduled and the verify branch would park the run.
+      afterNextClaim(() => db.agentRun.update({ where: { id: r.id }, data: { cancelRequested: true } }));
+      await workOne(A, executeStep, () => 0);
+      expect(await row(r.id)).toMatchObject({ status: "cancelled", leaseToken: "", leaseUntil: null, error: "Trabajo cancelado." });
+      expect(await db.agentStep.count({ where: { runId: r.id, name: "verify" } })).toBe(0);
+    });
+
+    it("a step that asks to wait for the provider after a cancel ends cancelled (video_wait is settled by finishStep)", async () => {
+      const r = await ask();
+      await workOne(
+        A,
+        async (run) => {
+          await changeRun(A, run.id, "cancel");
+          return { data: { status: "rendering" }, state: "waiting_provider", advance: false };
+        },
+        () => 0,
+      );
+      expect(await row(r.id)).toMatchObject({ status: "cancelled", leaseToken: "" });
+    });
+
+    it("a pause that lands mid-tick is skipped per business: the cycle goes on and nothing 500s the cron", async () => {
+      await team({ radarEnabled: true });
+      await saveSettings(B, { ...settings, industry: "commercial-security-ni", radarEnabled: true });
+      for (const businessId of [A, B])
+        await db.agentNews.create({
+          data: { businessId, canonicalUrl: `https://example.com/${businessId}`, eventKey: businessId, title: "Pendiente", source: "Oficial", status: "source_ready", contentHash: "h" },
+        });
+      // A is paused right before each of its requests; B is not.
+      const enqueueMock = vi.mocked(enqueue);
+      const real = enqueueMock.getMockImplementation()!;
+      enqueueMock.mockImplementation(async (businessId, ...rest) => {
+        if (businessId === A) await pauseAll(A);
+        return real(businessId, ...rest);
+      });
+      vi.mocked(drain).mockResolvedValueOnce(0);
+      try {
+        await expect(runAgentCycle()).resolves.toEqual({ steps: 0, published: 0 });
+      } finally {
+        enqueueMock.mockImplementation(real);
+      }
+      expect(await db.agentRun.count({ where: { businessId: A } })).toBe(0);
+      // A's radar is tried again after the pause; B's went in.
+      expect((await db.agentWorkspace.findUniqueOrThrow({ where: { businessId: A } })).radarAt).toBeNull();
+      expect((await db.agentWorkspace.findUniqueOrThrow({ where: { businessId: B } })).radarAt).not.toBeNull();
+      expect((await db.agentRun.findMany({ where: { businessId: B }, orderBy: { kind: "asc" } })).map((r) => r.kind)).toEqual(["radar", "verify_news"]);
+    });
+
+    // ---------- The day's key belongs to the cron ----------
+
+    it("an owner cannot claim the morning plan's key from the request body", async () => {
+      await team();
+      for (const requestKey of [`daily-${A}-${DAY}`, "daily-anything-at-all-2026-10-16", "daily-0000000000"]) {
+        await expect(ask("Plan del día", { requestKey, kind: "team" })).rejects.toThrow("reservada");
+        await expect(enqueue(A, { text: "Plan del día", requestKey })).rejects.toThrow("reservada");
+      }
+      expect(await db.agentRun.count({ where: { businessId: A } })).toBe(0);
+      // The cron still makes the day's plan, with that very key.
+      expect(await enqueueDailyPlans(NOW)).toBe(1);
+      expect((await dailyRuns()).map((r) => r.requestKey)).toEqual([`daily-${A}-${DAY}`]);
     });
 
     // ---------- Verify after a settings save ----------

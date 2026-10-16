@@ -482,10 +482,12 @@ export async function approvalNeeded(run: AgentRun, name: string, cost: number):
 /**
  * Leaves the run waiting for the owner with `text` (their next read), without a step: nothing was reserved or started. `asked`
  * is remembered in the run's result with the moment, so the approval that follows is checked against what was asked.
+ * Returns false when the run was not parked (it was cancelled meanwhile, or the lease is no longer this worker's).
  */
-export async function waitForOwner(run: AgentRun, wait: OwnerWait): Promise<void> {
+export async function waitForOwner(run: AgentRun, wait: OwnerWait): Promise<boolean> {
+  // A run cancelled after it was claimed (the owner's "Cancelar" or "Pausar todo") is not parked: the caller ends it.
   const parked = await db.agentRun.updateMany({
-    where: { id: run.id, businessId: run.businessId, leaseToken: run.leaseToken, status: "running" },
+    where: { id: run.id, businessId: run.businessId, leaseToken: run.leaseToken, status: "running", cancelRequested: false },
     data: {
       status: "waiting_approval",
       leaseToken: "",
@@ -493,12 +495,13 @@ export async function waitForOwner(run: AgentRun, wait: OwnerWait): Promise<void
       ...(wait.asked ? { result: json({ asked: { ...wait.asked, at: new Date().toISOString() } }) } : {}),
     },
   });
-  if (!parked.count) return;
+  if (!parked.count) return false;
   await db.agentMessage.upsert({
     where: { runId_role: { runId: run.id, role: "assistant" } },
     create: { businessId: run.businessId, runId: run.id, role: "assistant", text: wait.text.slice(0, 6000) },
     update: { text: wait.text.slice(0, 6000) },
   });
+  return true;
 }
 
 registerMatyaStep("render", renderStep);

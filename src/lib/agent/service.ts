@@ -158,6 +158,9 @@ export async function verifyNews(
     },
   });
 }
+/** The cap or rate limit (429) and a pause that landed mid-tick (409): not an error of the cycle, only of that business now. */
+const notNow = (error: unknown) =>
+  error instanceof AgentError && (error.status === 429 || error.status === 409);
 export async function runAgentCycle(businessId?: string) {
   if (process.env.MATYA_AGENT_ENABLED !== "true")
     return { steps: 0, published: 0 };
@@ -176,15 +179,20 @@ export async function runAgentCycle(businessId?: string) {
       (!w.radarAt || Date.now() - w.radarAt.getTime() >= w.radarHours * 3600000)
     ) {
       const period = Math.floor(Date.now() / (w.radarHours * 3600000));
-      await enqueue(w.businessId, {
-        text: "Revisa las noticias de mi industria",
-        kind: "radar",
-        requestKey: `radar-${w.businessId}-${period}`,
-      });
-      await db.agentWorkspace.update({
-        where: { businessId: w.businessId },
-        data: { radarAt: new Date() },
-      });
+      try {
+        await enqueue(w.businessId, {
+          text: "Revisa las noticias de mi industria",
+          kind: "radar",
+          requestKey: `radar-${w.businessId}-${period}`,
+        });
+        await db.agentWorkspace.update({
+          where: { businessId: w.businessId },
+          data: { radarAt: new Date() },
+        });
+      } catch (error) {
+        // This business is skipped (its radar is tried again on the next tick); the others and the drain go on.
+        if (!notNow(error)) throw error;
+      }
     }
   }
   for (const w of workspaces.filter((w) => w.radarEnabled)) {
@@ -203,7 +211,7 @@ export async function runAgentCycle(businessId?: string) {
           requestKey: `verify-${n.id}-${n.revision}`,
         });
       } catch (error) {
-        if (!(error instanceof AgentError && error.status === 429)) throw error;
+        if (!notNow(error)) throw error;
       }
     }
   }

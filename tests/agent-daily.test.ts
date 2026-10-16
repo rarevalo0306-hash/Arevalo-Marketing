@@ -34,6 +34,21 @@ describe("isDailyDue", () => {
     expect(isDailyDue(7, ny, new Date("2026-11-02T04:30:00Z"), null)).toBe("2026-11-01");
   });
 
+  it.each([
+    ["America/New_York", "2026-11-02T05:00:00Z", "2026-11-02T05:59:00Z"], // 00:00 a 00:59 EST
+    ["America/New_York", "2026-11-01T04:00:00Z", "2026-11-01T04:59:00Z"], // 00:00 a 00:59 EDT, el día que atrasa el reloj
+    ["America/New_York", "2026-03-08T05:00:00Z", "2026-03-08T05:59:00Z"], // 00:00 a 00:59 EST, el día que adelanta el reloj
+    ["America/Managua", "2026-11-02T06:00:00Z", "2026-11-02T06:59:00Z"], // 00:00 a 00:59, UTC-6
+  ])("%s: entre las 00:00 y las 00:59 todavía no toca el plan de las 7", (tz, from, to) => {
+    for (let t = Date.parse(from); t <= Date.parse(to); t += 60_000) {
+      expect(isDailyDue(7, tz, new Date(t), null)).toBeNull();
+      expect(isDailyDue(7, tz, new Date(t), "2026-10-01")).toBeNull();
+    }
+    // Con la hora 0 sí toca desde la primera lectura del día, y una sola vez.
+    expect(isDailyDue(0, tz, new Date(from), null)).toBe(localDay(new Date(from), tz));
+    expect(isDailyDue(0, tz, new Date(to), localDay(new Date(from), tz))).toBeNull();
+  });
+
   it("un último día mal escrito o venido de un futuro raro no deja al negocio sin plan, ni lo duplica", () => {
     const ny = "America/New_York";
     const now = new Date("2026-11-02T15:00:00Z");

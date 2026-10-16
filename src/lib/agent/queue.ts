@@ -145,13 +145,16 @@ export async function enqueue(
   } = {},
 ) {
   const input = MessageInput.parse(raw);
+  // Never read from `raw`: the owner's HTTP body must not pass as the daily cycle.
+  const origin = opts.origin === "daily" ? "daily" : "owner";
+  // The morning plan's key (`daily-<business>-<day>`) belongs to the cron: the owner cannot take the day's key in advance.
+  if (origin === "owner" && input.requestKey.startsWith("daily-"))
+    throw new AgentError("Esa clave de solicitud está reservada.");
   // What was asked for, from the body or from the text. With team mode on the lock below may turn it into a team run.
   const requested = input.kind ?? inferKind(input.text);
   // Pieces only come from their team run (`spawnPieces`): a planless piece has no steps.
   if (requested === "piece")
     throw new AgentError("Ese tipo de encargo no se puede pedir directamente.");
-  // Never read from `raw`: the owner's HTTP body must not pass as the daily cycle.
-  const origin = opts.origin === "daily" ? "daily" : "owner";
   // Extra keys are added; they never replace what was loaded or checked for this business.
   const extra = Object.fromEntries(
     Object.entries(opts.extraContext ?? {}).filter(
@@ -688,7 +691,10 @@ export async function pauseAll(businessId: string): Promise<void> {
     });
   });
 }
-/** Lifts "Pausar todo". What it cancelled stays cancelled; new work is accepted again. */
+/**
+ * Lifts "Pausar todo". What it cancelled stays cancelled; new work is accepted again. A morning plan that the pause cancelled is
+ * not queued again the same day (its key already holds that day); the next local day brings the next one.
+ */
 export async function resumeAll(businessId: string): Promise<void> {
   await locked(businessId, (tx) =>
     tx.agentWorkspace.updateMany({
