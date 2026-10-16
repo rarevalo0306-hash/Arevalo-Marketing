@@ -661,7 +661,7 @@ export async function changeRun(
         data: { status: "queued", approvedAt: new Date() },
       });
     }
-    if (action === "redo") return redo(tx, run, settings.enabled);
+    if (action === "redo") return redo(tx, run, settings);
     if (run.status !== "waiting_provider")
       throw new AgentError("El trabajo no está esperando una publicación.");
     return tx.agentRun.update({
@@ -726,13 +726,18 @@ export async function resumeAll(businessId: string): Promise<void> {
 /**
  * The owner's "Rehacer": a new round before the step that was waiting, even when the
  * automatic round was already used. Only a piece waiting right after a review qualifies.
- * Runs inside the caller's business lock.
+ * Runs inside the caller's business lock, with the workspace (`settings`) read there.
+ * The piece's snapshot is refreshed in the same transaction (R41): the new round writes with the business as it is now
+ * (`loadContext` and the current revision), so a settings save while the piece waited does not block its first step at
+ * `beginStep`'s revision check. The keys the engine added to the snapshot (`piece`, `signals`, `storm`, `news`,
+ * `campaignId`, and any other that `loadContext` does not make) stay as they were.
  */
 async function redo(
   tx: Prisma.TransactionClient,
   run: AgentRun,
-  enabled: boolean,
+  settings: { enabled: boolean; revision: number },
 ) {
+  const enabled = settings.enabled;
   const piece = piecePlan(run);
   const previous = piece?.steps[run.stage - 1];
   // A piece waiting for the approval of a paid article draft has already been sent back: it cannot be sent back again.
@@ -788,12 +793,19 @@ async function redo(
     attempt: n,
   }));
   if (!added.length) throw new AgentError("No hay nada que rehacer.");
+  const fresh = await loadContext(run.businessId, tx);
+  const context = {
+    ...(run.context as Record<string, unknown>),
+    ...fresh,
+    revision: settings.revision,
+  };
   // Inserted at the waiting step's place: the stage now points at the first new step.
   return tx.agentRun.update({
     where: { id: run.id },
     data: {
       status: "queued",
       approvedAt: null,
+      context: json(context),
       plan: json({
         ...piece.plan,
         steps: [

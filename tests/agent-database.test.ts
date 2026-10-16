@@ -1174,6 +1174,53 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       }),
     ).toMatchObject({ agent: "design", attempt: 2 });
   });
+  it("redo after a settings save refreshes the piece's snapshot, so the new round runs instead of blocking (R41)", async () => {
+    const child = await pieceRun();
+    // What the engine put in the piece's context beyond what `loadContext` makes: it must survive the redo.
+    const extras = {
+      signals: { remaining: 2, emptyDays: 1 },
+      storm: { event: "huracan", phase: "seguridad", at: "2026-10-01T19:00:00Z" },
+      campaignId: "agent-campaign-of-the-piece",
+    };
+    await db.agentRun.update({
+      where: { id: child.id },
+      data: { context: { ...(child.context as object), ...extras } as never },
+    });
+    const ran: string[] = [];
+    const passed: StepResult = { data: { approved: true, problems: [] }, state: "waiting_approval" };
+    for (let i = 0; i < 3; i++) await workOne(A, runner({ review: passed }, ran), () => 0);
+    expect(await row(child.id)).toMatchObject({ status: "waiting_approval", stage: 3 });
+    const before = (await row(child.id)).context as Record<string, unknown>;
+
+    // The owner saves the settings while the piece waits: the revision moves.
+    await saveSettings(A, { ...settings, teamMode: true, objective: "Objetivo nuevo del dueño" });
+    const ws = await db.agentWorkspace.findUniqueOrThrow({ where: { businessId: A } });
+    expect(before.revision).not.toBe(ws.revision);
+
+    await changeRun(A, child.id, "redo");
+    const redone = await row(child.id);
+    const context = redone.context as Record<string, unknown>;
+    // The snapshot is the business as it is now, with the current revision...
+    expect(context).toMatchObject({
+      revision: ws.revision,
+      objective: "Objetivo nuevo del dueño",
+      business: { id: A },
+      industry: { key: "public-adjusting-fl" },
+    });
+    expect(Date.parse(context.capturedAt as string)).toBeGreaterThanOrEqual(Date.parse(before.capturedAt as string));
+    // ...and keeps the engine's own keys: the piece, the signals, the storm and the rest that `loadContext` does not make.
+    expect(context).toMatchObject({ piece: before.piece, ...extras });
+
+    // The new round passes beginStep's revision check: copy-r1, design-r1 and review-r1 run, and nothing blocks.
+    for (let i = 0; i < 3; i++) await workOne(A, runner({}, ran), () => 0);
+    expect(ran).toEqual(["copy", "design", "review", "copy-r1", "design-r1", "review-r1"]);
+    for (const name of ["copy-r1", "design-r1", "review-r1"])
+      expect(await db.agentStep.findUniqueOrThrow({ where: { runId_name: { runId: child.id, name } } })).toMatchObject({
+        status: "succeeded",
+      });
+    expect(await row(child.id)).toMatchObject({ status: "queued", stage: 6, error: "" });
+    expect(stepsOf(await row(child.id))[6]).toBe("prepare");
+  });
   it("refuses redo unless a piece waits right after its review, and two clicks add one round", async () => {
     const r = await prepared("approval");
     await workOne(A, executeStep, reserving(() => 0));

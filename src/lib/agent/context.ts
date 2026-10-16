@@ -1,11 +1,19 @@
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { businessTz } from "@/lib/business-tz";
 import { industryFor, toolCatalog } from "./industry";
 import { Knowledge, type Context } from "./schema";
 
-export async function loadContext(businessId: string): Promise<Context> {
+/**
+ * What a run knows of its business when it is asked for (its snapshot), read for `businessId` only. `client` is `db`, or the
+ * caller's transaction when the snapshot must be read under the business lock (the owner's "Rehacer" refreshes a piece's).
+ */
+export async function loadContext(
+  businessId: string,
+  client: Prisma.TransactionClient = db,
+): Promise<Context> {
   const [b, settings, posts, campaigns, messages] = await Promise.all([
-    db.business.findUniqueOrThrow({
+    client.business.findUniqueOrThrow({
       where: { id: businessId },
       select: {
         id: true,
@@ -23,8 +31,8 @@ export async function loadContext(businessId: string): Promise<Context> {
         connections: { select: { channel: true } },
       },
     }),
-    db.agentWorkspace.findUnique({ where: { businessId } }),
-    db.post.findMany({
+    client.agentWorkspace.findUnique({ where: { businessId } }),
+    client.post.findMany({
       where: { businessId },
       orderBy: { createdAt: "desc" },
       take: 12,
@@ -36,13 +44,13 @@ export async function loadContext(businessId: string): Promise<Context> {
         targets: { select: { channel: true, status: true, externalUrl: true } },
       },
     }),
-    db.campaign.findMany({
+    client.campaign.findMany({
       where: { businessId },
       orderBy: { updatedAt: "desc" },
       take: 12,
       select: { id: true, name: true, status: true, mode: true },
     }),
-    db.agentMessage.findMany({
+    client.agentMessage.findMany({
       where: { businessId },
       orderBy: { createdAt: "desc" },
       take: 12,
