@@ -78,12 +78,15 @@ export async function teamSnapshot(
 
 export async function snapshot(businessId: string) {
   const now = new Date();
+  // One read of the workspace (a plain promise, awaited twice): the recent runs depend on its team mode.
+  const workspace = db.agentWorkspace.findUnique({ where: { businessId } }).then((w) => w);
   const [context, settings, runs, messages, news] = await Promise.all([
     loadContext(businessId),
-    db.agentWorkspace.findUnique({ where: { businessId } }),
-    db.agentRun.findMany({
-      // The pieces of a team request are its own cards (`team`): the recent list keeps the requests.
-      where: { businessId, parentRunId: null },
+    workspace,
+    workspace.then((w) => db.agentRun.findMany({
+      // With team mode on, the pieces of a team request are its own cards (`team`) and the recent list keeps the requests. With it
+      // off there is no board: a piece left from team mode is listed here, as before team mode, so it can still be approved or cancelled.
+      where: { businessId, ...(w?.teamMode ? { parentRunId: null } : {}) },
       orderBy: { createdAt: "desc" },
       take: 20,
       select: {
@@ -109,7 +112,7 @@ export async function snapshot(businessId: string) {
           },
         },
       },
-    }),
+    })),
     db.agentMessage.findMany({
       where: { businessId },
       orderBy: { createdAt: "desc" },

@@ -5592,6 +5592,53 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       expect(needsYou(runs).map((n) => n.runId)).toEqual([open.id]);
     });
 
+    it("a piece blocked or uncertain in the last 7 days stays on the board after local midnight; older or finished ones do not", async () => {
+      const stuck = (createdAt: string, status: string, updatedAt: string, kind = "piece") =>
+        viewRun(A, kind, createdAt, { status, updatedAt: new Date(updatedAt) });
+      // 10:00 on the 16th in New York: everything below was created on an earlier local day.
+      const blockedYesterday = await stuck("2026-10-15T15:00:00Z", "blocked", "2026-10-15T20:00:00Z");
+      const uncertain = await stuck("2026-10-09T15:00:00Z", "uncertain", "2026-10-10T15:00:00Z");
+      const team = await stuck("2026-10-14T11:00:00Z", "blocked", "2026-10-14T11:30:00Z", "team");
+      // Out: stopped more than 7 days ago, done or cancelled on an earlier day, another kind of run, another business.
+      await stuck("2026-10-01T15:00:00Z", "blocked", "2026-10-09T13:59:00Z");
+      await stuck("2026-10-15T15:00:00Z", "completed", "2026-10-15T20:00:00Z");
+      await stuck("2026-10-15T15:00:00Z", "cancelled", "2026-10-15T20:00:00Z");
+      await stuck("2026-10-15T15:00:00Z", "blocked", "2026-10-15T20:00:00Z", "campaign");
+      await viewRun(B, "piece", "2026-10-15T15:00:00Z", { status: "blocked", updatedAt: new Date("2026-10-15T20:00:00Z") });
+      const { runs } = await loadTeamRuns(A, NOW);
+      // Oldest first, like the rest of the board.
+      expect(ids(runs)).toEqual([uncertain.id, team.id, blockedYesterday.id]);
+      expect(runs.map(boardColumn)).toEqual(["redaccion", "investigacion", "redaccion"]);
+      // Only what waits for the owner's go-ahead asks for it: a stopped piece is on the board, not in «Necesita tu sí».
+      expect(needsYou(runs)).toEqual([]);
+    });
+
+    it("the 40 places go to the open runs first, then the recently stopped ones, then today's others", async () => {
+      const open = await viewRun(A, "piece", "2026-10-15T15:00:00Z", { status: "waiting_approval", stage: 3 });
+      const stopped = await viewRun(A, "piece", "2026-10-15T16:00:00Z", { status: "blocked", updatedAt: new Date("2026-10-15T17:00:00Z") });
+      // A piece stopped today is both today's and recently stopped: it counts once.
+      const today = await viewRun(A, "piece", "2026-10-16T09:00:00Z", { status: "uncertain", updatedAt: new Date("2026-10-16T09:30:00Z") });
+      await db.agentRun.createMany({
+        data: Array.from({ length: 41 }, (_, i) => ({
+          businessId: A,
+          requestKey: `done-${i}-${crypto.randomUUID()}`,
+          kind: "piece",
+          prompt: "x",
+          context: {},
+          status: "completed",
+          createdAt: new Date(Date.UTC(2026, 9, 16, 10, i)),
+        })),
+      });
+      const { runs } = await loadTeamRuns(A, NOW);
+      expect(runs).toHaveLength(40);
+      expect(ids(runs.slice(0, 3))).toEqual([open.id, stopped.id, today.id]);
+      expect(new Set(ids(runs)).size).toBe(40);
+      // The newest 37 of today's finished runs fill the rest, oldest first.
+      expect(runs.slice(3).map((r) => r.createdAt)).toEqual(
+        Array.from({ length: 37 }, (_, i) => new Date(Date.UTC(2026, 9, 16, 10, i + 4)).toISOString()),
+      );
+    });
+
     it("a run created at 23:30 local yesterday and already completed is not today's", async () => {
       // 00:10 on 2026-10-16 in New York (04:10Z): the UTC date is the same as the local one, but 23:30 yesterday (03:30Z) is not today.
       vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-16T04:10:00Z"), shouldAdvanceTime: true });
@@ -5617,6 +5664,18 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       expect(snap.team.agents).toHaveLength(7);
       // The workspace's pause and the worker's last tick travel with the settings (null until they happen).
       expect(snap.settings).toMatchObject({ teamMode: true, pausedAt: null, tickAt: null });
+    });
+
+    it("with team mode off, a piece left over from team mode is back in the recent runs (it can still be approved or cancelled there)", async () => {
+      await saveSettings(A, { ...settings, teamMode: true });
+      const team = await viewRun(A, "team", new Date().toISOString(), { status: "completed", stage: 4 });
+      const child = await viewRun(A, "piece", new Date().toISOString(), { status: "waiting_approval", stage: 3, parentRunId: team.id });
+      const campaign = await viewRun(A, "campaign", new Date().toISOString(), { status: "queued" });
+      expect((await snapshot(A)).runs.map((r: { id: string }) => r.id)).not.toContain(child.id);
+      await saveSettings(A, { ...settings, teamMode: false });
+      const off = await snapshot(A);
+      expect(off.runs.map((r: { id: string }) => r.id).sort()).toEqual([team.id, child.id, campaign.id].sort());
+      expect(off.runs.find((r: { id: string }) => r.id === child.id)).toMatchObject({ kind: "piece", status: "waiting_approval" });
     });
 
     it("a failing team view does not break the snapshot: team is null and the error is logged", async () => {

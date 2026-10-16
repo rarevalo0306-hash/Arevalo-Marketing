@@ -9,13 +9,18 @@ import type { TeamRunView } from "./team-view";
 
 /** The most runs the team's view loads, and the most open ones among them. */
 const TEAM_RUNS_MAX = 40;
+/** How long a team request or piece that stopped (blocked or uncertain) stays on the board after it stopped. */
+const STOPPED_DAYS = 7;
+const STOPPED: readonly string[] = ["blocked", "uncertain"];
 export const objectOrNull = (value: unknown): Record<string, unknown> | null =>
   typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 
 /**
  * The team's runs for the board: every open team request and piece of any day (the owner must see everything that waits for
- * them), then the ones created today (the business's local day) that are done, up to `TEAM_RUNS_MAX` in all. Oldest first, each
- * with its steps and the message the owner reads (its last `assistant` one). The alerts and the daily report read the same list.
+ * them), then the ones that stopped (blocked or uncertain) in the last `STOPPED_DAYS` days, whatever day they were made (so a piece
+ * that stopped last night does not vanish at midnight), then the others created today (the business's local day), up to
+ * `TEAM_RUNS_MAX` in all and each run once. Oldest first, each with its steps and the message the owner reads (its last `assistant`
+ * one). The alerts and the daily report read the same list (they only use what waits for the owner's go-ahead).
  */
 export async function loadTeamRuns(
   businessId: string,
@@ -63,14 +68,22 @@ export async function loadTeamRuns(
       },
     });
   const open = await read({ status: { in: [...OPEN_STATUSES] } }, TEAM_RUNS_MAX);
-  const done = TEAM_RUNS_MAX > open.length
+  const stopped = TEAM_RUNS_MAX > open.length
     ? await read(
-        { status: { notIn: [...OPEN_STATUSES] }, createdAt: { gte: from, lt: to } },
+        { status: { in: [...STOPPED] }, updatedAt: { gte: new Date(now.getTime() - STOPPED_DAYS * 24 * 3600_000) } },
         TEAM_RUNS_MAX - open.length,
       )
     : [];
-  // A run that finished between the two reads is in both: it counts once.
-  const rows = [...new Map([...open, ...done].map((r) => [r.id, r])).values()].sort(
+  // A run already read (one stopped today, or one that stopped between the reads) is not read again: the places left are today's others.
+  const taken = new Set([...open, ...stopped].map((r) => r.id));
+  const done = TEAM_RUNS_MAX > taken.size
+    ? await read(
+        { status: { notIn: [...OPEN_STATUSES] }, createdAt: { gte: from, lt: to }, id: { notIn: [...taken] } },
+        TEAM_RUNS_MAX - taken.size,
+      )
+    : [];
+  // A run that finished between the reads is in two of them: it counts once.
+  const rows = [...new Map([...open, ...stopped, ...done].map((r) => [r.id, r])).values()].sort(
     (a, b) => a.createdAt.getTime() - b.createdAt.getTime() || (a.id < b.id ? -1 : 1),
   );
   const messages = rows.length
