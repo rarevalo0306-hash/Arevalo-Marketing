@@ -201,6 +201,11 @@ export const roleFor = (step: string) =>
       : step === "design" || step.startsWith("video")
         ? "diseno"
         : "matya";
+/** The language of the owner's request: English when it says so, Spanish by default. */
+export const languageOf = (prompt: string): "es" | "en" =>
+  /\b(please|campaign|summary|hello|create|prepare)\b/i.test(prompt)
+    ? "en"
+    : "es";
 export function inferKind(text: string): RunKind {
   const s = text
     .normalize("NFD")

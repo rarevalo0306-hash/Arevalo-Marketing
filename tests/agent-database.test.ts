@@ -1,5 +1,5 @@
 /** Run only against the isolated local fixture, never a configured remote database. */
-import { beforeEach, afterAll, describe, it, expect, vi } from "vitest";
+import { beforeEach, afterEach, afterAll, describe, it, expect, vi } from "vitest";
 import { db } from "@/lib/db";
 import {
   enqueue,
@@ -24,6 +24,10 @@ import { collectNews } from "@/lib/agent/news";
 import { readSource } from "@/lib/agent/network";
 import { storeDesign } from "@/lib/media-formats";
 import { ensureStoredCopy } from "@/lib/library-files";
+import { AGENTS } from "@/lib/agent/agents";
+import { toolsFor } from "@/lib/agent/tools";
+import { BUILTIN_TEMPLATES } from "@/lib/design-shapes";
+import type { VideoMedia } from "@/lib/video-plan";
 vi.mock("@/lib/library-files", () => ({
   ensureStoredCopy: vi.fn().mockImplementation(async (id) =>
     `https://example.com/stored-${id}.mp4`,
@@ -55,6 +59,7 @@ import {
   projectCost,
   suggestMedia,
   loadVideoMedia,
+  maxCentsPerVideo,
 } from "@/lib/video-jobs";
 const url = process.env.MATYA_TEST_DATABASE_URL ?? "";
 const safe =
@@ -1209,5 +1214,244 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     const after = await row(child.id);
     expect(after).toMatchObject({ status: "waiting_approval", stage: 3 });
     expect(after.plan).toEqual(before.plan);
+  });
+
+  describe("the team's agents and their closed toolboxes", () => {
+    const DAY = 86400000;
+    const modelEnv = {
+      MATYA_AGENT_PROVIDER: "gemini",
+      MATYA_AGENT_MODEL: "gemini-x",
+      MATYA_AGENT_INPUT_USD_PER_MILLION: "0.3",
+      MATYA_AGENT_OUTPUT_USD_PER_MILLION: "2.5",
+      GEMINI_API_KEY: "synthetic-no-provider-access",
+    };
+    const stubModel = (on: boolean) => {
+      for (const [k, v] of Object.entries(modelEnv))
+        vi.stubEnv(k, on ? v : "");
+    };
+    afterEach(() => vi.unstubAllEnvs());
+    const stepRow = (
+      runId: string,
+      name: string,
+      output: unknown,
+      status = "succeeded",
+    ) =>
+      db.agentStep.create({
+        data: {
+          runId,
+          name,
+          specialist: "matya",
+          budgetDay: "2026-10-16",
+          status,
+          output: output as never,
+        },
+      });
+
+    it("routes a team run's first step to the director, who is not available yet", async () => {
+      stubModel(true);
+      await saveSettings(A, { ...settings, teamMode: true });
+      const team = await ask("x", { kind: "team" });
+      await workOne(A, executeStep, () => 0);
+      // The team kind reached its agent (and not the old `Paso desconocido.`); nothing was charged.
+      expect(await row(team.id)).toMatchObject({
+        status: "uncertain",
+        stage: 0,
+        error: "Agente no disponible.",
+        chargedCents: 0,
+        reservedCents: 0,
+      });
+      expect(
+        await db.agentStep.findUniqueOrThrow({
+          where: { runId_name: { runId: team.id, name: "plan" } },
+        }),
+      ).toMatchObject({ status: "uncertain", chargedCents: 0, reservedCents: 0 });
+    });
+
+    it("routes a piece's steps to the agent of its plan", async () => {
+      stubModel(true);
+      const child = await pieceRun();
+      await workOne(A, executeStep, () => 0);
+      expect(await row(child.id)).toMatchObject({
+        status: "uncertain",
+        error: "Agente no disponible.",
+        chargedCents: 0,
+      });
+      expect(
+        await db.agentStep.findUniqueOrThrow({
+          where: { runId_name: { runId: child.id, name: "copy" } },
+        }),
+      ).toMatchObject({ agent: "copy", status: "uncertain" });
+    });
+
+    it("stops on the model's own setup error before the agent runs", async () => {
+      stubModel(false);
+      await saveSettings(A, { ...settings, teamMode: true });
+      const team = await ask("x", { kind: "team" });
+      const run = vi.spyOn(AGENTS.director, "run");
+      await workOne(A, executeStep, () => 0);
+      expect(run).not.toHaveBeenCalled();
+      run.mockRestore();
+      const after = await row(team.id);
+      expect(after.error).toContain("modelo");
+      expect(after.chargedCents).toBe(0);
+    });
+
+    it("keeps the old kinds on their old route", async () => {
+      const r = await ask("Ponme al día", { kind: "briefing" });
+      await workOne(A, executeStep, () => 0);
+      expect(await row(r.id)).toMatchObject({ status: "completed", error: "" });
+    });
+
+    it("readStepOutput returns the output of the highest succeeded round of the run's own step", async () => {
+      const r = await ask();
+      const other = await ask("Otro encargo");
+      await stepRow(r.id, "copy", { v: 0 });
+      await stepRow(r.id, "copy-r1", { v: 1 });
+      await stepRow(r.id, "copy-r2", { v: 2 }, "uncertain");
+      await stepRow(r.id, "copy-r10", { v: 10 });
+      await stepRow(r.id, "copyright", { v: "no" });
+      await stepRow(r.id, "design-r1", { v: "d1" });
+      await stepRow(other.id, "research", { v: "other run" });
+      const use = toolsFor(AGENTS.strategy, r).use("readStepOutput");
+      expect(await use("copy")).toEqual({ v: 10 });
+      expect(await use("design")).toEqual({ v: "d1" });
+      expect(await use("research")).toBeNull();
+      expect(await use("review")).toBeNull();
+      // Only the round that succeeded counts, and a run cannot read another business through its own id.
+      await db.agentStep.deleteMany({ where: { runId: r.id, name: "copy-r10" } });
+      expect(await use("copy")).toEqual({ v: 1 });
+      const spoofed = toolsFor(AGENTS.strategy, { ...r, businessId: B }).use(
+        "readStepOutput",
+      );
+      expect(await spoofed("copy")).toBeNull();
+    });
+
+    it("readCalendar lists this business's posts and campaigns around now and nothing else", async () => {
+      const post = (id: string, extra: Record<string, unknown>) =>
+        db.post.create({
+          data: {
+            id,
+            businessId: A,
+            text: `Texto ${id}`,
+            status: "scheduled",
+            targets: { create: [{ channel: "facebook" }] },
+            ...extra,
+          },
+        });
+      const old = new Date(Date.now() - 40 * DAY);
+      await post("cal-recent", { createdAt: new Date(Date.now() - 10 * DAY), scheduledAt: new Date(Date.now() - 10 * DAY) });
+      await post("cal-next", { createdAt: old, scheduledAt: new Date(Date.now() + 3 * DAY) });
+      await post("cal-old", { createdAt: old, scheduledAt: old });
+      await post("cal-far", { createdAt: old, scheduledAt: new Date(Date.now() + 20 * DAY) });
+      await db.post.create({ data: { id: "cal-b", businessId: B, text: "De B" } });
+      await db.campaign.create({ data: { id: "cal-camp", businessId: A, name: "Activa" } });
+      await db.campaign.create({
+        data: { id: "cal-camp-old", businessId: A, name: "Vieja", createdAt: old, startsAt: old },
+      });
+      await db.campaign.create({ data: { id: "cal-camp-b", businessId: B, name: "De B" } });
+      const calendar = await toolsFor(AGENTS.director, await ask()).use("readCalendar")();
+      expect(calendar.posts.map((p) => p.id)).toEqual(["cal-recent", "cal-next"]);
+      expect(calendar.posts[1]).toMatchObject({
+        status: "scheduled",
+        channels: ["facebook"],
+        text: "Texto cal-next",
+        campaignId: null,
+      });
+      expect(calendar.campaigns.map((c) => c.id)).toEqual(["cal-camp"]);
+      expect(Date.parse(calendar.to) - Date.parse(calendar.from)).toBe(37 * DAY);
+    });
+
+    it("readSeoReports reads only this business's latest reports of a kind", async () => {
+      for (const [businessId, n] of [[A, 1], [A, 2], [A, 3], [B, 9]] as const)
+        await db.seoReport.create({ data: { businessId, kind: "keywords", data: { n } } });
+      await db.seoReport.create({ data: { businessId: A, kind: "audit", data: { n: 7 } } });
+      const use = toolsFor(AGENTS.seo, await ask()).use("readSeoReports");
+      expect((await use("keywords")).map((r) => r.data)).toEqual([{ n: 3 }]);
+      expect((await use("keywords", 2)).map((r) => r.data)).toEqual([{ n: 3 }, { n: 2 }]);
+      expect((await use("keywords", 500)).map((r) => r.businessId)).toEqual([A, A, A]);
+      expect((await use("audit")).map((r) => r.data)).toEqual([{ n: 7 }]);
+    });
+
+    it("readContext loads this business's context", async () => {
+      const context = await toolsFor(AGENTS.director, await ask()).use("readContext")();
+      expect(context.business.id).toBe(A);
+      expect(context.industry.geography).toContain("Florida");
+    });
+
+    it("brandKit gives the business's brand and its own templates, or the factory ones", async () => {
+      const r = await ask();
+      const use = toolsFor(AGENTS.design, r).use("brandKit");
+      const factory = await use();
+      expect(factory.brand).toMatchObject({ name: "Ricardo PA · fixture" });
+      expect(factory.brand.style).toBeTruthy();
+      expect(factory.templates).toEqual(BUILTIN_TEMPLATES);
+      const mine = { ...BUILTIN_TEMPLATES[1], name: "Mía" };
+      await db.template.create({ data: { businessId: A, name: "Mía", spec: mine } });
+      await db.template.create({
+        data: { businessId: B, name: "De B", spec: { ...BUILTIN_TEMPLATES[2], name: "De B" } },
+      });
+      await db.template.create({ data: { businessId: A, name: "Rota", spec: { nope: true } } });
+      expect((await use()).templates).toEqual([mine]);
+    });
+
+    it("listLibrary offers only this business's library photos", async () => {
+      const owned = await libraryItem("lib-owned");
+      await libraryItem("lib-other", { businessId: B });
+      const use = toolsFor(AGENTS.design, await ask()).use("listLibrary");
+      expect((await use("techos")).map((m) => m.id)).toEqual([owned.id]);
+      expect((await use("techos", { kind: "photo", language: "en" })).map((m) => m.id)).toEqual([owned.id]);
+      expect(await use("automóviles")).toEqual([]);
+      await db.libraryItem.update({ where: { id: owned.id }, data: { usedCount: 1, lastUsedAt: new Date() } });
+      expect(await use("techos")).toEqual([]);
+      expect((await use("techos", { reuse: [owned.id] })).map((m) => m.id)).toEqual([owned.id]);
+    });
+
+    it("renderDesign always stores under the run's own business", async () => {
+      const input = {
+        brand: { name: "Marca", color: "#123456" },
+        headline: "Titular",
+        template: BUILTIN_TEMPLATES[4],
+        shape: "square" as const,
+      };
+      const url = await toolsFor(AGENTS.design, await ask()).use("renderDesign")(input);
+      expect(url).toBe("https://example.com/fixture-square.jpg");
+      expect(storeDesign).toHaveBeenCalledWith(input, A, undefined);
+    });
+
+    const photo: VideoMedia = {
+      id: "m1",
+      kind: "photo",
+      url: "https://example.com/m1.jpg",
+      thumb: "https://example.com/m1.jpg",
+      focus: null,
+      width: 1080,
+      height: 1920,
+      durationSec: 0,
+      about: "techos",
+    };
+
+    it("videoQuote prices a storyboard without music and starts nothing", async () => {
+      const quote = await toolsFor(AGENTS.video, await ask()).use("videoQuote")("Cuida tu techo", [photo]);
+      expect(quote.storyboard.music.on).toBe(false);
+      expect(quote.cents).toBe(projectCost(quote.storyboard));
+      expect(quote.maxCents).toBe(maxCentsPerVideo());
+      expect(quote.storyboard.scenes.length).toBeGreaterThan(1);
+      expect(startRender).not.toHaveBeenCalled();
+      expect(await db.seoReport.count({ where: { businessId: A, kind: "video" } })).toBe(0);
+    });
+
+    it("startVideo saves the project and starts the render for the run's own business", async () => {
+      const r = await ask();
+      const { storyboard, cents } = await toolsFor(AGENTS.video, r).use("videoQuote")("Cuida tu techo", [photo]);
+      const tools = toolsFor({ key: "video", tools: ["startVideo"] }, r);
+      const started = await tools.use("startVideo")(storyboard, cents);
+      expect(started.status).toBe("rendering");
+      const saved = await db.seoReport.findUniqueOrThrow({ where: { id: started.projectId } });
+      expect(saved).toMatchObject({ businessId: A, kind: "video" });
+      expect(startRender).toHaveBeenCalledWith(A, started.projectId, cents, "auto");
+      await tools.use("startVideo")(storyboard, cents, "approved");
+      expect(vi.mocked(startRender).mock.calls[1][3]).toBe("approved");
+      expect(await db.seoReport.count({ where: { businessId: B } })).toBe(0);
+    });
   });
 });
