@@ -1,6 +1,7 @@
 // La vista del equipo: en qué columna del tablero está cada encargo, cómo va y qué espera del dueño.
 // Módulo puro y seguro para el cliente: sin base de datos, sin red y sin el registro de agentes (`agents/index`, solo del servidor).
 // Lo consumen las pantallas Hoy y Equipo, los emails de alerta y la sección del reporte diario; `loadTeamRuns` (team-load.ts) lo llena.
+import { clockMinutes } from "@/lib/business-tz";
 import { TEAM_STEPS, isArticleStep, problemsOf, stepsOfPlan } from "./plan";
 
 export type TeamStepView = {
@@ -146,6 +147,15 @@ export function isTickStale(capturedAt: string, tickAt: string | null | undefine
   return !(age <= TICK_STALE_MS);
 }
 
+/**
+ * Whether the business's wall clock (`tz`) at `at` (a time from the server, like the snapshot's `capturedAt`) is past `hour`:00: the
+ * morning plan of that hour should be there by now. False when `at` cannot be read.
+ */
+export function pastHour(at: string, tz: string, hour: number): boolean {
+  const time = Date.parse(at);
+  return Number.isFinite(time) && clockMinutes(tz, new Date(time)) > hour * 60;
+}
+
 export type NeedKind = "video" | "articulo" | "revision" | "publicar";
 export type NeedItem = {
   runId: string;
@@ -167,7 +177,8 @@ export function pieceInfo(run: TeamRunView): { topic: string; format: string; ch
   };
 }
 
-const REVIEW_STEP = /^review(-r\d+)?$/;
+/** An editorial review of a piece: its first round (`review`) or a later one (`review-r<n>`). */
+export const REVIEW_STEP = /^review(-r\d+)?$/;
 /** A pass of an article's publication: the first keeps the step's name, every later one adds `:<n>`. */
 const PUBLISH_PASS = /^article_publish(:\d+)?$/;
 

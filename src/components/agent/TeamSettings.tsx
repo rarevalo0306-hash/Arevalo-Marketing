@@ -31,8 +31,8 @@ const PROVIDERS = [
 ] as const;
 type Provider = (typeof PROVIDERS)[number]["id"];
 
-/** 7 → "7:00 a. m." (en: "7:00 AM"); 0 → "12:00 a. m.", 12 → "12:00 p. m.". */
-function hourText(hour: number, lang: "es" | "en"): string {
+/** 7 → "7:00 a. m." (en: "7:00 AM"); 0 → "12:00 a. m.", 12 → "12:00 p. m.". The Hoy screen tells the plan's hour the same way. */
+export function hourText(hour: number, lang: "es" | "en"): string {
   const h = hour % 12 === 0 ? 12 : hour % 12;
   const pm = hour >= 12;
   return lang === "en" ? `${h}:00 ${pm ? "PM" : "AM"}` : `${h}:00 ${pm ? "p. m." : "a. m."}`;

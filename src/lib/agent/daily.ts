@@ -1,18 +1,14 @@
 // El plan de la mañana: a la hora del dueño (`dailyHour`, en la hora de su negocio) cada negocio con modo equipo recibe un
 // encargo `team` "Plan del día" con las señales del día. Una sola vez por día local: el día va en la clave del encargo
 // (`daily-<negocio>-<día>`), así que dos vueltas a la vez crean uno solo (`@@unique([businessId, requestKey])`).
-import { businessTz, isDay, localDay } from "@/lib/business-tz";
+import { businessTz, clockMinutes, isDay, localDay } from "@/lib/business-tz";
 import { db } from "@/lib/db";
 import { AgentError } from "./access";
 import { enqueue, OPEN_RUN_CAP, OPEN_STATUSES } from "./queue";
 import { collectSignals } from "./signals";
 
-/** Minutes shown by the business's wall clock since its midnight (07:30 is 450 whatever the day's length). */
-export function clockMinutes(tz: string, now: Date): number {
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", hour: "2-digit", minute: "2-digit" }).formatToParts(now);
-  const at = (type: string) => Number(parts.find((p) => p.type === type)?.value);
-  return at("hour") * 60 + at("minute");
-}
+// The business's wall clock lives in `business-tz` (the Hoy screen reads it too); it keeps its name here for the plan's callers.
+export { clockMinutes };
 
 /**
  * The local day (`YYYY-MM-DD`) whose plan is due now, or null. It is due when the business's clock has reached `dailyHour`

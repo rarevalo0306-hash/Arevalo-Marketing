@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AgentCenter } from "@/components/agent/AgentCenter";
+import { AgentCenter, initialTab } from "@/components/agent/AgentCenter";
 import { I18nProvider } from "@/components/I18n";
 import { TeamRoster } from "@/components/agent/TeamRoster";
 import { TeamToday, redoBody } from "@/components/agent/TeamToday";
@@ -159,17 +159,52 @@ describe("Hoy: avisos", () => {
     });
   });
 
-  it("keeps working without a team snapshot (nothing loaded yet)", () => {
+  it("says the team could not be loaded, instead of the empty states, when team mode is on and the team view failed", () => {
     const html = render({ team: null });
-    expect(html).toContain("Nada espera tu aprobación.");
-    expect(html).toContain("Hoy todavía no hay piezas.");
+    expect(html).toContain("No se pudo cargar el equipo. Intenta de nuevo en un momento.");
+    for (const empty of ["Nada espera tu aprobación.", "Hoy todavía no hay piezas.", "El plan de hoy llega a las", "El plan de hoy no llegó todavía"])
+      expect(html).not.toContain(empty);
+    // The pause and the tick are the workspace's own: they are still told.
+    const paused = render({ team: null, settings: { pausedAt: "2026-10-16T18:30:00.000Z", tickAt: null } });
+    expect(paused).toContain("MATYA está en pausa desde");
+    expect(paused).toContain(TICK_WARNING);
+    const en = renderToStaticMarkup(
+      <I18nProvider lang="en">
+        <TeamToday data={snap({ team: null })} busy={false} act={async () => true} onSettings={() => {}} />
+      </I18nProvider>,
+    );
+    expect(en).toContain("The team could not be loaded. Try again in a moment.");
   });
 });
 
 describe("Hoy: el plan de hoy", () => {
-  it("says when the plan arrives if the Director has not planned today", () => {
-    expect(render({ settings: { dailyHour: 7 } })).toContain("El plan de hoy llega a las 7:00.");
-    expect(render({ settings: { dailyHour: 9 } })).toContain("El plan de hoy llega a las 9:00.");
+  // 18:00Z is 2:00 p.m. in New York (the business's clock): the plans of 3 p.m. and later are still to come.
+  it("says when the plan arrives, in the 12-hour format of the settings, if the Director has not planned today", () => {
+    expect(render({ settings: { dailyHour: 15 } })).toContain("El plan de hoy llega a las 3:00 p. m.");
+    expect(render({ settings: { dailyHour: 23 } })).toContain("El plan de hoy llega a las 11:00 p. m.");
+    // Before the hour on the business's clock, not on UTC's: at 07:00Z it is 3:00 a.m. in New York.
+    const early = "2026-10-16T07:00:00.000Z";
+    expect(render({ settings: { dailyHour: 7 }, capturedAt: early })).toContain("El plan de hoy llega a las 7:00 a. m.");
+    expect(render({ settings: { dailyHour: 0 }, capturedAt: early })).not.toContain("llega a las");
+  });
+
+  it("once the plan's hour has passed on the business's clock with no plan, says it did not arrive and to check the settings", () => {
+    for (const dailyHour of [7, 13]) {
+      const html = render({ settings: { dailyHour } });
+      expect(html).toContain("El plan de hoy no llegó todavía. Revisa la configuración.");
+      expect(html).not.toContain("llega a las");
+    }
+    // 2:00 p.m. exactly is not past 2 p.m.; a minute later it is.
+    expect(render({ settings: { dailyHour: 14 } })).toContain("El plan de hoy llega a las 2:00 p. m.");
+    expect(render({ settings: { dailyHour: 14 }, capturedAt: "2026-10-16T18:01:00.000Z" })).toContain("El plan de hoy no llegó todavía.");
+    // Managua (UTC-6) at 18:00Z is noon: its plan of 1 p.m. is still to come.
+    expect(render({ settings: { dailyHour: 13 }, team: { tz: "America/Managua" } })).toContain("El plan de hoy llega a las 1:00 p. m.");
+    const en = renderToStaticMarkup(
+      <I18nProvider lang="en">
+        <TeamToday data={snap({ settings: { dailyHour: 7 } })} busy={false} act={async () => true} onSettings={() => {}} />
+      </I18nProvider>,
+    );
+    expect(en).toContain("Today&#x27;s plan has not arrived yet. Check the settings.");
   });
 
   it("shows today's daily goal and its piece count", () => {
@@ -193,9 +228,9 @@ describe("Hoy: el plan de hoy", () => {
       createdAt: "2026-10-14T12:00:00.000Z",
       steps: [step("plan", { output: { goal: "Plan de anteayer", maxPieces: 1 } })],
     });
-    const html = render({ team: { runs: [owner, old] } });
+    const html = render({ settings: { dailyHour: 15 }, team: { runs: [owner, old] } });
     const summary = html.match(/<h2[^>]*>El plan de hoy<\/h2>[\s\S]*?<\/section>/)?.[0] ?? "";
-    expect(summary).toContain("El plan de hoy llega a las 7:00.");
+    expect(summary).toContain("El plan de hoy llega a las 3:00 p. m.");
     expect(summary).not.toContain("Plan de anteayer");
     expect(summary).not.toContain("Objetivo del dueño");
   });
@@ -268,6 +303,49 @@ describe("Hoy: el tablero", () => {
     expect(html).toContain("Campaña preparada");
     // Un paso de código (sin agente de IA) no inventa un modelo.
     expect(html).toContain("MATYA");
+  });
+
+  it("the piece detail shows each review's verdict and its notes, escaped", () => {
+    const tono = { kind: "tono", detail: "Promete un <b>resultado</b>.", sendBackTo: "copy" };
+    const imagen = { kind: "imagen", detail: "El logo no se lee.", sendBackTo: "design" };
+    const card = run({
+      plan: piecePlan(["copy", "design", "review", "copy-r1", "design-r1", "review-r1", "prepare"], { ...roof, topic: "Con revisiones" }),
+      stage: 6,
+      steps: [
+        step("copy"),
+        step("design"),
+        step("review", { agent: "review", output: { approved: false, problems: [tono, imagen, { kind: "roto" }], ruleProblems: [] } }),
+        step("copy-r1"),
+        step("design-r1"),
+        step("review-r1", { agent: "review", output: { approved: true, problems: [], ruleProblems: [] } }),
+      ],
+    });
+    const html = columnOf(render({ team: { runs: [card] } }), "programada");
+    const steps = [...html.matchAll(/<li><div class="stepHead">[\s\S]*?(?=<li><div class="stepHead">|<\/ol>)/g)].map((m) => m[0]);
+    const failed = steps.find((li) => li.includes(">Revisión editorial<")) ?? "";
+    const passed = steps.find((li) => li.includes(">Revisión editorial (vuelta 1)<")) ?? "";
+    expect(failed).toContain("No aprobada");
+    expect(failed).toContain("tono");
+    expect(failed).toContain("Promete un &lt;b&gt;resultado&lt;/b&gt;.");
+    expect(failed).not.toContain("<b>resultado</b>");
+    expect(failed).toContain("imagen");
+    expect(failed).toContain("El logo no se lee.");
+    // A problem that cannot be read is skipped.
+    expect(failed).not.toContain("roto");
+    expect(passed).toContain("Aprobada");
+    expect(passed).not.toContain("No aprobada");
+    // A step that is not a review shows no verdict; a review without an output yet shows none either.
+    const copyStep = steps.find((li) => li.includes(">Redacción<")) ?? "";
+    expect(copyStep).not.toContain("Aprobada");
+    const pending = run({ plan: piecePlan(POST), stage: 2, steps: [step("review", { status: "running" })] });
+    expect(render({ team: { runs: [pending] } })).not.toContain("probada");
+    const en = renderToStaticMarkup(
+      <I18nProvider lang="en">
+        <TeamToday data={snap({ team: { runs: [card] } })} busy={false} act={async () => true} onSettings={() => {}} />
+      </I18nProvider>,
+    );
+    expect(en).toContain("Not approved");
+    expect(en).toContain("Approved");
   });
 
   it("tells the morning plan apart and does not break on a piece whose plan cannot be read", () => {
@@ -402,7 +480,7 @@ describe("Hoy en inglés", () => {
     });
     const html = renderToStaticMarkup(
       <I18nProvider lang="en">
-        <TeamToday data={snap({ settings: { pausedAt: "2026-10-16T18:30:00.000Z", tickAt: null }, team: { runs: [blocked] } })} busy={false} act={async () => true} onSettings={() => {}} />
+        <TeamToday data={snap({ settings: { pausedAt: "2026-10-16T18:30:00.000Z", tickAt: null, dailyHour: 19 }, team: { runs: [blocked] } })} busy={false} act={async () => true} onSettings={() => {}} />
       </I18nProvider>,
     );
     for (const text of [
@@ -411,7 +489,7 @@ describe("Hoy en inglés", () => {
       "The every-minute call is not active",
       "View settings",
       "Today&#x27;s plan",
-      "Today&#x27;s plan arrives at 7:00.",
+      "Today&#x27;s plan arrives at 7:00 PM.",
       "Needs your OK",
       "Did not pass review",
       "Approve",
@@ -467,6 +545,30 @@ describe("AgentCenter: la pestaña Hoy", () => {
     const order = ["Conversación", "Hoy", "Conocimiento"].map((name) => html.indexOf(`>${name}<`));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
+  it("initialTab: the tab the URL asks for, Hoy and Equipo only with team mode on, the conversation otherwise", () => {
+    expect(initialTab("today", true)).toBe("today");
+    expect(initialTab("team", true)).toBe("team");
+    for (const tab of ["activity", "knowledge", "news", "results", "settings"]) {
+      expect(initialTab(tab, true)).toBe(tab);
+      expect(initialTab(tab, false)).toBe(tab);
+    }
+    for (const tab of ["today", "team"]) expect(initialTab(tab, false)).toBe("activity");
+    for (const tab of [undefined, null, "", "Today", "hoy", "constructor", "__proto__", "today "]) expect(initialTab(tab, true)).toBe("activity");
+  });
+
+  it("opens on the tab the URL asks for (the alerts and the daily report link to Hoy)", () => {
+    const current = (html: string) => /<button[^>]*aria-current="page"[^>]*>([^<]*)/.exec(html)?.[1];
+    const open = (tab: string | undefined, teamMode: boolean) =>
+      renderToStaticMarkup(<AgentCenter businessId="b1" initial={snap({ settings: { teamMode } })} tab={tab} />);
+    expect(current(open("today", true))).toBe("Hoy");
+    expect(current(open("team", true))).toBe("Equipo");
+    expect(current(open("settings", true))).toBe("Configuración");
+    // Team mode off: there is no Hoy tab, so the link opens the conversation.
+    expect(current(open("today", false))).toBe("Conversación");
+    expect(current(open(undefined, true))).toBe("Conversación");
+    expect(current(open("nada", true))).toBe("Conversación");
   });
 });
 

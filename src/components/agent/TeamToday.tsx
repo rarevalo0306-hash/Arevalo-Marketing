@@ -3,13 +3,15 @@
 // Todo lo que viene del equipo o del dueño (temas, textos, problemas, notas) se pinta como texto: React lo escapa.
 import { useId, useState } from "react";
 import { useT } from "@/components/I18n";
-import { OWNER_NOTE_MAX } from "@/lib/agent/plan";
+import { OWNER_NOTE_MAX, problemsOf } from "@/lib/agent/plan";
 import {
   BOARD_COLUMNS,
+  REVIEW_STEP,
   boardColumn,
   boardState,
   isTickStale,
   needsYou,
+  pastHour,
   pieceInfo,
   type BoardColumn,
   type NeedItem,
@@ -23,6 +25,7 @@ import { channelName } from "@/lib/channels";
 import type { T } from "@/lib/i18n";
 import { fmtDateTime } from "@/lib/time";
 import { Output, labels, stepLabel, usd } from "./shared";
+import { hourText } from "./TeamSettings";
 import type { Snapshot } from "./types";
 import s from "./Team.module.css";
 
@@ -103,9 +106,14 @@ export function TeamToday({
   const plan = dailyPlan(team);
   const planGoal = plan ? goalOf(plan) : "";
   const planPieces = plan ? piecesOf(plan) : null;
+  const dailyHour = settings?.dailyHour ?? 7;
+  // With no plan yet: once its hour has passed on the business's clock (at the moment the server took the snapshot), it is late.
+  const planLate = !!team && pastHour(data.capturedAt, team.tz, dailyHour);
   // A missing, unreadable or old tick means the worker is not calling the engine every minute (read from the server's clocks).
   const tickStale = isTickStale(data.capturedAt, settings?.tickAt);
   const pausedSince = settings?.pausedAt ? fmtDateTime(settings.pausedAt, lang, tz) : "";
+  // Team mode is on but its view did not load (the snapshot logs why): empty lists here would tell the owner nothing waits for them.
+  const failed = !!settings?.teamMode && !team;
 
   return (
     <div className={s.today}>
@@ -134,6 +142,58 @@ export function TeamToday({
           )}
         </div>
       )}
+      {failed ? (
+        <div className={s.notice} role="status" data-tone="warn">
+          <p>{t("No se pudo cargar el equipo. Intenta de nuevo en un momento.", "The team could not be loaded. Try again in a moment.")}</p>
+        </div>
+      ) : (
+        <TodayBody
+          id={id}
+          plan={plan}
+          planGoal={planGoal}
+          planPieces={planPieces}
+          dailyHour={dailyHour}
+          planLate={planLate}
+          needs={needs}
+          runs={runs}
+          agents={agents}
+          busy={busy}
+          act={act}
+        />
+      )}
+    </div>
+  );
+}
+
+/** The plan of today, «Necesita tu sí» and the board: what the team's view tells. */
+function TodayBody({
+  id,
+  plan,
+  planGoal,
+  planPieces,
+  dailyHour,
+  planLate,
+  needs,
+  runs,
+  agents,
+  busy,
+  act,
+}: {
+  id: string;
+  plan: TeamRunView | null;
+  planGoal: string;
+  planPieces: number | null;
+  dailyHour: number;
+  planLate: boolean;
+  needs: NeedItem[];
+  runs: TeamRunView[];
+  agents: TeamAgentView[];
+  busy: boolean;
+  act: (body: Record<string, unknown>) => Promise<boolean>;
+}) {
+  const { t } = useT();
+  return (
+    <>
       <section className={s.block} aria-labelledby={`${id}-plan`}>
         <h2 id={`${id}-plan`}>{t("El plan de hoy", "Today's plan")}</h2>
         {plan ? (
@@ -149,9 +209,11 @@ export function TeamToday({
               </p>
             )}
           </div>
+        ) : planLate ? (
+          <p className={s.empty}>{t("El plan de hoy no llegó todavía. Revisa la configuración.", "Today's plan has not arrived yet. Check the settings.")}</p>
         ) : (
           <p className={s.empty}>
-            {t(`El plan de hoy llega a las ${settings?.dailyHour ?? 7}:00.`, `Today's plan arrives at ${settings?.dailyHour ?? 7}:00.`)}
+            {t(`El plan de hoy llega a las ${hourText(dailyHour, "es")}.`, `Today's plan arrives at ${hourText(dailyHour, "en")}.`)}
           </p>
         )}
       </section>
@@ -199,7 +261,7 @@ export function TeamToday({
           })}
         </div>
       </section>
-    </div>
+    </>
   );
 }
 
@@ -258,6 +320,35 @@ function NeedCard({ need, busy, act }: { need: NeedItem; busy: boolean; act: (bo
   );
 }
 
+/**
+ * What an editorial review said: approved or not, and each problem it found (its kind and what is wrong). Nothing before the review
+ * wrote its verdict. Everything is text from the AI or the owner (a «Rehacer» note): React escapes it.
+ */
+function ReviewNotes({ output }: { output: Record<string, unknown> | null }) {
+  const { t } = useT();
+  const approved = output?.approved;
+  if (typeof approved !== "boolean") return null;
+  const problems = problemsOf(output);
+  return (
+    <div className={s.review}>
+      <p className={s.verdict}>
+        <span className={s.state} data-state={approved ? "done" : "attention"}>
+          {approved ? t("Aprobada", "Approved") : t("No aprobada", "Not approved")}
+        </span>
+      </p>
+      {problems.length > 0 && (
+        <ul className={s.problems}>
+          {problems.map((p, i) => (
+            <li key={i}>
+              <b>{p.kind}</b> {p.detail}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /** The name an agent key is shown with: its label, MATYA for the steps that are plain code, nothing for old runs. */
 function agentName(key: string, agents: TeamAgentView[], t: T): string {
   if (!key) return "";
@@ -307,7 +398,7 @@ function BoardCard({ run, agents }: { run: TeamRunView; agents: TeamAgentView[] 
               </div>
               <p className={s.meta}>{who}</p>
               {st.error && <p className={s.error}>{st.error}</p>}
-              <Output value={st.output} />
+              {REVIEW_STEP.test(st.name) ? <ReviewNotes output={st.output} /> : <Output value={st.output} />}
             </li>
           );
         })}

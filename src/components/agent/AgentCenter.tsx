@@ -44,18 +44,33 @@ function Icon({ type }: { type: "mic" | "send" | "stop" | "sound" | "arrow" }) {
   );
 }
 
+/** The tabs of the center, in order. Hoy (`today`) and Equipo (`team`) exist only with team mode on. */
+const TAB_KEYS: readonly string[] = ["activity", "today", "team", "knowledge", "news", "results", "settings"];
+
+/**
+ * The tab the center opens on: the one the URL asks for (`?tab=`, as the team's alert emails and the daily report link to Hoy) when
+ * it is one of the center's tabs, Hoy and Equipo only while team mode is on; otherwise the conversation.
+ */
+export function initialTab(param: string | null | undefined, teamOn: boolean): string {
+  if (!param || !TAB_KEYS.includes(param)) return "activity";
+  return (param === "today" || param === "team") && !teamOn ? "activity" : param;
+}
+
 export function AgentCenter({
   businessId,
   initial,
   setupError,
+  tab: askedTab,
 }: {
   businessId: string;
   initial: Snapshot | null;
   setupError?: string;
+  /** The tab the URL asks for (`?tab=`), read once, on the first render. */
+  tab?: string;
 }) {
   const { t, lang } = useT();
   const [data, setData] = useState(initial);
-  const [chosenTab, setTab] = useState("activity");
+  const [chosenTab, setTab] = useState(() => initialTab(askedTab, !!initial?.settings?.teamMode));
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(setupError ?? "");

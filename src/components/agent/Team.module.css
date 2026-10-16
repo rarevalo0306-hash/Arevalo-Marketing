@@ -293,6 +293,14 @@
 .steps .meta {
   margin: 2px 0 0;
 }
+/* Lo que dijo cada revisión en el detalle de la pieza: el veredicto toma los colores de `.state` (también los del tema noche). */
+.review {
+  margin: 6px 0 0;
+}
+.verdict {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
 
 /* Equipo: una fila por agente (nombre, IA, estado, gasto) y el total del día. Solo usa los colores del tema, así que el tema noche no necesita los suyos. */
 .roster {
