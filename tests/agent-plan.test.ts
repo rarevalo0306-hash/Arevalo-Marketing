@@ -502,6 +502,47 @@ describe("el sitio web es el canal de los artículos y de nada más", () => {
   });
 });
 
+describe("TikTok es el canal de los videos y de nada más", () => {
+  const withTiktok = { ...limits, channels: ["facebook", "instagram", "tiktok", "seo"] };
+  const piece = (id: string, topic: string, format: string, channels: string[]) => ({ id, topic, channels, format });
+
+  it("una publicación solo con tiktok queda sin canal", () => {
+    const r = validatePieces([piece("p1", "Techos de tejas", "post", ["tiktok"])], withTiktok);
+    expect(r).toEqual({ pieces: [], dropped: [{ id: "p1", reason: "sin canal" }] });
+  });
+
+  it("una publicación pierde tiktok y conserva sus demás redes", () => {
+    const r = validatePieces([piece("p1", "Techos de tejas", "post", ["tiktok", "facebook"])], withTiktok);
+    expect(r.pieces.map((p) => p.channels)).toEqual([["facebook"]]);
+    expect(r.dropped).toEqual([]);
+  });
+
+  it("un video conserva tiktok", () => {
+    const r = validatePieces([piece("p1", "Techos de tejas", "video", ["tiktok"])], withTiktok);
+    expect(r.pieces.map((p) => p.channels)).toEqual([["tiktok"]]);
+    const mixed = validatePieces([piece("p2", "Otro video", "video", ["tiktok", "instagram", "youtube"])], withTiktok);
+    expect(mixed.pieces.map((p) => p.channels)).toEqual([["tiktok", "instagram"]]);
+  });
+
+  it("un carrusel y un artículo tampoco van a tiktok; youtube sigue fuera en todo formato", () => {
+    for (const format of ["carrusel", "articulo"]) {
+      const r = validatePieces([piece("p1", `Tema ${format}`, format, ["tiktok"])], withTiktok);
+      expect(r.dropped).toEqual([{ id: "p1", reason: "sin canal" }]);
+    }
+    const yt = validatePieces([piece("p1", "Un video", "video", ["youtube"])], { ...withTiktok, channels: [...withTiktok.channels, "youtube"] });
+    expect(yt.dropped).toEqual([{ id: "p1", reason: "sin canal" }]);
+  });
+
+  it("lo que cae por tiktok no gasta cupo ni marca su tema como visto", () => {
+    const r = validatePieces(
+      [piece("p1", "Tema uno", "post", ["tiktok"]), piece("p2", "Tema uno", "post", ["facebook"])],
+      { ...withTiktok, remainingPosts: 1 },
+    );
+    expect(r.pieces.map((p) => p.id)).toEqual(["p2"]);
+    expect(r.dropped).toEqual([{ id: "p1", reason: "sin canal" }]);
+  });
+});
+
 describe("lo que pidió el Director", () => {
   it("lee el máximo de piezas de la salida del plan y nada más", () => {
     expect(directorMax({ goal: "g", maxPieces: 3, reply: "" })).toBe(3);

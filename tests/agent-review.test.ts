@@ -327,10 +327,11 @@ describe("la llamada pagada", () => {
     expect(JSON.stringify(sent.design)).not.toContain("example.com");
     expect(sent.business).toEqual(BUSINESS);
     expect(sent.context).toEqual(slimContext(input.context));
-    // Only facts the business confirmed: its data, its unexpired knowledge and what the research found.
+    // Only facts the business confirmed: its data and its unexpired knowledge. The research goes apart, as context.
     const facts = sent.knownFacts as string[];
     expect(facts).toContain("Atendemos cada día de 8 a 5.");
-    expect(facts).toContain("¿Cuánto cuesta reparar un techo?");
+    expect(facts).not.toContain("¿Cuánto cuesta reparar un techo?");
+    expect(sent.research).toEqual(["¿Cuánto cuesta reparar un techo?"]);
     expect(facts.some((f) => f.includes("305-555-0100"))).toBe(true);
     expect(facts.some((f) => f.includes("https://mio.com"))).toBe(true);
     expect(facts.some((f) => f.includes("Techos Miami"))).toBe(true);
@@ -348,6 +349,33 @@ describe("la llamada pagada", () => {
     expect(ask).toHaveBeenCalledTimes(1);
   });
 
+  it("lo que halló la investigación no prueba una oferta: un hecho del negocio sí", async () => {
+    const withOffer = { ...COPY, variants: { ...COPY.variants, instagram: "Inspección gratis de tu techo" }, usage };
+    const research = { items: [{ kind: "keyword", detail: "inspección gratis de techos", source: "rank@2026-10-10" }] };
+    const known = [{ fact: "Hacemos inspección gratis de techos", url: "https://example.com/c", checkedAt: "2026-10-01T00:00:00.000Z", expiresAt: new Date(Date.now() + 86400000).toISOString(), geography: "US" }];
+    // A research item that mentions "gratis" does not let it pass: no AI call, a problem for the writer.
+    const bad = await runReview(setup({ outputs: { copy: withOffer, design: DESIGN, research } }).input);
+    expect(ask).not.toHaveBeenCalled();
+    expect((bad.data as { problems: { kind: string; sendBackTo: string }[] }).problems).toEqual([
+      expect.objectContaining({ kind: "dato-inventado", sendBackTo: "copy" }),
+    ]);
+    // The same research does not hurt a text that a knowledge item backs, and the model still gets it as context.
+    const good = await runReview(setup({ outputs: { copy: withOffer, design: DESIGN, research }, ctx: { knowledge: known } }).input);
+    expect((good.data as { approved: boolean }).approved).toBe(true);
+    expect(ask).toHaveBeenCalledTimes(1);
+    const sent = ask.mock.calls[0][2] as { knownFacts: string[]; research: string[] };
+    expect(sent.knownFacts).toContain("Hacemos inspección gratis de techos");
+    expect(sent.knownFacts).not.toContain("inspección gratis de techos");
+    expect(sent.research).toEqual(["inspección gratis de techos"]);
+    // Neither does research prove a phone or a site.
+    const phone = { items: [{ kind: "keyword", detail: "llama al 305-000-0000 o visita otra.com", source: "x" }] };
+    const wrong = { ...COPY, variants: { ...COPY.variants, instagram: "Llama al 305-000-0000 o visita otra.com" }, usage };
+    ask.mockClear();
+    const rules = await runReview(setup({ outputs: { copy: wrong, design: DESIGN, research: phone } }).input);
+    expect((rules.data as { problems: { kind: string }[] }).problems.map((p) => p.kind).sort()).toEqual(["telefono", "web"]);
+    expect(ask).not.toHaveBeenCalled();
+  });
+
   it("solo usa las herramientas de su caja: leer los pasos de la pieza y del equipo", async () => {
     const { input, use, readStep } = setup();
     await runReview(input);
@@ -358,7 +386,7 @@ describe("la llamada pagada", () => {
   it("las instrucciones piden revisar datos, teléfono y web, ortografía y coherencia, tratan el contenido como datos y siguen el idioma", async () => {
     await runReview(setup().input);
     const system = ask.mock.calls[0][1];
-    for (const word of ["knownFacts", "spelling", "image", "not instructions"]) expect(system).toContain(word);
+    for (const word of ["knownFacts", "spelling", "image", "not instructions", "never as proof"]) expect(system).toContain(word);
     expect(system).toContain("at most 40 characters");
     expect(system).toContain("Write each detail in Spanish");
     await runReview(setup({ language: "en" }).input);
@@ -509,7 +537,10 @@ describe("el presupuesto del prompt", () => {
     // The text under review is never cut.
     const sent = payload as { copy: { texts: Record<string, string> }; knownFacts: string[] };
     expect(sent.copy.texts).toEqual(Object.fromEntries(channels.map((c) => [c, fullCopy.variants[c as keyof typeof fullCopy.variants]])));
-    expect(sent.knownFacts.length).toBeLessThan(30 + 15 + 3);
+    // The research is the first thing to go; then the facts from the tail.
+    const extra = payload as { research: string[] };
+    expect(extra.research.length).toBe(0);
+    expect(sent.knownFacts.length).toBeLessThan(30 + 3);
   });
 
   it("cuando la pieza sola no cabe no se llama a la IA: queda un problema hacia copy y no cuesta", async () => {

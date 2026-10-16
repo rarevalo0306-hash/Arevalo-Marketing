@@ -12,7 +12,7 @@ export type ReviewRulesInput = {
   copy: Copy;
   mediaType: MediaType;
   business: { phone: string; website: string };
-  /** What the business confirmed (its facts, knowledge and research): the only source of figures, offers and contacts. */
+  /** What the business confirmed (its data and its unexpired knowledge): the only evidence for figures, offers and contacts. The team's research is not. */
   knownFacts: string[];
   /** Topics already used in the last 30 days, without this piece's own. */
   recentTopics: string[];
