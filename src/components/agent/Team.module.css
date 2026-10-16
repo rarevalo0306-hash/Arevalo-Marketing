@@ -1,0 +1,299 @@
+/* La pestaña Hoy del Centro MATYA. Va dentro de `.root` de AgentCenter.module.css: de ahí hereda --agent-accent y --agent-tint. */
+.today {
+  display: grid;
+  gap: 32px;
+  min-width: 0;
+}
+.today h2 {
+  font-size: 18px;
+  letter-spacing: -0.02em;
+  margin: 0 0 12px;
+}
+
+/* Avisos */
+.notices {
+  display: grid;
+  gap: 10px;
+}
+.notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 14px 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 14px;
+}
+.notice[data-tone="warn"] {
+  background: var(--warn-bg, var(--surface-2));
+  border-color: var(--warn-line, #b13c22);
+}
+.notice p {
+  flex: 1 1 260px;
+  min-width: 0;
+  margin: 0;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+/* Bloques */
+.block {
+  min-width: 0;
+}
+.plan {
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.goal {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.meta {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.empty {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.block > .empty + .board {
+  margin-top: 16px;
+}
+.topic {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.error {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #b13c22;
+  overflow-wrap: anywhere;
+}
+.state {
+  font-size: 12px;
+  color: var(--muted);
+}
+.state[data-state="working"],
+.state[data-state="running"],
+.state[data-state="done"],
+.state[data-state="succeeded"] {
+  color: var(--agent-accent);
+}
+.state[data-state="attention"],
+.state[data-state="blocked"],
+.state[data-state="uncertain"],
+.state[data-state="failed"] {
+  color: #b13c22;
+}
+
+/* Necesita tu sí */
+.needs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.need {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px 18px;
+  border: 1px solid var(--line-strong);
+  border-left: 4px solid var(--agent-accent);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+.need[data-kind="video"],
+.need[data-kind="revision"] {
+  border-left-color: #b13c22;
+}
+.tag {
+  padding: 2px 8px;
+  border-radius: 5px;
+  background: var(--agent-tint);
+  color: #085c54;
+  font-size: 12px;
+  font-weight: 600;
+}
+.text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+.problems {
+  margin: 0;
+  padding: 0 0 0 18px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.problems li + li {
+  margin-top: 6px;
+}
+.problems b {
+  font-weight: 600;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.redo {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+}
+.redo label {
+  font-size: 13px;
+  font-weight: 500;
+}
+.redo textarea {
+  width: 100%;
+  min-height: 84px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--field-bg, var(--surface));
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+
+/* Tablero: siete columnas en pantalla ancha, una debajo de otra en la angosta */
+.board {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+.column {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.columnHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 2px 10px;
+}
+.columnHead h3 {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.columnHead span {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.cards {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cards > li {
+  min-width: 0;
+}
+.card {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+.card summary {
+  display: grid;
+  gap: 4px;
+  cursor: pointer;
+  list-style: none;
+}
+.card summary::-webkit-details-marker {
+  display: none;
+}
+.card summary .meta {
+  margin: 0;
+}
+.cardFoot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 8px;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.steps {
+  margin: 12px 0 0;
+  padding: 0 0 0 18px;
+  font-size: 12px;
+}
+.steps > li {
+  margin-bottom: 12px;
+  padding-left: 2px;
+  min-width: 0;
+}
+.stepHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 8px;
+}
+.steps .meta {
+  margin: 2px 0 0;
+}
+
+/* Pantallas medianas: las columnas pasan a filas de varias, para que cada una conserve un ancho que se pueda leer */
+@media (max-width: 1100px) {
+  .board {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr));
+  }
+}
+@media (max-width: 719px) {
+  .board {
+    display: flex;
+    flex-direction: column;
+  }
+  .column[data-empty] {
+    display: none;
+  }
+  .notice :global(.btn) {
+    min-height: 44px;
+  }
+  .actions :global(.btn) {
+    flex: 1 1 auto;
+    min-height: 44px;
+  }
+}
