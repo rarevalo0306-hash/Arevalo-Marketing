@@ -76,10 +76,11 @@ describe("registro de agentes", () => {
     }
   });
 
-  it("todos usan modelo, tienen rótulo en español e inglés y son su propia clave", () => {
+  it("todos usan modelo menos el de diseño; tienen rótulo en español e inglés y son su propia clave", () => {
     for (const [key, a] of Object.entries(AGENTS)) {
       expect(a.key).toBe(key);
-      expect(a.usesModel).toBe(true);
+      // El diseño reutiliza la biblioteca y las plantillas de marca: no hace ninguna llamada a una IA.
+      expect(a.usesModel).toBe(key !== "design");
       expect(a.label.es).toBeTruthy();
       expect(a.label.en).toBeTruthy();
     }
@@ -93,15 +94,15 @@ describe("registro de agentes", () => {
   });
 
   it("mientras no existan los demás agentes, cada uno falla con un mensaje claro", async () => {
-    // El Director, el agente SEO y el de estrategia ya existen (tests/agent-director-seo.test.ts, tests/agent-strategy.test.ts);
-    // los otros cuatro siguen sin hacerse.
-    const done = ["director", "seo", "strategy"];
+    // El Director, el agente SEO, el de estrategia, el de redacción y el de diseño ya existen (tests/agent-director-seo.test.ts,
+    // tests/agent-strategy.test.ts, tests/agent-copy-design.test.ts); los otros dos siguen sin hacerse.
+    const done = ["director", "seo", "strategy", "copy", "design"];
     const todo = Object.values(AGENTS).filter((a) => !done.includes(a.key));
-    expect(todo.map((a) => a.key).sort()).toEqual(["copy", "design", "review", "video"]);
+    expect(todo.map((a) => a.key).sort()).toEqual(["review", "video"]);
     for (const a of todo)
       await expect(a.run({} as never)).rejects.toThrow("Agente no disponible.");
-    for (const key of done as ("director" | "seo" | "strategy")[])
-      expect(AGENTS[key].run).not.toBe(AGENTS.copy.run);
+    for (const key of done as ("director" | "seo" | "strategy" | "copy" | "design")[])
+      expect(AGENTS[key].run).not.toBe(AGENTS.review.run);
   });
 });
 

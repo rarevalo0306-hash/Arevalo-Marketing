@@ -14,7 +14,7 @@ import {
   planStepMeta,
   type StepResult,
 } from "@/lib/agent/queue";
-import { reworkSteps, stepsForPiece } from "@/lib/agent/plan";
+import { reworkSteps, stepsForPiece, type ReviewProblem } from "@/lib/agent/plan";
 import type { AgentRun } from "@prisma/client";
 import { workOne, executeStep, analyzeResults } from "@/lib/agent/execution";
 import { claimAgentPost } from "@/lib/agent/publication";
@@ -27,7 +27,11 @@ import { readSource } from "@/lib/agent/network";
 import { storeDesign } from "@/lib/media-formats";
 import { ensureStoredCopy } from "@/lib/library-files";
 import { AGENTS } from "@/lib/agent/agents";
-import { CALENDAR_LIMITS, toolsFor } from "@/lib/agent/tools";
+import { Copy as CopySchema, type Context } from "@/lib/agent/schema";
+import { boundedContext } from "@/lib/agent/bounded-context";
+import { meteredAsk, modelConfig } from "@/lib/agent/metered";
+import { MEDIA_POLICY, SYSTEM } from "@/lib/agent/prompts";
+import { CALENDAR_LIMITS, readStepOutput, toolsFor } from "@/lib/agent/tools";
 import { BUILTIN_TEMPLATES } from "@/lib/design-shapes";
 import type { VideoMedia } from "@/lib/video-plan";
 vi.mock("@/lib/library-files", () => ({
@@ -41,6 +45,11 @@ vi.mock("@/lib/media-formats", async (original) => ({
     `https://example.com/fixture-${input.shape}.jpg`,
   ),
 }));
+// The real provider call, unless a test gives it a fixed answer (`mockResolvedValueOnce`).
+vi.mock("@/lib/agent/metered", async (original) => {
+  const real = await original<typeof import("@/lib/agent/metered")>();
+  return { ...real, meteredAsk: vi.fn(real.meteredAsk) };
+});
 vi.mock("@/lib/agent/network", async (original) => ({
   ...(await original<typeof import("@/lib/agent/network")>()),
   readSource: vi.fn(),
@@ -304,6 +313,96 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     const design = await db.agentStep.findUniqueOrThrow({ where: { runId_name: { runId: r.id, name: "design" } } });
     expect(design.output).toMatchObject({ mediaSelection: { source: "brand_template", libraryItems: [] } });
     expect(await db.libraryItem.findUnique({ where: { id: usedElsewhere.id } })).toMatchObject({ usedCount: 1 });
+  });
+  describe("the campaign's copy and design steps keep their prompt, payload and output", () => {
+    const modelEnv = {
+      MATYA_AGENT_PROVIDER: "gemini",
+      MATYA_AGENT_MODEL: "gemini-x",
+      MATYA_AGENT_INPUT_USD_PER_MILLION: "0.3",
+      MATYA_AGENT_OUTPUT_USD_PER_MILLION: "2.5",
+      GEMINI_API_KEY: "synthetic-no-provider-access",
+    };
+    const usage = { inputTokens: 100, outputTokens: 50, cents: 3, model: "gemini-x" };
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      vi.mocked(meteredAsk).mockReset();
+    });
+
+    it("copy: one call with the same instruction and the same three-part payload", async () => {
+      for (const [k, v] of Object.entries(modelEnv)) vi.stubEnv(k, v);
+      const r = await ask("Prepara una campaña sobre techos");
+      await workOne(A, async () => ({ data: research }), () => 0);
+      vi.mocked(meteredAsk).mockResolvedValueOnce({ value: copy, usage });
+      await workOne(A, executeStep, () => 10);
+      expect(meteredAsk).toHaveBeenCalledTimes(1);
+      const [schema, system, payload, config] = vi.mocked(meteredAsk).mock.calls[0];
+      expect(schema).toBe(CopySchema);
+      expect(system).toBe(
+        SYSTEM +
+          "\n" +
+          MEDIA_POLICY +
+          " You are the copy specialist. Write one original campaign post, adapted per channel, plus an original short video script. Use only verified business details and research facts. No made-up discounts, guarantees, statistics or time limits.",
+      );
+      const stored = (await row(r.id)).context as unknown as Context;
+      expect(payload).toEqual({ context: boundedContext(stored), research, request: r.prompt });
+      expect(Object.keys(payload as object)).toEqual(["context", "research", "request"]);
+      // The model is the MATYA_AGENT_* one, whether it is passed or left to the default.
+      expect(config ?? modelConfig()).toEqual(modelConfig());
+      const step = await db.agentStep.findUniqueOrThrow({ where: { runId_name: { runId: r.id, name: "copy" } } });
+      expect(step.output).toEqual({ ...copy, usage });
+      expect(step.chargedCents).toBe(3);
+    });
+
+    const designed = async (prompt: string, kind: "campaign" | "video") => {
+      const r = await ask(prompt, { kind });
+      await workOne(A, async () => ({ data: research }), () => 0);
+      await workOne(A, async () => ({ data: { ...copy, title: "Techos", headline: "¿Cómo cuidas tu techo?" } }), () => 0);
+      await workOne(A, executeStep, () => 0);
+      return db.agentStep.findUniqueOrThrow({ where: { runId_name: { runId: r.id, name: "design" } } });
+    };
+    const shapes = ["square", "story", "wide"] as const;
+
+    it("design with a library photo: three branded formats, the usage update and the Spanish summary", async () => {
+      const owned = await libraryItem("owned");
+      const step = await designed("Prepara contenido sobre techos", "campaign");
+      expect(step.output).toEqual({
+        assets: shapes.map((shape) => ({
+          shape,
+          url: `https://example.com/fixture-${shape}.jpg`,
+          rights: "Foto habilitada de la biblioteca del negocio, adaptada con su marca",
+          alt: copy.alt,
+        })),
+        mediaSelection: {
+          policy: "library_first",
+          source: "library",
+          libraryItems: [{ id: owned.id, kind: "photo" }],
+          generatedFromScratch: false,
+        },
+        summary:
+          "Reutilicé una foto adecuada de la biblioteca de esta compañía en tres formatos con su marca. No generé una imagen nueva con IA.",
+        script: copy.script,
+        videoStatus: "Guion preparado. Puedes encargar un video con el presupuesto del agente.",
+      });
+      const used = await db.libraryItem.findUniqueOrThrow({ where: { id: owned.id } });
+      expect(used.usedCount).toBe(1);
+      expect(used.lastUsedAt).not.toBeNull();
+    });
+
+    it("design without a library photo, in English and for a video: brand templates and their texts", async () => {
+      const step = await designed("Please create a video about roofs", "video");
+      expect(step.output).toEqual({
+        assets: shapes.map((shape) => ({
+          shape,
+          url: `https://example.com/fixture-${shape}.jpg`,
+          rights: "Creado con la plantilla y los recursos de marca del negocio",
+          alt: copy.alt,
+        })),
+        mediaSelection: { policy: "library_first", source: "brand_template", libraryItems: [], generatedFromScratch: false },
+        summary: "No suitable library photo was available. Used brand templates without generating a new AI image.",
+        script: copy.script,
+        videoStatus: "Guion y diseños listos para el render autorizado.",
+      });
+    });
   });
   it("excludes facts from a previous territory after the industry changes", async () => {
     const fact = {
@@ -1352,7 +1451,10 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     it("routes a piece's steps to the agent of its plan", async () => {
       stubModel(true);
       const child = await pieceRun();
-      await workOne(A, executeStep, () => 0);
+      // Copy and design are stubbed; the review agent does not exist yet, so its step fails with a clear message.
+      const stubbed = async (run: AgentRun, name: string): Promise<StepResult> =>
+        ["copy", "design"].includes(name) ? { data: {} } : executeStep(run, name);
+      for (let i = 0; i < 3; i++) await workOne(A, stubbed, () => 0);
       expect(await row(child.id)).toMatchObject({
         status: "uncertain",
         error: "Agente no disponible.",
@@ -1360,9 +1462,9 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       });
       expect(
         await db.agentStep.findUniqueOrThrow({
-          where: { runId_name: { runId: child.id, name: "copy" } },
+          where: { runId_name: { runId: child.id, name: "review" } },
         }),
-      ).toMatchObject({ agent: "copy", status: "uncertain" });
+      ).toMatchObject({ agent: "review", status: "uncertain" });
     });
 
     it("stops on the model's own setup error before the agent runs", async () => {
@@ -2076,6 +2178,191 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
           ],
         });
         expect(await row(parent.id)).toMatchObject({ status: "completed", chargedCents: 1 });
+      });
+    });
+  });
+
+  describe("the copy and design agents for pieces", () => {
+    const modelEnv = {
+      MATYA_AGENT_PROVIDER: "gemini",
+      MATYA_AGENT_MODEL: "gemini-x",
+      MATYA_AGENT_INPUT_USD_PER_MILLION: "0.3",
+      MATYA_AGENT_OUTPUT_USD_PER_MILLION: "2.5",
+      GEMINI_API_KEY: "synthetic-no-provider-access",
+    };
+    const usage = { inputTokens: 100, outputTokens: 50, cents: 2, model: "gemini-x" };
+    const ROOF_COPY = { ...copy, title: "Techos", headline: "¿Cómo cuidas tu techo?" };
+    const ROOF_COPY_R1 = { ...ROOF_COPY, headline: "Revisa tu techo hoy", variants: { ...copy.variants, facebook: "Texto corregido." } };
+    const PROBLEMS: ReviewProblem[] = [
+      { kind: "canal", detail: "Falta el texto de facebook", sendBackTo: "copy" },
+      { kind: "falta-imagen", detail: "La imagen no se ve", sendBackTo: "design" },
+    ];
+    beforeEach(() => {
+      for (const [k, v] of Object.entries(modelEnv)) vi.stubEnv(k, v);
+    });
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      vi.mocked(meteredAsk).mockReset();
+    });
+    const done = (runId: string, name: string, output: unknown) =>
+      db.agentStep.create({
+        data: { runId, name, specialist: "matya", budgetDay: "2026-10-16", status: "succeeded", output: output as never },
+      });
+    /** A post piece whose team has already planned and researched. */
+    async function pieceOf() {
+      const [child] = await spawnPieces(await teamParent(), [roof]);
+      await done(child.parentRunId!, "plan", { reply: "", goal: "Más llamadas por techos", maxPieces: 1 });
+      await done(child.parentRunId!, "research", {
+        items: [{ kind: "question", detail: "¿Cuánto cuesta un techo?", source: "rank@2026-10-10" }],
+        digest: [{ kind: "rank", detail: "no se manda", source: "rank@2026-10-10", reportAt: "x", stale: false }],
+        usage,
+      });
+      return child;
+    }
+    const designStore = () => vi.mocked(storeDesign).mock.calls;
+    const output = async (runId: string, name: string) =>
+      (await db.agentStep.findUniqueOrThrow({ where: { runId_name: { runId, name } } })).output;
+
+    it("una pieza post usa una foto de la biblioteca y el texto pasa las reglas del canal", async () => {
+      const photo = await libraryItem("techos-photo");
+      const child = await pieceOf();
+      vi.mocked(meteredAsk).mockResolvedValueOnce({ value: ROOF_COPY, usage });
+      await workOne(A, executeStep, () => 10);
+      expect(meteredAsk).toHaveBeenCalledTimes(1);
+      const [schema, system, payload, model] = vi.mocked(meteredAsk).mock.calls[0];
+      expect(schema).toBe(CopySchema);
+      expect(system).toContain("facebook");
+      expect(system).not.toContain("instagram");
+      expect(model).toMatchObject({ provider: "gemini", model: "gemini-x" });
+      // The team's research and plan come from the parent run; only its opportunities are sent.
+      const sent = payload as { request: string; research: unknown; notes?: unknown };
+      expect(sent.research).toEqual({ items: [{ kind: "question", detail: "¿Cuánto cuesta un techo?", source: "rank@2026-10-10" }] });
+      expect(sent.request).toContain("Techos");
+      expect(sent.request).toContain("Más llamadas por techos");
+      expect(sent.notes).toBeUndefined();
+      expect(await output(child.id, "copy")).toEqual({ ...ROOF_COPY, usage });
+      expect(await db.agentStep.findUniqueOrThrow({ where: { runId_name: { runId: child.id, name: "copy" } } }))
+        .toMatchObject({ agent: "copy", attempt: 0, chargedCents: 2 });
+      // The text passes the channel's blocking rules.
+      const rules = toolsFor(AGENTS.copy, child).use("channelRules");
+      const blocking = rules("facebook", {
+        text: ROOF_COPY.variants.facebook,
+        subject: ROOF_COPY.title,
+        seoTitle: ROOF_COPY.title,
+        mediaType: "photo",
+      }).filter((n) => n.blocking);
+      expect(blocking).toEqual([]);
+
+      await workOne(A, executeStep, () => 0);
+      expect(meteredAsk).toHaveBeenCalledTimes(1);
+      expect(designStore()).toHaveLength(3);
+      for (const [input, businessId] of designStore()) {
+        expect(businessId).toBe(A);
+        expect(input.photoUrl).toBe(photo.url);
+      }
+      const design = await db.agentStep.findUniqueOrThrow({ where: { runId_name: { runId: child.id, name: "design" } } });
+      expect(design).toMatchObject({ agent: "design", status: "succeeded", chargedCents: 0 });
+      expect(design.output).toMatchObject({
+        assets: [{ shape: "square" }, { shape: "story" }, { shape: "wide" }],
+        mediaSelection: { source: "library", libraryItems: [{ id: photo.id, kind: "photo" }], generatedFromScratch: false },
+      });
+      expect(await db.libraryItem.findUnique({ where: { id: photo.id } })).toMatchObject({ usedCount: 1 });
+    });
+
+    it("a piece with no library photo uses its brand templates", async () => {
+      const child = await pieceOf();
+      vi.mocked(meteredAsk).mockResolvedValueOnce({ value: ROOF_COPY, usage });
+      await workOne(A, executeStep, () => 10);
+      await workOne(A, executeStep, () => 0);
+      expect(designStore()).toHaveLength(3);
+      for (const [input] of designStore()) expect(input.photoUrl).toBeUndefined();
+      expect(await output(child.id, "design")).toMatchObject({
+        mediaSelection: { source: "brand_template", libraryItems: [], generatedFromScratch: false },
+      });
+    });
+
+    /** copy, design, a review that sends both back, then the real copy-r1 and design-r1. */
+    async function reworked() {
+      const photo = await libraryItem("techos-photo");
+      const child = await pieceOf();
+      vi.mocked(meteredAsk)
+        .mockResolvedValueOnce({ value: ROOF_COPY, usage })
+        .mockResolvedValueOnce({ value: ROOF_COPY_R1, usage });
+      const exec = async (run: AgentRun, name: string): Promise<StepResult> =>
+        name === "review"
+          ? { data: { approved: false, problems: PROBLEMS }, insertSteps: reworkSteps(PROBLEMS, 0) }
+          : executeStep(run, name);
+      for (let i = 0; i < 5; i++) await workOne(A, exec, (name) => (name.startsWith("copy") ? 10 : 0));
+      return { photo, child };
+    }
+
+    it("copy-r1 receives the problems of the review as notes, and design-r1 reads the new copy", async () => {
+      const { child } = await reworked();
+      expect(await row(child.id)).toMatchObject({ status: "queued", stage: 5 });
+      expect(meteredAsk).toHaveBeenCalledTimes(2);
+      const [first, second] = vi.mocked(meteredAsk).mock.calls.map((c) => c[2] as { request: string; notes?: unknown });
+      expect(first.notes).toBeUndefined();
+      expect(second.notes).toEqual(PROBLEMS);
+      expect(second.request).toBe(first.request);
+      expect(vi.mocked(meteredAsk).mock.calls[1][1]).toContain("notes");
+      expect(await db.agentStep.findUniqueOrThrow({ where: { runId_name: { runId: child.id, name: "copy-r1" } } }))
+        .toMatchObject({ agent: "copy", attempt: 1, status: "succeeded", output: { ...ROOF_COPY_R1, usage } });
+      // The image of the second round is made of the second text.
+      expect(designStore()).toHaveLength(6);
+      for (const [input] of designStore().slice(0, 3)) expect(input.headline).toBe(ROOF_COPY.headline);
+      for (const [input] of designStore().slice(3)) expect(input.headline).toBe(ROOF_COPY_R1.headline);
+    });
+
+    it("design-r1 keeps the photo the piece's first design used today, and counts it once", async () => {
+      const { photo, child } = await reworked();
+      expect(designStore()).toHaveLength(6);
+      for (const [input] of designStore()) expect(input.photoUrl).toBe(photo.url);
+      expect(await output(child.id, "design-r1")).toMatchObject({
+        mediaSelection: { source: "library", libraryItems: [{ id: photo.id, kind: "photo" }] },
+      });
+      expect(await db.libraryItem.findUnique({ where: { id: photo.id } })).toMatchObject({ usedCount: 1 });
+    });
+
+    it("a sibling piece's steps are never read, only the team's", async () => {
+      const child = await pieceOf();
+      const parent = await db.agentRun.findUniqueOrThrow({ where: { id: child.parentRunId! } });
+      const [sibling] = await spawnPieces(parent, [{ ...roof, id: "p2", topic: "Goteras" }]);
+      await done(sibling.id, "review", { approved: false, problems: PROBLEMS });
+      await done(sibling.id, "copy", ROOF_COPY);
+      const use = toolsFor(AGENTS.copy, child).use("readStepOutput");
+      expect(await use("review")).toBeNull();
+      expect(await use("copy")).toBeNull();
+      expect(await use("plan")).toMatchObject({ goal: "Más llamadas por techos" });
+    });
+
+    describe("readStepOutput falls back to the team run", () => {
+      it("uses the parent's step only when the piece has none of its own", async () => {
+        const child = await pieceOf();
+        const use = toolsFor(AGENTS.copy, child).use("readStepOutput");
+        expect(await use("plan")).toMatchObject({ goal: "Más llamadas por techos" });
+        expect(await use("research")).toMatchObject({ items: [expect.objectContaining({ kind: "question" })] });
+        expect(await use("review")).toBeNull();
+        // The piece's own step wins, even when the team has a higher round of the same step.
+        await done(child.id, "research", { own: true });
+        await done(child.parentRunId!, "research-r2", { team: "r2" });
+        expect(await use("research")).toEqual({ own: true });
+        // A step of the piece that did not succeed does not hide the team's.
+        await db.agentStep.update({ where: { runId_name: { runId: child.id, name: "research" } }, data: { status: "uncertain" } });
+        expect(await use("research")).toEqual({ team: "r2" });
+      });
+
+      it("never reads another business, however the run is spoofed", async () => {
+        const child = await pieceOf();
+        const other = await enqueue(B, { text: "Ponme al día", requestKey: key("fallback-b") });
+        await done(other.id, "research", { business: "B" });
+        // The parent id belongs to the other business.
+        expect(await readStepOutput({ id: child.id, businessId: A, parentRunId: other.id }, "research")).toBeNull();
+        // The run says it is the other business's: neither its own steps nor its parent's count.
+        expect(await readStepOutput({ ...child, businessId: B }, "research")).toBeNull();
+        expect(await toolsFor(AGENTS.copy, { ...child, businessId: B }).use("readStepOutput")("plan")).toBeNull();
+        // A run with no parent only reads its own steps.
+        expect(await readStepOutput({ id: child.id, businessId: A, parentRunId: null }, "plan")).toBeNull();
+        expect(await readStepOutput({ id: child.id, businessId: A }, "plan")).toBeNull();
       });
     });
   });

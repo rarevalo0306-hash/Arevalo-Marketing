@@ -3,13 +3,6 @@ import { db } from "@/lib/db";
 import { notesFor, type ChannelId } from "@/lib/channels";
 import { localDay } from "@/lib/business-tz";
 import { pauseCampaign } from "@/lib/campaign";
-import {
-  BUILTIN_TEMPLATES,
-  StoredTemplate,
-  pickTemplate,
-  needsPhoto,
-} from "@/lib/design-shapes";
-import { storeDesign, photoMetaFor } from "@/lib/media-formats";
 import { AgentError } from "./access";
 import { Copy, Research, Reply, languageOf, type Context } from "./schema";
 import { briefing } from "./context";
@@ -42,22 +35,22 @@ import {
 import { newsFresh } from "./freshness";
 import { templateStoryboard, type VideoMedia } from "@/lib/video-plan";
 import { optimizeEligible } from "./optimization";
-import { designStyleOf } from "@/lib/design-style";
 import { SYSTEM, MEDIA_POLICY } from "./prompts";
 import { boundedContext } from "./bounded-context";
 import { libraryMedia } from "./library";
+import {
+  designAssets,
+  designSummary,
+  mediaSelection,
+  writeCopy,
+} from "./content-steps";
 import { executeTeamStep } from "./team-execution";
 // The team's plain-code steps register themselves when their module loads: this is what makes `dispatch` available.
 import "./dispatch";
 
-function mediaSelection(media: VideoMedia[]) {
-  return {
-    policy: "library_first",
-    source: media.length ? "library" : "brand_template",
-    libraryItems: media.map(({ id, kind }) => ({ id, kind })),
-    generatedFromScratch: false,
-  };
-}
+// The copy and design steps live in `content-steps` (the team's agents use them too); they are part of this module's API.
+export { designAssets, writeCopy } from "./content-steps";
+
 async function output(runId: string, name: string) {
   const step = await db.agentStep.findUniqueOrThrow({
     where: { runId_name: { runId, name } },
@@ -134,107 +127,26 @@ export async function executeStep(
   }
   if (name === "copy") {
     const research = await output(run.id, "research");
-    const r = await meteredAsk(
-      Copy,
-      SYSTEM + "\n" + MEDIA_POLICY +
-        " You are the copy specialist. Write one original campaign post, adapted per channel, plus an original short video script. Use only verified business details and research facts. No made-up discounts, guarantees, statistics or time limits.",
-      { context: boundedContext(c), research, request: run.prompt },
-    );
+    const r = await writeCopy({
+      context: c,
+      research,
+      request: run.prompt,
+      model: modelConfig(),
+    });
     return { data: { ...r.value, usage: r.usage }, cents: r.usage.cents };
   }
   if (name === "design") {
     const copy = Copy.parse(await output(run.id, "copy"));
-    const [photo] = await libraryMedia(
-      run.businessId,
-      `${run.prompt}\n${copy.title}\n${copy.headline}\n${copy.summary}`,
+    const { assets, mediaSelection: selection } = await designAssets({
+      run,
+      copy,
       language,
-      "photo",
-    );
-    const b = await db.business.findUniqueOrThrow({
-      where: { id: run.businessId },
     });
-    const rows = await db.template.findMany({
-      where: { businessId: run.businessId },
-      take: 20,
-    });
-    const list = rows.flatMap((r) => {
-      const parsed = StoredTemplate.safeParse(r.spec);
-      return parsed.success ? [parsed.data] : [];
-    });
-    const available = list.length ? list : BUILTIN_TEMPLATES;
-    // A question headline must not silently discard the selected company photo.
-    const photoTemplates = available.filter(needsPhoto);
-    const templates = photo
-      ? photoTemplates.length ? photoTemplates : BUILTIN_TEMPLATES.filter(needsPhoto)
-      : available;
-    const template = pickTemplate(templates, -1, {
-      headline: copy.headline,
-      hasPhoto: Boolean(photo),
-      seed: 0,
-    });
-    const assets = [];
-    for (const shape of ["square", "story", "wide"] as const) {
-      const {
-        name,
-        color,
-        color2,
-        color3,
-        logoUrl,
-        logoLightUrl,
-        phone,
-        website,
-        fontHeading,
-        fontBody,
-      } = b;
-      const url = await storeDesign(
-        {
-          brand: {
-            name,
-            color,
-            color2,
-            color3,
-            logoUrl,
-            logoLightUrl,
-            phone,
-            website,
-            fontHeading,
-            fontBody,
-            style: designStyleOf(b).style,
-          },
-          template,
-          headline: copy.headline,
-          shape,
-          photoUrl: photo?.url,
-          focus: photo?.focus ?? undefined,
-        },
-        b.id,
-        photoMetaFor(b, { title: copy.title }),
-      );
-      assets.push({
-        shape,
-        url,
-        rights: photo
-          ? "Foto habilitada de la biblioteca del negocio, adaptada con su marca"
-          : "Creado con la plantilla y los recursos de marca del negocio",
-        alt: copy.alt,
-      });
-    }
-    if (photo)
-      await db.libraryItem.updateMany({
-        where: { businessId: run.businessId, id: photo.id },
-        data: { usedCount: { increment: 1 }, lastUsedAt: new Date() },
-      });
     return {
       data: {
         assets,
-        mediaSelection: mediaSelection(photo ? [photo] : []),
-        summary: photo
-          ? language === "en"
-            ? "Reused a suitable photo from this company's library in three branded formats. No new AI image was generated."
-            : "Reutilicé una foto adecuada de la biblioteca de esta compañía en tres formatos con su marca. No generé una imagen nueva con IA."
-          : language === "en"
-            ? "No suitable library photo was available. Used brand templates without generating a new AI image."
-            : "No encontré una foto adecuada en la biblioteca. Usé plantillas de marca sin generar una imagen nueva con IA.",
+        mediaSelection: selection,
+        summary: designSummary(selection.libraryItems.length > 0, language),
         script: copy.script,
         videoStatus:
           run.kind === "video"

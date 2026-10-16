@@ -236,6 +236,19 @@ export const ReviewProblemSchema = z.object({
 });
 export type ReviewProblem = z.infer<typeof ReviewProblemSchema>;
 
+/** The problems a stored review output (`{ approved, problems }`) lists; anything unreadable is skipped. */
+export function problemsOf(output: unknown): ReviewProblem[] {
+  const list =
+    output && typeof output === "object" && !Array.isArray(output)
+      ? (output as { problems?: unknown }).problems
+      : undefined;
+  if (!Array.isArray(list)) return [];
+  return list.flatMap((p) => {
+    const r = ReviewProblemSchema.safeParse(p);
+    return r.success ? [r.data] : [];
+  });
+}
+
 /**
  * The only correction round: send the problems back, then review once more.
  * Never adds `video`, `render` or `video_wait`; a video piece only redoes

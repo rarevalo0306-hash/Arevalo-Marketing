@@ -2,6 +2,8 @@
 import { AgentError } from "../access";
 import type { AgentKey, PlanStep } from "../plan";
 import type { StepResult } from "../queue";
+import { runCopy } from "./copy";
+import { runDesign } from "./design";
 import { runDirector } from "./director";
 import { runSeo } from "./seo";
 import { runStrategy } from "./strategy";
@@ -9,7 +11,7 @@ import type { AgentDef } from "./types";
 
 export type { AgentDef, AgentInput } from "./types";
 
-/** Placeholder until each agent exists (copy, design, video and review). */
+/** Placeholder until each agent exists (video and review). */
 const unavailable = async (): Promise<StepResult> => {
   throw new AgentError("Agente no disponible.");
 };
@@ -41,7 +43,7 @@ export const AGENTS: Record<Exclude<AgentKey, "matya">, AgentDef> = {
     label: { es: "Redacción", en: "Copywriting" },
     tools: ["readContext", "readStepOutput", "channelRules", "writeArticle"],
     usesModel: true,
-    run: unavailable,
+    run: runCopy,
   },
   design: {
     key: "design",
@@ -53,8 +55,9 @@ export const AGENTS: Record<Exclude<AgentKey, "matya">, AgentDef> = {
       "listLibrary",
       "renderDesign",
     ],
-    usesModel: true,
-    run: unavailable,
+    // The design step makes no AI call: the library, the brand's templates and the stored image.
+    usesModel: false,
+    run: runDesign,
   },
   video: {
     key: "video",

@@ -101,7 +101,7 @@ export type ToolImpl = {
   ) => ReturnType<typeof latestReports>;
   readCalendar: () => Promise<Calendar>;
   readSignals: () => Promise<unknown>;
-  /** The output of the run's succeeded step `base`, or of its latest rework (`base-r<n>`); null if none. */
+  /** The output of the run's succeeded step `base`, or of its latest rework (`base-r<n>`); a piece falls back to its team run's step. Null if none. */
   readStepOutput: (base: string) => Promise<unknown>;
   brandKit: () => Promise<BrandKit>;
   /**
@@ -128,19 +128,21 @@ export type Tools = { use<T extends ToolName>(name: T): ToolImpl[T] };
 
 const DAY = 86400000;
 
-/**
- * The output of the run's succeeded step `base`, or of its latest rework (`base-r<n>`); null if none.
- * Only the run's own steps, and only while the run belongs to its business. The `readStepOutput` tool wraps this, and
- * the engine's own steps (`dispatch`) call it directly.
- */
-export async function readStepOutput(
-  run: Pick<AgentRun, "id" | "businessId">,
+/** A run as `readStepOutput` needs it: a piece also carries the team run it belongs to (`parentRunId`). */
+type StepReader = Pick<AgentRun, "id" | "businessId"> & {
+  parentRunId?: string | null;
+};
+
+/** The output of the succeeded step `base` (or its highest rework `base-r<n>`) of one run of the business; null if it has none. */
+async function stepOutput(
+  runId: string,
+  businessId: string,
   base: string,
-): Promise<unknown> {
+): Promise<{ output: unknown } | null> {
   const rows = await db.agentStep.findMany({
     where: {
-      runId: run.id,
-      run: { businessId: run.businessId },
+      runId,
+      run: { businessId },
       status: "succeeded",
       name: { startsWith: base },
     },
@@ -153,7 +155,24 @@ export async function readStepOutput(
     if (Number.isNaN(round)) continue;
     if (!best || round > best.round) best = { round, output: row.output };
   }
-  return best ? best.output : null;
+  return best;
+}
+
+/**
+ * The output of the run's succeeded step `base`, or of its latest rework (`base-r<n>`); null if none.
+ * A piece that has no such step of its own reads the one of its team run (`parentRunId`), which is where the team's
+ * `research` and `plan` are; the run's own step always wins. Always scoped to the run's business: neither its own steps nor
+ * its parent's are read through another business. The `readStepOutput` tool wraps this, and the engine's own steps
+ * (`dispatch`) call it directly.
+ */
+export async function readStepOutput(
+  run: StepReader,
+  base: string,
+): Promise<unknown> {
+  const own = await stepOutput(run.id, run.businessId, base);
+  if (own) return own.output;
+  if (!run.parentRunId) return null;
+  return (await stepOutput(run.parentRunId, run.businessId, base))?.output ?? null;
 }
 
 const later = async (): Promise<never> => {

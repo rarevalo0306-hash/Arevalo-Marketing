@@ -121,6 +121,7 @@ export const Copy = z.object({
   script: z.string().max(5000),
   alt: z.string().max(250),
 });
+export type Copy = z.infer<typeof Copy>;
 export const Reply = z.object({ text: z.string().min(1).max(5000) });
 export type Context = {
   business: {

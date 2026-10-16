@@ -5,6 +5,7 @@ import {
   TEAM_STEPS,
   capByDirector,
   directorMax,
+  problemsOf,
   reworkSteps,
   stepsForPiece,
   stepsOfPlan,
@@ -536,5 +537,20 @@ describe("lo que pidió el Director", () => {
     const before = { ...limits };
     capByDirector(limits, { maxPieces: 1 });
     expect(limits).toEqual(before);
+  });
+});
+
+describe("problemsOf", () => {
+  const problem = { kind: "canal", detail: "Falta el texto", sendBackTo: "copy" };
+
+  it("lee todos los problemas de una revisión guardada, sin importar a quién los manda", () => {
+    const design = { kind: "falta-imagen", detail: "Sin imagen", sendBackTo: "design" };
+    expect(problemsOf({ approved: false, problems: [problem, design] })).toEqual([problem, design]);
+  });
+
+  it("salta lo que no se puede leer y nunca lanza un error", () => {
+    expect(problemsOf({ problems: [problem, { kind: "x" }, "basura", null, { ...problem, sendBackTo: "video" }] })).toEqual([problem]);
+    for (const output of [null, undefined, "x", 5, [], [problem], {}, { problems: "no" }, { problems: {} }, { problems: [] }])
+      expect(problemsOf(output)).toEqual([]);
   });
 });

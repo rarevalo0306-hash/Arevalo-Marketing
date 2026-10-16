@@ -18,13 +18,12 @@ import { newsFresh } from "./freshness";
 import {
   Piece,
   PieceFormat,
-  ReviewProblemSchema,
+  problemsOf,
   reworkSteps,
   stepsForPiece,
   stepsOfPlan,
   type AgentKey,
   type PlanStep,
-  type ReviewProblem,
 } from "./plan";
 
 export const json = (value: unknown) =>
@@ -589,18 +588,6 @@ export async function changeRun(
   });
 }
 
-/** The problems a stored review output lists; anything unreadable is skipped. */
-function problemsOf(output: unknown): ReviewProblem[] {
-  const list =
-    output && typeof output === "object" && !Array.isArray(output)
-      ? (output as { problems?: unknown }).problems
-      : undefined;
-  if (!Array.isArray(list)) return [];
-  return list.flatMap((p) => {
-    const r = ReviewProblemSchema.safeParse(p);
-    return r.success ? [r.data] : [];
-  });
-}
 /**
  * The owner's "Rehacer": a new round before the step that was waiting, even when the
  * automatic round was already used. Only a piece waiting right after a review qualifies.

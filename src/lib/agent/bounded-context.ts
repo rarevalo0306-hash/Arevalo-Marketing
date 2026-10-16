@@ -40,7 +40,7 @@ export function boundedContext(c: Context) {
 export type BoundedContext = ReturnType<typeof boundedContext>;
 
 /** The run's context without keys an agent sends on its own and bounded, which `boundedContext` would otherwise carry along (`...c`). */
-export function contextWithout(c: Context, ...keys: ("news" | "signals")[]): Context {
+export function contextWithout(c: Context, ...keys: ("news" | "signals" | "piece")[]): Context {
   const copy: Record<string, unknown> = { ...c };
   for (const key of keys) delete copy[key];
   return copy as Context;
