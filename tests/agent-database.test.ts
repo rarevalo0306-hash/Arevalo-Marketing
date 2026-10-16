@@ -15,6 +15,7 @@ import {
   stepsOf,
   planStepMeta,
   DAY_BUDGET_ERROR,
+  OVER_RESERVATION_ERROR,
   RUN_BUDGET_ERROR,
   type StepResult,
 } from "@/lib/agent/queue";
@@ -22,9 +23,11 @@ import { reworkSteps, stepsForPiece, validatePieces, type ReviewProblem } from "
 import type { AgentRun } from "@prisma/client";
 import { workOne, executeStep, analyzeResults, stepCost, drain, type StepCost } from "@/lib/agent/execution";
 import { stepModel } from "@/lib/agent/team-execution";
-import { enqueueDailyPlans } from "@/lib/agent/daily";
+import { dailyPlanKey, enqueueDailyPlans } from "@/lib/agent/daily";
 import { collectSignals } from "@/lib/agent/signals";
 import { runAgentCycle, loadTeamRuns, snapshot, teamSnapshot } from "@/lib/agent/service";
+import { sendAgentAlerts } from "@/lib/agent/alerts";
+import { SenderConfigError, sendSeoEmail } from "@/lib/seo/alerts";
 import { boardColumn, needsYou } from "@/lib/agent/team-view";
 import { claimAgentPost } from "@/lib/agent/publication";
 import { loadContext } from "@/lib/agent/context";
@@ -73,6 +76,16 @@ vi.mock("@/lib/agent/queue", async (original) => {
 vi.mock("@/lib/agent/execution", async (original) => {
   const real = await original<typeof import("@/lib/agent/execution")>();
   return { ...real, drain: vi.fn(real.drain) };
+});
+// The team's alerts never send a real email: the sender is a mock (each alerts test sets what it answers). The alerts themselves are real,
+// unless a test makes them fail to see that the cycle goes on.
+vi.mock("@/lib/seo/alerts", async (original) => ({
+  ...(await original<typeof import("@/lib/seo/alerts")>()),
+  sendSeoEmail: vi.fn(),
+}));
+vi.mock("@/lib/agent/alerts", async (original) => {
+  const real = await original<typeof import("@/lib/agent/alerts")>();
+  return { ...real, sendAgentAlerts: vi.fn(real.sendAgentAlerts) };
 });
 // The real provider call, unless a test gives it a fixed answer (`mockResolvedValueOnce`).
 vi.mock("@/lib/agent/metered", async (original) => {
@@ -5621,6 +5634,459 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       const none = await snapshot(B);
       expect(none.settings).toBeNull();
       expect(none.team).toBeNull();
+    });
+  });
+
+  describe("the team's email alerts", () => {
+    const NOW = new Date("2026-10-16T14:00:00Z"); // 10:00 in New York (A): today is 2026-10-16
+    const TODAY = "2026-10-16";
+    const MINUTE = 60_000;
+    const sender = { name: "Ricardo PA", email: "avisos@example.com", apiKey: "synthetic-no-provider-access", via: "app" as const };
+    const none = { sent: 0, skipped: 0, errors: 0 };
+    let seq = 0;
+    beforeEach(async () => {
+      vi.mocked(sendSeoEmail).mockReset().mockResolvedValue(sender);
+      await db.business.update({ where: { id: A }, data: { ownerEmail: "dueno-a@example.com" } });
+      await db.business.update({ where: { id: B }, data: { ownerEmail: "dueno-b@example.com" } });
+      await saveSettings(A, { ...settings, teamMode: true });
+      await saveSettings(B, { ...settings, industry: "commercial-security-ni", teamMode: true });
+    });
+    /** A video piece parked at its render: it waits for the owner's go-ahead for the cost. */
+    const video = (businessId: string, topic = "Techos", extra: Record<string, unknown> = {}) =>
+      db.agentRun.create({
+        data: {
+          businessId,
+          requestKey: `alert-${seq++}-${crypto.randomUUID()}`,
+          kind: "piece",
+          prompt: "x",
+          context: {},
+          status: "waiting_approval",
+          stage: stepsForPiece("video").findIndex((s) => s.id === "render"),
+          plan: { kind: "piece", piece: { ...roof, topic, format: "video" }, steps: stepsForPiece("video") },
+          ...extra,
+        },
+      });
+    /** A run in whatever state, made at `at` (its `updatedAt` is the moment it last changed). */
+    const stopped = (businessId: string, kind: string, status: string, error: string, at: string, extra: Record<string, unknown> = {}) =>
+      db.agentRun.create({
+        data: {
+          businessId,
+          requestKey: `alert-${seq++}-${crypto.randomUUID()}`,
+          kind,
+          prompt: "x",
+          context: {},
+          status,
+          error,
+          createdAt: new Date(at),
+          updatedAt: new Date(at),
+          ...(kind === "team" ? { plan: { kind: "team" } } : {}),
+          ...extra,
+        },
+      });
+    const rows = (businessId: string) => db.seoReport.findMany({ where: { businessId, kind: "agent_alert" }, orderBy: { createdAt: "asc" } });
+    const countOf = async (businessId: string, day = TODAY) =>
+      (await db.agentBudget.findUnique({ where: { businessId_day: { businessId, day } } }))?.alerts ?? null;
+    const sentMail = (i = 0) => vi.mocked(sendSeoEmail).mock.calls[i][0];
+    const later = (minutes: number) => new Date(NOW.getTime() + minutes * MINUTE);
+
+    it("a waiting video sends one alert; the next tick sends nothing new", async () => {
+      const first = await video(A, "Techos");
+      expect(await sendAgentAlerts(NOW)).toEqual({ sent: 1, skipped: 0, errors: 0 });
+      expect(sendSeoEmail).toHaveBeenCalledTimes(1);
+      expect(sentMail()).toMatchObject({ businessId: A, to: ["dueno-a@example.com"], subject: "MATYA te necesita: un video espera tu aprobación" });
+      expect(sentMail().html).toContain("«Techos»");
+      expect(sentMail().html).toContain(`/b/${A}/matya`);
+      expect(sentMail().text).toContain("Techos");
+      const [record] = await rows(A);
+      expect(await rows(A)).toHaveLength(1);
+      expect(record.data).toEqual({
+        version: 1,
+        day: TODAY,
+        keys: [`video:${first.id}`],
+        types: ["video"],
+        state: "sent",
+        to: ["dueno-a@example.com"],
+        subject: sentMail().subject,
+        sentAt: expect.any(String),
+      });
+      expect(await countOf(A)).toBe(1);
+      // Business B has nothing waiting: no email, no record, and no budget row made for nothing.
+      expect(await rows(B)).toHaveLength(0);
+      expect(await countOf(B)).toBeNull();
+
+      // The video still waits on the next tick, and it is not told again.
+      expect(await sendAgentAlerts(later(1))).toEqual(none);
+      expect(sendSeoEmail).toHaveBeenCalledTimes(1);
+      expect(await rows(A)).toHaveLength(1);
+      expect(await countOf(A)).toBe(1);
+
+      // Another video is a new fact: it goes alone, without the first one.
+      const second = await video(A, "Goteras");
+      expect(await sendAgentAlerts(later(2))).toEqual({ sent: 1, skipped: 0, errors: 0 });
+      expect(sentMail(1).html).toContain("«Goteras»");
+      expect(sentMail(1).html).not.toContain("«Techos»");
+      expect((await rows(A)).map((r) => (r.data as { keys: string[] }).keys)).toEqual([[`video:${first.id}`], [`video:${second.id}`]]);
+      expect(await countOf(A)).toBe(2);
+    });
+
+    it("everything new in one tick goes in one email, grouped by type", async () => {
+      const a = await video(A, "Techos");
+      const b = await video(A, "Goteras");
+      await stopped(A, "piece", "blocked", DAY_BUDGET_ERROR, "2026-10-16T13:00:00Z");
+      expect(await sendAgentAlerts(NOW)).toEqual({ sent: 1, skipped: 0, errors: 0 });
+      expect(sendSeoEmail).toHaveBeenCalledTimes(1);
+      expect(sentMail().subject).toBe("MATYA te necesita: un video espera tu aprobación y 1 aviso más");
+      expect(sentMail().html.match(/Un video espera tu aprobación/g)).toHaveLength(1);
+      expect(sentMail().html).toContain("Se acabó el presupuesto de hoy");
+      const [record] = await rows(A);
+      expect(record.data).toMatchObject({ keys: [`video:${a.id}`, `video:${b.id}`, `presupuesto:${TODAY}`], types: ["video", "presupuesto"] });
+      // One email, one count of the day's five.
+      expect(await countOf(A)).toBe(1);
+    });
+
+    it("writes the email in the business's language and to its report address", async () => {
+      await db.business.update({ where: { id: A }, data: { seoEmailLang: "en", reportEmail: "informes@example.com, jefa@example.com" } });
+      await video(A, "Roofs");
+      expect(await sendAgentAlerts(NOW)).toEqual({ sent: 1, skipped: 0, errors: 0 });
+      expect(sentMail()).toMatchObject({ to: ["informes@example.com", "jefa@example.com"], subject: "MATYA needs you: a video is waiting for your approval" });
+      expect(sentMail().html).toContain("Open the MATYA Center");
+      expect(sentMail().html).toContain("“Roofs”");
+    });
+
+    it("the sixth alert of the day is not sent (cap 5)", async () => {
+      for (let i = 1; i <= 5; i++) {
+        await video(A, `Tema ${i}`);
+        expect(await sendAgentAlerts(later(i))).toEqual({ sent: 1, skipped: 0, errors: 0 });
+      }
+      expect(await countOf(A)).toBe(5);
+      const sixth = await video(A, "Tema 6");
+      expect(await sendAgentAlerts(later(6))).toEqual({ sent: 0, skipped: 1, errors: 0 });
+      expect(sendSeoEmail).toHaveBeenCalledTimes(5);
+      expect(await rows(A)).toHaveLength(5);
+      expect(await countOf(A)).toBe(5);
+      // It is waiting, not lost: its key is not registered, so the next tick looks at it again (and is still capped).
+      expect(await sendAgentAlerts(later(7))).toEqual({ sent: 0, skipped: 1, errors: 0 });
+
+      // The cap is per business: B still gets its alert.
+      await video(B, "Cortinas");
+      expect(await sendAgentAlerts(later(8))).toEqual({ sent: 1, skipped: 1, errors: 0 });
+      expect(sentMail(5)).toMatchObject({ businessId: B });
+
+      // It is per local day: the next day A's count starts again and the sixth video goes out, alone.
+      const tomorrow = new Date(NOW.getTime() + 24 * 60 * MINUTE);
+      expect(await sendAgentAlerts(tomorrow)).toEqual({ sent: 1, skipped: 0, errors: 0 });
+      expect(sentMail(6)).toMatchObject({ businessId: A });
+      expect(sentMail(6).html).toContain("«Tema 6»");
+      expect(sentMail(6).html).not.toContain("«Tema 5»");
+      expect(await countOf(A, "2026-10-17")).toBe(1);
+      expect(await countOf(A)).toBe(5);
+      expect((await rows(A))[5].data).toMatchObject({ keys: [`video:${sixth.id}`], day: "2026-10-17" });
+    });
+
+    it("a SenderConfigError leaves the record 'error', gives the cap back and is not retried; the other business still gets its alert", async () => {
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const a = await video(A, "Techos");
+        const b = await video(B, "Cortinas");
+        vi.mocked(sendSeoEmail).mockImplementation(async (mail) => {
+          if (mail.businessId === A) throw new SenderConfigError("No hay cómo enviar emails: conecta Email.", "There's no way to send emails.");
+          return sender;
+        });
+        expect(await sendAgentAlerts(NOW)).toEqual({ sent: 1, skipped: 0, errors: 1 });
+        const [failed] = await rows(A);
+        expect(await rows(A)).toHaveLength(1);
+        expect(failed.data).toMatchObject({ state: "error", keys: [`video:${a.id}`], error: "No hay cómo enviar emails: conecta Email." });
+        expect(failed.data).not.toHaveProperty("sentAt");
+        // The cap is given back: the failed email does not count as one of the day's five.
+        expect(await countOf(A)).toBe(0);
+        const [delivered] = await rows(B);
+        expect(delivered.data).toMatchObject({ state: "sent", keys: [`video:${b.id}`] });
+        expect(await countOf(B)).toBe(1);
+        expect(log).toHaveBeenCalledWith("MATYA alert did not send", { businessId: A, error: "SenderConfigError" });
+
+        // Not retried: its key is registered, so the next ticks say nothing, and the working one is not repeated either.
+        expect(await sendAgentAlerts(later(1))).toEqual(none);
+        expect(await sendAgentAlerts(later(2))).toEqual(none);
+        expect(sendSeoEmail).toHaveBeenCalledTimes(2);
+        expect(await rows(A)).toHaveLength(1);
+        expect(await countOf(A)).toBe(0);
+      } finally {
+        log.mockRestore();
+      }
+    });
+
+    it("a failed alert does not eat the cap of the day: five more still go out", async () => {
+      vi.mocked(sendSeoEmail).mockRejectedValueOnce(new Error("503: down"));
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        await video(A, "Fallida");
+        expect(await sendAgentAlerts(NOW)).toEqual({ sent: 0, skipped: 0, errors: 1 });
+        expect((await rows(A))[0].data).toMatchObject({ state: "error", error: "503: down" });
+        for (let i = 1; i <= 5; i++) {
+          await video(A, `Tema ${i}`);
+          expect(await sendAgentAlerts(later(i))).toEqual({ sent: 1, skipped: 0, errors: 0 });
+        }
+        expect(await countOf(A)).toBe(5);
+      } finally {
+        log.mockRestore();
+      }
+    });
+
+    it("teamMode off: no alerts", async () => {
+      await video(A, "Techos");
+      await stopped(A, "piece", "blocked", DAY_BUDGET_ERROR, "2026-10-16T13:00:00Z");
+      await saveSettings(A, { ...settings, teamMode: false });
+      expect(await sendAgentAlerts(NOW)).toEqual(none);
+      expect(sendSeoEmail).not.toHaveBeenCalled();
+      expect(await rows(A)).toHaveLength(0);
+      expect(await countOf(A)).toBeNull();
+      // Turned on again, what waits is told.
+      await saveSettings(A, { ...settings, teamMode: true });
+      expect(await sendAgentAlerts(later(1))).toEqual({ sent: 1, skipped: 0, errors: 0 });
+    });
+
+    it("a workspace with team mode on is told even when MATYA is off or paused", async () => {
+      await video(A, "Techos");
+      await saveSettings(A, { ...settings, teamMode: true, enabled: false });
+      await db.agentWorkspace.update({ where: { businessId: A }, data: { pausedAt: new Date() } });
+      expect(await sendAgentAlerts(NOW)).toEqual({ sent: 1, skipped: 0, errors: 0 });
+    });
+
+    it("without a recipient nothing is made and it counts as skipped; once there is one, the alert goes out", async () => {
+      await db.business.update({ where: { id: A }, data: { ownerEmail: "", reportEmail: "" } });
+      await video(A, "Techos");
+      expect(await sendAgentAlerts(NOW)).toEqual({ sent: 0, skipped: 1, errors: 0 });
+      expect(sendSeoEmail).not.toHaveBeenCalled();
+      expect(await rows(A)).toHaveLength(0);
+      expect(await countOf(A)).toBeNull();
+      await db.business.update({ where: { id: A }, data: { ownerEmail: "dueno-a@example.com" } });
+      expect(await sendAgentAlerts(later(1))).toEqual({ sent: 1, skipped: 0, errors: 0 });
+      expect(await countOf(A)).toBe(1);
+    });
+
+    it("two ticks at the same time send the alert once", async () => {
+      await video(A, "Techos");
+      const [one, two] = await Promise.all([sendAgentAlerts(NOW), sendAgentAlerts(NOW)]);
+      expect(one.sent + two.sent).toBe(1);
+      expect(sendSeoEmail).toHaveBeenCalledTimes(1);
+      expect(await rows(A)).toHaveLength(1);
+      expect(await countOf(A)).toBe(1);
+    });
+
+    it("max limits how many businesses are mailed in a tick; the others wait for the next one, and one with nothing new costs none", async () => {
+      await video(B, "Cortinas");
+      // A has nothing to say: it does not use up the only place.
+      expect(await sendAgentAlerts(NOW, { max: 1 })).toEqual({ sent: 1, skipped: 0, errors: 0 });
+      expect(sentMail()).toMatchObject({ businessId: B });
+      await video(A, "Techos");
+      await video(B, "Cortinas 2");
+      expect(await sendAgentAlerts(later(1), { max: 1 })).toEqual({ sent: 1, skipped: 0, errors: 0 });
+      expect(sentMail(1)).toMatchObject({ businessId: A });
+      expect(await sendAgentAlerts(later(2), { max: 1 })).toEqual({ sent: 1, skipped: 0, errors: 0 });
+      expect(sentMail(2)).toMatchObject({ businessId: B });
+      expect(await sendAgentAlerts(later(3), { max: 1 })).toEqual(none);
+    });
+
+    it("a piece that failed its second review is told once, and again if a new round fails", async () => {
+      const ids = ["copy", "design", "review", "copy-r1", "design-r1", "review-r1", "prepare", "schedule", "verify"];
+      const failed = async (name: string) =>
+        db.agentStep.create({
+          data: {
+            runId: piece.id,
+            name,
+            specialist: "matya",
+            budgetDay: TODAY,
+            status: "succeeded",
+            output: { approved: false, problems: [{ kind: "tono", detail: "Promete un resultado.", sendBackTo: "copy" }], ruleProblems: [] },
+          },
+        });
+      const piece = await db.agentRun.create({
+        data: {
+          businessId: A,
+          requestKey: `alert-${seq++}-${crypto.randomUUID()}`,
+          kind: "piece",
+          prompt: "x",
+          context: {},
+          status: "waiting_approval",
+          stage: ids.indexOf("prepare"),
+          plan: { kind: "piece", piece: { ...roof, topic: "Goteras" }, steps: ids.map((id) => ({ id, agent: "matya", attempt: Number(/-r(\d+)$/.exec(id)?.[1] ?? 0) })) },
+        },
+      });
+      await failed("review");
+      await failed("review-r1");
+      expect(await sendAgentAlerts(NOW)).toEqual({ sent: 1, skipped: 0, errors: 0 });
+      expect(sentMail().subject).toBe("MATYA te necesita: una pieza no pasó la revisión");
+      expect(sentMail().html).toContain("«Goteras»");
+      expect((await rows(A))[0].data).toMatchObject({ keys: [`revision:${piece.id}:review-r1`], types: ["revision"] });
+      expect(await sendAgentAlerts(later(1))).toEqual(none);
+
+      // The owner asks to redo it and the new round fails too: a different review, a different key.
+      const more = [...ids.slice(0, 6), "copy-r2", "design-r2", "review-r2", "prepare", "schedule", "verify"];
+      await db.agentRun.update({
+        where: { id: piece.id },
+        data: { stage: more.indexOf("prepare"), plan: { kind: "piece", piece: { ...roof, topic: "Goteras" }, steps: more.map((id) => ({ id, agent: "matya", attempt: 0 })) } },
+      });
+      await failed("review-r2");
+      expect(await sendAgentAlerts(later(2))).toEqual({ sent: 1, skipped: 0, errors: 0 });
+      expect((await rows(A))[1].data).toMatchObject({ keys: [`revision:${piece.id}:review-r2`] });
+    });
+
+    it("a braked channel is told once, until the owner saves the connection again", async () => {
+      const post = (id: string, status: string, at: string) =>
+        db.post.create({
+          data: { id, businessId: A, text: "t", status: status === "failed" ? "failed" : "done", createdAt: new Date(at), scheduledAt: new Date(at), targets: { create: [{ channel: "facebook", status }] } },
+        });
+      const saved = (at: string) =>
+        db.connection.update({ where: { businessId_channel: { businessId: A, channel: "facebook" } }, data: { updatedAt: new Date(at) } });
+      await saved("2026-10-01T10:00:00Z");
+      await post("agent-alert-1", "failed", "2026-10-10T15:00:00Z");
+      // One failure does not brake.
+      expect(await sendAgentAlerts(NOW)).toEqual(none);
+      await post("agent-alert-2", "failed", "2026-10-12T15:00:00Z");
+      expect(await sendAgentAlerts(later(1))).toEqual({ sent: 1, skipped: 0, errors: 0 });
+      expect(sentMail().subject).toBe("MATYA te necesita: un canal salió del plan");
+      expect(sentMail().html).toContain("Facebook");
+      expect((await rows(A))[0].data).toMatchObject({ keys: ["freno:facebook:2026-10-01T10:00:00.000Z"], types: ["freno"] });
+      expect(await sendAgentAlerts(later(2))).toEqual(none);
+
+      // The owner saves the connection: the brake is lifted, and nothing is told.
+      await saved("2026-10-14T09:00:00Z");
+      expect(await sendAgentAlerts(later(3))).toEqual(none);
+      // Two new failures brake it again: that is a new fact (its key has the new save).
+      await post("agent-alert-3", "failed", "2026-10-15T15:00:00Z");
+      await post("agent-alert-4", "failed", "2026-10-16T08:00:00Z");
+      expect(await sendAgentAlerts(later(4))).toEqual({ sent: 1, skipped: 0, errors: 0 });
+      expect((await rows(A))[1].data).toMatchObject({ keys: ["freno:facebook:2026-10-14T09:00:00.000Z"] });
+
+      // A channel whose connection is gone (never saved) is told as 'nunca'.
+      await db.connection.delete({ where: { businessId_channel: { businessId: A, channel: "facebook" } } });
+      expect(await sendAgentAlerts(later(5))).toEqual({ sent: 1, skipped: 0, errors: 0 });
+      expect((await rows(A))[2].data).toMatchObject({ keys: ["freno:facebook:nunca"] });
+    });
+
+    it("a braked channel is only the owner's own: other businesses' failures, other channels and posts that are not the agent's brake nothing", async () => {
+      const failures = (businessId: string, channel: string, prefix: string) =>
+        Promise.all(
+          [0, 1].map((i) =>
+            db.post.create({
+              data: { id: `${prefix}-${i}`, businessId, text: "t", status: "failed", scheduledAt: new Date(`2026-10-1${i + 4}T15:00:00Z`), targets: { create: [{ channel, status: "failed" }] } },
+            }),
+          ),
+        );
+      await db.connection.update({
+        where: { businessId_channel: { businessId: A, channel: "facebook" } },
+        data: { updatedAt: new Date("2026-10-01T10:00:00Z") },
+      });
+      // A channel the owner does not allow, and failures of posts the agent did not make.
+      await failures(A, "instagram", "agent-alert-ig");
+      await failures(A, "facebook", "manual-alert-fb");
+      expect(await sendAgentAlerts(NOW)).toEqual(none);
+      // B's own failures are B's: they alert B and leave A out.
+      await failures(B, "facebook", "agent-alert-b");
+      expect(await sendAgentAlerts(later(1))).toEqual({ sent: 1, skipped: 0, errors: 0 });
+      expect(sentMail()).toMatchObject({ businessId: B });
+      expect((await rows(B))[0].data).toMatchObject({ keys: ["freno:facebook:nunca"] });
+      expect(await rows(A)).toHaveLength(0);
+    });
+
+    it("the day's money running out is told once a day, for team and piece runs blocked today", async () => {
+      // Not today's, not the team's, or blocked for another reason: nothing.
+      await stopped(A, "piece", "blocked", DAY_BUDGET_ERROR, "2026-10-15T20:00:00Z"); // 16:00 yesterday in New York
+      await stopped(A, "campaign", "blocked", DAY_BUDGET_ERROR, "2026-10-16T13:00:00Z");
+      await stopped(A, "piece", "blocked", "El encargo alcanzó el límite de gasto. No se hizo una nueva llamada de pago.", "2026-10-16T13:00:00Z");
+      await stopped(B, "piece", "blocked", DAY_BUDGET_ERROR, "2026-10-16T13:00:00Z");
+      expect(await sendAgentAlerts(NOW, { max: 1 })).toEqual({ sent: 1, skipped: 0, errors: 0 });
+      // B's run counts for B alone.
+      expect(sentMail()).toMatchObject({ businessId: B });
+      expect(await rows(A)).toHaveLength(0);
+
+      await stopped(A, "team", "blocked", DAY_BUDGET_ERROR, "2026-10-16T13:30:00Z");
+      expect(await sendAgentAlerts(later(1))).toEqual({ sent: 1, skipped: 0, errors: 0 });
+      expect(sentMail(1).subject).toBe("MATYA te necesita: se acabó el presupuesto de hoy");
+      expect((await rows(A))[0].data).toMatchObject({ keys: [`presupuesto:${TODAY}`], types: ["presupuesto"] });
+      // Another run blocked the same day does not repeat it; the next day it is a new alert.
+      await stopped(A, "piece", "blocked", DAY_BUDGET_ERROR, "2026-10-16T13:45:00Z");
+      expect(await sendAgentAlerts(later(2))).toEqual(none);
+      await stopped(A, "piece", "blocked", DAY_BUDGET_ERROR, "2026-10-17T13:00:00Z");
+      expect(await sendAgentAlerts(new Date("2026-10-17T14:00:00Z"))).toEqual({ sent: 1, skipped: 0, errors: 0 });
+      expect((await rows(A))[1].data).toMatchObject({ keys: ["presupuesto:2026-10-17"] });
+    });
+
+    it("MATYA turning itself off is told when it is off and a run went over its reservation in the last 24 hours", async () => {
+      // On, with a recent over-reservation: nothing to say (the owner turned it back on).
+      const recent = await stopped(A, "piece", "blocked", OVER_RESERVATION_ERROR, "2026-10-16T10:00:00Z");
+      expect(await sendAgentAlerts(NOW)).toEqual(none);
+      // Off, but the run is more than a day old.
+      await saveSettings(A, { ...settings, teamMode: true, enabled: false });
+      await stopped(A, "piece", "blocked", OVER_RESERVATION_ERROR, "2026-10-15T13:00:00Z");
+      await db.agentRun.delete({ where: { id: recent.id } });
+      expect(await sendAgentAlerts(NOW)).toEqual(none);
+      // Off and recent: told, with the run in the key. Any kind of run counts.
+      const shutdown = await stopped(A, "campaign", "blocked", OVER_RESERVATION_ERROR, "2026-10-16T10:00:00Z");
+      expect(await sendAgentAlerts(NOW)).toEqual({ sent: 1, skipped: 0, errors: 0 });
+      expect(sentMail().subject).toBe("MATYA te necesita: MATYA se apagó sola");
+      expect((await rows(A))[0].data).toMatchObject({ keys: [`apagado:${shutdown.id}`], types: ["apagado"] });
+      expect(await sendAgentAlerts(later(1))).toEqual(none);
+    });
+
+    it("the morning plan stopping is told when it is blocked or uncertain, and not when it works", async () => {
+      const plan = await stopped(A, "team", "running", "", "2026-10-16T11:00:00Z", { requestKey: dailyPlanKey(A, TODAY), origin: "daily" });
+      expect(await sendAgentAlerts(NOW)).toEqual(none);
+      // Yesterday's plan, blocked, is not today's.
+      await stopped(A, "team", "blocked", "x", "2026-10-15T11:00:00Z", { requestKey: dailyPlanKey(A, "2026-10-15"), origin: "daily" });
+      expect(await sendAgentAlerts(later(1))).toEqual(none);
+      await db.agentRun.update({ where: { id: plan.id }, data: { status: "uncertain" } });
+      expect(await sendAgentAlerts(later(2))).toEqual({ sent: 1, skipped: 0, errors: 0 });
+      expect(sentMail().subject).toBe("MATYA te necesita: el plan de la mañana se detuvo");
+      expect((await rows(A))[0].data).toMatchObject({ keys: [`plan:${TODAY}`], types: ["plan"] });
+      // Blocked afterwards is the same fact: told once that day.
+      await db.agentRun.update({ where: { id: plan.id }, data: { status: "blocked" } });
+      expect(await sendAgentAlerts(later(3))).toEqual(none);
+    });
+
+    it("alerts older than 30 days are forgotten, so a fact that still stands is told again", async () => {
+      const waiting = await video(A, "Techos");
+      expect(await sendAgentAlerts(NOW)).toEqual({ sent: 1, skipped: 0, errors: 0 });
+      expect(await sendAgentAlerts(later(24 * 60 * 29))).toEqual(none);
+      expect(await sendAgentAlerts(later(24 * 60 * 31))).toEqual({ sent: 1, skipped: 0, errors: 0 });
+      expect((await rows(A))[1].data).toMatchObject({ keys: [`video:${waiting.id}`], day: "2026-11-16" });
+    });
+
+    it("the global tick sends the alerts after the drain; an owner's cycle does not, and a failing alert never breaks the cycle", async () => {
+      // Off, so the cycle makes no morning plan of its own (and B is out of team mode).
+      await saveSettings(A, { ...settings, teamMode: true, enabled: false });
+      await saveSettings(B, { ...settings, industry: "commercial-security-ni", enabled: false });
+      await video(A, "Techos");
+
+      vi.mocked(drain).mockResolvedValueOnce(0);
+      await runAgentCycle(A);
+      expect(sendAgentAlerts).not.toHaveBeenCalled();
+      expect(sendSeoEmail).not.toHaveBeenCalled();
+
+      vi.mocked(drain).mockResolvedValueOnce(0);
+      expect(await runAgentCycle()).toEqual({ steps: 0, published: 0 });
+      expect(sendAgentAlerts).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(sendAgentAlerts).mock.calls[0][0]).toBeInstanceOf(Date);
+      expect(vi.mocked(drain).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(sendAgentAlerts).mock.invocationCallOrder[0]);
+      expect(sendSeoEmail).toHaveBeenCalledTimes(1);
+      expect(sentMail()).toMatchObject({ businessId: A });
+
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        vi.mocked(sendAgentAlerts).mockRejectedValueOnce(new TypeError("boom: secret detail"));
+        vi.mocked(drain).mockResolvedValueOnce(0);
+        await expect(runAgentCycle()).resolves.toEqual({ steps: 0, published: 0 });
+        expect(log).toHaveBeenCalledWith("MATYA alerts did not complete", "TypeError");
+        expect(JSON.stringify(log.mock.calls)).not.toContain("secret detail");
+      } finally {
+        log.mockRestore();
+      }
+
+      // Behind the same switch as the rest of the cycle.
+      process.env.MATYA_AGENT_ENABLED = "false";
+      vi.mocked(sendAgentAlerts).mockClear();
+      await runAgentCycle();
+      expect(sendAgentAlerts).not.toHaveBeenCalled();
     });
   });
 });

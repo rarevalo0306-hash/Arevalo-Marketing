@@ -10,6 +10,7 @@ import { OPEN_STATUSES, enqueue, json, stepsOf } from "./queue";
 import { AgentKeyEnum, ModelChoice } from "./schema";
 import type { TeamAgentView, TeamRunView, TeamSnapshot } from "./team-view";
 import { enqueueDailyPlans } from "./daily";
+import { sendAgentAlerts } from "./alerts";
 import { drain } from "./execution";
 import { loadContext } from "./context";
 import { industryFor, toolCatalog } from "./industry";
@@ -403,6 +404,14 @@ export async function runAgentCycle(businessId?: string) {
     console.error("MATYA daily plans did not complete");
   }
   const steps = await drain(businessId, 80000);
+  // The team's email alerts go out from the worker's tick only (an owner's cycle is not it), after the queue was worked, and they
+  // can never take the cycle down: the publishing below still runs.
+  if (businessId === undefined)
+    try {
+      await sendAgentAlerts(new Date());
+    } catch (error) {
+      console.error("MATYA alerts did not complete", error instanceof Error ? error.name : "unknown");
+    }
   // Only agent-owned posts; the legacy scheduler continues to own every other post.
   const posts = await db.post.findMany({
     where: {
