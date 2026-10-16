@@ -79,21 +79,38 @@ describe("brakedChannels", () => {
   describe("reconectar el canal", () => {
     const failed = [t("facebook", "failed", 1), t("facebook", "failed", 3)];
 
-    it("sin dato de reconexión sigue frenado", () => {
+    it("sin dato de reconexión se miran todos los envíos y sigue frenado", () => {
       expect(brakedChannels(failed)).toEqual(["facebook"]);
       expect(brakedChannels(failed, {})).toEqual(["facebook"]);
       expect(brakedChannels(failed, { facebook: undefined })).toEqual(["facebook"]);
+      // An invalid date is no data either.
+      expect(brakedChannels(failed, { facebook: new Date("nope") })).toEqual(["facebook"]);
     });
 
-    it("se libera si la conexión se guardó después del más nuevo de los dos fallos", () => {
+    it("se libera si la conexión se guardó después de los dos fallos", () => {
       expect(brakedChannels(failed, { facebook: at(4) })).toEqual([]);
     });
 
-    it("sigue frenado si se reconectó antes de ese fallo, o justo en ese momento", () => {
-      // Between the two failures, or before both: the newest failure came after, so the channel still fails.
-      expect(brakedChannels(failed, { facebook: at(2) })).toEqual(["facebook"]);
+    it("solo cuenta lo que pasó después de reconectar: lo de ese momento o antes ya no", () => {
+      // Between the two failures: only the newest is left after the reconnection, and one failure does not brake.
+      expect(brakedChannels(failed, { facebook: at(2) })).toEqual([]);
+      // At the very instant of the newest failure: it does not count either.
+      expect(brakedChannels(failed, { facebook: at(3) })).toEqual([]);
+      // Before both failures nothing changes.
       expect(brakedChannels(failed, { facebook: at(0) })).toEqual(["facebook"]);
-      expect(brakedChannels(failed, { facebook: at(3) })).toEqual(["facebook"]);
+    });
+
+    it("tras reconectar, un fallo nuevo no frena y dos fallos nuevos seguidos sí", () => {
+      const old = [t("facebook", "failed", 1), t("facebook", "failed", 2)];
+      const reconnected = { facebook: at(3) };
+      expect(brakedChannels([...old, t("facebook", "failed", 4)], reconnected)).toEqual([]);
+      expect(brakedChannels([...old, t("facebook", "failed", 4), t("facebook", "failed", 5)], reconnected)).toEqual([
+        "facebook",
+      ]);
+      // A good delivery between them breaks the run of failures.
+      expect(
+        brakedChannels([...old, t("facebook", "failed", 4), t("facebook", "sent", 5), t("facebook", "failed", 6)], reconnected),
+      ).toEqual([]);
     });
 
     it("la reconexión de un canal no libera a otro", () => {

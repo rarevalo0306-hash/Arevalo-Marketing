@@ -195,7 +195,8 @@ describe("agente de estrategia", () => {
       },
       limits: {
         maxPieces: 3,
-        formats: ["post", "carrusel", "video", "articulo"],
+        // No website among the channels: articles cannot be made.
+        formats: ["post", "carrusel", "video"],
         channels: ["facebook", "instagram"],
         today: "2026-10-16",
         recentTopics: ["Goteras en el techo"],
@@ -233,11 +234,35 @@ describe("agente de estrategia", () => {
     expect((ask.mock.calls[1][2] as { limits: { formats: string[] } }).limits.formats).toEqual(["post", "carrusel", "video"]);
   });
 
+  it("los formatos y los canales se ajustan entre sí: el sitio web solo para artículos, las redes solo para lo demás", async () => {
+    const sent = () => ask.mock.calls.at(-1)![2] as { limits: { formats: string[]; channels: string[] } };
+    // Social posts allowed and a website: every format, every channel.
+    limitsOf.mockResolvedValue({ ...LIMITS, channels: ["facebook", "seo"] });
+    await runStrategy(setup().input);
+    expect(sent().limits).toMatchObject({ formats: ["post", "carrusel", "video", "articulo"], channels: ["facebook", "seo"] });
+    // Only the website: articles and nothing else.
+    limitsOf.mockResolvedValue({ ...LIMITS, channels: ["seo"] });
+    await runStrategy(setup().input);
+    expect(sent().limits).toMatchObject({ formats: ["articulo"], channels: ["seo"] });
+    // Social posts are off: the social channels go and only articles are left.
+    limitsOf.mockResolvedValue({ ...LIMITS, allowSocial: false, channels: ["facebook", "seo"] });
+    await runStrategy(setup().input);
+    expect(sent().limits).toMatchObject({ formats: ["articulo"], channels: ["seo"] });
+    // Articles are off (even with a website listed): no articulo and no seo.
+    limitsOf.mockResolvedValue({ ...LIMITS, allowWebArticles: false, channels: ["facebook", "seo"] });
+    await runStrategy(setup().input);
+    expect(sent().limits).toMatchObject({ formats: ["post", "carrusel", "video"], channels: ["facebook"] });
+  });
+
   it("sin cupo, sin canales o sin formatos no hace la llamada pagada", async () => {
     for (const over of [
       { remainingPosts: 0 },
       { channels: [] },
       { allowSocial: false, allowWebArticles: false },
+      // Articles are allowed but the website is not connected, and social posts are off: nothing can be made.
+      { allowSocial: false, allowWebArticles: true, channels: ["facebook", "instagram"] },
+      // Social posts are allowed but only the website is connected, and articles are off.
+      { allowSocial: true, allowWebArticles: false, channels: ["seo"] },
     ]) {
       limitsOf.mockResolvedValue({ ...LIMITS, ...over });
       const result = await runStrategy(setup().input);

@@ -84,7 +84,7 @@ describe("dispatchText", () => {
   });
 
   it("un motivo desconocido sale tal cual, sin romper el texto", () => {
-    expect(dispatchText([], [{ id: "p1", reason: "otro" }], room, "es")).toContain("1 otro");
+    expect(dispatchText([], [{ id: "p1", reason: "otro" as never }], room, "es")).toContain("1 otro");
   });
 
   it("sin propuestas dice si faltó cupo, canal o ideas", () => {
@@ -96,10 +96,37 @@ describe("dispatchText", () => {
     expect(dispatchText([], [], { remainingPosts: 0, channels: [] }, "en")).toContain("no room");
   });
 
+  it("si lo que se acabó es el máximo del plan, lo dice así y no culpa al límite del día", () => {
+    const text = dispatchText(
+      [piece("p1", "Uno"), piece("p2", "Dos")],
+      [
+        { id: "p3", reason: "sin cupo" },
+        { id: "p4", reason: "sin cupo" },
+        { id: "p5", reason: "repetido" },
+      ],
+      room,
+      "es",
+      { planMax: 2 },
+    );
+    expect(text).toBe(
+      "Creé 2 piezas: «Uno» (publicación), «Dos» (publicación). " +
+        "Descarté 3 propuestas: 2 por pasar de las 2 piezas que pidió el plan, 1 por un tema repetido.",
+    );
+    expect(text).not.toContain("cupo");
+    expect(
+      dispatchText([piece("p1", "Uno")], [{ id: "p2", reason: "sin cupo" }], room, "es", { planMax: 1 }),
+    ).toBe("Creé 1 pieza: «Uno» (publicación). Descarté 1 propuesta: 1 por pasar de la pieza que pidió el plan.");
+    expect(
+      dispatchText([piece("p1", "One")], [{ id: "p2", reason: "sin cupo" }], room, "en", { planMax: 3 }),
+    ).toBe("I created 1 piece: «One» (post). I dropped 1 proposal: 1 for going over the 3 pieces the plan asked for.");
+    // Without the plan's maximum the same reason is the day's limit.
+    expect(dispatchText([], [{ id: "p2", reason: "sin cupo" }], room, "es")).toContain("cupo de publicaciones");
+  });
+
   it("un encargo cancelado lo dice y no habla de piezas", () => {
-    expect(dispatchText([], [{ id: "p1", reason: "sin cupo" }], room, "es", true)).toBe(
+    expect(dispatchText([], [{ id: "p1", reason: "sin cupo" }], room, "es", { cancelled: true })).toBe(
       "El encargo se canceló: no creé piezas.",
     );
-    expect(dispatchText([], [], room, "en", true)).toBe("The job was cancelled: I created no pieces.");
+    expect(dispatchText([], [], room, "en", { cancelled: true })).toBe("The job was cancelled: I created no pieces.");
   });
 });

@@ -4,7 +4,7 @@ import type { AgentRun } from "@prisma/client";
 import { db } from "@/lib/db";
 import { AgentError } from "./access";
 import { pieceLimits } from "./limits";
-import { capByDirector, validatePieces, type Piece, type PieceLimits } from "./plan";
+import { capByDirector, validatePieces, type DropReason, type Piece, type PieceLimits } from "./plan";
 import { spawnPieces, type StepResult } from "./queue";
 import { languageOf } from "./schema";
 import { registerMatyaStep } from "./team-execution";
@@ -14,7 +14,7 @@ import { readStepOutput } from "./tools";
 export { pieceLimits } from "./limits";
 
 type Language = "es" | "en";
-type Dropped = { id: string; reason: string };
+type Dropped = { id: string; reason: DropReason };
 
 const FORMAT: Record<Piece["format"], Record<Language, string>> = {
   post: { es: "publicación", en: "post" },
@@ -24,7 +24,7 @@ const FORMAT: Record<Piece["format"], Record<Language, string>> = {
 };
 
 /** Each reason `validatePieces` gives, in plain words for the owner (after "por" / "for"). */
-const WHY: Record<string, Record<Language, string>> = {
+const WHY: Record<DropReason, Record<Language, string>> = {
   formato: { es: "por formato no válido", en: "for an invalid format" },
   "sin canal": { es: "por no tener un canal conectado y permitido", en: "for having no connected, allowed channel" },
   "no permitido": { es: "por un tipo de contenido que no está permitido", en: "for a kind of content that is not allowed" },
@@ -33,28 +33,39 @@ const WHY: Record<string, Record<Language, string>> = {
   "sin cupo": { es: "por falta de cupo de publicaciones", en: "for lack of room in the posting limit" },
 };
 
+/** "Sin cupo" when the director's own maximum is what ran out (not the day's limit): the owner is told the plan asked for `n`. */
+const overPlan = (n: number, language: Language) =>
+  language === "es"
+    ? `por pasar de ${n === 1 ? "la pieza" : `las ${n} piezas`} que pidió el plan`
+    : `for going over the ${n} ${n === 1 ? "piece" : "pieces"} the plan asked for`;
+
 /** "2 por falta de cupo de publicaciones, 1 por un tema repetido" (the most common reason first). */
-function reasons(dropped: Dropped[], language: Language): string {
-  const counts = new Map<string, number>();
+function reasons(dropped: Dropped[], language: Language, planMax?: number): string {
+  const counts = new Map<DropReason, number>();
   for (const d of dropped) counts.set(d.reason, (counts.get(d.reason) ?? 0) + 1);
   return [...counts]
     .sort((a, b) => b[1] - a[1])
-    .map(([reason, n]) => `${n} ${WHY[reason]?.[language] ?? reason}`)
+    .map(
+      ([reason, n]) =>
+        `${n} ${reason === "sin cupo" && planMax !== undefined ? overPlan(planMax, language) : (WHY[reason]?.[language] ?? reason)}`,
+    )
     .join(", ");
 }
 
 /**
  * What the owner reads when the dispatch ends: the pieces created (topic and format) and the proposals dropped, with the
  * reasons in plain words. With nothing created it says why, whatever the cause: a cancelled job, no places left today, no
- * channel, or a strategy with nothing to propose.
+ * channel, or a strategy with nothing to propose. `planMax`: set when the director's own maximum, and not the day's limit,
+ * is what cut the pieces: then "no room" is worded as "the plan asked for N".
  */
 export function dispatchText(
   created: Piece[],
   dropped: Dropped[],
   limits: Pick<PieceLimits, "remainingPosts" | "channels">,
   language: Language,
-  cancelled = false,
+  opts: { cancelled?: boolean; planMax?: number } = {},
 ): string {
+  const { cancelled = false, planMax } = opts;
   const es = language === "es";
   if (cancelled)
     return es
@@ -62,8 +73,8 @@ export function dispatchText(
       : "The job was cancelled: I created no pieces.";
   const lost = dropped.length
     ? es
-      ? ` Descarté ${dropped.length} ${dropped.length === 1 ? "propuesta" : "propuestas"}: ${reasons(dropped, language)}.`
-      : ` I dropped ${dropped.length} ${dropped.length === 1 ? "proposal" : "proposals"}: ${reasons(dropped, language)}.`
+      ? ` Descarté ${dropped.length} ${dropped.length === 1 ? "propuesta" : "propuestas"}: ${reasons(dropped, language, planMax)}.`
+      : ` I dropped ${dropped.length} ${dropped.length === 1 ? "proposal" : "proposals"}: ${reasons(dropped, language, planMax)}.`
     : "";
   if (created.length) {
     const list = created
@@ -101,10 +112,10 @@ async function dispatch(run: AgentRun): Promise<StepResult> {
     where: { businessId: run.businessId },
   });
   // The director's own maximum also holds; the workspace's limits hold even if its plan cannot be read.
-  const limits = capByDirector(
-    await pieceLimits(run.businessId, ws, new Date()),
-    await readStepOutput(run, "plan"),
-  );
+  const day = await pieceLimits(run.businessId, ws, new Date());
+  const limits = capByDirector(day, await readStepOutput(run, "plan"));
+  // When the plan's maximum (not the day's room) is the lower one, that is what the owner is told ran out.
+  const planMax = limits.remainingPosts < day.remainingPosts ? limits.remainingPosts : undefined;
   const proposed =
     typeof strategy === "object" && !Array.isArray(strategy)
       ? (strategy as { pieces?: unknown }).pieces
@@ -116,7 +127,7 @@ async function dispatch(run: AgentRun): Promise<StepResult> {
   const created = cancelled ? [] : pieces;
   return {
     data: { pieces: created, dropped },
-    text: dispatchText(created, dropped, limits, language, cancelled),
+    text: dispatchText(created, dropped, limits, language, { cancelled, planMax }),
     state: "completed",
   };
 }

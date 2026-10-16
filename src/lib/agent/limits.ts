@@ -31,7 +31,8 @@ function topicOf(plan: unknown): string | null {
  *   today minus the open pieces made today) and the places left in the open-work cap (8 minus every open run, the team's
  *   own run included). Never below 0.
  * - `channels`: those the owner allows and the business has connected, without the ones braked by repeated failures
- *   (until the owner reconnects the channel) and never youtube; plus `seo` (the website) when web articles are allowed and the website is connected.
+ *   (counting only deliveries after the owner last saved the connection) and never youtube; plus `seo` (the website)
+ *   when web articles are allowed and the website is connected.
  * - `today`: the business's local day, the same key `AgentBudget` uses.
  * - `recentTopics`: titles of the agent's campaigns and topics of its pieces from the last 30 days.
  * Everything is read for `businessId` only.
@@ -97,17 +98,21 @@ export async function pieceLimits(
             status: { in: ["sent", "failed"] },
             post: { businessId, id: { startsWith: "agent-" } },
           },
-          select: { channel: true, status: true, post: { select: { createdAt: true } } },
-          orderBy: { post: { createdAt: "desc" } },
+          select: { channel: true, status: true, post: { select: { scheduledAt: true } } },
+          orderBy: { post: { scheduledAt: "desc" } },
           take: 2,
         }),
       ),
     )
   )
     .flat()
-    // `PostTarget` has no date of its own: it was made together with its post.
-    .map((t) => ({ channel: t.channel, status: t.status, createdAt: t.post.createdAt }));
-  // Saving a channel's connection again (the owner reconnected it) lifts its brake: `updatedAt` is that moment.
+    // `PostTarget` has no date of its own: a delivery happens when its post goes out, so its time is the post's
+    // `scheduledAt` (never null). Not `createdAt`: the agent makes the post as a draft and schedules it later, possibly
+    // days later after an approval wait.
+    .map((t) => ({ channel: t.channel, status: t.status, createdAt: t.post.scheduledAt }));
+  // Saving a channel's connection again (the owner reconnected it) restarts its brake count: `updatedAt` is that moment.
+  // This relies on one invariant: only an owner's save moves `Connection.updatedAt`. The background writers that rewrite a
+  // connection (`writeConnection` in google-data.ts) keep `updatedAt` on purpose; any new writer must do the same.
   const reconnectedAt = Object.fromEntries(connections.map((c) => [c.channel, c.updatedAt]));
   const braked = new Set(brakedChannels(deliveries, reconnectedAt));
   const channels = candidates.filter((c) => !braked.has(c));

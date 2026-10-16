@@ -24,6 +24,9 @@ export const Piece = z.object({
 });
 export type Piece = z.infer<typeof Piece>;
 
+/** The most pieces one plan can have: their ids run p1..p12 (the pattern of `Piece.id`), and the strategy and the director never ask for more. */
+export const MAX_PIECES = 12;
+
 export const TEAM_STEPS = ["plan", "research", "strategy", "dispatch"] as const;
 
 const TEMPLATES: Record<PieceFormat, readonly string[]> = {
@@ -73,6 +76,17 @@ export type PieceLimits = {
   recentTopics: string[];
 };
 
+/** Why `validatePieces` drops a piece, in the order it checks them. */
+export const DROP_REASONS = [
+  "formato",
+  "sin canal",
+  "no permitido",
+  "fecha pasada",
+  "repetido",
+  "sin cupo",
+] as const;
+export type DropReason = (typeof DROP_REASONS)[number];
+
 const normalizeTopic = (s: string) =>
   s
     .normalize("NFD")
@@ -111,10 +125,10 @@ function idOf(item: unknown): string {
 export function validatePieces(
   raw: unknown,
   limits: PieceLimits,
-): { pieces: Piece[]; dropped: { id: string; reason: string }[] } {
+): { pieces: Piece[]; dropped: { id: string; reason: DropReason }[] } {
   const pieces: Piece[] = [];
-  const dropped: { id: string; reason: string }[] = [];
-  const drop = (id: string, reason: string) => dropped.push({ id, reason });
+  const dropped: { id: string; reason: DropReason }[] = [];
+  const drop = (id: string, reason: DropReason) => dropped.push({ id, reason });
   const allowed = new Set(limits.channels);
   const seenTopics = new Set(
     limits.recentTopics.filter((t) => typeof t === "string").map(normalizeTopic),

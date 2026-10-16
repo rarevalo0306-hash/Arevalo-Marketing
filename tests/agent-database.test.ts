@@ -1678,6 +1678,8 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       status: string,
       createdAt: Date,
       businessId = A,
+      /** When the post went out; the brake orders by this. Defaults to the creation time. */
+      scheduledAt = createdAt,
     ) =>
       db.post.create({
         data: {
@@ -1686,7 +1688,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
           text: "t",
           status: status === "failed" ? "failed" : "done",
           createdAt,
-          scheduledAt: createdAt,
+          scheduledAt,
           targets: { create: [{ channel, status }] },
         },
       });
@@ -1742,6 +1744,11 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
           { id: "p4", reason: "sin cupo" },
         ],
       });
+      // The day had room for 5: the owner is told the plan asked for 2, not that the daily limit ran out.
+      const text = await assistantText(parent.id);
+      expect(text).toContain("2 propuestas");
+      expect(text).toContain("pasar de las 2 piezas que pidió el plan");
+      expect(text).not.toContain("cupo");
     });
 
     it("sin ninguna pieza válida el encargo igual termina y le explica al dueño por qué", async () => {
@@ -1857,7 +1864,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
         expect((await limits()).channels).toEqual(["facebook"]);
       });
 
-      it("reconectar el canal después del segundo fallo levanta el freno", async () => {
+      it("reconectar el canal levanta el freno, y solo cuentan los envíos de después", async () => {
         await connect("instagram", "linkedin");
         await connectedSince(10);
         for (const channel of ["facebook", "instagram", "linkedin"]) {
@@ -1875,13 +1882,28 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
           where: { businessId_channel: { businessId: A, channel: "instagram" } },
           data: { updatedAt: agoDays(3) },
         });
-        expect((await limits(all)).channels).toEqual(["facebook"]);
-        // The reconnection only lifts the brake until the next failure: that one is newer than the reconnection and the
-        // failure before it is still the second newest, so the channel is braked again. A good delivery frees it.
+        // Both are released (instagram has only one failure left after its reconnection); linkedin was never reconnected.
+        expect((await limits(all)).channels).toEqual(["facebook", "instagram"]);
+        // One new failure after the reconnection does not brake; two in a row do. A good delivery frees it again.
         await delivery("agent-facebook-3", "facebook", "failed", agoDays(0.5));
-        expect((await limits(all)).channels).toEqual([]);
-        await delivery("agent-facebook-4", "facebook", "sent", agoDays(0.25));
-        expect((await limits(all)).channels).toEqual(["facebook"]);
+        expect((await limits(all)).channels).toEqual(["facebook", "instagram"]);
+        await delivery("agent-facebook-4", "facebook", "failed", agoDays(0.25));
+        expect((await limits(all)).channels).toEqual(["instagram"]);
+        await delivery("agent-facebook-5", "facebook", "sent", agoDays(0.1));
+        expect((await limits(all)).channels).toEqual(["facebook", "instagram"]);
+      });
+
+      it("los envíos se ordenan por la hora a la que salió la publicación, no por cuándo se creó", async () => {
+        await connectedSince(10);
+        // Made in this order (oldest first): F1, F2, then the good one. But it went out in another: the good one first.
+        await delivery("agent-d1", "facebook", "failed", agoDays(5), A, agoDays(1));
+        await delivery("agent-d2", "facebook", "failed", agoDays(4), A, agoDays(0.5));
+        await delivery("agent-d3", "facebook", "sent", agoDays(1), A, agoDays(3));
+        // By the hour they went out the last two were both failures. (By creation time the good one would be second.)
+        expect((await limits()).channels).toEqual([]);
+        // A good delivery that goes out after them frees the channel.
+        await delivery("agent-d4", "facebook", "sent", agoDays(2), A, agoDays(0.25));
+        expect((await limits()).channels).toEqual(["facebook"]);
       });
 
       it("agrega seo solo con artículos permitidos y la conexión del sitio web", async () => {
@@ -1935,6 +1957,27 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
         expect((await limits({ maxPostsPerDay: 6 })).remainingPosts).toBe(5);
         // The day's limit already used up gives zero, never a negative number.
         expect((await limits({ maxPostsPerDay: 1 })).remainingPosts).toBe(0);
+      });
+
+      it("las piezas de hoy se cuentan por el día del negocio, no por el día de UTC", async () => {
+        const parent = await teamParent();
+        const kids = await spawnPieces(
+          parent,
+          ["p1", "p2", "p3", "p4"].map((id, i) => ({ ...roof, id, topic: `Tema ${i + 1}` })),
+        );
+        // It is 10:00 on 2026-10-16 in New York (UTC-4). Its local day runs from 04:00Z to 04:00Z the next day.
+        const now = new Date("2026-10-16T14:00:00Z");
+        const made = [
+          "2026-10-16T03:30:00Z", // 23:30 yesterday there, but already the 16th in UTC: not today's
+          "2026-10-17T02:00:00Z", // 22:00 today there, but the 17th in UTC: today's
+          "2026-10-17T03:30:00Z", // 23:30 today there, but the 17th in UTC: today's
+          "2026-10-17T04:30:00Z", // 00:30 tomorrow there: not today's
+        ];
+        for (const [i, kid] of kids.entries())
+          await db.agentRun.update({ where: { id: kid.id }, data: { createdAt: new Date(made[i]) } });
+        // The day's limit of 4 minus the two pieces of today (a UTC day would count 1 and give 3, counting all would give 0);
+        // the cap of open work leaves 8 - 5 = 3.
+        expect((await limits({ maxPostsPerDay: 4 }, now)).remainingPosts).toBe(2);
       });
 
       it("los ocho trabajos abiertos (el propio equipo incluido) también limitan", async () => {

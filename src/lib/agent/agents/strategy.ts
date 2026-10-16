@@ -18,17 +18,15 @@ import {
 } from "../bounded-context";
 import { pieceLimits } from "../limits";
 import { meteredAsk, promptBytes } from "../metered";
-import { capByDirector, PieceFormat } from "../plan";
+import { capByDirector, MAX_PIECES, PieceFormat } from "../plan";
 import { MEDIA_POLICY, SYSTEM } from "../prompts";
 import type { StepResult } from "../queue";
 import type { Calendar } from "../tools";
 import type { AgentInput } from "./types";
 
 /** Loose on purpose: any item is accepted, so one malformed piece never fails the paid call. `dispatch` validates them. */
-export const StrategyOutput = z.object({ pieces: z.array(z.unknown()).max(12) });
+export const StrategyOutput = z.object({ pieces: z.array(z.unknown()).max(MAX_PIECES) });
 
-/** The most pieces a plan can have (a piece id is p1..p12). */
-const MAX_PIECES = 12;
 /** Longest texts of the data sent, and most recent topics sent: the validator still sees every topic. */
 const GOAL_MAX = 500;
 const KIND_MAX = 40;
@@ -217,14 +215,17 @@ export async function runStrategy(input: AgentInput): Promise<StepResult> {
     where: { businessId: run.businessId },
   });
   const limits = capByDirector(await pieceLimits(run.businessId, ws, now), plan);
-  const formats = PieceFormat.options.filter((f) =>
-    f === "articulo" ? limits.allowWebArticles : limits.allowSocial,
-  );
+  // What can really be made, by the channels that remain: the website (`seo`) is the channel of articles and of nothing
+  // else (`validatePieces` drops the rest), so an article needs `seo` and the permission for web articles, and the social
+  // formats need a social channel and the permission for social posts.
+  const social = limits.allowSocial ? limits.channels.filter((c) => c !== "seo") : [];
+  const web = limits.allowWebArticles && limits.channels.includes("seo");
+  const channels = web ? [...social, "seo"] : social;
+  const formats = PieceFormat.options.filter((f) => (f === "articulo" ? web : social.length > 0));
   const maxPieces = Math.min(limits.remainingPosts, MAX_PIECES);
 
-  // No room, no channel or no allowed format: whatever the model proposed would be dropped, so nothing is asked.
-  if (maxPieces <= 0 || !limits.channels.length || !formats.length)
-    return { data: { pieces: [] }, cents: 0 };
+  // No room or no format that can be made: whatever the model proposed would be dropped, so nothing is asked.
+  if (maxPieces <= 0 || !formats.length) return { data: { pieces: [] }, cents: 0 };
   if (!input.model)
     throw new AgentError("Falta configurar el modelo del agente de estrategia.");
 
@@ -241,7 +242,7 @@ export async function runStrategy(input: AgentInput): Promise<StepResult> {
       limits: {
         maxPieces,
         formats,
-        channels: limits.channels,
+        channels,
         today: limits.today,
         recentTopics: limits.recentTopics.slice(0, TOPICS_SENT).map((t) => oneLine(t, TOPIC_MAX)),
       },
