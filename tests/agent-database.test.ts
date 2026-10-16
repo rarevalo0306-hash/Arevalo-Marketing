@@ -20,7 +20,7 @@ import { workOne, executeStep, analyzeResults } from "@/lib/agent/execution";
 import { claimAgentPost } from "@/lib/agent/publication";
 import { loadContext } from "@/lib/agent/context";
 import { pieceLimits, recentTopicsOf } from "@/lib/agent/limits";
-import { localDay } from "@/lib/business-tz";
+import { addDays, localDay } from "@/lib/business-tz";
 import { DEFAULT_SETTINGS } from "@/components/agent/types";
 import { collectNews } from "@/lib/agent/news";
 import { readSource } from "@/lib/agent/network";
@@ -35,6 +35,7 @@ import { CALENDAR_LIMITS, readStepOutput, toolsFor } from "@/lib/agent/tools";
 import { assertCanSchedule, Refusal } from "@/lib/agent/guard";
 import { locked } from "@/lib/agent/queue";
 import { stormSchedule } from "@/lib/storm";
+import { localToUtc } from "@/lib/time";
 import { BUILTIN_TEMPLATES } from "@/lib/design-shapes";
 import type { VideoMedia } from "@/lib/video-plan";
 vi.mock("@/lib/library-files", () => ({
@@ -2857,15 +2858,130 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       expect(await stepOf(piece.id, "prepare")).toMatchObject({ output: { blockedChannels: ["linkedin"] } });
     });
 
-    it("after a storm the piece is scheduled for the time the storm rules allow", async () => {
+    it("after a storm the piece is scheduled for the time the storm rules allow, in the business's own time zone", async () => {
+      const tz = "America/Chicago";
+      await db.business.update({ where: { id: A }, data: { timezone: tz } });
       const [piece] = await drafted();
-      const at = new Date(Date.now() - 30 * 60000).toISOString();
+      // 49 hours after the storm falls at 8:30 am tomorrow in Chicago (9:30 am in Miami): too early there, fine in Miami.
+      const target = localToUtc(addDays(localDay(new Date(), tz), 1), 0, "08:30", tz);
+      const at = new Date(target.getTime() - 49 * 3600000).toISOString();
       await db.agentRun.update({
         where: { id: piece.id },
         data: { context: { ...(piece.context as object), storm: { event: "huracan", at, phase: "oferta" } } },
       });
       await workOne(A);
-      expect((await postOf(piece.id))?.scheduledAt).toEqual(stormSchedule(new Date(at), 0, "oferta"));
+      const scheduledAt = (await postOf(piece.id))?.scheduledAt;
+      expect(scheduledAt).toEqual(stormSchedule(new Date(at), 0, "oferta", tz));
+      expect(scheduledAt).not.toEqual(stormSchedule(new Date(at), 0, "oferta", "America/New_York"));
+    });
+
+    describe("settings saved by the owner while a piece is pending", () => {
+      const link = {
+        fact: "Dato confirmado del negocio",
+        url: "https://example.com/dato",
+        checkedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 86400000).toISOString(),
+        geography: "Florida, Estados Unidos",
+      };
+      const save = (extra: Record<string, unknown>) => saveSettings(A, { ...settings, teamMode: true, ...extra });
+
+      it("the guard reads the saved settings: social posts turned off block the piece with its own message", async () => {
+        const [piece] = await drafted();
+        await save({ allowSocial: false });
+        await workOne(A);
+        expect(await row(piece.id)).toMatchObject({ status: "blocked", error: expect.stringContaining("redes sociales") });
+        expect(await postOf(piece.id)).toMatchObject({ status: "draft" });
+      });
+
+      it("an unrelated save does not block a piece waiting to be scheduled, and its post can still be published", async () => {
+        const [piece] = await drafted();
+        await save({ knowledge: [link] });
+        await workOne(A);
+        expect(await postOf(piece.id)).toMatchObject({ status: "scheduled" });
+        expect(await row(piece.id)).toMatchObject({ status: "queued", stage: 5 });
+        // The guard checked the settings as saved now, so the publishing claim accepts them.
+        expect(await claimAgentPost(`agent-${piece.id}`)).toEqual({ count: 1 });
+      });
+
+      it("a piece waiting for the owner after its review survives an unrelated save and is scheduled once approved", async () => {
+        const [piece] = await reviewed();
+        await workspace({ mode: "approval" });
+        await db.agentRun.update({ where: { id: piece.id }, data: { status: "waiting_approval" } });
+        await save({ mode: "approval", knowledge: [link] });
+        await changeRun(A, piece.id, "approve");
+        await workOne(A);
+        await workOne(A);
+        expect(await postOf(piece.id)).toMatchObject({ status: "scheduled" });
+        // Settings saved after the guard let it through still stop it at the publishing claim.
+        await save({ mode: "approval" });
+        expect(await claimAgentPost(`agent-${piece.id}`)).toEqual({ count: 0 });
+        expect(await postOf(piece.id)).toMatchObject({ status: "draft" });
+      });
+    });
+
+    it("a channel's blocking rule in a piece's prepare blocks it before any post is made", async () => {
+      // TikTok takes the piece's base text, and this one is longer than TikTok allows.
+      const long = { ...SOCIAL, variants: { ...SOCIAL.variants, facebook: "Texto largo. ".repeat(200) } };
+      const [piece] = await reviewed([{ ...roof, format: "video", channels: ["facebook", "tiktok"] }]);
+      await db.agentStep.update({ where: { runId_name: { runId: piece.id, name: "copy" } }, data: { output: long } });
+      await done(piece.id, "video_wait:0", { status: "ready", videoUrl: "https://example.com/piece-video.mp4" });
+      await workOne(A);
+      expect(await row(piece.id)).toMatchObject({ status: "blocked", error: expect.stringContaining("tiktok") });
+      expect(await stepOf(piece.id, "prepare")).toMatchObject({ status: "blocked" });
+      expect(await postOf(piece.id)).toBeNull();
+    });
+
+    it("a carousel piece says it goes out as a single image, in the owner's language", async () => {
+      const [es, en, post] = await reviewed([
+        { ...roof, format: "carrusel" },
+        { ...goteras, format: "carrusel" },
+        { ...roof, id: "p3", topic: "Canaletas" },
+      ]);
+      await db.agentRun.update({ where: { id: en.id }, data: { prompt: "Please prepare posts about leaks" } });
+      const text = async (runId: string) => (await executeStep(await row(runId), "prepare")).text ?? "";
+      expect(await text(es.id)).toContain("una sola imagen");
+      expect(await postOf(es.id)).toMatchObject({ status: "draft", kind: "post", mediaUrl: "https://example.com/piece-square.jpg" });
+      const english = await text(en.id);
+      expect(english).toContain("single image");
+      expect(english).toContain("I prepared");
+      // A plain post says nothing of the kind.
+      const plain = await text(post.id);
+      expect(plain).toContain("Preparé");
+      expect(plain).not.toContain("una sola imagen");
+    });
+
+    it("a piece and a campaign of the old flow scheduled at the same time share the daily limit", async () => {
+      const [piece] = await drafted();
+      // The piece waits aside while the campaign is prepared by the old flow, then both are ready to schedule.
+      await db.agentRun.update({ where: { id: piece.id }, data: { status: "waiting_approval" } });
+      const campaign = await prepared();
+      expect(stepsOf(await row(campaign.id))[(await row(campaign.id)).stage]).toBe("schedule");
+      await db.agentRun.update({ where: { id: piece.id }, data: { status: "queued" } });
+      await workspace({ maxPostsPerDay: 1 });
+      let arrived = 0;
+      let release!: () => void;
+      let first!: () => void;
+      const together = new Promise<void>((r) => (release = r));
+      const firstIn = new Promise<void>((r) => (first = r));
+      const exec = async (run: AgentRun, name: string): Promise<StepResult> => {
+        if (name === "schedule") {
+          arrived++;
+          if (arrived === 1) first();
+          if (arrived === 2) release();
+          await together;
+        }
+        return executeStep(run, name);
+      };
+      const one = workOne(A, exec, () => 0);
+      await firstIn;
+      const two = workOne(A, exec, () => 0);
+      await Promise.all([one, two]);
+      expect(arrived).toBe(2);
+      const posts = await db.post.findMany({ where: { id: { in: [`agent-${piece.id}`, `agent-${campaign.id}`] } } });
+      expect(posts.map((p) => p.status).sort()).toEqual(["draft", "scheduled"]);
+      const loser = posts.find((p) => p.status === "draft")!.id.slice("agent-".length);
+      expect((await row(loser)).error).toContain("límite diario");
+      expect(await budget()).toMatchObject({ posts: 1 });
     });
 
     it("a refusal settles only a step that reserved nothing; a step holding a reservation is still uncertain", async () => {

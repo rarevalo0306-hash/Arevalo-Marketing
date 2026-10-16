@@ -4,7 +4,7 @@
 // negocio, o `db`), nunca con otra conexión. `pieceLimits` lee `brakedOf` para no proponer piezas a un canal frenado.
 import type { AgentRun, AgentWorkspace, Prisma } from "@prisma/client";
 import { businessTz, localDay } from "@/lib/business-tz";
-import { stormSchedule } from "@/lib/storm";
+import { stormSchedule, stormWindow } from "@/lib/storm";
 import { AgentError } from "./access";
 import { Piece, type PieceFormat } from "./plan";
 
@@ -113,17 +113,21 @@ export async function approvedAfterReview(
   return approvedAfterReviews(run.approvedAt, reviews);
 }
 
-/** The business's local day of `now` (`AgentBudget.day`), the same key `beginStep` and `claimAgentPost` use. */
+/**
+ * The business's time zone (`businessTz`) and its local day of `now` (`AgentBudget.day`, the same key `beginStep` and
+ * `claimAgentPost` use), from one read of the business row.
+ */
 export async function todayOf(
   client: Prisma.TransactionClient,
   businessId: string,
   now: Date,
-): Promise<string> {
+): Promise<{ day: string; tz: string }> {
   const business = await client.business.findUniqueOrThrow({
     where: { id: businessId },
     select: { timezone: true },
   });
-  return localDay(now, businessTz(business));
+  const tz = businessTz(business);
+  return { day: localDay(now, tz), tz };
 }
 
 /** What the guard decides on, already read. */
@@ -230,7 +234,7 @@ export async function assertCanSchedule(
     where: { businessId },
     select: { channel: true, updatedAt: true },
   });
-  const day = await todayOf(tx, businessId, now);
+  const { day } = await todayOf(tx, businessId, now);
   const budget = await tx.agentBudget.findUnique({
     where: { businessId_day: { businessId, day } },
     select: { posts: true },
@@ -248,20 +252,18 @@ export async function assertCanSchedule(
 }
 
 /**
- * When a piece's post goes out: in a minute, as the agent's campaigns (the piece's own `date` is advisory). After a storm
- * (`context.storm.at`, a date) it is never before what the storm rules allow (`stormSchedule`, with the phase "seguridad"
- * unless the context says "oferta"); an old storm changes nothing.
+ * When a piece's post goes out, in the business's time zone `tz`: in a minute, as the agent's campaigns (the piece's own
+ * `date` is advisory). After a storm (`context.storm.at`, a date) it is never before what the storm rules allow
+ * (`stormSchedule`, with the phase "seguridad" unless the context says "oferta"), and always inside their hours
+ * (`stormWindow`: 9 am to 7 pm, an offer never on a Sunday), even when the storm is old and that time already passed.
  */
-export function pieceScheduleAt(context: unknown, now: Date): Date {
+export function pieceScheduleAt(context: unknown, now: Date, tz: string): Date {
   const soon = new Date(now.getTime() + 60000);
   const storm = field(context, "storm");
   const at = field(storm, "at");
   const time = typeof at === "string" ? Date.parse(at) : NaN;
   if (Number.isNaN(time)) return soon;
-  const allowed = stormSchedule(
-    new Date(time),
-    0,
-    field(storm, "phase") === "oferta" ? "oferta" : "seguridad",
-  );
-  return allowed.getTime() > soon.getTime() ? allowed : soon;
+  const phase = field(storm, "phase") === "oferta" ? "oferta" : "seguridad";
+  const allowed = stormSchedule(new Date(time), 0, phase, tz);
+  return stormWindow(allowed.getTime() > soon.getTime() ? allowed : soon, phase, tz);
 }

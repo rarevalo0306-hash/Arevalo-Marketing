@@ -281,8 +281,13 @@ export async function beginStep(
       where: { businessId: run.businessId },
     });
     const context = run.context as unknown as Context;
+    // A piece's prepare and schedule only use what its earlier steps saved, and the guard checks every current setting when
+    // the piece is scheduled: a settings save since the piece was asked for does not stop them.
+    const guardedLater =
+      run.kind === "piece" && (name === "prepare" || name === "schedule");
     if (
       !["briefing", "pause"].includes(run.kind) &&
+      !guardedLater &&
       settings.revision !== context.revision
     )
       throw new AgentError(

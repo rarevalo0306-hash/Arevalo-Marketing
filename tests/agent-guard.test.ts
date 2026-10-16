@@ -287,35 +287,62 @@ describe("approvedAfterReviews", () => {
 });
 
 describe("pieceScheduleAt", () => {
-  const now = new Date("2026-10-16T14:00:00Z");
+  const ny = "America/New_York";
+  const now = new Date("2026-10-16T14:00:00Z"); // Friday 10 am in Miami
   const soon = new Date(now.getTime() + 60000);
 
-  it("without a storm a piece goes out in a minute, as the agent's campaigns do", () => {
-    expect(pieceScheduleAt({}, now)).toEqual(soon);
-    expect(pieceScheduleAt(null, now)).toEqual(soon);
-    expect(pieceScheduleAt({ storm: { event: "huracan" } }, now)).toEqual(soon);
-    expect(pieceScheduleAt({ storm: { event: "huracan", at: "no es una fecha" } }, now)).toEqual(soon);
-    expect(pieceScheduleAt({ storm: { at: 12345 } }, now)).toEqual(soon);
+  it("without a storm a piece goes out in a minute, as the agent's campaigns do, at any hour", () => {
+    expect(pieceScheduleAt({}, now, ny)).toEqual(soon);
+    expect(pieceScheduleAt(null, now, ny)).toEqual(soon);
+    expect(pieceScheduleAt({ storm: { event: "huracan" } }, now, ny)).toEqual(soon);
+    expect(pieceScheduleAt({ storm: { event: "huracan", at: "no es una fecha" } }, now, ny)).toEqual(soon);
+    expect(pieceScheduleAt({ storm: { at: 12345 } }, now, ny)).toEqual(soon);
+    // No storm: no time window either, even at night.
+    const night = new Date("2026-10-16T01:00:00Z");
+    expect(pieceScheduleAt({}, night, ny)).toEqual(new Date(night.getTime() + 60000));
   });
 
   it("after a storm it waits for the hours the storm rules allow", () => {
     // Friday 9:30 am in Miami, half an hour before `now`: the help post goes out an hour after the storm.
     const at = "2026-10-16T13:30:00Z";
-    expect(stormSchedule(new Date(at), 0, "seguridad").getTime()).toBeGreaterThan(soon.getTime());
+    expect(stormSchedule(new Date(at), 0, "seguridad", ny).getTime()).toBeGreaterThan(soon.getTime());
     // The phase defaults to "seguridad" (help, no offer).
-    expect(pieceScheduleAt({ storm: { event: "huracan", at } }, now)).toEqual(stormSchedule(new Date(at), 0, "seguridad"));
-    expect(pieceScheduleAt({ storm: { event: "huracan", at, phase: "seguridad" } }, now)).toEqual(
-      stormSchedule(new Date(at), 0, "seguridad"),
+    expect(pieceScheduleAt({ storm: { event: "huracan", at } }, now, ny)).toEqual(stormSchedule(new Date(at), 0, "seguridad", ny));
+    expect(pieceScheduleAt({ storm: { event: "huracan", at, phase: "seguridad" } }, now, ny)).toEqual(
+      stormSchedule(new Date(at), 0, "seguridad", ny),
     );
     // An offer waits more than 48 hours after the storm.
-    const offer = pieceScheduleAt({ storm: { event: "huracan", at, phase: "oferta" } }, now);
-    expect(offer).toEqual(stormSchedule(new Date(at), 0, "oferta"));
+    const offer = pieceScheduleAt({ storm: { event: "huracan", at, phase: "oferta" } }, now, ny);
+    expect(offer).toEqual(stormSchedule(new Date(at), 0, "oferta", ny));
     expect(offer.getTime() - Date.parse(at)).toBeGreaterThan(48 * 3600000);
     // A phase it does not know is the safe one.
-    expect(pieceScheduleAt({ storm: { at, phase: "otra" } }, now)).toEqual(stormSchedule(new Date(at), 0, "seguridad"));
+    expect(pieceScheduleAt({ storm: { at, phase: "otra" } }, now, ny)).toEqual(stormSchedule(new Date(at), 0, "seguridad", ny));
   });
 
-  it("never schedules in the past: an old storm goes out in a minute", () => {
-    expect(pieceScheduleAt({ storm: { event: "huracan", at: "2026-10-01T19:00:00Z" } }, now)).toEqual(soon);
+  it("an old storm goes out in a minute when that is inside the allowed hours", () => {
+    expect(pieceScheduleAt({ storm: { event: "huracan", at: "2026-10-01T19:00:00Z" } }, now, ny)).toEqual(soon);
+  });
+
+  it("an old storm still keeps the allowed hours: at 9 pm the post waits for 9 am the next day", () => {
+    const night = new Date("2026-10-16T01:00:00Z"); // Thursday 9 pm in Miami
+    expect(pieceScheduleAt({ storm: { event: "huracan", at: "2026-10-01T19:00:00Z" } }, night, ny)).toEqual(
+      new Date("2026-10-16T13:00:00Z"), // Friday 9 am
+    );
+    // An offer on a Sunday waits for Monday 9 am; help may go out on a Sunday.
+    const sunday = new Date("2026-10-18T15:00:00Z"); // Sunday 11 am
+    const old = { event: "huracan", at: "2026-10-10T19:00:00Z" };
+    expect(pieceScheduleAt({ storm: { ...old, phase: "oferta" } }, sunday, ny)).toEqual(new Date("2026-10-19T13:00:00Z"));
+    expect(pieceScheduleAt({ storm: old }, sunday, ny)).toEqual(new Date(sunday.getTime() + 60000));
+  });
+
+  it("uses the business's own time zone", () => {
+    const old = { storm: { event: "huracan", at: "2026-10-01T19:00:00Z" } };
+    // 7:30 pm in Miami is already late; it is 6:30 pm in Chicago, still within the hours.
+    const evening = new Date("2026-10-15T23:30:00Z");
+    expect(pieceScheduleAt(old, evening, ny)).toEqual(new Date("2026-10-16T13:00:00Z"));
+    expect(pieceScheduleAt(old, evening, "America/Chicago")).toEqual(new Date(evening.getTime() + 60000));
+    // 8:30 pm in Chicago: 9 am the next day in Chicago, an hour after 9 am in Miami.
+    const late = new Date("2026-10-16T01:30:00Z");
+    expect(pieceScheduleAt(old, late, "America/Chicago")).toEqual(new Date("2026-10-16T14:00:00Z"));
   });
 });

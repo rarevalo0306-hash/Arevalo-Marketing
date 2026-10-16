@@ -306,7 +306,10 @@ type Draft = {
 async function saveDraft(
   run: AgentRun,
   d: Draft,
+  opts: { refuse?: boolean } = {},
 ): Promise<{ campaignId: string; postId: string }> {
+  // A piece's text that breaks a channel's rule is refused before anything is written (`refuse`); a campaign keeps its error.
+  const Fail = opts.refuse ? Refusal : AgentError;
   for (const channel of d.channels) {
     const text = d.variants[channel];
     const notes = notesFor(channel as ChannelId, {
@@ -316,7 +319,7 @@ async function saveDraft(
       mediaType: d.video ? "video" : "photo",
     }).filter((n) => n.blocking);
     if (notes.length)
-      throw new AgentError(
+      throw new Fail(
         `Revisa el texto de ${channel}: ${notes.map((n) => n.text).join(" ")}`,
       );
   }
@@ -408,22 +411,45 @@ async function preparePiece(run: AgentRun): Promise<StepResult> {
   const s = await db.agentWorkspace.findUniqueOrThrow({
     where: { businessId: run.businessId },
   });
-  const { campaignId, postId } = await saveDraft(run, {
-    title: copy.data.title,
-    alt: copy.data.alt,
-    goal: run.prompt,
-    mode: s.mode,
-    keywords: piece.data.keyword ? [piece.data.keyword] : [],
-    channels,
-    text: texts[channels[0]],
-    variants: texts,
-    video,
-    media,
-  });
+  const { campaignId, postId } = await saveDraft(
+    run,
+    {
+      title: copy.data.title,
+      alt: copy.data.alt,
+      goal: run.prompt,
+      mode: s.mode,
+      keywords: piece.data.keyword ? [piece.data.keyword] : [],
+      channels,
+      text: texts[channels[0]],
+      variants: texts,
+      video,
+      media,
+    },
+    { refuse: true },
+  );
+  // A carousel is published as its one square image for now: the owner is told so.
+  const singleImage = piece.data.format === "carrusel";
   return {
-    data: { campaignId, postId, channels, blockedChannels: blocked, media },
-    text: `Preparé el borrador de «${copy.data.title}» para ${channels.join(", ")}.${blocked.length ? ` No se usará en ${blocked.join(", ")} porque ese canal no admite este formato.` : ""}`,
+    data: { campaignId, postId, channels, blockedChannels: blocked, media, singleImage },
+    text: preparedText(copy.data.title, channels, blocked, singleImage, languageOf(run.prompt)),
   };
+}
+/** What the owner reads when a piece's draft is ready, in the language of the request. */
+function preparedText(
+  title: string,
+  channels: string[],
+  blocked: string[],
+  singleImage: boolean,
+  language: "es" | "en",
+): string {
+  const list = (l: string[]) => l.join(", ");
+  return language === "en"
+    ? `I prepared the draft of "${title}" for ${list(channels)}.` +
+        (blocked.length ? ` It will not go to ${list(blocked)} because that channel does not take this format.` : "") +
+        (singleImage ? " It will be published as a single image: carousels cannot be published yet." : "")
+    : `Preparé el borrador de «${title}» para ${list(channels)}.` +
+        (blocked.length ? ` No se usará en ${list(blocked)} porque ese canal no admite este formato.` : "") +
+        (singleImage ? " Se publicará como una sola imagen: todavía no se pueden publicar carruseles." : "");
 }
 /** The URL of the square image of a stored design output, or undefined. Never throws (stored JSON). */
 function squareOf(design: unknown): string | undefined {
@@ -642,6 +668,9 @@ async function markScheduled(
  * (`assertCanSchedule`: switches, approval, channels, brakes and the day's count), then schedules the draft and counts it:
  * two pieces scheduled at the same time are checked and counted one after the other, so together they never pass
  * `maxPostsPerDay`. Any refusal leaves the draft as it is and the piece `blocked`.
+ * Unlike a campaign, a piece is not refused because the settings were saved since it was asked for: the guard checks every
+ * setting as it is now. The run then carries the revision the guard checked, which is what the publishing claim
+ * (`claimAgentPost`) compares: a save after this moment still stops the post before it goes out.
  */
 async function schedulePiece(run: AgentRun): Promise<StepResult> {
   return locked(run.businessId, async (tx) => {
@@ -651,8 +680,8 @@ async function schedulePiece(run: AgentRun): Promise<StepResult> {
     const ws = await tx.agentWorkspace.findUniqueOrThrow({
       where: { businessId: run.businessId },
     });
-    const c = run.context as unknown as Context;
-    if (current.cancelRequested || ws.revision !== c.revision)
+    const c = current.context as unknown as Context;
+    if (current.cancelRequested)
       throw new Refusal(
         "La publicación no está autorizada con los permisos actuales.",
       );
@@ -671,13 +700,18 @@ async function schedulePiece(run: AgentRun): Promise<StepResult> {
       post.targets.map((t) => t.channel),
       now,
     );
-    const day = await todayOf(tx, run.businessId, now);
+    const { day, tz } = await todayOf(tx, run.businessId, now);
     const budget = await tx.agentBudget.upsert({
       where: { businessId_day: { businessId: run.businessId, day } },
       create: { businessId: run.businessId, day },
       update: {},
     });
-    return markScheduled(tx, run, post, budget.id, pieceScheduleAt(current.context, now));
+    if (c.revision !== ws.revision)
+      await tx.agentRun.update({
+        where: { id: run.id },
+        data: { context: json({ ...c, revision: ws.revision }) },
+      });
+    return markScheduled(tx, run, post, budget.id, pieceScheduleAt(c, now, tz));
   });
 }
 /** The `verify` step: what each channel answered for the post `agent-<runId>` (campaigns and pieces alike). */

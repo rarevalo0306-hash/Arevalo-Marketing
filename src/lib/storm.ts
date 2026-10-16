@@ -30,16 +30,24 @@ function local(d: Date, tz: string) {
   return { date: `${p.year}-${p.month}-${p.day}`, hour: Number(p.hour), sunday: p.weekday === "Sun" };
 }
 
+/**
+ * Un momento movido al primer horario permitido en la zona `tz`: de 9 am a antes de las 7 pm y, si ofrece servicios
+ * ("oferta"), nunca en domingo. Un momento que ya está en horario no cambia.
+ */
+export function stormWindow(at: Date, phase: StormPhase, tz: string): Date {
+  let t = at;
+  for (let i = 0; i < 4; i++) {
+    const l = local(t, tz);
+    if (l.hour < FIRST_HOUR) t = localToUtc(l.date, 0, `${FIRST_HOUR}:00`, tz);
+    else if (l.hour >= LAST_HOUR) t = localToUtc(l.date, 1, `${FIRST_HOUR}:00`, tz);
+    else if (phase === "oferta" && l.sunday) t = localToUtc(l.date, 1, `${FIRST_HOUR}:00`, tz);
+    else break;
+  }
+  return t;
+}
+
 /** Hora de publicación: el evento + las horas que pidió la IA, movida a un horario permitido. */
 export function stormSchedule(eventAt: Date, hoursAfter: number, phase: StormPhase, tz = BUSINESS_TZ): Date {
   const hours = Math.max(phase === "oferta" ? OFFER_WAIT_HOURS : 1, Math.min(14 * 24, hoursAfter || 0));
-  let at = new Date(eventAt.getTime() + hours * 3600000);
-  for (let i = 0; i < 4; i++) {
-    const l = local(at, tz);
-    if (l.hour < FIRST_HOUR) at = localToUtc(l.date, 0, `${FIRST_HOUR}:00`, tz);
-    else if (l.hour >= LAST_HOUR) at = localToUtc(l.date, 1, `${FIRST_HOUR}:00`, tz);
-    else if (phase === "oferta" && l.sunday) at = localToUtc(l.date, 1, `${FIRST_HOUR}:00`, tz);
-    else break;
-  }
-  return at;
+  return stormWindow(new Date(eventAt.getTime() + hours * 3600000), phase, tz);
 }
