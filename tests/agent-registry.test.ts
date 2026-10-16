@@ -93,12 +93,14 @@ describe("registro de agentes", () => {
   });
 
   it("mientras no existan los demás agentes, cada uno falla con un mensaje claro", async () => {
-    // El Director y el agente SEO ya existen (tests/agent-director-seo.test.ts); los otros cinco siguen sin hacerse.
-    const todo = Object.values(AGENTS).filter((a) => !["director", "seo"].includes(a.key));
-    expect(todo.map((a) => a.key).sort()).toEqual(["copy", "design", "review", "strategy", "video"]);
+    // El Director, el agente SEO y el de estrategia ya existen (tests/agent-director-seo.test.ts, tests/agent-strategy.test.ts);
+    // los otros cuatro siguen sin hacerse.
+    const done = ["director", "seo", "strategy"];
+    const todo = Object.values(AGENTS).filter((a) => !done.includes(a.key));
+    expect(todo.map((a) => a.key).sort()).toEqual(["copy", "design", "review", "video"]);
     for (const a of todo)
       await expect(a.run({} as never)).rejects.toThrow("Agente no disponible.");
-    for (const key of ["director", "seo"] as const)
+    for (const key of done as ("director" | "seo" | "strategy")[])
       expect(AGENTS[key].run).not.toBe(AGENTS.copy.run);
   });
 });

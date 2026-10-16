@@ -19,6 +19,8 @@ import type { AgentRun } from "@prisma/client";
 import { workOne, executeStep, analyzeResults } from "@/lib/agent/execution";
 import { claimAgentPost } from "@/lib/agent/publication";
 import { loadContext } from "@/lib/agent/context";
+import { pieceLimits } from "@/lib/agent/limits";
+import { localDay } from "@/lib/business-tz";
 import { DEFAULT_SETTINGS } from "@/components/agent/types";
 import { collectNews } from "@/lib/agent/news";
 import { readSource } from "@/lib/agent/network";
@@ -1614,6 +1616,389 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       await tools.use("startVideo")(storyboard, cents, "approved");
       expect(vi.mocked(startRender).mock.calls[1][3]).toBe("approved");
       expect(await db.seoReport.count({ where: { businessId: B } })).toBe(0);
+    });
+  });
+
+  describe("content strategy and piece dispatch", () => {
+    const DAYMS = 86400000;
+    const agoDays = (n: number) => new Date(Date.now() - n * DAYMS);
+    const todayA = () => localDay(new Date(), "America/New_York");
+    const teamSettings = (extra: Record<string, unknown> = {}) => ({
+      ...settings,
+      teamMode: true,
+      ...extra,
+    });
+    const proposal = (n: number, extra: Record<string, unknown> = {}) => ({
+      id: `p${n}`,
+      topic: `Tema número ${n}`,
+      objective: "",
+      channels: ["facebook"],
+      format: "post",
+      keyword: "",
+      ...extra,
+    });
+    const PLAN = { reply: "", goal: "Más llamadas por goteras", maxPieces: 3 };
+    const RESEARCH = { items: [], digest: [] };
+    /** The team's first steps are stubbed with their output; every other step is the real one. */
+    const stub =
+      (outputs: Record<string, unknown>) =>
+      async (run: AgentRun, name: string): Promise<StepResult> =>
+        name in outputs ? { data: outputs[name] } : executeStep(run, name);
+    async function team(strategy: unknown, plan: unknown = PLAN) {
+      const run = await ask("Prepara contenido de goteras", { kind: "team" });
+      // plan, research, strategy (stubbed) and then the real dispatch.
+      for (let i = 0; i < 4; i++)
+        await workOne(A, stub({ plan, research: RESEARCH, strategy }), () => 0);
+      return run;
+    }
+    const dispatchStep = (runId: string) =>
+      db.agentStep.findUniqueOrThrow({
+        where: { runId_name: { runId, name: "dispatch" } },
+      });
+    const assistantText = async (runId: string) =>
+      (await db.agentMessage.findFirstOrThrow({ where: { runId, role: "assistant" } })).text;
+    const connect = (...channels: string[]) =>
+      db.connection.createMany({
+        data: channels.map((channel) => ({
+          businessId: A,
+          channel,
+          secret: "synthetic-no-provider-access",
+        })),
+      });
+    /** A post of the agent (or any other) with one delivery to one channel. */
+    const delivery = (
+      id: string,
+      channel: string,
+      status: string,
+      createdAt: Date,
+      businessId = A,
+    ) =>
+      db.post.create({
+        data: {
+          id,
+          businessId,
+          text: "t",
+          status: status === "failed" ? "failed" : "done",
+          createdAt,
+          scheduledAt: createdAt,
+          targets: { create: [{ channel, status }] },
+        },
+      });
+
+    it("dispatch crea solo las piezas válidas y respeta el cupo compartido", async () => {
+      await saveSettings(A, teamSettings({ maxPostsPerDay: 2 }));
+      // One post of the agent is already scheduled today: only one place is left.
+      await db.agentBudget.create({ data: { businessId: A, day: todayA(), posts: 1 } });
+      const parent = await team({ pieces: [proposal(1), proposal(2), proposal(3)] });
+
+      const kids = await db.agentRun.findMany({ where: { parentRunId: parent.id } });
+      expect(kids).toHaveLength(1);
+      expect(kids[0]).toMatchObject({
+        kind: "piece",
+        status: "queued",
+        requestKey: `${parent.requestKey}:p1`,
+        businessId: A,
+      });
+      const step = await dispatchStep(parent.id);
+      expect(step.output).toMatchObject({
+        pieces: [{ id: "p1", topic: "Tema número 1", format: "post", channels: ["facebook"] }],
+        dropped: [
+          { id: "p2", reason: "sin cupo" },
+          { id: "p3", reason: "sin cupo" },
+        ],
+      });
+      // The team's job ends here; its pieces carry on by themselves.
+      expect(await row(parent.id)).toMatchObject({ status: "completed", stage: 4 });
+      const text = await assistantText(parent.id);
+      expect(text).toContain("Tema número 1");
+      expect(text).toMatch(/1 pieza\b/);
+      expect(text).toMatch(/2 propuestas/);
+      expect(text).toContain("cupo");
+    });
+
+    it("el máximo de piezas del Director también acota lo que se crea", async () => {
+      await saveSettings(A, teamSettings({ maxPostsPerDay: 5 }));
+      const parent = await team(
+        { pieces: [proposal(1), proposal(2), proposal(3), proposal(4)] },
+        { ...PLAN, maxPieces: 2 },
+      );
+      const kids = await db.agentRun.findMany({
+        where: { parentRunId: parent.id },
+        orderBy: { requestKey: "asc" },
+      });
+      expect(kids.map((k) => k.requestKey)).toEqual([
+        `${parent.requestKey}:p1`,
+        `${parent.requestKey}:p2`,
+      ]);
+      expect((await dispatchStep(parent.id)).output).toMatchObject({
+        dropped: [
+          { id: "p3", reason: "sin cupo" },
+          { id: "p4", reason: "sin cupo" },
+        ],
+      });
+    });
+
+    it("sin ninguna pieza válida el encargo igual termina y le explica al dueño por qué", async () => {
+      await saveSettings(A, teamSettings());
+      const parent = await team({
+        pieces: [
+          proposal(1, { channels: ["youtube"], format: "video" }),
+          proposal(2, { channels: ["tiktok"] }),
+          "basura",
+        ],
+      });
+      expect(await db.agentRun.count({ where: { parentRunId: parent.id } })).toBe(0);
+      expect(await row(parent.id)).toMatchObject({ status: "completed", error: "" });
+      expect((await dispatchStep(parent.id)).output).toEqual({
+        pieces: [],
+        dropped: [
+          { id: "p1", reason: "sin canal" },
+          { id: "p2", reason: "sin canal" },
+          { id: "?", reason: "formato" },
+        ],
+      });
+      const text = await assistantText(parent.id);
+      expect(text).toMatch(/No creé piezas/);
+      expect(text).toContain("3 propuestas");
+      expect(text).toMatch(/canal/);
+    });
+
+    it("una estrategia sin propuestas termina con un texto claro", async () => {
+      await saveSettings(A, teamSettings());
+      const parent = await team({ pieces: [] });
+      expect(await row(parent.id)).toMatchObject({ status: "completed" });
+      expect((await dispatchStep(parent.id)).output).toEqual({ pieces: [], dropped: [] });
+      expect(await assistantText(parent.id)).toContain("no propuso piezas");
+    });
+
+    it("sin cupo de publicaciones hoy, lo dice (y no culpa a la estrategia)", async () => {
+      await saveSettings(A, teamSettings({ maxPostsPerDay: 1 }));
+      await db.agentBudget.create({ data: { businessId: A, day: todayA(), posts: 1 } });
+      const parent = await team({ pieces: [] });
+      expect(await assistantText(parent.id)).toMatch(/cupo/);
+    });
+
+    it("un encargo cancelado a mitad del despacho no crea piezas", async () => {
+      await saveSettings(A, teamSettings());
+      const parent = await ask("Prepara contenido de goteras", { kind: "team" });
+      const outputs = { plan: PLAN, research: RESEARCH, strategy: { pieces: [proposal(1)] } };
+      for (let i = 0; i < 3; i++) await workOne(A, stub(outputs), () => 0);
+      await workOne(
+        A,
+        async (run, name) => {
+          await changeRun(A, run.id, "cancel");
+          return executeStep(run, name);
+        },
+        () => 0,
+      );
+      expect(await db.agentRun.count({ where: { parentRunId: parent.id } })).toBe(0);
+      expect(await row(parent.id)).toMatchObject({ status: "cancelled" });
+      expect((await dispatchStep(parent.id)).output).toMatchObject({ pieces: [] });
+      expect(await assistantText(parent.id)).toMatch(/cancel/);
+    });
+
+    it("despachar sin el resultado de la estrategia detiene el encargo con un mensaje claro", async () => {
+      await saveSettings(A, teamSettings());
+      const parent = await ask("x", { kind: "team" });
+      await db.agentRun.update({ where: { id: parent.id }, data: { stage: 3 } });
+      await workOne(A, executeStep, () => 0);
+      // Like any step that fails after it began: the run stops and keeps the message (nothing was reserved).
+      expect(await row(parent.id)).toMatchObject({
+        status: "uncertain",
+        reservedCents: 0,
+        error: "Falta completar el paso anterior.",
+      });
+      expect(await db.agentRun.count({ where: { parentRunId: parent.id } })).toBe(0);
+    });
+
+    describe("pieceLimits", () => {
+      const limits = async (extra: Record<string, unknown> = {}, now = new Date()) => {
+        await saveSettings(A, teamSettings(extra));
+        const ws = await db.agentWorkspace.findUniqueOrThrow({ where: { businessId: A } });
+        return pieceLimits(A, ws, now);
+      };
+
+      it("deja solo los canales permitidos, conectados, sin freno y que no son youtube", async () => {
+        await connect("instagram", "linkedin", "youtube");
+        // facebook: failed then sent -> fine. instagram: two failures -> braked.
+        await delivery("agent-d1", "facebook", "failed", agoDays(3));
+        await delivery("agent-d2", "facebook", "sent", agoDays(2));
+        await delivery("agent-d3", "instagram", "failed", agoDays(3));
+        await delivery("agent-d4", "instagram", "failed", agoDays(2));
+        // linkedin failed twice too, but on posts that are not the agent's: no brake.
+        await delivery("manual-d5", "linkedin", "failed", agoDays(3));
+        await delivery("manual-d6", "linkedin", "failed", agoDays(2));
+        // Another business's agent failures never brake this one.
+        await delivery("agent-other-1", "facebook", "failed", agoDays(1), B);
+        await delivery("agent-other-2", "facebook", "failed", agoDays(1), B);
+        const l = await limits({
+          channels: ["facebook", "instagram", "linkedin", "youtube", "x", "tiktok"],
+        });
+        // x and tiktok are allowed but not connected; youtube is connected and allowed but never used.
+        expect(l.channels).toEqual(["facebook", "linkedin"]);
+      });
+
+      it("el freno se levanta con un envío bueno más nuevo y no cuenta lo pendiente", async () => {
+        await delivery("agent-d1", "facebook", "failed", agoDays(4));
+        await delivery("agent-d2", "facebook", "failed", agoDays(3));
+        expect((await limits()).channels).toEqual([]);
+        await delivery("agent-d3", "facebook", "pending", agoDays(1));
+        // A post still waiting to go out is not a delivery: the brake stays.
+        expect((await limits()).channels).toEqual([]);
+        await delivery("agent-d4", "facebook", "sent", agoDays(0));
+        expect((await limits()).channels).toEqual(["facebook"]);
+      });
+
+      it("agrega seo solo con artículos permitidos y la conexión del sitio web", async () => {
+        const base = { channels: ["facebook"] };
+        expect((await limits({ ...base, allowWebArticles: true })).channels).toEqual(["facebook"]);
+        await connect("seo");
+        expect((await limits({ ...base, allowWebArticles: true })).channels).toEqual([
+          "facebook",
+          "seo",
+        ]);
+        expect((await limits({ ...base, allowWebArticles: false })).channels).toEqual(["facebook"]);
+        // Even listed among the channels, seo needs the permission for web articles.
+        expect(
+          (await limits({ channels: ["facebook", "seo"], allowWebArticles: false })).channels,
+        ).toEqual(["facebook"]);
+        expect(
+          (await limits({ channels: ["facebook", "seo"], allowWebArticles: true })).channels,
+        ).toEqual(["facebook", "seo"]);
+      });
+
+      it("copia los permisos y usa el día del negocio, no el de UTC", async () => {
+        const l = await limits(
+          { allowSocial: false, allowWebArticles: true },
+          new Date("2026-10-16T02:00:00Z"),
+        );
+        // 02:00 UTC is still the evening of the 15th in New York.
+        expect(l).toMatchObject({ today: "2026-10-15", allowSocial: false, allowWebArticles: true });
+      });
+
+      it("el cupo es el menor entre lo que queda del día y los trabajos abiertos", async () => {
+        const parent = await teamParent();
+        // Nothing else is open and nothing was scheduled: the day's limit, minus nothing.
+        expect((await limits({ maxPostsPerDay: 6 })).remainingPosts).toBe(6);
+        await db.agentBudget.create({ data: { businessId: A, day: todayA(), posts: 1 } });
+        expect((await limits({ maxPostsPerDay: 6 })).remainingPosts).toBe(5);
+        // Two open pieces created today take two more places.
+        await spawnPieces(parent, [
+          { ...roof, id: "p1", topic: "Uno" },
+          { ...roof, id: "p2", topic: "Dos" },
+        ]);
+        expect((await limits({ maxPostsPerDay: 6 })).remainingPosts).toBe(3);
+        // A piece that is over no longer holds a place, and neither does one made on another day.
+        await db.agentRun.updateMany({
+          where: { parentRunId: parent.id, requestKey: { endsWith: ":p1" } },
+          data: { status: "completed" },
+        });
+        await db.agentRun.updateMany({
+          where: { parentRunId: parent.id, requestKey: { endsWith: ":p2" } },
+          data: { createdAt: agoDays(2) },
+        });
+        expect((await limits({ maxPostsPerDay: 6 })).remainingPosts).toBe(5);
+        // The day's limit already used up gives zero, never a negative number.
+        expect((await limits({ maxPostsPerDay: 1 })).remainingPosts).toBe(0);
+      });
+
+      it("los ocho trabajos abiertos (el propio equipo incluido) también limitan", async () => {
+        const parent = await teamParent();
+        await spawnPieces(
+          parent,
+          Array.from({ length: 5 }, (_, i) => ({ ...roof, id: `p${i + 1}`, topic: `Tema ${i + 1}` })),
+        );
+        // Open: the team and five pieces = 6, so 2 are left, though the day's limit says 12.
+        expect((await limits({ maxPostsPerDay: 12 })).remainingPosts).toBe(2);
+        await db.agentRun.updateMany({
+          where: { parentRunId: parent.id },
+          data: { status: "blocked" },
+        });
+        expect((await limits({ maxPostsPerDay: 12 })).remainingPosts).toBe(7);
+      });
+
+      it("los temas recientes son las campañas del agente y las piezas de los últimos 30 días", async () => {
+        const parent = await teamParent();
+        await spawnPieces(parent, [{ ...roof, id: "p1", topic: "Techos de tejas" }]);
+        const old = await spawnPieces(parent, [{ ...roof, id: "p2", topic: "Tema de hace meses" }]);
+        await db.agentRun.update({ where: { id: old[0].id }, data: { createdAt: agoDays(40) } });
+        const campaign = (id: string, name: string, createdAt: Date, businessId = A) =>
+          db.campaign.create({ data: { id, businessId, name, createdAt } });
+        await campaign("agent-c1", "Goteras en el techo", agoDays(10));
+        await campaign("agent-c2", "Campaña de hace meses", agoDays(40));
+        await campaign("manual-c3", "Campaña manual", agoDays(5));
+        await campaign("agent-c4", "Campaña de otro negocio", agoDays(5), B);
+        const l = await limits();
+        expect([...l.recentTopics].sort()).toEqual(["Goteras en el techo", "Techos de tejas"]);
+        // A topic seen there is dropped by the validator, in any capitals or accents.
+        expect(l.recentTopics).not.toContain("Campaña manual");
+      });
+    });
+
+    describe("con la estrategia real (el proveedor es un simulacro)", () => {
+      const modelEnv = {
+        MATYA_AGENT_PROVIDER: "gemini",
+        MATYA_AGENT_MODEL: "gemini-x",
+        MATYA_AGENT_INPUT_USD_PER_MILLION: "0.3",
+        MATYA_AGENT_OUTPUT_USD_PER_MILLION: "2.5",
+        GEMINI_API_KEY: "synthetic-no-provider-access",
+      };
+      const reply = (value: unknown) =>
+        new Response(
+          JSON.stringify({
+            candidates: [{ content: { parts: [{ text: JSON.stringify(value) }] } }],
+            usageMetadata: { promptTokenCount: 1000, candidatesTokenCount: 100 },
+          }),
+        );
+      afterEach(() => {
+        vi.unstubAllEnvs();
+        vi.unstubAllGlobals();
+      });
+
+      it("una pieza mal formada no hace fallar la llamada pagada: se descarta y las buenas se crean", async () => {
+        for (const [k, v] of Object.entries(modelEnv)) vi.stubEnv(k, v);
+        await saveSettings(A, teamSettings({ maxPostsPerDay: 3 }));
+        const parent = await ask("Prepara contenido de goteras", { kind: "team" });
+        const fetchStub = vi.fn().mockResolvedValue(
+          reply({
+            pieces: [
+              proposal(1, { topic: "Cómo detectar una gotera a tiempo", format: "carrusel" }),
+              { id: "p2", topic: 5, channels: "facebook" },
+              "basura",
+              proposal(4, { topic: "Qué cubre tu póliza", date: "2020-01-01" }),
+            ],
+          }),
+        );
+        vi.stubGlobal("fetch", fetchStub);
+        const run = stub({ plan: PLAN, research: { items: [{ kind: "news", detail: "d", source: "news@n1" }], digest: [] } });
+        for (let i = 0; i < 4; i++) await workOne(A, run, () => 10);
+
+        // One paid call, for the strategy only.
+        expect(fetchStub).toHaveBeenCalledTimes(1);
+        const body = JSON.parse(fetchStub.mock.calls[0][1].body);
+        const sent = JSON.parse(body.contents[0].parts[0].text);
+        expect(sent).toMatchObject({
+          goal: "Más llamadas por goteras",
+          limits: { maxPieces: 3, channels: ["facebook"], today: todayA(), recentTopics: [] },
+        });
+        expect(sent.research).toEqual([{ kind: "news", detail: "d", source: "news@n1" }]);
+        const strategy = await db.agentStep.findUniqueOrThrow({
+          where: { runId_name: { runId: parent.id, name: "strategy" } },
+        });
+        expect(strategy).toMatchObject({ status: "succeeded", chargedCents: 1 });
+        expect(strategy.output).toMatchObject({ pieces: expect.any(Array) });
+        // Dispatch kept the good piece and said why it dropped the others.
+        const kids = await db.agentRun.findMany({ where: { parentRunId: parent.id } });
+        expect(kids.map((k) => k.requestKey)).toEqual([`${parent.requestKey}:p1`]);
+        expect((await dispatchStep(parent.id)).output).toMatchObject({
+          dropped: [
+            { id: "p2", reason: "formato" },
+            { id: "?", reason: "formato" },
+            { id: "p4", reason: "fecha pasada" },
+          ],
+        });
+        expect(await row(parent.id)).toMatchObject({ status: "completed", chargedCents: 1 });
+      });
     });
   });
 });

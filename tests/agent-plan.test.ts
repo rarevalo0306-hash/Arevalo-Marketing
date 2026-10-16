@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   Piece,
   TEAM_STEPS,
+  capByDirector,
+  directorMax,
   reworkSteps,
   stepsForPiece,
   stepsOfPlan,
@@ -456,5 +458,43 @@ describe("piezas del equipo", () => {
         },
       }),
     ).toBeNull();
+  });
+});
+
+describe("lo que pidió el Director", () => {
+  it("lee el máximo de piezas de la salida del plan y nada más", () => {
+    expect(directorMax({ goal: "g", maxPieces: 3, reply: "" })).toBe(3);
+    expect(directorMax({ maxPieces: 0 })).toBe(0);
+    for (const bad of [
+      null,
+      undefined,
+      "3",
+      3,
+      [],
+      {},
+      { maxPieces: "3" },
+      { maxPieces: 2.5 },
+      { maxPieces: -1 },
+      { maxPieces: NaN },
+      { maxPieces: Infinity },
+      {
+        get maxPieces(): number {
+          throw new Error("boom");
+        },
+      },
+    ])
+      expect(directorMax(bad)).toBeNull();
+  });
+
+  it("acota solo el cupo, nunca lo sube, y un plan ilegible no agrega tope", () => {
+    expect(capByDirector(limits, { maxPieces: 1 })).toEqual({ ...limits, remainingPosts: 1 });
+    expect(capByDirector(limits, { maxPieces: 9 })).toEqual(limits);
+    expect(capByDirector(limits, { maxPieces: 0 })).toEqual({ ...limits, remainingPosts: 0 });
+    expect(capByDirector(limits, null)).toEqual(limits);
+    expect(capByDirector(limits, { maxPieces: "1" })).toEqual(limits);
+    // Does not change what it receives.
+    const before = { ...limits };
+    capByDirector(limits, { maxPieces: 1 });
+    expect(limits).toEqual(before);
   });
 });

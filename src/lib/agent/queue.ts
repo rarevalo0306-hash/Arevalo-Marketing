@@ -31,6 +31,15 @@ export const json = (value: unknown) =>
   JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 export const LEASE_MS = 4 * 60000;
 const terminal = ["completed", "blocked", "uncertain", "cancelled"];
+/** The statuses that count as open work. `enqueue`'s cap and the team's piece quota (`pieceLimits`) both count these. */
+export const OPEN_STATUSES = [
+  "queued",
+  "running",
+  "waiting_approval",
+  "waiting_provider",
+] as const;
+/** Most open runs a business may have at once (`enqueue` refuses the next one; a team's pieces count too). */
+export const OPEN_RUN_CAP = 8;
 /** Context keys that `loadContext`, `enqueue`'s own checks or `spawnPieces` set: never from a caller. */
 const OWNED_CONTEXT = new Set<string>([
   "business",
@@ -186,12 +195,10 @@ export async function enqueue(
     const pending = await tx.agentRun.count({
       where: {
         businessId,
-        status: {
-          in: ["queued", "running", "waiting_approval", "waiting_provider"],
-        },
+        status: { in: [...OPEN_STATUSES] },
       },
     });
-    if (pending >= 8)
+    if (pending >= OPEN_RUN_CAP)
       throw new AgentError(
         "Ya hay ocho trabajos abiertos. Espera o cancela uno.",
         429,

@@ -47,6 +47,8 @@ import { SYSTEM, MEDIA_POLICY } from "./prompts";
 import { boundedContext } from "./bounded-context";
 import { libraryMedia } from "./library";
 import { executeTeamStep } from "./team-execution";
+// The team's plain-code steps register themselves when their module loads: this is what makes `dispatch` available.
+import "./dispatch";
 
 function mediaSelection(media: VideoMedia[]) {
   return {

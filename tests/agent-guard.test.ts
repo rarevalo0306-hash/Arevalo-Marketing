@@ -1,0 +1,85 @@
+// El guardia del equipo, parte pura: un canal queda frenado cuando sus dos últimos envíos del agente fallaron.
+import { describe, expect, it } from "vitest";
+import { brakedChannels } from "@/lib/agent/guard";
+
+const at = (hours: number) => new Date(Date.UTC(2026, 9, 10, hours));
+const t = (channel: string, status: string, hours: number) => ({
+  channel,
+  status,
+  createdAt: at(hours),
+});
+
+describe("brakedChannels", () => {
+  it("frena el canal cuyos dos últimos envíos fallaron y deja el que tuvo un éxito", () => {
+    expect(
+      brakedChannels([
+        t("facebook", "failed", 1),
+        t("facebook", "failed", 2),
+        t("instagram", "failed", 1),
+        t("instagram", "sent", 2),
+      ]),
+    ).toEqual(["facebook"]);
+  });
+
+  it("cuentan los dos más nuevos, sin importar el orden en que llegan", () => {
+    // Dos fallos recientes tras un éxito viejo: frenado.
+    expect(
+      brakedChannels([
+        t("facebook", "failed", 3),
+        t("facebook", "sent", 1),
+        t("facebook", "failed", 2),
+      ]),
+    ).toEqual(["facebook"]);
+    // Un éxito reciente tras dos fallos viejos: ya no está frenado.
+    expect(
+      brakedChannels([
+        t("facebook", "sent", 3),
+        t("facebook", "failed", 1),
+        t("facebook", "failed", 2),
+      ]),
+    ).toEqual([]);
+    // El último falló pero el anterior no: tampoco.
+    expect(
+      brakedChannels([
+        t("facebook", "failed", 1),
+        t("facebook", "sent", 2),
+        t("facebook", "failed", 3),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("un solo fallo, o un solo envío, no frena", () => {
+    expect(brakedChannels([t("facebook", "failed", 1)])).toEqual([]);
+    expect(brakedChannels([t("facebook", "failed", 1), t("facebook", "sent", 0)])).toEqual([]);
+  });
+
+  it("sin envíos no hay canales frenados", () => {
+    expect(brakedChannels([])).toEqual([]);
+  });
+
+  it("solo `failed` cuenta como fallo: lo pendiente u omitido no frena", () => {
+    expect(brakedChannels([t("x", "pending", 1), t("x", "pending", 2)])).toEqual([]);
+    expect(brakedChannels([t("x", "skipped", 1), t("x", "failed", 2)])).toEqual([]);
+  });
+
+  it("cada canal se juzga por separado y la lista sale ordenada y sin repetidos", () => {
+    expect(
+      brakedChannels([
+        t("x", "failed", 1),
+        t("linkedin", "failed", 1),
+        t("x", "failed", 2),
+        t("linkedin", "failed", 2),
+        t("linkedin", "failed", 3),
+        t("facebook", "sent", 1),
+        t("facebook", "sent", 2),
+      ]),
+    ).toEqual(["linkedin", "x"]);
+  });
+
+  it("no cambia lo que recibe", () => {
+    const targets = [t("facebook", "failed", 2), t("facebook", "failed", 1), t("facebook", "sent", 0)];
+    const copy = targets.map((x) => ({ ...x }));
+    brakedChannels(targets);
+    expect(targets).toEqual(copy);
+  });
+});

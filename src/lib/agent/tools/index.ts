@@ -127,6 +127,35 @@ export type ToolImpl = {
 export type Tools = { use<T extends ToolName>(name: T): ToolImpl[T] };
 
 const DAY = 86400000;
+
+/**
+ * The output of the run's succeeded step `base`, or of its latest rework (`base-r<n>`); null if none.
+ * Only the run's own steps, and only while the run belongs to its business. The `readStepOutput` tool wraps this, and
+ * the engine's own steps (`dispatch`) call it directly.
+ */
+export async function readStepOutput(
+  run: Pick<AgentRun, "id" | "businessId">,
+  base: string,
+): Promise<unknown> {
+  const rows = await db.agentStep.findMany({
+    where: {
+      runId: run.id,
+      run: { businessId: run.businessId },
+      status: "succeeded",
+      name: { startsWith: base },
+    },
+    select: { name: true, output: true },
+  });
+  let best: { round: number; output: unknown } | null = null;
+  for (const row of rows) {
+    const rest = row.name.slice(base.length);
+    const round = rest === "" ? 0 : Number(/^-r(\d+)$/.exec(rest)?.[1] ?? NaN);
+    if (Number.isNaN(round)) continue;
+    if (!best || round > best.round) best = { round, output: row.output };
+  }
+  return best ? best.output : null;
+}
+
 const later = async (): Promise<never> => {
   throw new AgentError("Herramienta no disponible todavía.");
 };
@@ -219,25 +248,7 @@ const IMPLS: { [K in ToolName]: (run: AgentRun) => ToolImpl[K] } = {
 
   readSignals: () => later,
 
-  readStepOutput: (run) => async (base) => {
-    const rows = await db.agentStep.findMany({
-      where: {
-        runId: run.id,
-        run: { businessId: run.businessId },
-        status: "succeeded",
-        name: { startsWith: base },
-      },
-      select: { name: true, output: true },
-    });
-    let best: { round: number; output: unknown } | null = null;
-    for (const row of rows) {
-      const rest = row.name.slice(base.length);
-      const round = rest === "" ? 0 : Number(/^-r(\d+)$/.exec(rest)?.[1] ?? NaN);
-      if (Number.isNaN(round)) continue;
-      if (!best || round > best.round) best = { round, output: row.output };
-    }
-    return best ? best.output : null;
-  },
+  readStepOutput: (run) => (base) => readStepOutput(run, base),
 
   // As the current `design` step reads it: the business's own templates, or the factory ones.
   brandKit: (run) => async () => {

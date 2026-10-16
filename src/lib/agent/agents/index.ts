@@ -4,11 +4,12 @@ import type { AgentKey, PlanStep } from "../plan";
 import type { StepResult } from "../queue";
 import { runDirector } from "./director";
 import { runSeo } from "./seo";
+import { runStrategy } from "./strategy";
 import type { AgentDef } from "./types";
 
 export type { AgentDef, AgentInput } from "./types";
 
-/** Placeholder until each agent exists (strategy, then copy, design, video and review). */
+/** Placeholder until each agent exists (copy, design, video and review). */
 const unavailable = async (): Promise<StepResult> => {
   throw new AgentError("Agente no disponible.");
 };
@@ -33,7 +34,7 @@ export const AGENTS: Record<Exclude<AgentKey, "matya">, AgentDef> = {
     label: { es: "Estrategia de contenido", en: "Content strategy" },
     tools: ["readContext", "readStepOutput", "readCalendar"],
     usesModel: true,
-    run: unavailable,
+    run: runStrategy,
   },
   copy: {
     key: "copy",

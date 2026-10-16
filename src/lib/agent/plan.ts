@@ -188,6 +188,31 @@ export function validatePieces(
   return { pieces, dropped };
 }
 
+/** The most pieces the director asked for (`maxPieces` of its stored `plan` output), or null when there is none we can read. */
+export function directorMax(plan: unknown): number | null {
+  try {
+    if (typeof plan !== "object" || plan === null || Array.isArray(plan))
+      return null;
+    const max = (plan as { maxPieces?: unknown }).maxPieces;
+    return typeof max === "number" && Number.isSafeInteger(max) && max >= 0
+      ? max
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The limits with the places left also held to what the director asked for. It never raises them. A plan output we
+ * cannot read adds no cap: the workspace's own limits still hold.
+ */
+export function capByDirector(limits: PieceLimits, plan: unknown): PieceLimits {
+  const max = directorMax(plan);
+  return max === null
+    ? limits
+    : { ...limits, remainingPosts: Math.min(limits.remainingPosts, max) };
+}
+
 export const ReviewProblemSchema = z.object({
   kind: z.string(),
   detail: z.string(),
