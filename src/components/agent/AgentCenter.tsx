@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useT } from "@/components/I18n";
 import { AgentSettings } from "./AgentSettings";
 import { useVoice } from "./useVoice";
+import { teamWorking } from "@/lib/agent/team-view";
 import type { Snapshot, RunView, NewsView } from "./types";
 import s from "./AgentCenter.module.css";
 
@@ -159,9 +160,12 @@ export function AgentCenter({
       mounted.current = false;
     };
   }, []);
-  const pending = !!data?.runs.some((r) =>
-    ["queued", "running", "waiting_provider"].includes(r.status),
-  );
+  // The pieces of a team request are not in `runs` (the request completes as soon as it has spawned them): they count too.
+  const teamWork = teamWorking(data?.team ?? null);
+  const pending =
+    !!data?.runs.some((r) =>
+      ["queued", "running", "waiting_provider"].includes(r.status),
+    ) || teamWork.pending;
   useEffect(() => {
     if (!pending) return;
     let timer: ReturnType<typeof setTimeout>;
@@ -231,6 +235,7 @@ export function AgentCenter({
       </section>
     );
   const active = data.runs.find((r) => r.status === "running");
+  const working = !!active || teamWork.running;
   const exceptions = data.posts.filter((p) =>
     ["failed", "partial", "publishing"].includes(p.status),
   );
@@ -239,7 +244,7 @@ export function AgentCenter({
       <header className={s.header}>
         <div className={s.title}>
           <div
-            className={`${s.agent} ${active ? s.working : ""}`}
+            className={`${s.agent} ${working ? s.working : ""}`}
             aria-hidden="true"
           >
             <svg viewBox="0 0 72 72">
@@ -264,7 +269,7 @@ export function AgentCenter({
           <div>
             <h1>MATYA</h1>
             <p>
-              {active
+              {working
                 ? t("Coordinando tu marketing", "Coordinating your marketing")
                 : t(
                     "Tu equipo de marketing, en un solo lugar",

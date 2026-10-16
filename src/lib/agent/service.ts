@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { businessTz, dayRange, localDay } from "@/lib/business-tz";
 import { publishPost } from "@/lib/publish";
@@ -15,15 +16,15 @@ import { industryFor, toolCatalog } from "./industry";
 import { readSource, sourceUrl } from "./network";
 import { plain } from "./news";
 
-/** The most runs the team's view loads: today's and the open ones, the newest of them. */
+/** The most runs the team's view loads, and the most open ones among them. */
 const TEAM_RUNS_MAX = 40;
 const objectOrNull = (value: unknown): Record<string, unknown> | null =>
   typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 
 /**
- * The team's runs for the board: the team requests and pieces created today (the business's local day) plus the open ones of
- * any day, at most `TEAM_RUNS_MAX` (the newest when there are more), oldest first, each with its steps and the message the owner
- * reads (its last `assistant` one). The alerts and the daily report read the same list.
+ * The team's runs for the board: every open team request and piece of any day (the owner must see everything that waits for
+ * them), then the ones created today (the business's local day) that are done, up to `TEAM_RUNS_MAX` in all. Oldest first, each
+ * with its steps and the message the owner reads (its last `assistant` one). The alerts and the daily report read the same list.
  */
 export async function loadTeamRuns(
   businessId: string,
@@ -36,45 +37,51 @@ export async function loadTeamRuns(
   const tz = businessTz(business);
   const today = localDay(now, tz);
   const { from, to } = dayRange(tz, today);
-  const rows = await db.agentRun.findMany({
-    where: {
-      businessId,
-      kind: { in: ["team", "piece"] },
-      OR: [
-        { createdAt: { gte: from, lt: to } },
-        { status: { in: [...OPEN_STATUSES] } },
-      ],
-    },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    take: TEAM_RUNS_MAX,
-    select: {
-      id: true,
-      kind: true,
-      origin: true,
-      parentRunId: true,
-      status: true,
-      stage: true,
-      plan: true,
-      error: true,
-      chargedCents: true,
-      createdAt: true,
-      steps: {
-        orderBy: { createdAt: "asc" },
-        select: {
-          name: true,
-          agent: true,
-          model: true,
-          attempt: true,
-          status: true,
-          output: true,
-          error: true,
-          chargedCents: true,
-          createdAt: true,
-          finishedAt: true,
+  // The newest first: when there are more than `take`, the oldest are the ones left out.
+  const read = (where: Prisma.AgentRunWhereInput, take: number) =>
+    db.agentRun.findMany({
+      where: { businessId, kind: { in: ["team", "piece"] }, ...where },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take,
+      select: {
+        id: true,
+        kind: true,
+        origin: true,
+        parentRunId: true,
+        status: true,
+        stage: true,
+        plan: true,
+        error: true,
+        chargedCents: true,
+        createdAt: true,
+        steps: {
+          orderBy: { createdAt: "asc" },
+          select: {
+            name: true,
+            agent: true,
+            model: true,
+            attempt: true,
+            status: true,
+            output: true,
+            error: true,
+            chargedCents: true,
+            createdAt: true,
+            finishedAt: true,
+          },
         },
       },
-    },
-  });
+    });
+  const open = await read({ status: { in: [...OPEN_STATUSES] } }, TEAM_RUNS_MAX);
+  const done = TEAM_RUNS_MAX > open.length
+    ? await read(
+        { status: { notIn: [...OPEN_STATUSES] }, createdAt: { gte: from, lt: to } },
+        TEAM_RUNS_MAX - open.length,
+      )
+    : [];
+  // A run that finished between the two reads is in both: it counts once.
+  const rows = [...new Map([...open, ...done].map((r) => [r.id, r])).values()].sort(
+    (a, b) => a.createdAt.getTime() - b.createdAt.getTime() || (a.id < b.id ? -1 : 1),
+  );
   const messages = rows.length
     ? await db.agentMessage.findMany({
         where: { businessId, runId: { in: rows.map((r) => r.id) }, role: "assistant" },
@@ -85,7 +92,7 @@ export async function loadTeamRuns(
   return {
     today,
     tz,
-    runs: rows.reverse().map((r) => ({
+    runs: rows.map((r) => ({
       id: r.id,
       kind: r.kind === "team" ? "team" : "piece",
       origin: r.origin,
@@ -233,7 +240,13 @@ export async function snapshot(businessId: string) {
     db.agentBudget.findUnique({
       where: { businessId_day: { businessId, day } },
     }),
-    settings ? teamSnapshot(businessId, now) : null,
+    // A failure of the team's view must not take the whole Centro MATYA down with it (the settings show it for every workspace).
+    settings
+      ? teamSnapshot(businessId, now).catch((error: unknown) => {
+          console.error("MATYA team view did not load", error instanceof Error ? error.name : "unknown");
+          return null;
+        })
+      : null,
   ]);
   return JSON.parse(
     JSON.stringify({

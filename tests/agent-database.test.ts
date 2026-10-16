@@ -5541,6 +5541,29 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       expect(runs.map((r) => r.createdAt)).toEqual(Array.from({ length: 40 }, (_, i) => new Date(Date.UTC(2026, 9, 16, 10, i + 5)).toISOString()));
     });
 
+    it("loadTeamRuns always includes every open run, even when today has more than 40 runs", async () => {
+      const open = await viewRun(A, "piece", "2026-10-15T15:00:00Z", { status: "waiting_approval", stage: 3 });
+      await db.agentRun.createMany({
+        data: Array.from({ length: 41 }, (_, i) => ({
+          businessId: A,
+          requestKey: `done-${i}-${crypto.randomUUID()}`,
+          kind: "piece",
+          prompt: "x",
+          context: {},
+          status: "completed",
+          createdAt: new Date(Date.UTC(2026, 9, 16, 10, i)),
+        })),
+      });
+      const { runs } = await loadTeamRuns(A, NOW);
+      // The open run of yesterday takes its place; today's finished ones fill the rest with the newest, oldest first.
+      expect(runs).toHaveLength(40);
+      expect(runs[0].id).toBe(open.id);
+      expect(runs.slice(1).map((r) => r.createdAt)).toEqual(
+        Array.from({ length: 39 }, (_, i) => new Date(Date.UTC(2026, 9, 16, 10, i + 2)).toISOString()),
+      );
+      expect(needsYou(runs).map((n) => n.runId)).toEqual([open.id]);
+    });
+
     it("a run created at 23:30 local yesterday and already completed is not today's", async () => {
       // 00:10 on 2026-10-16 in New York (04:10Z): the UTC date is the same as the local one, but 23:30 yesterday (03:30Z) is not today.
       vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-16T04:10:00Z"), shouldAdvanceTime: true });
@@ -5566,6 +5589,25 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       expect(snap.team.agents).toHaveLength(7);
       // The workspace's pause and the worker's last tick travel with the settings (null until they happen).
       expect(snap.settings).toMatchObject({ teamMode: true, pausedAt: null, tickAt: null });
+    });
+
+    it("a failing team view does not break the snapshot: team is null and the error is logged", async () => {
+      await saveSettings(A, { ...settings, teamMode: true });
+      const groupBy = vi.spyOn(db.agentStep, "groupBy").mockRejectedValueOnce(new TypeError("boom"));
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const snap = await snapshot(A);
+        expect(snap.team).toBeNull();
+        expect(snap.settings).toMatchObject({ teamMode: true });
+        expect(Array.isArray(snap.runs)).toBe(true);
+        expect(log).toHaveBeenCalledWith("MATYA team view did not load", "TypeError");
+        expect(JSON.stringify(log.mock.calls)).not.toContain("boom");
+      } finally {
+        groupBy.mockRestore();
+        log.mockRestore();
+      }
+      // Next time it loads again.
+      expect((await snapshot(A)).team).not.toBeNull();
     });
 
     it("snapshot has the team view whenever the business has a workspace, team mode on or off, and null without one", async () => {

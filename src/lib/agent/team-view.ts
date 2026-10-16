@@ -121,6 +121,19 @@ export function boardState(run: TeamRunView): BoardState {
   }
 }
 
+/**
+ * Whether the team has work going on, for the screen that polls: `pending` is any run in `queued`, `running` or `waiting_provider`
+ * (the pieces of a team request are runs of their own, and the request itself completes as soon as it has spawned them);
+ * `running` is a run that is working at this moment.
+ */
+export function teamWorking(team: TeamSnapshot | null): { pending: boolean; running: boolean } {
+  const runs = team?.runs ?? [];
+  return {
+    pending: runs.some((r) => boardState(r) === "working"),
+    running: runs.some((r) => r.status === "running"),
+  };
+}
+
 export type NeedKind = "video" | "articulo" | "revision" | "publicar";
 export type NeedItem = {
   runId: string;

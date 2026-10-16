@@ -7,6 +7,7 @@ import {
   currentStepId,
   needsYou,
   pieceInfo,
+  teamWorking,
   type TeamRunView,
   type TeamStepView,
 } from "@/lib/agent/team-view";
@@ -334,6 +335,29 @@ describe("needsYou", () => {
     });
     expect(needsYou([waiting])).toEqual([{ runId: waiting.id, kind: "publicar", topic: "Más llamadas por goteras", text: "Elige.", problems: [], canRedo: false }]);
     expect(needsYou([teamRun({ status: "waiting_approval" })])[0].topic).toBe("");
+  });
+});
+
+describe("teamWorking", () => {
+  const team = (...runs: TeamRunView[]) => ({ today: "2026-10-16", tz: "America/New_York", runs, agents: [] });
+
+  it("is idle without a team view or without runs", () => {
+    expect(teamWorking(null)).toEqual({ pending: false, running: false });
+    expect(teamWorking(team())).toEqual({ pending: false, running: false });
+  });
+
+  it("a queued piece or one waiting for its channel keeps the center polling without a run in progress", () => {
+    for (const status of ["queued", "waiting_provider"])
+      expect(teamWorking(team(teamRun({ status: "completed", stage: 4 }), piece(POST, 1, { status })))).toEqual({ pending: true, running: false });
+  });
+
+  it("a running piece is both pending and running, even when its team request already completed", () => {
+    expect(teamWorking(team(teamRun({ status: "completed", stage: 4 }), piece(POST, 1, { status: "running" })))).toEqual({ pending: true, running: true });
+  });
+
+  it("runs that wait for the owner or ended are not work in progress", () => {
+    const rest = ["waiting_approval", "blocked", "uncertain", "completed", "cancelled"].map((status) => piece(POST, 1, { status }));
+    expect(teamWorking(team(...rest))).toEqual({ pending: false, running: false });
   });
 });
 
