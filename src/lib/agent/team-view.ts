@@ -134,6 +134,18 @@ export function teamWorking(team: TeamSnapshot | null): { pending: boolean; runn
   };
 }
 
+/** The tick is the worker's once-a-minute call: past this age it is not running. */
+export const TICK_STALE_MS = 10 * 60_000;
+
+/**
+ * Whether the once-a-minute call is not running: a missing, unreadable or old tick. Both times come from the server (the tick
+ * and the moment the snapshot was taken), so the owner's own clock can neither hide the warning nor fake it.
+ */
+export function isTickStale(capturedAt: string, tickAt: string | null | undefined): boolean {
+  const age = tickAt ? Date.parse(capturedAt) - Date.parse(tickAt) : Number.NaN;
+  return !(age <= TICK_STALE_MS);
+}
+
 export type NeedKind = "video" | "articulo" | "revision" | "publicar";
 export type NeedItem = {
   runId: string;

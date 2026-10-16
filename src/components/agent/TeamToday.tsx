@@ -8,6 +8,7 @@ import {
   BOARD_COLUMNS,
   boardColumn,
   boardState,
+  isTickStale,
   needsYou,
   pieceInfo,
   type BoardColumn,
@@ -24,9 +25,6 @@ import { fmtDateTime } from "@/lib/time";
 import { Output, labels, stepLabel, usd } from "./shared";
 import type { Snapshot } from "./types";
 import s from "./Team.module.css";
-
-/** The tick is the worker's once-a-minute call: past this age it is not running. */
-const TICK_STALE_MS = 10 * 60_000;
 
 const COLUMN_TITLES: Record<BoardColumn, [string, string]> = {
   investigacion: ["Investigación", "Research"],
@@ -105,10 +103,8 @@ export function TeamToday({
   const plan = dailyPlan(team);
   const planGoal = plan ? goalOf(plan) : "";
   const planPieces = plan ? piecesOf(plan) : null;
-  // A missing, unreadable or old tick means the worker is not calling the engine every minute. Both times come from the server
-  // (the tick and the moment the snapshot was taken), so the owner's own clock can neither hide nor fake the warning.
-  const tickAge = settings?.tickAt ? Date.parse(data.capturedAt) - Date.parse(settings.tickAt) : Number.NaN;
-  const tickStale = !(tickAge <= TICK_STALE_MS);
+  // A missing, unreadable or old tick means the worker is not calling the engine every minute (read from the server's clocks).
+  const tickStale = isTickStale(data.capturedAt, settings?.tickAt);
   const pausedSince = settings?.pausedAt ? fmtDateTime(settings.pausedAt, lang, tz) : "";
 
   return (

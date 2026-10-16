@@ -742,10 +742,14 @@
   --agent-accent: #73d8cb;
   --agent-tint: #153b35;
 }
+:global([data-theme="noche"]) .fieldError,
 :global([data-theme="noche"]) .inlineError,
 :global([data-theme="noche"]) .runStatus[data-status="blocked"],
 :global([data-theme="noche"]) .runStatus[data-status="uncertain"] {
   color: #ffab94;
+}
+:global([data-theme="noche"]) .settings input[aria-invalid="true"] {
+  border-color: #ffab94;
 }
 @media (max-width: 1200px) {
   .workspace {

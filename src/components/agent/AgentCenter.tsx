@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useT } from "@/components/I18n";
-import { AgentSettings } from "./AgentSettings";
+import { AgentSettings, nextFormKey } from "./AgentSettings";
 import { Output, labels, safeHref, stepNames, usd } from "./shared";
 import { TeamRoster } from "./TeamRoster";
 import { TeamToday } from "./TeamToday";
@@ -182,6 +182,12 @@ export function AgentCenter({
     // Speech follows a new response, never each polling render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.messages, data?.runs]);
+  // The settings form starts over from the saved settings when they change, but not for «Pausar todo» (see nextFormKey).
+  const savedRevision = data?.settings?.revision ?? 0;
+  const savedPaused = !!data?.settings?.pausedAt;
+  const [formKey, setFormKey] = useState(() => ({ key: savedRevision, revision: savedRevision, paused: savedPaused }));
+  const form = nextFormKey(formKey, savedRevision, savedPaused);
+  if (form !== formKey) setFormKey(form);
   const status = (key: string) => t(...(labels[key] ?? [key, key]));
   if (!data)
     return (
@@ -789,9 +795,10 @@ export function AgentCenter({
       )}
       {tab === "settings" && (
         <AgentSettings
-          key={data.settings?.revision ?? 0}
+          key={form.key}
           data={data}
           busy={busy}
+          act={mutate}
           saveError={error}
           saveNotice={notice}
           save={async (settings) => {

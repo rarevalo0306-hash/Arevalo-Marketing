@@ -451,3 +451,119 @@
 :global([data-theme="noche"]) .tag {
   color: var(--agent-accent);
 }
+
+/* Configuración del modo equipo: la sección «Modo equipo» del formulario de la configuración. Solo usa los colores del tema (y los avisos de arriba), así que el tema noche no necesita los suyos. */
+.config {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  min-width: 0;
+}
+.config h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.config .note {
+  margin: 0;
+}
+.switchBlock,
+.hourBlock,
+.group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+}
+.hourBlock {
+  max-width: 320px;
+}
+.aiList,
+.priceList {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.aiRow,
+.priceRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+  padding: 14px 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+.aiName,
+.priceId {
+  display: block;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.aiFields,
+.priceFields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 12px 16px;
+  min-width: 0;
+}
+.aiFields > *,
+.priceFields > * {
+  min-width: 0;
+}
+.aiStatus {
+  min-width: 0;
+}
+.aiStatus .state {
+  font-size: 13px;
+  font-weight: 600;
+}
+.aiStatus .error {
+  margin: 0;
+}
+.pauseBlock {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  min-width: 0;
+  padding: 14px 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.pauseText {
+  flex: 1 1 260px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.pauseText p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.pauseText .note {
+  font-size: 12px;
+}
+@media (max-width: 719px) {
+  .pauseBlock :global(.btn) {
+    flex: 1 1 auto;
+    min-height: 44px;
+  }
+  .aiRow,
+  .priceRow {
+    padding: 12px 14px;
+  }
+}

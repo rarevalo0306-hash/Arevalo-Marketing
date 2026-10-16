@@ -1,6 +1,7 @@
 // Leer los números que escribe el dueño en la configuración del Centro MATYA (límites en dólares, publicaciones al día,
 // horas). Vacío o con letras devuelve null: nunca se convierte en cero sin que el dueño lo escriba.
 import { parseMoney } from "@/lib/ads-shape";
+import type { Settings } from "@/lib/agent/schema";
 
 /** "5", "1.50", "2,5" (coma decimal), "$12.50" o "1,000" → centavos; null si no es una cantidad válida. */
 export function readUsd(text: string): number | null {
@@ -18,3 +19,51 @@ export function readCount(text: string): number | null {
 
 /** Centavos → "5.00" (lo que se muestra en el campo). */
 export const formatUsd = (cents: number) => (Math.max(0, Math.round(cents)) / 100).toFixed(2);
+
+/** The most a price per million tokens can be, per side: the same limits as `ModelPrice` in the schema (a test keeps them equal). */
+export const RATE_MAX = { input: 1000, output: 2000 } as const;
+
+/**
+ * "0.15", "2,5" (coma decimal) o "$3" → dólares por millón de tokens, con hasta 4 decimales; null si está vacío, tiene letras,
+ * es cero o pasa de 2000. Una coma es siempre la coma decimal: aquí no hay separador de miles.
+ */
+export function readRate(text: string): number | null {
+  let s = text.trim().replace(/^\$\s*/, "");
+  if (/^[^,]*,[^,.]*$/.test(s)) s = s.replace(",", ".");
+  if (!/^(?:\d+(?:\.\d{1,4})?|\.\d{1,4})$/.test(s)) return null;
+  const n = Number(s);
+  return n > 0 && n <= 2000 ? n : null;
+}
+
+/** Un precio de un lado (entrada o salida) dentro de lo que el servidor guarda; null si no lo es. */
+export function readPrice(text: string, side: keyof typeof RATE_MAX): number | null {
+  const n = readRate(text);
+  return n !== null && n <= RATE_MAX[side] ? n : null;
+}
+
+/** Un precio sin ceros de sobra: 0.15 → "0.15", 3 → "3". */
+export const formatRate = (n: number) => String(Number(n.toFixed(4)));
+
+/** El nombre de un modelo como lo acepta el esquema (letras, números y . _ : -, hasta 100), sin los espacios de los lados; null si no sirve. */
+export function readModelName(text: string): string | null {
+  const s = text.trim();
+  return /^[a-zA-Z0-9_.:-]{1,100}$/.test(s) ? s : null;
+}
+
+/** El modelo elegido para un agente (null lo quita: vuelve al modelo por defecto). No toca el objeto que recibe. */
+export function setAgentModel(
+  models: Settings["agentModels"],
+  agent: string,
+  choice: { provider: string; model: string } | null,
+): Settings["agentModels"] {
+  const next: Record<string, { provider: string; model: string }> = { ...models };
+  if (choice) next[agent] = { provider: choice.provider, model: choice.model };
+  else delete next[agent];
+  return next as Settings["agentModels"];
+}
+
+/** Los precios de los modelos que algún agente usa; los de modelos que ya nadie usa se van al guardar. */
+export function pruneModelPrices(prices: Settings["modelPrices"], models: Settings["agentModels"]): Settings["modelPrices"] {
+  const used = new Set(Object.values(models).map((m) => `${m.provider}:${m.model}`));
+  return Object.fromEntries(Object.entries(prices).filter(([id]) => used.has(id)));
+}
