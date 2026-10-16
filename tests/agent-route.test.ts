@@ -85,6 +85,46 @@ describe("POST /api/agent/[id]: pause all, resume and redo", () => {
     expect(mocks.runAgentCycle).toHaveBeenCalledExactlyOnceWith("biz1");
   });
 
+  it("redo with a 501-character note is 400", async () => {
+    const res = await send({ action: "redo", runId: "run-1", note: "n".repeat(501) });
+    expect(res.status).toBe(400);
+    expect(await json(res)).toEqual({ error: "Revisa los campos del formulario." });
+    expect(mocks.changeRun).not.toHaveBeenCalled();
+    expect(mocks.runAgentCycle).not.toHaveBeenCalled();
+    // 500 is the longest one that goes through; a note that is not text is refused too.
+    expect((await send({ action: "redo", runId: "run-1", note: "n".repeat(500) })).status).toBe(202);
+    for (const note of [5, null, ["x"], { text: "x" }]) {
+      vi.clearAllMocks();
+      expect((await send({ action: "redo", runId: "run-1", note })).status).toBe(400);
+      expect(mocks.changeRun).not.toHaveBeenCalled();
+    }
+  });
+
+  it("redo passes the trimmed note to changeRun", async () => {
+    const res = await send({ action: "redo", runId: "run-1", note: "  x  " });
+    expect(res.status).toBe(202);
+    expect(mocks.changeRun).toHaveBeenCalledExactlyOnceWith("biz1", "run-1", "redo", { note: "x" });
+    expect(mocks.changeRun.mock.calls[0][3]).toEqual({ note: "x" });
+    expect(mocks.runAgentCycle).toHaveBeenCalledExactlyOnceWith("biz1");
+    // The spaces count against nothing: 500 characters plus the spaces around them are still 500.
+    vi.clearAllMocks();
+    expect((await send({ action: "redo", runId: "run-1", note: ` ${"n".repeat(500)} ` })).status).toBe(202);
+    expect(mocks.changeRun.mock.calls[0][3]).toEqual({ note: "n".repeat(500) });
+  });
+
+  it("a redo with no text in its note is a plain redo, and only redo carries a note", async () => {
+    for (const note of [undefined, "", "   "]) {
+      vi.clearAllMocks();
+      expect((await send({ action: "redo", runId: "run-1", note })).status).toBe(202);
+      expect(mocks.changeRun).toHaveBeenCalledExactlyOnceWith("biz1", "run-1", "redo");
+    }
+    for (const action of ["cancel", "approve", "refresh"]) {
+      vi.clearAllMocks();
+      expect((await send({ action, runId: "run-1", note: "x" })).status).toBe(202);
+      expect(mocks.changeRun).toHaveBeenCalledExactlyOnceWith("biz1", "run-1", action);
+    }
+  });
+
   it("redo needs a run id, like cancel and approve", async () => {
     for (const action of ["redo", "cancel", "approve"]) {
       vi.clearAllMocks();

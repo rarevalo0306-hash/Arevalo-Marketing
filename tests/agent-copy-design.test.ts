@@ -240,6 +240,62 @@ describe("agente de redacción", () => {
     });
   });
 
+  describe("la nota del dueño en «Rehacer»", () => {
+    const NOTE = "Menciona el seguro de inundación";
+    const OWNER: ReviewProblem = { kind: "dueño", detail: NOTE, sendBackTo: "copy" };
+
+    it("the owner note of this round becomes a 'dueño' problem; a note of another round is ignored", async () => {
+      const review = { approved: false, problems: PROBLEMS };
+      // Its round: it goes after the problems the review found, and the prompt asks to fix the notes.
+      const mine = setup({ step: "copy-r1", attempt: 1, ctx: { ownerNote: { round: 1, text: NOTE } }, outputs: { plan: PLAN, research: RESEARCH, review } });
+      await runCopy(mine.input);
+      expect((ask.mock.calls[0][2] as { notes: unknown }).notes).toEqual([...PROBLEMS, OWNER]);
+      expect(ask.mock.calls[0][1]).toContain("`notes`");
+      // An approved review with nothing to fix still sends the owner's note.
+      ask.mockClear();
+      await runCopy(setup({ step: "copy-r1", attempt: 1, ctx: { ownerNote: { round: 1, text: NOTE } }, outputs: { plan: PLAN, research: RESEARCH, review: { approved: true, problems: [] } } }).input);
+      expect((ask.mock.calls[0][2] as { notes: unknown }).notes).toEqual([OWNER]);
+      expect(ask.mock.calls[0][1]).toContain("`notes`");
+      // The note of another round (an earlier Rehacer) is not this round's.
+      for (const round of [0, 1, 3]) {
+        ask.mockClear();
+        await runCopy(setup({ step: "copy-r2", attempt: 2, ctx: { ownerNote: { round, text: NOTE } }, outputs: { plan: PLAN, research: RESEARCH, review } }).input);
+        expect((ask.mock.calls[0][2] as { notes: unknown }).notes).toEqual(PROBLEMS);
+      }
+      // No review problems and a note of another round: no notes at all.
+      ask.mockClear();
+      await runCopy(setup({ step: "copy-r2", attempt: 2, ctx: { ownerNote: { round: 1, text: NOTE } }, outputs: { plan: PLAN, research: RESEARCH, review: null } }).input);
+      expect("notes" in (ask.mock.calls[0][2] as object)).toBe(false);
+      expect(ask.mock.calls[0][1]).not.toContain("`notes`");
+    });
+
+    it("the first round never reads the note, and the note is sent once (the context does not carry it)", async () => {
+      await runCopy(setup({ ctx: { ownerNote: { round: 0, text: NOTE } } }).input);
+      expect("notes" in (ask.mock.calls[0][2] as object)).toBe(false);
+      expect(JSON.stringify(ask.mock.calls[0][2])).not.toContain(NOTE);
+      ask.mockClear();
+      const { input } = setup({ step: "copy-r1", attempt: 1, ctx: { ownerNote: { round: 1, text: NOTE } } });
+      await runCopy(input);
+      const sent = ask.mock.calls[0][2] as { context: Record<string, unknown> };
+      expect("ownerNote" in sent.context).toBe(false);
+      expect(JSON.stringify(sent).split(NOTE)).toHaveLength(2);
+    });
+
+    it("a note that cannot be read is ignored", async () => {
+      const bad: unknown[] = [null, "x", [], {}, { round: 1 }, { text: NOTE }, { round: "1", text: NOTE }, { round: 1, text: 5 }, { round: 1, text: "" }, { round: 1, text: " \n " }, { round: 1.5, text: NOTE }];
+      for (const ownerNote of bad) {
+        ask.mockClear();
+        await runCopy(setup({ step: "copy-r1", attempt: 1, ctx: { ownerNote } }).input);
+        expect("notes" in (ask.mock.calls[0][2] as object)).toBe(false);
+      }
+    });
+
+    it("the note is cut to 500 characters, so notes that are never trimmed stay within the prompt budget", async () => {
+      await runCopy(setup({ step: "copy-r1", attempt: 1, ctx: { ownerNote: { round: 1, text: "ñ".repeat(900) } } }).input);
+      expect((ask.mock.calls[0][2] as { notes: unknown }).notes).toEqual([{ ...OWNER, detail: "ñ".repeat(500) }]);
+    });
+  });
+
   describe("el presupuesto del prompt", () => {
     const big: ReviewProblem[] = Array.from({ length: 10 }, (_, i) => ({
       kind: `problema-${i}`.padEnd(40, "k"),

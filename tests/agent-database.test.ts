@@ -34,6 +34,7 @@ import { collectNews } from "@/lib/agent/news";
 import { readSource } from "@/lib/agent/network";
 import { storeDesign } from "@/lib/media-formats";
 import { ensureStoredCopy } from "@/lib/library-files";
+import { AgentError } from "@/lib/agent/access";
 import { AGENTS } from "@/lib/agent/agents";
 import { Copy as CopySchema, type Context } from "@/lib/agent/schema";
 import { boundedContext } from "@/lib/agent/bounded-context";
@@ -2622,6 +2623,89 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       for (const [input] of designStore().slice(3)) expect(input.headline).toBe(ROOF_COPY_R1.headline);
     });
 
+    const NOTE = "Menciona el seguro de inundación";
+    /** copy, design and a review that passes and waits for the owner (approval mode); the next step is `prepare`. */
+    async function waitingAfterReview(problems: ReviewProblem[] = []) {
+      const child = await pieceOf();
+      vi.mocked(meteredAsk)
+        .mockResolvedValueOnce({ value: ROOF_COPY, usage })
+        .mockResolvedValue({ value: ROOF_COPY_R1, usage });
+      const exec = async (run: AgentRun, name: string, model?: ModelConfig): Promise<StepResult> =>
+        name.startsWith("review") ? { data: { approved: !problems.length, problems }, state: "waiting_approval" } : executeStep(run, name, model);
+      const cost = reserving((name) => (name.startsWith("copy") ? 10 : 0));
+      for (let i = 0; i < 3; i++) await workOne(A, exec, cost);
+      expect(await row(child.id)).toMatchObject({ status: "waiting_approval", stage: 3 });
+      return { child, exec, cost };
+    }
+
+    it("Rehacer with a note: the round's copy step receives it as an owner problem; a second Rehacer is refused", async () => {
+      const { child, exec, cost } = await waitingAfterReview();
+      await changeRun(A, child.id, "redo", { note: NOTE });
+      const redone = await row(child.id);
+      expect((redone.context as { ownerNote?: unknown }).ownerNote).toEqual({ round: 1, text: NOTE });
+      expect(stepsOf(redone).slice(3, 6)).toEqual(["copy-r1", "design-r1", "review-r1"]);
+      expect(redone).toMatchObject({ status: "queued", stage: 3 });
+      // It no longer waits: a second click is refused and changes neither the plan nor the note.
+      await expect(changeRun(A, child.id, "redo", { note: "Otra nota" })).rejects.toBeInstanceOf(AgentError);
+      expect(stepsOf(await row(child.id))).toEqual(stepsOf(redone));
+      expect(((await row(child.id)).context as { ownerNote?: unknown }).ownerNote).toEqual({ round: 1, text: NOTE });
+
+      await workOne(A, exec, cost);
+      expect(meteredAsk).toHaveBeenCalledTimes(2);
+      const [, system, payload] = vi.mocked(meteredAsk).mock.calls[1];
+      expect(system).toContain("`notes`");
+      expect(JSON.stringify(payload)).toContain(NOTE);
+      // Once, as a problem for the writer: the context does not carry it a second time.
+      expect((payload as { notes: unknown }).notes).toEqual([{ kind: "dueño", detail: NOTE, sendBackTo: "copy" }]);
+      expect(JSON.stringify(payload).split(NOTE)).toHaveLength(2);
+      expect(await output(child.id, "copy-r1")).toEqual({ ...ROOF_COPY_R1, usage });
+    });
+
+    it("Rehacer without a note keeps today's behavior", async () => {
+      const { child, exec, cost } = await waitingAfterReview();
+      await changeRun(A, child.id, "redo");
+      const redone = await row(child.id);
+      expect((redone.context as { ownerNote?: unknown }).ownerNote).toBeUndefined();
+      expect(stepsOf(redone).slice(3, 6)).toEqual(["copy-r1", "design-r1", "review-r1"]);
+      await workOne(A, exec, cost);
+      const sent = vi.mocked(meteredAsk).mock.calls[1][2] as { notes?: unknown };
+      expect(sent.notes).toBeUndefined();
+      expect(JSON.stringify(sent)).not.toContain("dueño");
+    });
+
+    it.each(["", "   ", "\n\t"])("a blank note (%j) is ignored, like no note", async (note) => {
+      const { child, exec, cost } = await waitingAfterReview();
+      await changeRun(A, child.id, "redo", { note });
+      expect(((await row(child.id)).context as { ownerNote?: unknown }).ownerNote).toBeUndefined();
+      await workOne(A, exec, cost);
+      expect((vi.mocked(meteredAsk).mock.calls[1][2] as { notes?: unknown }).notes).toBeUndefined();
+    });
+
+    it("the note is added to the problems the review found, and a design-only review still sends the text back to the writer", async () => {
+      const designOnly: ReviewProblem[] = [{ kind: "falta-imagen", detail: "La imagen no se ve", sendBackTo: "design" }];
+      const { child, exec, cost } = await waitingAfterReview(designOnly);
+      await changeRun(A, child.id, "redo", { note: NOTE });
+      // Without the note this round would only redo the design.
+      expect(stepsOf(await row(child.id)).slice(3, 6)).toEqual(["copy-r1", "design-r1", "review-r1"]);
+      await workOne(A, exec, cost);
+      const sent = vi.mocked(meteredAsk).mock.calls[1][2] as { notes: unknown };
+      expect(sent.notes).toEqual([...designOnly, { kind: "dueño", detail: NOTE, sendBackTo: "copy" }]);
+    });
+
+    it("the note belongs to its own round: the next Rehacer replaces it, or leaves none", async () => {
+      const { child, exec, cost } = await waitingAfterReview();
+      await changeRun(A, child.id, "redo", { note: NOTE });
+      // The second round's review waits for the owner again.
+      for (let i = 0; i < 3; i++) await workOne(A, exec, cost);
+      expect(await row(child.id)).toMatchObject({ status: "waiting_approval", stage: 6 });
+      await changeRun(A, child.id, "redo", { note: "Pon el teléfono primero" });
+      expect(((await row(child.id)).context as { ownerNote?: unknown }).ownerNote).toEqual({ round: 2, text: "Pon el teléfono primero" });
+      for (let i = 0; i < 3; i++) await workOne(A, exec, cost);
+      await changeRun(A, child.id, "redo");
+      expect(((await row(child.id)).context as { ownerNote?: unknown }).ownerNote).toBeUndefined();
+      expect(stepsOf(await row(child.id)).slice(9, 12)).toEqual(["copy-r3", "design-r3", "review-r3"]);
+    });
+
     it("design-r1 keeps the photo the piece's first design used today, and counts it once", async () => {
       const { photo, child } = await reworked();
       expect(designStore()).toHaveLength(6);
@@ -4609,6 +4693,38 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       await workOne(A);
       expect(createArticleReport).toHaveBeenCalledTimes(1);
       expect(await stepOf(redone.id, "article-r1")).toMatchObject({ status: "succeeded", output: { reportId: "rep2" } });
+    });
+
+    /** An article whose review failed, redone (with `note`, if any) and its new draft approved and written. */
+    async function redoneArticle(note?: string) {
+      vi.mocked(createArticleReport).mockResolvedValue({ ...REPORT, id: "rep2" });
+      await saveReport("Para reparar tu techo llama al 305-000-0000 hoy mismo.");
+      const piece = await article();
+      await done(piece.id, "article", { reportId: "rep1" });
+      await goTo(piece, "review");
+      await workOne(A, executeStep, reserving(() => 0));
+      expect(await row(piece.id)).toMatchObject({ status: "waiting_approval" });
+      await changeRun(A, piece.id, "redo", note === undefined ? undefined : { note });
+      // The new draft is paid: it waits for its own approval, then writes.
+      await workOne(A);
+      expect(createArticleReport).not.toHaveBeenCalled();
+      await changeRun(A, piece.id, "approve");
+      await workOne(A);
+      return piece;
+    }
+
+    it("a note on Rehacer reaches the writer of the new article draft", async () => {
+      const piece = await redoneArticle("Menciona el seguro de inundación");
+      expect((await row(piece.id)).context).toMatchObject({ ownerNote: { round: 1, text: "Menciona el seguro de inundación" } });
+      expect(createArticleReport).toHaveBeenCalledExactlyOnceWith(A, "reparación de techos", "es", ["Menciona el seguro de inundación"]);
+      expect(await stepOf(piece.id, "article-r1")).toMatchObject({ status: "succeeded", output: { reportId: "rep2" } });
+    });
+
+    it("a Rehacer without a note asks the writer for the article exactly as before", async () => {
+      const piece = await redoneArticle();
+      expect((await row(piece.id)).context).not.toHaveProperty("ownerNote");
+      expect(createArticleReport).toHaveBeenCalledExactlyOnceWith(A, "reparación de techos", "es");
+      expect(await stepOf(piece.id, "article-r1")).toMatchObject({ status: "succeeded", output: { reportId: "rep2" } });
     });
 
     it("the review judges an article with the right phone, sending the AI the article's own text", async () => {

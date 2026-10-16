@@ -138,8 +138,8 @@ export async function writeCopy(input: {
   const system = pieceInstructions(piece, Boolean(notes?.length));
   const payload = fitPayload<PiecePayload>(
     {
-      // The piece and the morning signals are already in the request; the context carries neither.
-      context: boundedContext(contextWithout(context, "piece", "signals")),
+      // The piece and the morning signals are already in the request, and the owner's note of "Rehacer" in `notes`: the context carries none.
+      context: boundedContext(contextWithout(context, "piece", "signals", "ownerNote")),
       research,
       request,
       ...(notes?.length ? { notes } : {}),

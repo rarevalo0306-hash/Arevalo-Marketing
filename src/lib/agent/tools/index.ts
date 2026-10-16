@@ -151,9 +151,10 @@ export type ToolImpl = {
   ) => Promise<{ projectId: string; status: string }>;
   /**
    * One paid draft (Google, then the AI): `createArticleReport` for the run's business. The language is the one the
-   * business's customers search in unless given. The caller must have reserved and been allowed to spend: this reserves nothing.
+   * business's customers search in unless given. `notes`: what the owner asked to change in this new draft (the note of "Rehacer").
+   * The caller must have reserved and been allowed to spend: this reserves nothing.
    */
-  writeArticle: (keyword: string, language?: WriterLang) => Promise<ArticleMade>;
+  writeArticle: (keyword: string, language?: WriterLang, notes?: string[]) => Promise<ArticleMade>;
   publishArticle: (reportId: string, options?: PublishOptions) => Promise<ArticlePublish>;
 };
 export type Tools = { use<T extends ToolName>(name: T): ToolImpl[T] };
@@ -391,10 +392,14 @@ const IMPLS: { [K in ToolName]: (run: AgentRun) => ToolImpl[K] } = {
   },
 
   // The same function the writer's form calls. Google and the AI are paid: only a step that reserved the cost calls this.
-  writeArticle: (run) => async (keyword, language) => {
+  writeArticle: (run) => async (keyword, language, notes) => {
     paidCall();
     try {
-      return await createArticleReport(run.businessId, keyword, language ?? (await articleLanguage(run.businessId)));
+      const lang = language ?? (await articleLanguage(run.businessId));
+      // A plain draft is asked for exactly as before; the notes go along only when there are some.
+      return notes?.length
+        ? await createArticleReport(run.businessId, keyword, lang, notes)
+        : await createArticleReport(run.businessId, keyword, lang);
     } catch (e) {
       throw agentErrorOf(e);
     }

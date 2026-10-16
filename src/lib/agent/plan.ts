@@ -265,6 +265,39 @@ export function problemsOf(output: unknown): ReviewProblem[] {
   });
 }
 
+/** The longest note the owner can attach to "Rehacer" (the API refuses a longer one; the engine cuts to it anyway). */
+export const OWNER_NOTE_MAX = 500;
+
+/** The owner's text as the engine keeps it: trimmed and cut to `OWNER_NOTE_MAX` characters (never half a character); "" when there is no text. */
+export function cleanOwnerNote(text: unknown): string {
+  return typeof text === "string"
+    ? [...text.trim()].slice(0, OWNER_NOTE_MAX).join("").trimEnd()
+    : "";
+}
+
+/** The owner's note on "Rehacer" as a problem for the writer. */
+export const ownerProblem = (detail: string): ReviewProblem => ({
+  kind: "dueño",
+  detail,
+  sendBackTo: "copy",
+});
+
+/**
+ * The note `redo` kept in a piece's context (`ownerNote: { round, text }`) as a problem for the writer of that round: the
+ * rework step with `attempt` `round` asks for it. Nothing when there is no note, it belongs to another round (an earlier
+ * Rehacer) or it cannot be read.
+ */
+export function ownerNoteProblems(context: unknown, round: number): ReviewProblem[] {
+  const note =
+    context && typeof context === "object" && !Array.isArray(context)
+      ? (context as { ownerNote?: unknown }).ownerNote
+      : undefined;
+  if (!note || typeof note !== "object" || Array.isArray(note)) return [];
+  const { round: at, text } = note as { round?: unknown; text?: unknown };
+  const detail = cleanOwnerNote(text);
+  return at === round && detail ? [ownerProblem(detail)] : [];
+}
+
 /**
  * The only correction round: send the problems back, then review once more.
  * Never adds `video`, `render` or `video_wait`; a video piece only redoes
