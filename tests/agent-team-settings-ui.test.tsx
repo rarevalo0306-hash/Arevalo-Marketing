@@ -699,6 +699,12 @@ describe("Guardar muestra lo que lo bloquea", () => {
       expect(call.save).toHaveBeenCalledWith({ ...call.value, modelPrices: { "claude:sonnet": { input: 3, output: 15 } } });
     });
 
+    it("keeps the price of the default model the agents without a model of their own use", async () => {
+      const call = sent({ defaults: ["claude:old"] });
+      await call.run();
+      expect(call.save).toHaveBeenCalledWith({ ...call.value, modelPrices: call.value.modelPrices });
+    });
+
     it("does nothing while a request is running", async () => {
       for (const invalid of [[], ["radarHours"]]) {
         const call = sent({ busy: true, invalid });

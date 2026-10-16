@@ -1,8 +1,10 @@
 // Campos de números del Centro MATYA (límites en dólares, publicaciones al día, horas): leer lo que escribe el dueño.
 import { describe, expect, it } from "vitest";
 import { ModelChoice, ModelPrice, type Settings } from "@/lib/agent/schema";
+import type { TeamAgentView } from "@/lib/agent/team-view";
 import {
   RATE_MAX,
+  defaultModelIds,
   formatRate,
   formatUsd,
   pruneModelPrices,
@@ -139,6 +141,45 @@ describe("el modelo de cada agente", () => {
     expect(pruneModelPrices(prices, same)).toEqual({ "claude:sonnet": prices["claude:sonnet"] });
     // Un modelo sin precio guardado no inventa uno.
     expect(pruneModelPrices({}, models)).toEqual({});
+  });
+
+  it("pruneModelPrices también deja el precio del modelo por defecto, que usan los agentes sin modelo propio", () => {
+    const prices: Settings["modelPrices"] = {
+      "claude:sonnet": { input: 3, output: 15 },
+      "gemini:flash": { input: 0.3, output: 2.5 },
+      "gemini:old": { input: 1, output: 2 },
+    };
+    expect(pruneModelPrices(prices, models, ["gemini:flash"])).toEqual({ "claude:sonnet": prices["claude:sonnet"], "gemini:flash": prices["gemini:flash"] });
+    // Nadie eligió un modelo: el del modelo por defecto sigue.
+    expect(pruneModelPrices(prices, {}, ["gemini:flash"])).toEqual({ "gemini:flash": prices["gemini:flash"] });
+    // Sin precio guardado para el modelo por defecto, no inventa uno.
+    expect(pruneModelPrices({}, {}, ["gemini:flash"])).toEqual({});
+  });
+
+  it("defaultModelIds: the model of each agent that calls an AI with no model of its own, once", () => {
+    const view = (key: string, extra: Partial<TeamAgentView>): TeamAgentView => ({
+      key,
+      label: { es: key, en: key },
+      usesModel: true,
+      model: "",
+      own: false,
+      ready: true,
+      problem: "",
+      steps: 0,
+      cents: 0,
+      ...extra,
+    });
+    const agents = [
+      view("director", { model: "gemini:flash" }),
+      view("seo", { model: "openai:gpt-5", own: true }),
+      view("copy", { model: "gemini:flash" }),
+      view("design", { usesModel: false }),
+      // No default model configured: nothing to keep.
+      view("review", { model: "" }),
+    ];
+    expect(defaultModelIds(agents)).toEqual(["gemini:flash"]);
+    expect(defaultModelIds([])).toEqual([]);
+    expect(defaultModelIds(undefined)).toEqual([]);
   });
 });
 

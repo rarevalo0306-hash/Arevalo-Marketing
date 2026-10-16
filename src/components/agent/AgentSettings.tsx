@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useT } from "@/components/I18n";
 import { INDUSTRIES } from "@/lib/agent/industry";
-import { formatUsd, pruneModelPrices, readCount, readUsd, submitDecision } from "@/lib/agent/settings-input";
+import { defaultModelIds, formatUsd, pruneModelPrices, readCount, readUsd, submitDecision } from "@/lib/agent/settings-input";
 import { CHANNELS } from "@/lib/channels";
 import type { Settings } from "@/lib/agent/schema";
 import { TeamSettings } from "./TeamSettings";
@@ -24,16 +24,23 @@ export function nextFormKey(prev: FormKey, revision: number, paused: boolean): F
 /**
  * What the form does when the owner submits it. Nothing is saved while a field is marked (`reveal` makes the quiet fields say what is
  * wrong) or while a request runs; otherwise it saves what is in the form. A price stays in the form while its model is not chosen
- * (to come back to), but it is not saved.
+ * (to come back to), but it is not saved, unless it is the price of the default model (`defaults`) some agents work with.
  */
 export async function submitSettings(
   event: { preventDefault: () => void },
-  ctx: { invalid: readonly string[]; busy: boolean; value: Settings; save: (settings: Settings) => Promise<boolean>; reveal: () => void },
+  ctx: {
+    invalid: readonly string[];
+    busy: boolean;
+    value: Settings;
+    save: (settings: Settings) => Promise<boolean>;
+    reveal: () => void;
+    defaults?: readonly string[];
+  },
 ): Promise<void> {
   event.preventDefault();
   const { save, reveal } = submitDecision(ctx.invalid, ctx.busy);
   if (reveal) ctx.reveal();
-  if (save) await ctx.save({ ...ctx.value, modelPrices: pruneModelPrices(ctx.value.modelPrices, ctx.value.agentModels) });
+  if (save) await ctx.save({ ...ctx.value, modelPrices: pruneModelPrices(ctx.value.modelPrices, ctx.value.agentModels, ctx.defaults) });
 }
 
 /** Puts the cursor on the first marked field of the form, so the owner lands on what to fix. */
@@ -174,7 +181,7 @@ export function AgentSettings({
       ref={form}
       className={s.settings}
       onSubmit={(e) =>
-        submitSettings(e, { invalid, busy, value, save, reveal: () => setAttempts((n) => n + 1) })
+        submitSettings(e, { invalid, busy, value, save, reveal: () => setAttempts((n) => n + 1), defaults: defaultModelIds(data.team?.agents) })
       }
     >
       <div className={s.sectionTitle}>

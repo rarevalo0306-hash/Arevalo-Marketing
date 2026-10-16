@@ -2,6 +2,7 @@
 // horas). Vacío o con letras devuelve null: nunca se convierte en cero sin que el dueño lo escriba.
 import { parseMoney } from "@/lib/ads-shape";
 import type { Settings } from "@/lib/agent/schema";
+import type { TeamAgentView } from "@/lib/agent/team-view";
 
 /** "5", "1.50", "2,5" (coma decimal), "$12.50" o "1,000" → centavos; null si no es una cantidad válida. */
 export function readUsd(text: string): number | null {
@@ -62,10 +63,23 @@ export function setAgentModel(
   return next as Settings["agentModels"];
 }
 
-/** Los precios de los modelos que algún agente usa; los de modelos que ya nadie usa se van al guardar. */
-export function pruneModelPrices(prices: Settings["modelPrices"], models: Settings["agentModels"]): Settings["modelPrices"] {
-  const used = new Set(Object.values(models).map((m) => `${m.provider}:${m.model}`));
+/**
+ * Los precios de los modelos que algún agente usa: los elegidos en `models` y el modelo por defecto (`defaults`, el que usan los agentes
+ * sin modelo propio, ver `defaultModelIds`), cuyo precio guardado manda sobre el de las variables MATYA_AGENT_*. Los de modelos que
+ * ya nadie usa se van al guardar.
+ */
+export function pruneModelPrices(
+  prices: Settings["modelPrices"],
+  models: Settings["agentModels"],
+  defaults: readonly string[] = [],
+): Settings["modelPrices"] {
+  const used = new Set([...Object.values(models).map((m) => `${m.provider}:${m.model}`), ...defaults]);
   return Object.fromEntries(Object.entries(prices).filter(([id]) => used.has(id)));
+}
+
+/** The default model (`provider:model`) as the team's view shows it: the model of each agent that calls an AI with no model of its own. */
+export function defaultModelIds(agents: readonly TeamAgentView[] | undefined): string[] {
+  return [...new Set((agents ?? []).filter((a) => a.usesModel && !a.own && a.model).map((a) => a.model))];
 }
 
 /**
