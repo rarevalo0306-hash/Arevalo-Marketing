@@ -613,8 +613,12 @@ export async function runDailyReports(now = new Date(), opts: { max?: number; bu
     const rec = readDailyRecord(r.data);
     if (rec && rec.day && rec.trigger !== "range" && closesDay(rec, r.createdAt, now)) closed.add(`${r.businessId}|${rec.day}`);
   }
-  // Antes de reclamar ningún día: los de modo equipo que todavía esperan su plan (solo los que de verdad se iban a mandar).
-  const waiting = await waitingForPlan(due.filter((d) => !closed.has(`${d.id}|${d.day}`)), now);
+  // Antes de reclamar ningún día: los de modo equipo que todavía esperan su plan (solo los que de verdad se iban a mandar). Si no se
+  // puede saber, nadie espera: todos siguen como sin modo equipo (un fallo aquí nunca deja a ningún negocio sin su reporte).
+  const waiting = await waitingForPlan(due.filter((d) => !closed.has(`${d.id}|${d.day}`)), now).catch((e: unknown) => {
+    console.error("[reporte-diario] no se pudo saber qué negocios esperan el plan de la mañana", e instanceof Error ? e.name : "unknown");
+    return new Set<string>();
+  });
   for (const d of due) {
     if (closed.has(`${d.id}|${d.day}`)) continue;
     if (waiting.has(d.id)) {

@@ -6307,6 +6307,26 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       expect(mailTo(A)).toHaveLength(0);
     });
 
+    it("a failed check of who waits for the plan holds no report back: every business goes out as without team mode", async () => {
+      await db.business.update({ where: { id: B }, data: { ownerEmail: "dueno-b@example.com" } });
+      await saveSettings(B, { ...settings, industry: "commercial-security-ni", teamMode: false });
+      await morningPlan("running");
+      const read = vi.spyOn(db.agentWorkspace, "findMany").mockRejectedValueOnce(new TypeError("boom: secret detail"));
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const out = await runDailyReports(new Date());
+        // B has no team mode: its report goes out. A is not held back either (the check failed, so nobody waits).
+        expect(out).toMatchObject({ checked: 2, sent: 2, errors: 0, waiting: 0 });
+        expect([...out.businesses].sort()).toEqual([A, B].sort());
+        expect(mailTo(B)).toHaveLength(1);
+        expect(log).toHaveBeenCalledWith("[reporte-diario] no se pudo saber qué negocios esperan el plan de la mañana", "TypeError");
+        expect(JSON.stringify(log.mock.calls)).not.toContain("secret detail");
+      } finally {
+        read.mockRestore();
+        log.mockRestore();
+      }
+    });
+
     it("a manual report of yesterday goes out at once, with the section, while the morning plan is still running", async () => {
       await morningPlan("running");
       const out = await sendDailyReport(A, YESTERDAY, { trigger: "manual", now: new Date() });
