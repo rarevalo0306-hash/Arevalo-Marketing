@@ -2,8 +2,9 @@
 // (canal, imagen o video, teléfono, web, datos inventados, tema repetido); si alguna falla no se llama a la IA y no cuesta.
 // Si pasan, una sola llamada pagada juzga lo que el código no puede (datos, ortografía, coherencia entre texto e imagen).
 // Si la pieza no pasa, una sola vuelta de corrección (`reworkSteps`); si vuelve a fallar espera al dueño. Un artículo que no pasa
-// espera al dueño de una vez: su vuelta sería otro borrador de pago, y la pide el dueño con «Rehacer». En modo con aprobación
-// una pieza que pasa también espera al dueño, justo después de la revisión.
+// espera al dueño de una vez: su vuelta sería otro borrador de pago, y la pide el dueño con «Rehacer». Una pieza cuyo único problema
+// es un tema repetido también espera al dueño de una vez: la vuelta no cambia el tema. En modo con aprobación una pieza que pasa
+// también espera al dueño, justo después de la revisión.
 import { z } from "zod";
 import { db } from "@/lib/db";
 import type { MediaType } from "@/lib/channels";
@@ -219,12 +220,23 @@ const approvedText = (title: string, language: "es" | "en") =>
     ? `The piece "${title}" passed the editorial review and is ready for your approval. Approve it to have it scheduled, or ask for it to be redone.`
     : `La pieza «${title}» pasó la revisión editorial y está lista para tu aprobación. Apruébala para que se programe o pide que se rehaga.`;
 
-/** What the owner reads when the piece did not pass and no automatic round is left. */
+/** The rule kind of a topic already used: a rework round rewrites the text, never the piece's topic. */
+const REPEATED = "repetido";
+/** Every problem is a repeated topic: no correction round can fix that, so the owner decides at once. */
+const onlyRepeated = (problems: ReviewProblem[]) =>
+  problems.length > 0 && problems.every((p) => p.kind === REPEATED);
+
+/** What the owner reads when the piece did not pass and no automatic round is left (or none could fix it). */
 const rejectedText = (title: string, problems: ReviewProblem[], attempt: number, language: "es" | "en") => {
   const list = problems.map((p) => `- ${p.detail}`).join("\n");
+  const repeated = onlyRepeated(problems)
+    ? language === "en"
+      ? "\nA correction does not change the topic, so no automatic round was made."
+      : "\nUna corrección no cambia el tema, así que no se hizo una vuelta automática."
+    : "";
   return language === "en"
-    ? `The piece "${title}" did not pass the editorial review${attempt >= 1 ? " even after a correction" : ""} and is waiting for your decision.\nProblems:\n${list}\nYou can approve it as it is, ask for it to be redone or cancel it.`
-    : `La pieza «${title}» no pasó la revisión editorial${attempt >= 1 ? " ni después de corregirla" : ""} y espera tu decisión.\nProblemas:\n${list}\nPuedes aprobarla como está, pedir que se rehaga o cancelarla.`;
+    ? `The piece "${title}" did not pass the editorial review${attempt >= 1 ? " even after a correction" : ""} and is waiting for your decision.\nProblems:\n${list}${repeated}\nYou can approve it as it is, ask for it to be redone or cancel it.`
+    : `La pieza «${title}» no pasó la revisión editorial${attempt >= 1 ? " ni después de corregirla" : ""} y espera tu decisión.\nProblemas:\n${list}${repeated}\nPuedes aprobarla como está, pedir que se rehaga o cancelarla.`;
 };
 
 /**
@@ -324,7 +336,9 @@ export async function runReview(input: AgentInput): Promise<StepResult> {
         : base;
     // The round goes to the writer, the designer or both; none is left on the round after it, and the owner decides. An article
     // never gets one on its own: its round is a new paid draft, so the owner decides first (approve it as it is, or redo it).
-    const round = article ? [] : reworkSteps(problems, attempt, piece.data.format);
+    // Nor does a piece whose only problem is its repeated topic: the round rewrites the text, never `piece.topic`, so its review
+    // would fail again after a paid copy; the owner decides at once.
+    const round = article || onlyRepeated(problems) ? [] : reworkSteps(problems, attempt, piece.data.format);
     return round.length
       ? { ...base, insertSteps: round }
       : { ...base, state: "waiting_approval", text: rejectedText(title, problems, attempt, language) };

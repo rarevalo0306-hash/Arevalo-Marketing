@@ -2725,13 +2725,19 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
         await db.campaign.create({ data: { id: `agent-${child.id}`, businessId: A, name: "Techos" } });
         vi.mocked(meteredAsk).mockResolvedValueOnce(approve);
         for (let i = 0; i < 3; i++) await workOne(A, exec(GOOD, GOOD), cost);
-        // The sibling has the same topic: a repeat, found without a paid call, sent back to the writer.
+        // The sibling has the same topic: a repeat, found without a paid call. A rework round could not change the topic, so
+        // the piece goes straight to the owner with the summary, and no paid copy-r1 is inserted.
         expect((await stepOf(child.id, "review")).output).toMatchObject({
           approved: false,
           problems: [{ kind: "repetido", sendBackTo: "copy" }],
         });
         expect(meteredAsk).not.toHaveBeenCalled();
-        expect(stepsOf(await row(child.id)).slice(3, 6)).toEqual(["copy-r1", "design-r1", "review-r1"]);
+        const waiting = await row(child.id);
+        expect(waiting).toMatchObject({ status: "waiting_approval", stage: 3 });
+        expect(stepsOf(waiting)).toEqual(["copy", "design", "review", "prepare", "schedule", "verify"]);
+        expect((await db.agentMessage.findFirstOrThrow({ where: { runId: child.id, role: "assistant" } })).text).toContain(
+          "Una corrección no cambia el tema",
+        );
       });
 
       it("with nothing else using the topic, the piece's own run and campaign do not count", async () => {

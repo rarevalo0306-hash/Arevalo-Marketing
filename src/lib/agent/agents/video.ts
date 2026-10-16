@@ -65,8 +65,9 @@ export async function runVideo(input: AgentInput): Promise<StepResult> {
     { language, reuse: libraryIdsOf(design) },
   );
   const media = ownMedia.length ? ownMedia : designMedia(design, copy.data.headline);
+  // Known before anything was quoted, written or spent: a refusal, so the piece ends blocked (not uncertain).
   if (!media.length)
-    throw new AgentError("No hay fotos ni diseños para armar el video. Los textos están guardados.");
+    throw new Refusal("No hay fotos ni diseños para armar el video. Los textos están guardados.");
 
   const idea = copy.data.script.trim() || copy.data.summary.trim() || copy.data.headline;
   const quote = await input.tools.use("videoQuote")(idea, media, language);

@@ -147,6 +147,78 @@ describe("reglas de la revisión editorial", () => {
       expect(kinds(base({ variants: { facebook: text } }))).toEqual([]);
     });
 
+    describe("huecos del detector de teléfonos", () => {
+      const phoneDetail = (text: string) => reviewRules(base({ variants: { facebook: text } })).find((p) => p.kind === "telefono")?.detail;
+
+      it.each([
+        ["guion que no corta (U+2011)", "Llama al 305\u2011000\u20110000"],
+        ["guion (U+2010)", "Llama al 305\u2010000\u20100000"],
+        ["guion de cifras (U+2012)", "Llama al 305\u2012000\u20120000"],
+        ["raya corta (U+2013)", "Llama al 305\u2013000\u20130000"],
+        ["raya larga (U+2014)", "Llama al 305\u2014000\u20140000"],
+        ["barra horizontal (U+2015)", "Llama al 305\u2015000\u20150000"],
+        ["signo menos (U+2212)", "Llama al 305\u2212000\u22120000"],
+        ["espacio que no corta (U+00A0)", "Llama al 305\u00a0000\u00a00000"],
+        ["espacio fino que no corta (U+202F)", "Llama al 305\u202f000\u202f0000"],
+        ["espacio fino (U+2009)", "Llama al 305\u2009000\u20090000"],
+        ["punto medio (·)", "Llama al 305·000·0000"],
+      ])("un número con %s se detecta", (_name, text) => {
+        expect(phoneDetail(text)).toContain("305-000-0000".slice(0, 3));
+        expect(kinds(base({ variants: { facebook: text } }))).toEqual(["telefono"]);
+      });
+
+      it.each([
+        "Llama al 305\u2013555\u20130100",
+        "Llama al 305\u2212555\u22120100",
+        "Llama al 305\u00a0555\u00a00100",
+        "Llama al (305)\u202f555\u20110100",
+        "Llama al 305·555·0100",
+      ])("el número del negocio con otros guiones o espacios no es un error: %s", (text) => {
+        expect(kinds(base({ variants: { facebook: text } }))).toEqual([]);
+      });
+
+      it.each(["Tel.305-000-0000", "WhatsApp/305-000-0000", "Cel-305-000-0000", "Teléfono.305.000.0000", "Llámanos—305-000-0000"])(
+        "un número pegado a una palabra con punto, guion o barra se detecta: %s",
+        (text) => {
+          expect(kinds(base({ variants: { facebook: text } }))).toEqual(["telefono"]);
+          expect(phoneDetail(text)).toMatch(/305.000.0000/);
+        },
+      );
+
+      it.each(["Tel.305-555-0100", "WhatsApp/305-555-0100", "Cel-(305) 555-0100"])(
+        "el número del negocio pegado a una palabra no es un error: %s",
+        (text) => {
+          expect(kinds(base({ variants: { facebook: text } }))).toEqual([]);
+        },
+      );
+
+      it("dos números unidos por un espacio se separan en lugar de saltárselos", () => {
+        // 20 digits together: before, too many to be one phone and the wrong one slipped through.
+        const detail = phoneDetail("Llama al 305-555-0100 786-000-0000");
+        expect(detail).toContain("«786-000-0000»");
+        expect(detail).not.toContain("«305-555-0100");
+        expect(phoneDetail("Llama al 305 555 0100 786 000 0000")).toContain("«786 000 0000»");
+        expect(phoneDetail("Llama al +1 786 000 0000 +1 305 555 0100")).toContain("«+1 786 000 0000»");
+        // Two local numbers of 7 digits are two numbers, not one of 14.
+        expect(
+          reviewRules(base({ business: { phone: "555-0100", website: "https://mio.com" }, variants: { facebook: "Llama al 555-0100 555-0199" } }))
+            .find((p) => p.kind === "telefono")?.detail,
+        ).toContain("«555-0199»");
+        // Both are the business's: nothing wrong.
+        expect(kinds(base({ variants: { facebook: "Llama al 305-555-0100 305 555 0100" } }))).toEqual([]);
+        // A number written in groups is still one number.
+        expect(kinds(base({ variants: { facebook: "Llama al +1 305 555 0100 o al (305) 555 0100" } }))).toEqual([]);
+      });
+
+      it("un código postal con sus cuatro cifras (ZIP+4) no es un teléfono", () => {
+        expect(kinds(base({ variants: { facebook: "Visítanos en Miami, FL 33101-1234." } }))).toEqual([]);
+        expect(kinds(base({ variants: { facebook: "Miami, FL 33101-1234 305-555-0100" } }))).toEqual([]);
+        const detail = phoneDetail("Miami, FL 33101-1234 786-000-0000");
+        expect(detail).toContain("«786-000-0000»");
+        expect(detail).not.toContain("33101");
+      });
+    });
+
     it("un solo problema por tipo aunque el número se repita", () => {
       const problems = reviewRules(
         base({ variants: { facebook: "Llama al 305-000-0000", instagram: "Llama al 305-000-0000" } }),

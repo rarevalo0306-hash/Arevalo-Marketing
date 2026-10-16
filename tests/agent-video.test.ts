@@ -168,6 +168,14 @@ describe("agente de video", () => {
     expect(none.videoQuote).not.toHaveBeenCalled();
   });
 
+  it("sin fotos ni diseños es un rechazo: nada se gastó ni se escribió, así que la pieza queda bloqueada, no incierta", async () => {
+    const none = setup({ library: [], outputs: { copy: COPY, design: { assets: [] } } });
+    await expect(runVideo(none.input)).rejects.toBeInstanceOf(Refusal);
+    await expect(runVideo(none.input)).rejects.toThrow(
+      "No hay fotos ni diseños para armar el video. Los textos están guardados.",
+    );
+  });
+
   it("solo hace el paso video", async () => {
     for (const step of ["render", "video_wait", "video-r1", "videos"]) {
       const s = setup({ step });

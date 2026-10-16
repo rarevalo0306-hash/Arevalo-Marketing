@@ -58,7 +58,7 @@ No es todavía una factura consolidada de toda la plataforma: herramientas anter
 **Dinero.**
 
 - **Pasos con el modelo de un agente** (el plan del Director, la investigación, la estrategia, la redacción y la revisión, con sus vueltas): antes del paso se reserva lo más que puede costar una llamada de ese modelo, y el agente llama con ese mismo modelo y ese precio. Cada uno de estos pasos hace una sola llamada de pago; una segunda nunca sale, y nunca reintenta ni cambia de modelo o de proveedor. Si a un modelo le falta el precio verificado, o a su proveedor la clave, la pieza queda bloqueada con un mensaje claro («Falta el precio verificado…», «Falta la conexión del modelo…»), sin reservar ni cobrar nada. Si el paso falla antes de hacer su llamada, su reserva se libera; si falla después, la reserva se cobra y el paso queda por revisar, como siempre.
-- **Los pasos de la pieza que cuestan por su cuenta** siguen sus propias reglas: el borrador del artículo paga en un solo paso a quien lo escribe (DataForSEO y la IA del negocio), hasta el estimado que aprobó el dueño; el render cobra exactamente lo cotizado; la publicación del artículo, la traducción o la foto aprobada. Lo que reservan se cobra si fallan después de empezar.
+- **Los pasos de la pieza que cuestan por su cuenta** siguen sus propias reglas: el borrador del artículo paga en un solo paso a quien lo escribe (DataForSEO y la IA del negocio), hasta el estimado que aprobó el dueño; el render cobra exactamente lo cotizado; la publicación del artículo reserva y cobra lo más que pueden costar su traducción y la elección de su foto con la IA del negocio (el «hasta» que ya vio el dueño), o la foto con IA aprobada. Lo que reservan se cobra si fallan después de empezar.
 - **El cobro nunca pasa de la reserva** mientras el proveedor respete el tope de respuesta que se le pide (también sus tokens de razonamiento). Si alguna vez cobrara más, el freno de siempre lo detiene: el trabajo queda bloqueado y MATYA se apaga hasta revisar las tarifas.
 
 ### Pausar todo y Reanudar
@@ -72,15 +72,17 @@ Estas piezas quedan en «Necesita tu sí» (`waiting_approval`) y no siguen hast
 - **El costo del video.** El video se cotiza primero; el render empieza solo con la aprobación de ese precio, y cobra exactamente lo cotizado. No pasa del máximo por video ni del tope de videos del día.
 - **El borrador de un artículo para la web.** Paga Google y la IA del negocio: el dueño aprueba un «hasta US$X» antes de escribirlo. Una vuelta de corrección es otro borrador y pide su propia aprobación.
 - **Las fotos con IA.** Si ninguna foto de la biblioteca va con un artículo, crearla con IA espera la aprobación de su precio. Sin ella no se genera ninguna imagen.
-- **Una revisión que falla.** La pieza tiene una sola vuelta de corrección automática; si vuelve a fallar, espera al dueño con las notas. Un artículo que falla espera al dueño de una vez, porque corregirlo es otro borrador de pago.
+- **Una revisión que falla.** La pieza tiene una sola vuelta de corrección automática; si vuelve a fallar, espera al dueño con las notas. Un artículo que falla espera al dueño de una vez, porque corregirlo es otro borrador de pago, y también una pieza cuyo único problema es un tema repetido, porque una corrección no cambia el tema. «Rehacer» trabaja con la configuración actual del negocio, aunque se haya guardado mientras la pieza esperaba.
 - **El modo aprobación.** Con `mode: "approval"`, cada pieza que pasa la revisión espera la aprobación del dueño. Solo cuenta una aprobación dada después de la revisión (aprobar el costo de un video no aprueba la publicación).
 
-Sin permiso de publicación, una pieza lista espera en su paso de programar.
+Sin permiso de publicación, una pieza de redes (post o carrusel) se prepara y espera antes de programarse (`schedule`). Una pieza de video o un artículo no se hace: queda bloqueada en su paso `video` o `article`, antes de cotizar o de escribir, sin gastar nada.
 
 ### Límites que siempre aplican
 
 - **Nunca YouTube.** El agente no publica en YouTube: el validador descarta esas piezas y el guardia lo rechaza al programar. Esa subida siempre la aprueba una persona.
 - **Tope diario de publicaciones** (`maxPostsPerDay`): lo comparten las piezas y las campañas de antes, y un artículo publicado cuenta como una. Se revisa dentro del candado del negocio al programar: dos piezas a la vez nunca lo pasan juntas.
+- **Horario de publicación:** cada pieza sale entre las 9 a. m. y las 7 p. m. de la hora del negocio, y nunca en domingo si el negocio es un public adjuster de Florida (`public-adjusting-fl`, Florida 626.854); lo que se programa fuera de ese horario sale a la siguiente hora permitida y cuenta en el tope del día en que se programó.
+- **Temas usados:** solo cuentan como repetidos los temas de las piezas en curso o terminadas y de las campañas del agente que llegaron a programarse. Una pieza bloqueada, cancelada o incierta deja su tema libre para el plan de la mañana siguiente.
 - **Ocho trabajos abiertos como máximo**, contando el encargo del equipo y cada una de sus piezas. El despacho solo crea las piezas que caben.
 - **Canales:** solo los permitidos y conectados. Un canal cuyos dos últimos envíos fallaron queda frenado hasta que el dueño vuelva a guardar su conexión.
 - **Ventanas de tormenta** (Florida 626.854): cuando un encargo trae una tormenta (`context.storm`), primero va el contenido de seguridad. Sus piezas salen entre las 9 a. m. y las 7 p. m. de la hora del negocio, aunque la tormenta ya sea vieja; una oferta de servicios, como pronto 49 horas después del evento y nunca en domingo. Hoy ninguna fuente pone `context.storm` sola: la campaña manual de tormenta sigue siendo la que aplica esos tiempos.

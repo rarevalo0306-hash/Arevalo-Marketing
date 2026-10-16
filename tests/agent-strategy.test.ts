@@ -1,6 +1,7 @@
 // El agente de estrategia (paso strategy): una sola llamada pagada con un esquema suelto, dentro de los límites del día.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentRun } from "@prisma/client";
+import { z } from "zod";
 
 // Sin base de datos ni proveedor: el espacio de trabajo y los límites son de mentira y la llamada pagada es un simulacro.
 const ws = vi.hoisted(() => ({
@@ -117,10 +118,18 @@ describe("agente de estrategia", () => {
     const junk = [1, "x", null, {}, { id: 3 }, [], { id: "p1", topic: 5, channels: "facebook" }];
     expect(StrategyOutput.safeParse({ pieces: junk }).success).toBe(true);
     expect(StrategyOutput.safeParse({ pieces: Array.from({ length: 12 }, (_, i) => i) }).success).toBe(true);
-    expect(StrategyOutput.safeParse({ pieces: Array.from({ length: 13 }, (_, i) => i) }).success).toBe(false);
     expect(StrategyOutput.safeParse({ pieces: "p1" }).success).toBe(false);
     expect(StrategyOutput.safeParse({}).success).toBe(false);
     expect(() => promptBytes(StrategyOutput, "sistema", {})).not.toThrow();
+  });
+
+  it("más de 12 piezas no echan a perder la llamada pagada: se quedan las 12 primeras", () => {
+    // `meteredAsk` parses the answer with this schema after the call: a 13th piece must not throw there.
+    const many = Array.from({ length: 15 }, (_, i) => ({ id: `p${i + 1}` }));
+    const parsed = StrategyOutput.parse({ pieces: many });
+    expect(parsed.pieces).toEqual(many.slice(0, 12));
+    // What the model is told is unchanged: at most 12 pieces.
+    expect(z.toJSONSchema(StrategyOutput)).toMatchObject({ properties: { pieces: { type: "array", maxItems: 12 } } });
   });
 
   it("una sola llamada, con el modelo del paso, y devuelve las piezas tal cual (sin validar) con su consumo", async () => {
@@ -163,6 +172,12 @@ describe("agente de estrategia", () => {
     expect(system).toContain("Spanish");
     await runStrategy(setup({ language: "en" }).input);
     expect(ask.mock.calls[1][1]).toContain("English");
+  });
+
+  it("dice que tiktok es solo para las piezas de video", async () => {
+    await runStrategy(setup().input);
+    const system = ask.mock.calls[0][1];
+    expect(system).toContain("tiktok is only for video pieces");
   });
 
   it("dice que cada pieza es para hoy: la fecha solo orienta (R28, R39)", async () => {

@@ -217,6 +217,34 @@ describe("las reglas van primero", () => {
     expect(ask).not.toHaveBeenCalled();
   });
 
+  it("un tema repetido como único problema va directo al dueño: una vuelta pagada no cambiaría el tema", async () => {
+    topics.mockResolvedValue([PIECE.topic]);
+    for (const attempt of [0, 1]) {
+      const result = await runReview(setup({ attempt, step: attempt ? "review-r1" : "review" }).input);
+      expect(result.data).toMatchObject({ approved: false, problems: [{ kind: "repetido" }], ruleProblems: [{ kind: "repetido" }] });
+      // No rework round (it could not change the topic): the owner decides, with the summary.
+      expect(result.insertSteps).toBeUndefined();
+      expect(result.state).toBe("waiting_approval");
+      expect(result.text).toContain("«Goteras» no pasó la revisión editorial");
+      expect(result.text).toContain("ya se usó en los últimos 30 días");
+      expect(result.text).toContain("Una corrección no cambia el tema");
+      expect(result.text).toContain("Puedes aprobarla como está, pedir que se rehaga o cancelarla.");
+    }
+    const en = await runReview(setup({ language: "en" }).input);
+    expect(en.text).toContain("A correction does not change the topic");
+    expect(ask).not.toHaveBeenCalled();
+  });
+
+  it("un tema repetido con otro problema que sí se corrige mantiene su vuelta de corrección", async () => {
+    topics.mockResolvedValue([PIECE.topic]);
+    const { input } = setup({ business: { phone: "305-000-0000" } });
+    const result = await runReview(input);
+    const problems = (result.data as { problems: ReturnType<typeof problemsOf> }).problems;
+    expect(problems.map((p) => p.kind)).toEqual(["telefono", "repetido"]);
+    expect(result.insertSteps).toEqual(reworkSteps(problems, 0, "post"));
+    expect(result.state).toBeUndefined();
+  });
+
   it("el teléfono y la web salen del negocio de la pieza", async () => {
     const { input } = setup({ business: { phone: "305-000-0000", website: "https://otra.com" } });
     // The copy's number is not this business's phone now.

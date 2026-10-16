@@ -47,28 +47,70 @@ const list = (items: string[], max = 3) =>
 
 // ---------- Phones ----------
 
-/** A run of digits with phone separators (never across a line), not glued to a word, a price, a date or a link. */
-const PHONE = /(?<![\w$€£.,/=#-])\+?\(?\d[\d ().\u00a0-]{5,}\d(?!\w)/g;
-/** What looks like a phone but is a date, a year range or a price with thousands separators. */
+/**
+ * The dashes, spaces and dots a writer (or an AI) may put inside a phone number, as the plain ones the rule reads: every Unicode
+ * hyphen and dash (U+2010 to U+2015) and the minus sign (U+2212) as `-`; the no-break, narrow no-break and thin spaces as a space;
+ * the middle dot (·) as `.`.
+ */
+const plainSeparators = (text: string): string =>
+  text
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    .replace(/[\u00a0\u202f\u2009]/g, " ")
+    .replace(/\u00b7/g, ".");
+
+/**
+ * A run of digits with phone separators (never across a line), not glued to a word, a price, a date or a link. A dot, a dash or a
+ * slash right before it is allowed only after a letter: «Tel.305…», «WhatsApp/305…», «Cel-305…» are phones; «1.305…» is not.
+ */
+const PHONE = /(?:(?<![\w$€£.,/=#-])|(?<=\p{L}[./-]))\+?\(?\d[\d ().-]{5,}\d(?!\w)/gu;
+/** What looks like a phone but is a date, a year range, a price with thousands separators or a ZIP+4 code (33101-1234). */
 const NOT_A_PHONE = [
   /^\d{4}-\d{1,2}-\d{1,2}$/,
   /^\d{1,2}[-.]\d{1,2}[-.]\d{2,4}$/,
   /^(?:19|20)\d{2}\s?-\s?(?:19|20)\d{2}$/,
   /^\d{1,3}(?:[.,]\d{3}){2,}$/,
+  /^\d{5}-\d{4}$/,
 ];
 
 type Phone = { shown: string; digits: string };
 
-/** The phone numbers in a text, as written and as digits (7 to 15 of them). */
+const digitCount = (s: string) => s.replace(/\D/g, "").length;
+
+/**
+ * The numbers one run holds, by its space-separated groups: a run may join two numbers with a space («305-555-0100 786-555-0199»,
+ * «305 555 0100 786 555 0199»). A group of 7 digits or more after a number of 7 or more starts a new number; short groups
+ * («+1», «(305)», «555») join the ones after them; a number ends once it has 10 digits; and none goes past 15.
+ */
+function numbersOf(run: string): string[] {
+  const numbers: string[] = [];
+  let groups: string[] = [];
+  let count = 0;
+  const end = () => {
+    if (groups.length) numbers.push(groups.join(" "));
+    groups = [];
+    count = 0;
+  };
+  for (const group of run.split(" ").filter(Boolean)) {
+    const digits = digitCount(group);
+    if (count > 0 && (count + digits > 15 || (count >= 7 && digits >= 7))) end();
+    groups.push(group);
+    count += digits;
+    if (count >= 10) end();
+  }
+  end();
+  return numbers;
+}
+
+/** The phone numbers in a text, as written (with plain separators) and as digits (7 to 15 of them). */
 function phonesIn(text: string): Phone[] {
   const found: Phone[] = [];
-  for (const [raw] of text.matchAll(PHONE)) {
-    const shown = raw.replace(/\s+/g, " ").trim();
-    const digits = shown.replace(/\D/g, "");
-    if (digits.length < 7 || digits.length > 15) continue;
-    if (NOT_A_PHONE.some((re) => re.test(shown))) continue;
-    found.push({ shown, digits });
-  }
+  for (const [raw] of plainSeparators(text).matchAll(PHONE))
+    for (const shown of numbersOf(raw.replace(/\s+/g, " ").trim())) {
+      const digits = shown.replace(/\D/g, "");
+      if (digits.length < 7 || digits.length > 15) continue;
+      if (NOT_A_PHONE.some((re) => re.test(shown))) continue;
+      found.push({ shown, digits });
+    }
   return found;
 }
 
