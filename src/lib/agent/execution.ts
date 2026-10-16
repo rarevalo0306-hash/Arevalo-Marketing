@@ -678,7 +678,8 @@ async function markScheduled(
  * The `schedule` step of a piece. One business-locked transaction checks the run, its news and the guard
  * (`assertCanSchedule`: switches, approval, channels, brakes and the day's count), then schedules the draft and counts it:
  * two pieces scheduled at the same time are checked and counted one after the other, so together they never pass
- * `maxPostsPerDay`. Any refusal leaves the draft as it is and the piece `blocked`.
+ * `maxPostsPerDay`. Any refusal leaves the draft as it is and the piece `blocked`. The post goes out inside the business's
+ * posting window (`pieceScheduleAt`: 9 am to 7 pm local, and never on a Sunday for a public adjuster in Florida).
  * Unlike a campaign, a piece is not refused because the settings were saved since it was asked for: the guard checks every
  * setting as it is now. The run then carries the revision the guard checked, which is what the publishing claim
  * (`claimAgentPost`) compares: a save after this moment still stops the post before it goes out.
@@ -711,6 +712,8 @@ async function schedulePiece(run: AgentRun): Promise<StepResult> {
       post.targets.map((t) => t.channel),
       now,
     );
+    // The post counts in today's posts (the day it is scheduled, as the guard just checked it), even when the posting window
+    // below moves it to the next allowed morning: a post pushed to tomorrow at 9 am counts on the day it was scheduled.
     const { day, tz } = await todayOf(tx, run.businessId, now);
     const budget = await tx.agentBudget.upsert({
       where: { businessId_day: { businessId: run.businessId, day } },
@@ -722,7 +725,8 @@ async function schedulePiece(run: AgentRun): Promise<StepResult> {
         where: { id: run.id },
         data: { context: json({ ...c, revision: ws.revision }) },
       });
-    return markScheduled(tx, run, post, budget.id, pieceScheduleAt(c, now, tz));
+    // Every piece goes out inside the business's posting window (its own time zone and industry, `pieceScheduleAt`).
+    return markScheduled(tx, run, post, budget.id, pieceScheduleAt(c, now, tz, ws.industry));
   });
 }
 /** The `verify` step: what each channel answered for the post `agent-<runId>` (campaigns and pieces alike). */

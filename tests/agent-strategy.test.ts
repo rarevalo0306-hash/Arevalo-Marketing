@@ -165,6 +165,14 @@ describe("agente de estrategia", () => {
     expect(ask.mock.calls[1][1]).toContain("English");
   });
 
+  it("dice que cada pieza es para hoy: la fecha solo orienta (R28, R39)", async () => {
+    await runStrategy(setup().input);
+    const system = ask.mock.calls[0][1];
+    expect(system).toContain("Every piece is for today (`limits.today`)");
+    expect(system).toContain("`date` is only advisory, so never plan a piece for a later day");
+    expect(system).not.toContain("spread the pieces over different days");
+  });
+
   it("manda la meta, el encargo, la investigación, el calendario y los límites", async () => {
     const now = Date.now();
     const calendar: Calendar = {

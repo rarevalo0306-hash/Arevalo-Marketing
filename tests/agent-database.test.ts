@@ -38,7 +38,7 @@ import { boundedContext } from "@/lib/agent/bounded-context";
 import { meteredAsk, modelConfig, type ModelConfig } from "@/lib/agent/metered";
 import { MEDIA_POLICY, SYSTEM } from "@/lib/agent/prompts";
 import { CALENDAR_LIMITS, readStepOutput, toolsFor } from "@/lib/agent/tools";
-import { assertCanSchedule, Refusal } from "@/lib/agent/guard";
+import { assertCanSchedule, pieceScheduleAt, Refusal } from "@/lib/agent/guard";
 import { locked } from "@/lib/agent/queue";
 import { stormSchedule } from "@/lib/storm";
 import { localToUtc } from "@/lib/time";
@@ -2740,13 +2740,19 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
         output: { postId: `agent-${piece.id}`, campaignId: `agent-${piece.id}`, channels: ["facebook"], blockedChannels: [] },
       });
 
-      const before = Date.now();
+      const before = new Date();
       await workOne(A);
       const scheduled = await postOf(piece.id);
       expect(scheduled?.status).toBe("scheduled");
-      // Like the agent's campaigns: in a minute (the piece's date is advisory).
-      expect(scheduled!.scheduledAt.getTime()).toBeGreaterThanOrEqual(before + 60000);
-      expect(scheduled!.scheduledAt.getTime()).toBeLessThanOrEqual(Date.now() + 60000);
+      // Like the agent's campaigns: in a minute (the piece's date is advisory), but inside the business's posting window
+      // (R39): A is a public adjuster in Miami, so 9 am to 7 pm and never on a Sunday.
+      const context = (await row(piece.id)).context;
+      expect(scheduled!.scheduledAt.getTime()).toBeGreaterThanOrEqual(
+        pieceScheduleAt(context, before, "America/New_York", "public-adjusting-fl").getTime(),
+      );
+      expect(scheduled!.scheduledAt.getTime()).toBeLessThanOrEqual(
+        pieceScheduleAt(context, new Date(), "America/New_York", "public-adjusting-fl").getTime(),
+      );
       expect(await db.campaign.findUnique({ where: { id: `agent-${piece.id}` } })).toMatchObject({ status: "active" });
       expect(await row(piece.id)).toMatchObject({ status: "queued", stage: 5 });
       // Counted once when it was scheduled; the publishing claim counts the delivery apart.
@@ -2916,6 +2922,62 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       expect(await stepOf(piece.id, "prepare")).toMatchObject({ status: "blocked" });
       expect(await postOf(piece.id)).toBeNull();
       expect(await db.campaign.findUnique({ where: { id: `agent-${piece.id}` } })).toBeNull();
+    });
+
+    describe("every piece goes out inside the business's posting window (R39)", () => {
+      /** A fixed-offset zone (no summer time) where `at` falls between `from` and `to` o'clock, local time. */
+      function zoneAt(at: Date, from: number, to: number): string {
+        for (let offset = -12; offset <= 14; offset++) {
+          const hour = (at.getUTCHours() + offset + 24) % 24;
+          if (hour >= from && hour <= to)
+            return offset === 0 ? "Etc/GMT" : `Etc/GMT${offset > 0 ? "-" : "+"}${Math.abs(offset)}`;
+        }
+        throw new Error("No zone has that hour now.");
+      }
+      const hourOf = (d: Date, tz: string) =>
+        Number(new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", hour: "2-digit" }).format(d));
+      const weekdayOf = (d: Date, tz: string) =>
+        new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short" }).format(d);
+
+      it("a public adjuster's piece asked for at night waits for the next allowed morning and counts on the day it was scheduled", async () => {
+        const [piece] = await drafted();
+        // Between 7 and 10 pm in the business's own zone: too late, so it goes out at 9 am the next day (Monday after a Saturday).
+        const tz = zoneAt(new Date(Date.now() + 60000), 19, 22);
+        await db.business.update({ where: { id: A }, data: { timezone: tz } });
+        const before = new Date();
+        await workOne(A);
+        const post = await postOf(piece.id);
+        expect(post?.status).toBe("scheduled");
+        const context = (await row(piece.id)).context;
+        const expected = pieceScheduleAt(context, before, tz, "public-adjusting-fl");
+        expect(post!.scheduledAt).toEqual(expected);
+        expect(hourOf(expected, tz)).toBe(9);
+        expect(weekdayOf(expected, tz)).not.toBe("Sun");
+        expect(localDay(expected, tz)).not.toBe(localDay(before, tz));
+        // The day's limit counts it today, the day it was scheduled, not the morning it goes out.
+        expect(await db.agentBudget.findUnique({ where: { businessId_day: { businessId: A, day: localDay(before, tz) } } })).toMatchObject({ posts: 1 });
+        expect(await db.agentBudget.findUnique({ where: { businessId_day: { businessId: A, day: localDay(expected, tz) } } })).toBeNull();
+      });
+
+      it("another industry's piece asked for before 9 am waits for 9 am the same day", async () => {
+        const [piece] = await drafted();
+        // Not a public adjuster, neither in the settings nor in what the piece was made with.
+        await workspace({ industry: "general" });
+        const context = piece.context as Record<string, unknown>;
+        await db.agentRun.update({
+          where: { id: piece.id },
+          data: { context: { ...context, industry: { ...(context.industry as object), key: "general" } } as never },
+        });
+        const tz = zoneAt(new Date(Date.now() + 60000), 2, 6);
+        await db.business.update({ where: { id: A }, data: { timezone: tz } });
+        const before = new Date();
+        await workOne(A);
+        const post = await postOf(piece.id);
+        const expected = pieceScheduleAt((await row(piece.id)).context, before, tz, "general");
+        expect(post!.scheduledAt).toEqual(expected);
+        expect(hourOf(expected, tz)).toBe(9);
+        expect(localDay(expected, tz)).toBe(localDay(before, tz));
+      });
     });
 
     it("a video piece's draft carries its video and the reviewed texts, only to channels that take a video", async () => {

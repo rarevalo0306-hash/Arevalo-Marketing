@@ -1,5 +1,5 @@
-// El guardia del equipo: lo que decide, con reglas simples, si MATYA puede programar una pieza, a qué hora sale y si puede
-// seguir enviando a un canal. `brakedChannels`, `refusalOf`, `approvedAfterReviews` y `pieceScheduleAt` son puras (sin base
+// El guardia del equipo: lo que decide, con reglas simples, si MATYA puede programar una pieza, a qué hora sale (siempre dentro
+// del horario de publicación del negocio) y si puede seguir enviando a un canal. `brakedChannels`, `refusalOf`, `approvedAfterReviews` y `pieceScheduleAt` son puras (sin base
 // de datos ni red); las demás leen con el cliente que les pasan (la transacción de quien llama, dentro del candado del
 // negocio, o `db`), nunca con otra conexión. `pieceLimits` lee `brakedOf` para no proponer piezas a un canal frenado.
 import type { AgentRun, AgentWorkspace, Prisma } from "@prisma/client";
@@ -319,18 +319,29 @@ export async function assertCanSchedule(
   if (refusal) throw new Refusal(refusal);
 }
 
+/** The industry whose posts offer a public adjuster's services in Florida (`INDUSTRIES` in industry.ts). */
+export const OFFER_INDUSTRY = "public-adjusting-fl";
+
 /**
  * When a piece's post goes out, in the business's time zone `tz`: in a minute, as the agent's campaigns (the piece's own
- * `date` is advisory). After a storm (`context.storm.at`, a date) it is never before what the storm rules allow
- * (`stormSchedule`, with the phase "seguridad" unless the context says "oferta"), and always inside their hours
- * (`stormWindow`: 9 am to 7 pm, an offer never on a Sunday), even when the storm is old and that time already passed.
+ * `date` is advisory), but always inside the business's posting window (`stormWindow`): from 9 am to before 7 pm local time,
+ * and a post outside it waits for the next allowed morning. A public adjuster in Florida (`industry`, the workspace's
+ * industry, or the industry the piece was made for, `context.industry.key`, is `OFFER_INDUSTRY`) posts as an offer of
+ * services, so never on a Sunday either (Florida 626.854: no contact to offer services from 8 pm to 8 am, nor on Sundays);
+ * any other business may post on a Sunday.
+ * After a storm (`context.storm.at`, a date) it is never before what the storm rules allow (`stormSchedule`, with the phase
+ * "seguridad" unless the context says "oferta"), and always inside that phase's hours (`stormWindow`: 9 am to 7 pm, an offer
+ * never on a Sunday), even when the storm is old and that time already passed.
  */
-export function pieceScheduleAt(context: unknown, now: Date, tz: string): Date {
+export function pieceScheduleAt(context: unknown, now: Date, tz: string, industry: string): Date {
   const soon = new Date(now.getTime() + 60000);
   const storm = field(context, "storm");
   const at = field(storm, "at");
   const time = typeof at === "string" ? Date.parse(at) : NaN;
-  if (Number.isNaN(time)) return soon;
+  if (Number.isNaN(time)) {
+    const offer = industry === OFFER_INDUSTRY || field(field(context, "industry"), "key") === OFFER_INDUSTRY;
+    return stormWindow(soon, offer ? "oferta" : "seguridad", tz);
+  }
   const phase = field(storm, "phase") === "oferta" ? "oferta" : "seguridad";
   const allowed = stormSchedule(new Date(time), 0, phase, tz);
   return stormWindow(allowed.getTime() > soon.getTime() ? allowed : soon, phase, tz);
