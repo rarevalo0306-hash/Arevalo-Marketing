@@ -81,8 +81,9 @@ export async function recentTopicsOf(
 
 /**
  * What a team may create today for this business.
- * - `remainingPosts`: the least of the places left in the day (`maxPostsPerDay` minus what the agent already scheduled
- *   today minus the open pieces made today) and the places left in the open-work cap (8 minus every open run, the team's
+ * - `remainingPosts`: the least of the places left in the day (`maxPostsPerDay` minus the agent's posts that go out today,
+ *   `AgentBudget.posts`, which counts a post on its publishing day, so a post an earlier plan moved to this morning is in it;
+ *   minus the open pieces made today) and the places left in the open-work cap (8 minus every open run, the team's
  *   own run included). Never below 0.
  * - `channels`: those the owner allows and the business has connected, without the ones braked by repeated failures
  *   (counting only deliveries after the owner last saved the connection) and never youtube; plus `seo` (the website)

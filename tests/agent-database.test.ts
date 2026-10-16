@@ -672,6 +672,19 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       await db.post.findUnique({ where: { id: `agent-${r.id}` } }),
     ).toMatchObject({ status: "draft" });
   });
+  it("a campaign's post is still refused at the claim after any settings save (the revision check stays for campaigns)", async () => {
+    const r = await prepared();
+    await workOne(A, executeStep, reserving(() => 0));
+    expect(await db.post.findUnique({ where: { id: `agent-${r.id}` } })).toMatchObject({ status: "scheduled" });
+    // An unrelated save: only the revision moves.
+    await saveSettings(A, { ...settings, objective: "Otro objetivo" });
+    expect(await claimAgentPost(`agent-${r.id}`)).toEqual({ count: 0 });
+    expect(await db.post.findUnique({ where: { id: `agent-${r.id}` } })).toMatchObject({ status: "draft" });
+    expect(await db.agentRun.findUniqueOrThrow({ where: { id: r.id } })).toMatchObject({
+      status: "blocked",
+      error: "La configuración, la fuente o los permisos cambiaron. La publicación se conservó como borrador.",
+    });
+  });
   it("refuses old/unverified news and invalidates changed source content", async () => {
     const n = await db.agentNews.create({
       data: {
@@ -3067,7 +3080,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       const weekdayOf = (d: Date, tz: string) =>
         new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short" }).format(d);
 
-      it("a public adjuster's piece asked for at night waits for the next allowed morning and counts on the day it was scheduled", async () => {
+      it("a public adjuster's piece asked for at night waits for the next allowed morning and counts on that day (R45)", async () => {
         const [piece] = await drafted();
         // Between 7 and 10 pm in the business's own zone: too late, so it goes out at 9 am the next day (Monday after a Saturday).
         const tz = zoneAt(new Date(Date.now() + 60000), 19, 22);
@@ -3082,29 +3095,60 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
         expect(hourOf(expected, tz)).toBe(9);
         expect(weekdayOf(expected, tz)).not.toBe("Sun");
         expect(localDay(expected, tz)).not.toBe(localDay(before, tz));
-        // The day's limit counts it today, the day it was scheduled, not the morning it goes out.
-        expect(await db.agentBudget.findUnique({ where: { businessId_day: { businessId: A, day: localDay(before, tz) } } })).toMatchObject({ posts: 1 });
-        expect(await db.agentBudget.findUnique({ where: { businessId_day: { businessId: A, day: localDay(expected, tz) } } })).toBeNull();
+        // The day's limit counts it on the day it goes out (R45), not on the evening it was scheduled: that morning's plan sees it.
+        expect(await db.agentBudget.findUnique({ where: { businessId_day: { businessId: A, day: localDay(expected, tz) } } })).toMatchObject({ posts: 1 });
+        expect((await db.agentBudget.findUnique({ where: { businessId_day: { businessId: A, day: localDay(before, tz) } } }))?.posts ?? 0).toBe(0);
+        const ws = await db.agentWorkspace.findUniqueOrThrow({ where: { businessId: A } });
+        const morning = new Date(expected.getTime() + 3600000);
+        expect((await pieceLimits(A, ws, morning)).remainingPosts).toBe(ws.maxPostsPerDay - 1);
       });
 
-      it("another industry's piece asked for before 9 am waits for 9 am the same day", async () => {
-        const [piece] = await drafted();
-        // Not a public adjuster, neither in the settings nor in what the piece was made with.
-        await workspace({ industry: "general" });
-        const context = piece.context as Record<string, unknown>;
-        await db.agentRun.update({
-          where: { id: piece.id },
-          data: { context: { ...context, industry: { ...(context.industry as object), key: "general" } } as never },
+      describe("a Sunday plan of a public adjuster (R45)", () => {
+        // Sunday 11 am in Miami: the pieces go out on Monday at 9 am.
+        const sunday = new Date("2026-10-18T15:00:00Z");
+        const monday9 = new Date("2026-10-19T13:00:00Z");
+        afterEach(() => vi.useRealTimers());
+
+        it("its posts go out Monday at 9 am, count on Monday, and Monday's plan has that much less room; nothing is refused at the claim", async () => {
+          const pieces = await drafted([
+            roof,
+            goteras,
+            { ...roof, id: "p3", topic: "Canaletas" },
+            { ...roof, id: "p4", topic: "Ventanas" },
+          ]);
+          const [first, second, third, fourth] = pieces;
+          await workspace({ maxPostsPerDay: 3 });
+          /** Works every queued step of the business (each piece schedules, then waits for its post at `verify`). */
+          const workAll = async () => {
+            for (let i = 0; i < 20 && (await workOne(A)); i++);
+          };
+          const day = (d: string) => db.agentBudget.findUnique({ where: { businessId_day: { businessId: A, day: d } } });
+          // Sunday's plan made the first two; the other two belong to Monday's plan and wait meanwhile.
+          await db.agentRun.updateMany({ where: { id: { in: [third.id, fourth.id] } }, data: { status: "waiting_approval" } });
+          vi.useFakeTimers({ toFake: ["Date"], now: sunday });
+          await workAll();
+          for (const piece of [first, second])
+            expect(await postOf(piece.id)).toMatchObject({ status: "scheduled", scheduledAt: monday9 });
+          expect(await day("2026-10-19")).toMatchObject({ posts: 2 });
+          expect((await day("2026-10-18"))?.posts ?? 0).toBe(0);
+
+          // Monday 7 am: the plan sees the two posts already going out that day (3 a day, so 1 is left).
+          vi.setSystemTime(new Date("2026-10-19T11:00:00Z"));
+          const ws = await db.agentWorkspace.findUniqueOrThrow({ where: { businessId: A } });
+          expect((await pieceLimits(A, ws, new Date())).remainingPosts).toBe(1);
+          // A third piece fits Monday; a fourth is refused when it is scheduled, before anything was published, not at the claim.
+          await db.agentRun.updateMany({ where: { id: { in: [third.id, fourth.id] } }, data: { status: "queued" } });
+          await workAll();
+          expect(await postOf(third.id)).toMatchObject({ status: "scheduled", scheduledAt: monday9 });
+          expect(await postOf(fourth.id)).toMatchObject({ status: "draft" });
+          expect(await row(fourth.id)).toMatchObject({ status: "blocked", error: expect.stringContaining("límite diario") });
+          expect(await day("2026-10-19")).toMatchObject({ posts: 3 });
+
+          // At 9 am every scheduled post is claimed: none is blocked at the claim.
+          vi.setSystemTime(new Date("2026-10-19T13:01:00Z"));
+          for (const piece of [first, second, third]) expect(await claimAgentPost(`agent-${piece.id}`)).toEqual({ count: 1 });
+          expect(await day("2026-10-19")).toMatchObject({ posts: 3, deliveries: 3 });
         });
-        const tz = zoneAt(new Date(Date.now() + 60000), 2, 6);
-        await db.business.update({ where: { id: A }, data: { timezone: tz } });
-        const before = new Date();
-        await workOne(A);
-        const post = await postOf(piece.id);
-        const expected = pieceScheduleAt((await row(piece.id)).context, before, tz, "general");
-        expect(post!.scheduledAt).toEqual(expected);
-        expect(hourOf(expected, tz)).toBe(9);
-        expect(localDay(expected, tz)).toBe(localDay(before, tz));
       });
     });
 
@@ -3185,10 +3229,57 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
         await workOne(A);
         await workOne(A);
         expect(await postOf(piece.id)).toMatchObject({ status: "scheduled" });
-        // Settings saved after the guard let it through still stop it at the publishing claim.
+        // An unrelated save after the guard let it through no longer stops a piece's post (R46): the claim re-checks the
+        // switches and permissions as they are now, not the revision.
         await save({ mode: "approval" });
+        expect(await claimAgentPost(`agent-${piece.id}`)).toEqual({ count: 1 });
+        expect(await postOf(piece.id)).toMatchObject({ status: "publishing" });
+      });
+
+      it("an unrelated save between scheduling and the posting window does not stop the piece's post (R46)", async () => {
+        const [piece] = await drafted();
+        await workOne(A);
+        expect(await postOf(piece.id)).toMatchObject({ status: "scheduled" });
+        const before = (await row(piece.id)).context as { revision: number };
+        await save({ objective: "Otro objetivo del dueño", knowledge: [link] });
+        const ws = await db.agentWorkspace.findUniqueOrThrow({ where: { businessId: A } });
+        expect(ws.revision).not.toBe(before.revision);
+        expect(await claimAgentPost(`agent-${piece.id}`)).toEqual({ count: 1 });
+        expect(await postOf(piece.id)).toMatchObject({ status: "publishing" });
+        expect(await row(piece.id)).toMatchObject({ status: "queued", error: "" });
+      });
+
+      it.each([
+        ["team mode turned off", { teamMode: false }, "modo equipo está apagado"],
+        ["social posts turned off", { allowSocial: false }, "redes sociales no están permitidas"],
+        ["MATYA paused", { pausedAt: new Date() }, "en pausa"],
+        ["MATYA turned off", { enabled: false }, "apagada"],
+        ["publishing turned off", { allowPublish: false }, "permiso de publicación"],
+        ["the channel no longer allowed", { channels: ["instagram"] }, "no tiene permiso para publicar en facebook"],
+      ] as const)(
+        "%s between scheduling and the claim refuses the piece's post: back to draft, with its reason (R46)",
+        async (_name, change, reason) => {
+          const [piece] = await drafted();
+          await workOne(A);
+          expect(await postOf(piece.id)).toMatchObject({ status: "scheduled" });
+          await workspace(change);
+          expect(await claimAgentPost(`agent-${piece.id}`)).toEqual({ count: 0 });
+          expect(await postOf(piece.id)).toMatchObject({ status: "draft" });
+          expect(await row(piece.id)).toMatchObject({
+            status: "blocked",
+            error: expect.stringContaining(reason),
+          });
+          expect((await row(piece.id)).error).toContain("La publicación quedó como borrador.");
+        },
+      );
+
+      it("a channel disconnected between scheduling and the claim refuses the piece's post (R46)", async () => {
+        const [piece] = await drafted();
+        await workOne(A);
+        await db.connection.deleteMany({ where: { businessId: A, channel: "facebook" } });
         expect(await claimAgentPost(`agent-${piece.id}`)).toEqual({ count: 0 });
         expect(await postOf(piece.id)).toMatchObject({ status: "draft" });
+        expect(await row(piece.id)).toMatchObject({ status: "blocked", error: expect.stringContaining("no están conectados: facebook") });
       });
     });
 

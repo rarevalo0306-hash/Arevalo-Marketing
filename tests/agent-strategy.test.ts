@@ -184,8 +184,21 @@ describe("agente de estrategia", () => {
     await runStrategy(setup().input);
     const system = ask.mock.calls[0][1];
     expect(system).toContain("Every piece is for today (`limits.today`)");
-    expect(system).toContain("`date` is only advisory, so never plan a piece for a later day");
+    expect(system).toContain("`date` is only advisory");
     expect(system).not.toContain("spread the pieces over different days");
+  });
+
+  it("después de una tormenta no se contradice: solo sus piezas pueden ser para después de hoy", async () => {
+    await runStrategy(setup().input);
+    const system = ask.mock.calls[0][1];
+    // The one exception to "today" is a storm: an offer may only go out 49 hours after it, so its date may be later.
+    expect(system).toContain("except under `season`");
+    expect(system).toContain("a storm piece may be dated after today");
+    expect(system).not.toContain("never plan a piece for a later day");
+    const today = system.indexOf("Every piece is for today");
+    const storm = system.indexOf("give those pieces a date at least that late");
+    expect(today).toBeGreaterThan(-1);
+    expect(storm).toBeGreaterThan(today);
   });
 
   it("manda la meta, el encargo, la investigación, el calendario y los límites", async () => {

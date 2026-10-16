@@ -285,7 +285,8 @@ function field(v: unknown, key: string): unknown {
  * `run` may be scheduled to `channels` now. Throws a `Refusal` with the reason (`refusalOf`) and writes nothing. `run` and
  * `ws` should be read inside that same transaction; every query is for `run.businessId` only. The day's count is read here
  * and the caller adds the post to it in the same transaction, so two pieces scheduled at the same time never pass
- * `maxPostsPerDay` together. `now` is the moment the caller schedules at (it picks the business's day).
+ * `maxPostsPerDay` together. `now` is the moment the post goes out (it picks the business's day the post counts on: a piece's
+ * post counts on its publishing day, R45; an article is published at once).
  */
 export async function assertCanSchedule(
   tx: Prisma.TransactionClient,

@@ -679,10 +679,11 @@ async function markScheduled(
  * (`assertCanSchedule`: switches, approval, channels, brakes and the day's count), then schedules the draft and counts it:
  * two pieces scheduled at the same time are checked and counted one after the other, so together they never pass
  * `maxPostsPerDay`. Any refusal leaves the draft as it is and the piece `blocked`. The post goes out inside the business's
- * posting window (`pieceScheduleAt`: 9 am to 7 pm local, and never on a Sunday for a public adjuster in Florida).
+ * posting window (`pieceScheduleAt`: 9 am to 7 pm local, and never on a Sunday for a public adjuster in Florida), and it is
+ * checked and counted on the day it goes out (R45).
  * Unlike a campaign, a piece is not refused because the settings were saved since it was asked for: the guard checks every
- * setting as it is now. The run then carries the revision the guard checked, which is what the publishing claim
- * (`claimAgentPost`) compares: a save after this moment still stops the post before it goes out.
+ * setting as it is now. The publishing claim (`claimAgentPost`) checks the switches and permissions again as they are then
+ * (R46), not the revision: a save while the post waits for its window stops it only if it turned one of them off.
  */
 async function schedulePiece(run: AgentRun): Promise<StepResult> {
   return locked(run.businessId, async (tx) => {
@@ -705,16 +706,20 @@ async function schedulePiece(run: AgentRun): Promise<StepResult> {
     });
     if (!post) throw new Refusal("Falta la publicación preparada de esta pieza.");
     const now = new Date();
+    // Every piece goes out inside the business's posting window (its own time zone and industry, `pieceScheduleAt`).
+    const { tz } = await todayOf(tx, run.businessId, now);
+    const at = pieceScheduleAt(c, now, tz, ws.industry);
+    // The post counts on the day it goes out (R45), in the business's own day: the guard checks that day's posts and the post
+    // is added to them, so that day's plan (`pieceLimits`) and the publishing claim's cap of the same day see it. A post the
+    // window moves to tomorrow at 9 am counts tomorrow, with tomorrow's other posts.
     await assertCanSchedule(
       tx,
       current,
       ws,
       post.targets.map((t) => t.channel),
-      now,
+      at,
     );
-    // The post counts in today's posts (the day it is scheduled, as the guard just checked it), even when the posting window
-    // below moves it to the next allowed morning: a post pushed to tomorrow at 9 am counts on the day it was scheduled.
-    const { day, tz } = await todayOf(tx, run.businessId, now);
+    const day = localDay(at, tz);
     const budget = await tx.agentBudget.upsert({
       where: { businessId_day: { businessId: run.businessId, day } },
       create: { businessId: run.businessId, day },
@@ -725,8 +730,7 @@ async function schedulePiece(run: AgentRun): Promise<StepResult> {
         where: { id: run.id },
         data: { context: json({ ...c, revision: ws.revision }) },
       });
-    // Every piece goes out inside the business's posting window (its own time zone and industry, `pieceScheduleAt`).
-    return markScheduled(tx, run, post, budget.id, pieceScheduleAt(c, now, tz, ws.industry));
+    return markScheduled(tx, run, post, budget.id, at);
   });
 }
 /** The `verify` step: what each channel answered for the post `agent-<runId>` (campaigns and pieces alike). */
