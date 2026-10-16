@@ -1,5 +1,5 @@
 // El Director: lee el encargo (o las señales de la mañana) y decide el objetivo y cuántas piezas hacen falta.
-// Una sola llamada pagada. Si el encargo era una pregunta, la responde y el encargo termina aquí.
+// Una sola llamada pagada. Si no hacen falta piezas (una pregunta, o nada que valga la pena), el encargo termina aquí con un texto.
 import { z } from "zod";
 import { AgentError } from "../access";
 import { boundedContext, boundedJson } from "../bounded-context";
@@ -15,6 +15,12 @@ export const DirectorPlan = z.object({
   maxPieces: z.number().int().min(0).max(12),
 });
 export type DirectorPlan = z.infer<typeof DirectorPlan>;
+
+/** What the owner reads when the plan needs no pieces and the model gave no text. */
+const NOTHING_NEEDED = {
+  es: "No hace falta contenido nuevo por ahora.",
+  en: "No new content is needed right now.",
+} as const;
 
 /** Most characters of the morning signals sent to the model. */
 const SIGNALS_MAX = 6000;
@@ -49,9 +55,13 @@ export async function runDirector(input: AgentInput): Promise<StepResult> {
     input.model,
   );
   const data = { ...r.value, usage: r.usage };
-  const reply = r.value.reply.trim();
-  // A question: the answer is the whole job.
-  if (reply && r.value.maxPieces === 0)
-    return { data, cents: r.usage.cents, text: reply, state: "completed" };
+  // No pieces to make ends the job: a question gets its answer; if there is no text, the owner is told nothing is needed.
+  if (r.value.maxPieces === 0)
+    return {
+      data,
+      cents: r.usage.cents,
+      text: r.value.reply.trim() || NOTHING_NEEDED[input.language],
+      state: "completed",
+    };
   return { data, cents: r.usage.cents };
 }

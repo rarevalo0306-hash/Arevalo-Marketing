@@ -1304,6 +1304,22 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
         expect(await workOne(A, executeStep, () => 10)).toBe(false);
       });
 
+      it("a plan with no pieces and no text still ends the run, with the default text", async () => {
+        stubModel(true);
+        await saveSettings(A, { ...settings, teamMode: true });
+        const team = await ask("Prepara contenido", { kind: "team" });
+        vi.stubGlobal(
+          "fetch",
+          vi.fn().mockResolvedValue(reply({ reply: "", goal: "Nada", maxPieces: 0 })),
+        );
+        await workOne(A, executeStep, () => 10);
+        expect(await row(team.id)).toMatchObject({ status: "completed", chargedCents: 1 });
+        expect(
+          await db.agentMessage.findFirstOrThrow({ where: { runId: team.id, role: "assistant" } }),
+        ).toMatchObject({ text: "No hace falta contenido nuevo por ahora." });
+        expect(await workOne(A, executeStep, () => 10)).toBe(false);
+      });
+
       it("a plan continues to research, which makes no paid call without saved reports or news", async () => {
         stubModel(true);
         await saveSettings(A, { ...settings, teamMode: true });

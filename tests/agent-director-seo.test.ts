@@ -17,7 +17,9 @@ import type { AgentInput } from "@/lib/agent/agents/types";
 import { meteredAsk, type ModelConfig } from "@/lib/agent/metered";
 import { SYSTEM } from "@/lib/agent/prompts";
 import type { Context } from "@/lib/agent/schema";
+import { DIGEST_TOTAL } from "@/lib/agent/seo-digest";
 import type { Tools } from "@/lib/agent/tools";
+import fameseg from "./fixtures/fameseg.json";
 
 const ask = vi.mocked(meteredAsk);
 const DAY = 86400000;
@@ -125,7 +127,7 @@ describe("Director (paso plan)", () => {
     expect(result.text).toBeUndefined();
   });
 
-  it("con texto pero con piezas por hacer, el encargo no termina", async () => {
+  it("con piezas por hacer, el encargo sigue aunque el modelo escriba texto", async () => {
     ask.mockResolvedValue({ value: { reply: "Armo dos piezas.", goal: "Goteras", maxPieces: 2 }, usage });
     const result = await runDirector(setup().input);
     expect(result.state).toBeUndefined();
@@ -133,11 +135,31 @@ describe("Director (paso plan)", () => {
     expect(result.data).toMatchObject({ reply: "Armo dos piezas.", maxPieces: 2 });
   });
 
-  it("sin piezas y sin texto sigue su camino (la estrategia decide), y un texto en blanco no termina", async () => {
-    ask.mockResolvedValue({ value: { reply: "   ", goal: "Nada", maxPieces: 0 }, usage });
-    const result = await runDirector(setup().input);
-    expect(result.state).toBeUndefined();
-    expect(result.text).toBeUndefined();
+  it("sin piezas el encargo siempre termina: sin texto del modelo, el dueño lee que no hace falta contenido", async () => {
+    ask.mockResolvedValue({ value: { reply: "", goal: "Nada", maxPieces: 0 }, usage });
+    const es = await runDirector(setup({ language: "es" }).input);
+    expect(es).toEqual({
+      data: { reply: "", goal: "Nada", maxPieces: 0, usage },
+      text: "No hace falta contenido nuevo por ahora.",
+      state: "completed",
+      cents: 7,
+    });
+    const en = await runDirector(setup({ language: "en" }).input);
+    expect(en).toMatchObject({ text: "No new content is needed right now.", state: "completed", cents: 7 });
+    // Un texto en blanco cuenta como sin texto.
+    ask.mockResolvedValue({ value: { reply: "   \n ", goal: "Nada", maxPieces: 0 }, usage });
+    expect(await runDirector(setup().input)).toMatchObject({
+      text: "No hace falta contenido nuevo por ahora.",
+      state: "completed",
+    });
+  });
+
+  it("con texto del modelo y sin piezas, el texto del modelo es el que se muestra (sin espacios de más)", async () => {
+    ask.mockResolvedValue({ value: { reply: "  Ya hay tres piezas esta semana.  ", goal: "Nada", maxPieces: 0 }, usage });
+    expect(await runDirector(setup({ language: "en" }).input)).toMatchObject({
+      text: "Ya hay tres piezas esta semana.",
+      state: "completed",
+    });
   });
 
   it("una sola llamada, con el modelo del paso, SYSTEM y el encargo como dato", async () => {
@@ -227,6 +249,14 @@ const rankData = (...rows: [string, number | null][]) => ({
   createdAt: "2026-10-01T00:00:00.000Z",
 });
 const at = (days: number) => new Date(Date.now() - days * DAY);
+const gscData = {
+  totals: { clicks: 342, impressions: 12850, ctr: 0.0266, position: 14.2 },
+  previous: { clicks: 301, impressions: 13400, ctr: 0.0225, position: 15.8 },
+  range: { start: "2026-09-01", end: "2026-09-28" },
+  previousRange: { start: "2026-08-04", end: "2026-08-31" },
+  queries: [],
+  opportunities: [{ key: "reparar techo miami", clicks: 3, impressions: 120, ctr: 0.025, position: 8.4 }],
+};
 
 describe("agente SEO (paso research)", () => {
   it("está registrado como el agente SEO", () => {
@@ -364,10 +394,44 @@ describe("agente SEO (paso research)", () => {
       reports: {
         gap: [{ createdAt: at(1), data: gapData(...many) }],
         rank: [{ createdAt: at(1), data: rankData(...many.map((k, i): [string, number] => [k, 10 + i])) }],
+        keywords: [{ createdAt: at(1), data: fameseg.reports.keywords.data }],
+        gsc: [{ createdAt: at(1), data: gscData }, { createdAt: at(2), data: gscData }],
       },
     });
     await runSeo(input);
-    expect((ask.mock.calls[0][2] as { digest: unknown[] }).digest.length).toBeLessThanOrEqual(30);
+    const digest = (ask.mock.calls[0][2] as { digest: { detail: string }[] }).digest;
+    expect(digest.length).toBeLessThanOrEqual(DIGEST_TOTAL);
+    expect(digest.every((d) => d.detail.length <= 400)).toBe(true);
+  });
+
+  it("solo con reportes de Search Console o de palabras clave hay una llamada pagada, con su fuente", async () => {
+    const gscAt = at(2);
+    const kwAt = at(5);
+    ask.mockResolvedValue({
+      value: {
+        items: [
+          { kind: "gsc", detail: "Casi en la primera página", source: `gsc@${gscAt.toISOString()}` },
+          { kind: "keywords", detail: "inventada", source: `keywords@${at(1).toISOString()}` },
+        ],
+      },
+      usage,
+    });
+    const { input } = setup({
+      reports: {
+        gsc: [{ createdAt: gscAt, data: gscData }],
+        keywords: [{ createdAt: kwAt, data: fameseg.reports.keywords.data }],
+      },
+    });
+    const result = await runSeo(input);
+    expect(ask).toHaveBeenCalledTimes(1);
+    const sent = ask.mock.calls[0][2] as { digest: { kind: string; source: string; stale: boolean }[] };
+    expect(sent.digest.map((d) => d.kind)).toEqual(["keywords", "gsc"]);
+    expect(sent.digest.find((d) => d.kind === "gsc")).toMatchObject({ source: `gsc@${gscAt.toISOString()}`, stale: false });
+    expect(result.data).toMatchObject({
+      items: [{ source: `gsc@${gscAt.toISOString()}` }],
+      dropped: 1,
+    });
+    expect(result.cents).toBe(7);
   });
 
   it("los ciclos por tipo de reporte", () => {

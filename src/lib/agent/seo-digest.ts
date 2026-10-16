@@ -6,11 +6,13 @@ import { rankQuestions } from "@/lib/seo/questions";
 import { readRankReport, type RankReport } from "@/lib/seo/rank";
 import type { SeoKind } from "@/lib/seo/reports";
 import { oneLine as clean } from "./bounded-context";
+import { SUMMARIES, SUMMARY_MAX, summarize } from "./seo-summaries";
 
 /**
  * One fact taken from a saved report.
  * - `kind`: `drop` (fell in Google), `rank` (searches where the business is outside the top 3), `question` (people also
- *   ask) or `gap` (search a competitor wins and the business does not). Other report kinds give no items yet.
+ *   ask), `gap` (search a competitor wins and the business does not), or the kind of any other saved report that has a
+ *   summary (`keywords`, `competitors`, `audit`, `onpage`, `gsc`, `ga4`, `clusters`): one item per report.
  * - `source`: `"<report kind>@<reportAt>"`, the only ids the research step accepts as evidence.
  * - `stale`: the report is older than its cycle (`staleDays`); a kind without a cycle is never stale.
  */
@@ -22,8 +24,15 @@ export type SeoDigestItem = {
   stale: boolean;
 };
 
-/** How many items each part may add, so the whole digest stays small enough to send to the model. */
-export const DIGEST_LIMITS = { drops: 6, rank: 6, questions: 8, gap: 8 } as const;
+/**
+ * How many items each part may add, so the whole digest stays small enough to send to the model: at most
+ * 6 + 6 + 8 + 8 from rank and gap, and `perKind` reports of each of the other kinds (7 kinds, so 14 more).
+ */
+export const DIGEST_LIMITS = { drops: 6, rank: 6, questions: 8, gap: 8, perKind: 2 } as const;
+/** The most items `seoDigest` can return. */
+export const DIGEST_TOTAL =
+  DIGEST_LIMITS.drops + DIGEST_LIMITS.rank + DIGEST_LIMITS.questions + DIGEST_LIMITS.gap +
+  Object.keys(SUMMARIES).length * DIGEST_LIMITS.perKind;
 
 const DAY_MS = 86_400_000;
 const DETAIL_MAX = 300;
@@ -61,21 +70,23 @@ type RankRead = { report: RankReport; at: number; stamp: Stamp };
  *   first), the questions Google shows (`question`) and, against the check before it, the searches that fell
  *   (`drop`, from `rankAlerts`). Items of a `drop` cite the newer check.
  * - `gap`: the newest valid report gives the best opportunities first.
- * - Any other kind, an unreadable report or one without a valid date is skipped; this never throws.
- * Order: drops, rank, questions, gap.
+ * - `keywords`, `competitors`, `audit`, `onpage`, `gsc`, `ga4`, `clusters`: the newest `perKind` reports of each give one
+ *   item each (a one-line summary from `seoSummaries`), newest first.
+ * - Any other kind, an unreadable report, one with nothing to say or one without a valid date is skipped; this never throws.
+ * Order: drops, rank, questions, gap, then the other kinds in the order of `SUMMARIES`.
  */
 export function seoDigest(
   reports: Saved[],
   now: Date,
   staleDays: Partial<Record<SeoKind, number>>,
 ): SeoDigestItem[] {
-  const out = { drop: [], rank: [], question: [], gap: [] } as Record<
-    "drop" | "rank" | "question" | "gap",
+  const out = { drop: [], rank: [], question: [], gap: [], other: [] } as Record<
+    "drop" | "rank" | "question" | "gap" | "other",
     SeoDigestItem[]
   >;
-  const item = (kind: string, detail: string, s: Stamp): SeoDigestItem => ({
+  const item = (kind: string, detail: string, s: Stamp, max = DETAIL_MAX): SeoDigestItem => ({
     kind,
-    detail: clean(detail, DETAIL_MAX),
+    detail: clean(detail, max),
     source: s.source,
     reportAt: s.reportAt,
     stale: s.stale,
@@ -84,14 +95,19 @@ export function seoDigest(
   // Rank checks, grouped by zone (and device): the newest is the current one, the next one is what to compare with.
   const zones = new Map<string, RankRead[]>();
   const gaps: { at: number; stamp: Stamp; data: unknown }[] = [];
+  const others = new Map<string, { at: number; stamp: Stamp; data: unknown }[]>();
   for (const r of Array.isArray(reports) ? reports : []) {
     try {
-      if (!r || (r.kind !== "rank" && r.kind !== "gap")) continue;
+      if (!r || !(r.kind === "rank" || r.kind === "gap" || Object.hasOwn(SUMMARIES, r.kind))) continue;
       const stamp = stampOf(r, now, staleDays);
       if (!stamp) continue;
       const at = r.createdAt.getTime();
       if (r.kind === "gap") {
         gaps.push({ at, stamp, data: r.data });
+        continue;
+      }
+      if (r.kind !== "rank") {
+        others.set(r.kind, [...(others.get(r.kind) ?? []), { at, stamp, data: r.data }]);
         continue;
       }
       const report = readRankReport(r.data);
@@ -175,5 +191,17 @@ export function seoDigest(
     }
   }
 
-  return [...out.drop, ...out.rank, ...out.question, ...out.gap];
+  // The other kinds: one summary per report, the newest reports of each kind (a report with nothing to say does not count).
+  for (const kind of Object.keys(SUMMARIES) as SeoKind[]) {
+    let kept = 0;
+    for (const o of (others.get(kind) ?? []).sort(byNewest)) {
+      if (kept >= DIGEST_LIMITS.perKind) break;
+      const detail = summarize(kind, o.data);
+      if (!detail) continue;
+      kept += 1;
+      out.other.push(item(kind, detail, o.stamp, SUMMARY_MAX));
+    }
+  }
+
+  return [...out.drop, ...out.rank, ...out.question, ...out.gap, ...out.other];
 }
