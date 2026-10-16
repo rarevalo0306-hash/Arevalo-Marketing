@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { AgentError } from "./access";
+import { paidCall } from "./spend";
 
 export type ModelConfig = {
   provider: "openai" | "claude" | "gemini";
@@ -127,6 +128,8 @@ export async function meteredAsk<T extends z.ZodType>(
       },
     };
   }
+  // From here on the call may be billed: a team agent's step counts it (at most one per step, see spend.ts).
+  paidCall();
   const response = await fetch(url, {
     method: "POST",
     headers: { ...headers, "Content-Type": "application/json" },

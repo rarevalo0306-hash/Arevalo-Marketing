@@ -174,6 +174,20 @@ export function switchesRefusal(
   if (!ws.allowPublish) return "El permiso de publicación de MATYA está apagado.";
   return null;
 }
+/**
+ * Why no step of the team's work (a team run or one of its pieces) may start now, or null: everything paused, team mode off or
+ * MATYA off, the first that applies in this order. Checked before each of those steps reserves anything (`stepCost`), so a switch
+ * the owner turned off in the middle of a plan stops the next step at no cost. The publishing permission is not one of them: the
+ * team may still prepare a piece, which then waits at its schedule step (`workOne`) or is refused by the guard there.
+ */
+export function teamRefusal(
+  ws: Pick<GuardFacts["ws"], "pausedAt" | "teamMode" | "enabled">,
+): string | null {
+  if (ws.pausedAt) return "MATYA está en pausa: el equipo no sigue hasta que la reanudes.";
+  if (!ws.teamMode) return "El modo equipo está apagado: el equipo no sigue con este trabajo.";
+  if (!ws.enabled) return "MATYA está apagada: actívala para que el equipo siga con este trabajo.";
+  return null;
+}
 const list = (channels: string[]) => channels.join(", ");
 
 /**

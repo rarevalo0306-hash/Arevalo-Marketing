@@ -30,6 +30,7 @@ import {
 import { AgentError } from "../access";
 import { loadContext } from "../context";
 import { libraryMedia } from "../library";
+import { paidCall } from "../spend";
 import type { AgentKey } from "../plan";
 import type { Context } from "../schema";
 
@@ -381,7 +382,9 @@ const IMPLS: { [K in ToolName]: (run: AgentRun) => ToolImpl[K] } = {
   },
 
   // `startRender` itself refuses a price that changed, a video over the cap and an unconfigured render.
+  // The three tools that pay someone count as a step's paid call (`paidCall`): a team agent's model step may make only one.
   startVideo: (run) => async (storyboard, cents, actor = "auto") => {
+    paidCall();
     const row = await createProject(run.businessId, storyboard);
     const project = await startRender(run.businessId, row.id, cents, actor);
     return { projectId: row.id, status: project.status };
@@ -389,6 +392,7 @@ const IMPLS: { [K in ToolName]: (run: AgentRun) => ToolImpl[K] } = {
 
   // The same function the writer's form calls. Google and the AI are paid: only a step that reserved the cost calls this.
   writeArticle: (run) => async (keyword, language) => {
+    paidCall();
     try {
       return await createArticleReport(run.businessId, keyword, language ?? (await articleLanguage(run.businessId)));
     } catch (e) {
@@ -398,6 +402,7 @@ const IMPLS: { [K in ToolName]: (run: AgentRun) => ToolImpl[K] } = {
 
   // Prepare, then authorize at the price the photo has: an AI photo is created only by the second call, after the owner's click.
   publishArticle: (run) => async (reportId, options = {}) => {
+    paidCall();
     try {
       const businessId = run.businessId;
       if (options.approved) {

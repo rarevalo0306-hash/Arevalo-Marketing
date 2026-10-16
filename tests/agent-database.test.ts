@@ -2801,10 +2801,28 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       expect(await budget()).toMatchObject({ posts: 1 });
     });
 
-    it("with everything paused the schedule step fails with the pause and nothing is scheduled", async () => {
+    it("with everything paused the schedule step is refused before it begins and nothing is scheduled", async () => {
       const [piece] = await drafted();
       await workspace({ pausedAt: new Date() });
       await workOne(A);
+      expect(await row(piece.id)).toMatchObject({ status: "blocked", error: expect.stringContaining("pausa"), reservedCents: 0 });
+      // The team's switches are checked when the step is priced (`stepCost`): the step never began.
+      expect(await stepOf(piece.id, "schedule")).toBeNull();
+      expect(await postOf(piece.id)).toMatchObject({ status: "draft" });
+      expect(await db.post.count({ where: { businessId: A, status: "scheduled" } })).toBe(0);
+      // Nothing began today, so there may be no row for the day at all.
+      expect((await budget())?.posts ?? 0).toBe(0);
+      const message = await db.agentMessage.findFirstOrThrow({ where: { runId: piece.id, role: "assistant" } });
+      expect(message.text).toContain("pausa");
+    });
+
+    it("a pause that lands while the schedule step runs is still refused by the guard and nothing is scheduled", async () => {
+      const [piece] = await drafted();
+      // The step was priced and began with MATYA running; the pause comes in right then: only the guard inside the step can stop it.
+      await workOne(A, async (run, name, model) => {
+        if (name === "schedule") await workspace({ pausedAt: new Date() });
+        return executeStep(run, name, model);
+      });
       expect(await row(piece.id)).toMatchObject({ status: "blocked", error: expect.stringContaining("pausa") });
       expect(await stepOf(piece.id, "schedule")).toMatchObject({ status: "blocked", error: expect.stringContaining("pausa") });
       expect(await postOf(piece.id)).toMatchObject({ status: "draft" });
@@ -4122,7 +4140,9 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       await done(piece.id, "article", { reportId: "rep1" });
       await goTo(piece, "review");
       await workOne(A, executeStep, () => 0);
-      expect(await row(piece.id)).toMatchObject({ status: "uncertain", error: expect.stringContaining("anterior") });
+      // The review stops before its paid call: nothing was spent, so the piece is blocked (not left with an outcome to check).
+      expect(await row(piece.id)).toMatchObject({ status: "blocked", error: expect.stringContaining("anterior") });
+      expect(meteredAsk).not.toHaveBeenCalled();
     });
   });
   describe("the morning plan, team requests and pause all", () => {

@@ -252,7 +252,7 @@ it("una sola vuelta de corrección", () => {
   - `claimRun`: `orderBy: [{ origin: "desc" }, { createdAt: "asc" }]`, porque `owner` va antes que `daily`.
   - `beginStep` guarda `agent`, `model` y `attempt`, y `specialist = meta.agent ?? roleFor(name)`.
   - `redo` solo está permitido si `status === "waiting_approval"` y el paso anterior fue un `review*`. Inserta `reworkSteps(problemas de ese review, 0)` con los ids sufijados `-r<n>`, donde `n` es la vuelta siguiente, para no chocar con `@@unique([runId, name])`.
-  - `spawnPieces` corre en `locked(businessId)`. Usa `context` del padre más `{ piece }`, y `plan: json({ kind: "piece", piece, steps: stepsForPiece(piece.format) })`. No cuenta para el límite de 8 abiertos (lo controla `remainingPosts`, Task 7), pero sí respeta `cancelRequested` del padre.
+  - `spawnPieces` corre en `locked(businessId)`. Usa `context` del padre más `{ piece }`, y `plan: json({ kind: "piece", piece, steps: stepsForPiece(piece.format) })`. `spawnPieces` no revisa el límite de 8 abiertos, pero las piezas **sí cuentan** para ese límite (Ruling R13): `remainingPosts` (Task 7) mantiene el despacho dentro de él. Sí respeta `cancelRequested` del padre.
 - [ ] **Step 4: Correr** todo `tests/agent-database.test.ts` → PASS. Los 25 casos anteriores siguen pasando: `teamMode` apagado.
 - [ ] **Step 5: Commit** `feat(agent): queue runs follow stored plans`.
 
@@ -471,7 +471,7 @@ it("hay 7 agentes y cada uno solo usa sus herramientas", () => {
 
 **Interfaces:**
 - Produces:
-  - `export function isDailyDue(dailyHour: number, tz: string, now: Date, lastDay: string | null): string | null`: devuelve el día local (`YYYY-MM-DD`) si ya es la hora y ese día no tiene plan; si no, `null`. Usa `minutesSinceMidnight` y `localDay`.
+  - `export function isDailyDue(dailyHour: number, tz: string, now: Date, lastDay: string | null): string | null`: devuelve el día local (`YYYY-MM-DD`) si ya es la hora y ese día no tiene plan; si no, `null`. Usa `localDay` y la hora del reloj de pared del negocio (hora y minuto con `Intl`), no `minutesSinceMidnight`: ese cuenta los minutos transcurridos desde la medianoche y, el día del cambio de horario, adelantaría o atrasaría una hora el plan.
   - `export type Signals = { yesterday: { posts: number; sent: number; failed: number; impressions: number; clicks: number }; emptyDays: string[]; pending: { failed: number; waitingApproval: number }; rankDrops: { keyword: string; from: number|null; to: number|null }[]; newQuestions: string[]; gaps: string[]; news: string[]; remaining: { cents: number; posts: number } }`.
   - `export function summarizeSignals(input: SignalInput): Signals` (puro) y `export async function collectSignals(businessId: string, now: Date): Promise<Signals>`.
   - `export async function enqueueDailyPlans(now = new Date()): Promise<number>`: para cada workspace con `teamMode`, `enabled`, sin `pausedAt`, con `dailyBudgetCents > 0` y con `isDailyDue`, hace `enqueue(..., { kind: "team", text: "Plan del día", requestKey: \`daily-${id}-${day}\` })` y deja `origin "daily"` y `context.signals`.

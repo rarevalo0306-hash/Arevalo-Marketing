@@ -21,7 +21,11 @@ import { AgentError } from "@/lib/agent/access";
 import { AGENTS, agentFor } from "@/lib/agent/agents";
 import { toolsFor, type ToolName } from "@/lib/agent/tools";
 import { stepsForPiece } from "@/lib/agent/plan";
-import { executeTeamStep, registerMatyaStep } from "@/lib/agent/team-execution";
+import { executeTeamStep, registerMatyaStep, stepMeta, stepModel } from "@/lib/agent/team-execution";
+import { Refusal } from "@/lib/agent/guard";
+import { Unspent } from "@/lib/agent/spend";
+import type { ModelConfig } from "@/lib/agent/metered";
+import { db } from "@/lib/db";
 
 const piecePlan = (steps = stepsForPiece("video")) => ({
   kind: "piece",
@@ -322,6 +326,70 @@ describe("executeTeamStep", () => {
     await executeTeamStep(r, "prepare-r2");
     expect(wait).toHaveBeenCalledWith(r, "video_wait:3");
     expect(prep).toHaveBeenCalledWith(r, "prepare-r2");
+  });
+
+  it("con el modelo reservado llama con ese mismo y no lo vuelve a resolver", async () => {
+    const spy = vi.spyOn(AGENTS.review, "run").mockResolvedValue({ data: {} });
+    const reserved: ModelConfig = { provider: "claude", model: "reservado", inputRate: 3, outputRate: 15, key: "c" };
+    // The settings changed since the step was priced: the call still uses what was reserved.
+    workspace.row = { agentModels: { review: { provider: "gemini", model: "otro" } }, modelPrices: {} };
+    vi.mocked(db.agentWorkspace.findUniqueOrThrow).mockClear();
+    await executeTeamStep(run({ kind: "piece", plan: piecePlan() } as never), "review-r1", reserved);
+    expect(spy.mock.calls[0][0].model).toBe(reserved);
+    expect(db.agentWorkspace.findUniqueOrThrow).not.toHaveBeenCalled();
+  });
+
+  it("un agente con modelo que falla antes de su llamada no gastó nada (Unspent); sin modelo, el error sigue igual", async () => {
+    vi.spyOn(AGENTS.copy, "run").mockRejectedValue(new AgentError("Falta completar el paso anterior."));
+    const piece = run({ kind: "piece", plan: piecePlan() } as never);
+    await expect(executeTeamStep(piece, "copy")).rejects.toBeInstanceOf(Unspent);
+    await expect(executeTeamStep(piece, "copy")).rejects.toThrow("Falta completar el paso anterior.");
+    vi.spyOn(AGENTS.design, "run").mockRejectedValue(new AgentError("El diseño no está listo."));
+    const design = executeTeamStep(piece, "design");
+    await expect(design).rejects.toThrow("El diseño no está listo.");
+    await expect(design).rejects.not.toBeInstanceOf(Unspent);
+  });
+
+  it("stepModel resuelve el modelo de los pasos con IA y ninguno para los demás", () => {
+    const ws = { agentModels: {}, modelPrices: {} };
+    expect(stepModel(run(), "plan", ws)).toMatchObject({ provider: "gemini", model: "gemini-x", key: "k" });
+    expect(stepModel(run(), "research", ws)).toMatchObject({ model: "gemini-x" });
+    expect(stepModel(run(), "dispatch", ws)).toBeNull();
+    const piece = run({ kind: "piece", plan: piecePlan() } as never);
+    for (const id of ["copy", "copy-r1", "review", "review-r1"]) expect(stepModel(piece, id, ws)).not.toBeNull();
+    for (const id of ["design", "video", "render", "video_wait:2", "prepare", "schedule", "verify"])
+      expect(stepModel(piece, id, ws)).toBeNull();
+    const article = run({ kind: "piece", plan: { kind: "piece", piece: { id: "p1" }, steps: stepsForPiece("articulo") } } as never);
+    expect(stepModel(article, "article", ws)).toBeNull();
+    expect(stepModel(article, "review", ws)).not.toBeNull();
+  });
+
+  it("stepModel rechaza sin precio o sin clave con las palabras de resolveModel (Refusal: nada se reserva)", () => {
+    const noPrice = { agentModels: { copy: { provider: "openai", model: "sin-precio" } }, modelPrices: {} };
+    const piece = run({ kind: "piece", plan: piecePlan() } as never);
+    expect(() => stepModel(piece, "copy", noPrice)).toThrow(Refusal);
+    expect(() => stepModel(piece, "copy", noPrice)).toThrow(
+      "Falta el precio verificado del modelo openai:sin-precio para el agente copy.",
+    );
+    const noKey = {
+      agentModels: { review: { provider: "claude", model: "x" } },
+      modelPrices: { "claude:x": { input: 3, output: 15 } },
+    };
+    expect(() => stepModel(piece, "review-r1", noKey)).toThrow(Refusal);
+    expect(() => stepModel(piece, "review-r1", noKey)).toThrow("Falta la conexión del modelo de review.");
+    // The design step has no model: no price is ever asked of it.
+    expect(stepModel(piece, "design", noPrice)).toBeNull();
+  });
+
+  it("stepMeta: quién hace el paso, con qué modelo y en qué ronda; nada para los flujos de antes", () => {
+    const model: ModelConfig = { provider: "openai", model: "gpt-x", inputRate: 1, outputRate: 4, key: "k" };
+    expect(stepMeta(run(), "plan", model)).toEqual({ agent: "director", model: "openai:gpt-x", attempt: 0 });
+    expect(stepMeta(run(), "dispatch")).toEqual({ agent: "matya", model: "", attempt: 0 });
+    const piece = run({ kind: "piece", plan: piecePlan() } as never);
+    expect(stepMeta(piece, "copy-r1", model)).toEqual({ agent: "copy", model: "openai:gpt-x", attempt: 1 });
+    expect(stepMeta(piece, "video_wait:4")).toEqual({ agent: "matya", model: "", attempt: 0 });
+    expect(stepMeta(piece, "design")).toEqual({ agent: "design", model: "", attempt: 0 });
+    expect(stepMeta(run({ kind: "campaign", plan: null } as never), "copy", model)).toBeUndefined();
   });
 
   it("un paso de MATYA sin manejador no está disponible", async () => {

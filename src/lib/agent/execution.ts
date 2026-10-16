@@ -6,7 +6,7 @@ import { pauseCampaign } from "@/lib/campaign";
 import { AgentError } from "./access";
 import { Copy, Research, Reply, languageOf, type Context } from "./schema";
 import { briefing } from "./context";
-import { callCeiling, meteredAsk, modelConfig } from "./metered";
+import { callCeiling, meteredAsk, modelConfig, type ModelConfig } from "./metered";
 import {
   beginStep,
   claimRun,
@@ -14,7 +14,6 @@ import {
   finishStep,
   json,
   locked,
-  planStepMeta,
   recoverExpired,
   stepsOf,
   type StepResult,
@@ -43,7 +42,8 @@ import {
   mediaSelection,
   writeCopy,
 } from "./content-steps";
-import { executeTeamStep, registerMatyaStep } from "./team-execution";
+import { executeTeamStep, registerMatyaStep, stepMeta, stepModel } from "./team-execution";
+import { Unspent } from "./spend";
 // The team's plain-code steps register themselves when their module loads: this is what makes `dispatch` available.
 import "./dispatch";
 import {
@@ -51,6 +51,7 @@ import {
   assertCanSchedule,
   pieceScheduleAt,
   Refusal,
+  teamRefusal,
   todayOf,
 } from "./guard";
 import { Piece } from "./plan";
@@ -70,13 +71,32 @@ async function output(runId: string, name: string) {
   return step.output;
 }
 /**
- * What a step reserves before it runs. A piece's money steps (the video's quote, the render at its quoted price, the article and
- * its publication) are `pieceStepCost`'s; every other step, and every step of a campaign, keeps the cost it always had.
+ * What a step reserves before it runs (`workOne`), and for a step of the team done with an agent's model, that model: the step is
+ * reserved for it and the agent calls with exactly it (`executeTeamStep`), so the charge can never pass the reservation.
  */
-export async function stepCost(name: string, run?: AgentRun): Promise<number> {
-  if (run?.kind === "piece") {
-    const own = await pieceStepCost(name, run);
-    if (own !== null) return own;
+export type StepCost = number | { cents: number; model: ModelConfig };
+/**
+ * What a step reserves before it runs: the one place every step is priced.
+ * - A step of a team or of a piece first checks the team's switches (paused, team mode, MATYA): any of them off is a `Refusal`
+ *   and nothing is reserved. Then a piece's money steps (the video's quote, the render at its quoted price, the article and its
+ *   publication) are `pieceStepCost`'s; a step done with an agent's model (the director's plan, the research, the strategy, the
+ *   copy and the review, with their rounds) reserves the most one call of that model costs (`agentCeiling`), with the model it
+ *   resolved (a missing price or key is a `Refusal`); every other step (design, video, MATYA's own code) reserves nothing.
+ * - Every step of the old flows keeps the cost it always had, as a plain number.
+ */
+export async function stepCost(name: string, run?: AgentRun): Promise<StepCost> {
+  if (run?.kind === "team" || run?.kind === "piece") {
+    const ws = await db.agentWorkspace.findUniqueOrThrow({
+      where: { businessId: run.businessId },
+    });
+    const off = teamRefusal(ws);
+    if (off) throw new Refusal(off);
+    if (run.kind === "piece") {
+      const own = await pieceStepCost(name, run);
+      if (own !== null) return own;
+    }
+    const model = stepModel(run, name, ws);
+    return model ? { cents: callCeiling(model), model } : 0;
   }
   if (name === "video" && videoBlocker())
     throw new AgentError(
@@ -91,13 +111,14 @@ export async function stepCost(name: string, run?: AgentRun): Promise<number> {
 export async function executeStep(
   run: AgentRun,
   name: string,
+  model?: ModelConfig,
 ): Promise<StepResult> {
   const c = run.context as unknown as Context;
   if (c.business.id !== run.businessId)
     throw new AgentError("El contexto no corresponde a este negocio.");
-  // The team's runs (and their pieces) are done by agents and MATYA steps.
+  // The team's runs (and their pieces) are done by agents and MATYA steps, an agent with the model its step was reserved for.
   if (run.kind === "team" || run.kind === "piece")
-    return executeTeamStep(run, name);
+    return executeTeamStep(run, name, model);
   const language = languageOf(run.prompt);
   if (name === "briefing")
     return {
@@ -827,7 +848,12 @@ export async function analyzeResults(
       : "Todavía no hay campañas que medir. La optimización comienza con publicaciones y resultados comprobables.",
   };
 }
-export type Executor = (run: AgentRun, name: string) => Promise<StepResult>;
+/** Does one step. `model`: the model a team agent's step was reserved for (`stepCost`), which its call must use. */
+export type Executor = (
+  run: AgentRun,
+  name: string,
+  model?: ModelConfig,
+) => Promise<StepResult>;
 /**
  * A wait that did not take because the run was cancelled (the owner's "Cancelar" or "Pausar todo") after it was claimed and
  * before the wait was recorded: the run ends cancelled and its lease is released, instead of waiting for something nobody
@@ -838,7 +864,7 @@ const stopCancelled = (run: AgentRun) =>
 export async function workOne(
   businessId?: string,
   execute: Executor = executeStep,
-  costOf: (name: string, run: AgentRun) => number | Promise<number> = stepCost,
+  costOf: (name: string, run: AgentRun) => StepCost | Promise<StepCost> = stepCost,
 ) {
   const run = await claimRun(businessId);
   if (!run) return false;
@@ -892,7 +918,9 @@ export async function workOne(
         return true;
       }
     }
-    const cost = await costOf(name, run);
+    const priced = await costOf(name, run);
+    const cost = typeof priced === "number" ? priced : priced.cents;
+    const model = typeof priced === "number" ? undefined : priced.model;
     if (run.kind === "piece") {
       // A piece's paid step goes on only with the owner's approval of that cost; without it nothing is reserved or called.
       const waiting = await approvalNeeded(run, name, cost);
@@ -913,17 +941,20 @@ export async function workOne(
         );
       name = `video_wait:${attempts}`;
     }
-    await beginStep(run.id, run.leaseToken, name, cost, planStepMeta(run));
-    const result = await execute(run, name);
+    // A team's step records who does it and with which model; the old flows record what they always did.
+    await beginStep(run.id, run.leaseToken, name, cost, stepMeta(run, name, model));
+    const result = await execute(run, name, model);
     await finishStep(run.id, run.leaseToken, name, result);
   } catch (error) {
     const message =
       error instanceof AgentError
         ? error.message
         : "No pude completar este paso. Conservé el resultado anterior y detuve los reintentos automáticos; revisa el detalle del trabajo.";
-    // A refusal (the guard's) changed nothing: the piece is blocked, not left with an outcome to check.
+    // A refusal (the guard's) changed nothing: the piece is blocked, not left with an outcome to check. A team agent's step
+    // that failed before its paid call (`Unspent`) spent nothing either: its reservation is released, not charged.
     await failRun(run.id, run.leaseToken, message, {
       refused: error instanceof Refusal,
+      unspent: error instanceof Unspent,
     });
     // No raw provider bodies, secrets, prompts or customer records in logs.
     console.error("MATYA step failed", {

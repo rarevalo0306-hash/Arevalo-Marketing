@@ -1,13 +1,18 @@
 // Ejecuta un paso de un encargo del equipo (el propio equipo o una de sus piezas): lo hace un agente con su modelo
 // y sus herramientas cerradas, o un manejador de MATYA (código del motor) registrado por el nombre del paso.
+// El modelo de un paso se resuelve UNA vez, antes de reservar (`stepModel`, desde `stepCost`): se reserva el tope de una llamada
+// de ese modelo y el agente llama con ese mismo modelo, a esa misma tarifa. Así lo cobrado nunca pasa de lo reservado.
 import type { AgentRun } from "@prisma/client";
 import { db } from "@/lib/db";
 import { AgentError } from "./access";
-import { agentFor, planStepOf } from "./agents";
+import { agentFor, planStepOf, type AgentDef } from "./agents";
+import { Refusal } from "./guard";
+import type { ModelConfig } from "./metered";
 import { resolveModel } from "./models";
 import { isArticleStep } from "./plan";
 import type { StepResult } from "./queue";
 import { languageOf, type Context } from "./schema";
+import { oneCall } from "./spend";
 import { toolsFor } from "./tools";
 
 export type MatyaStepHandler = (
@@ -29,9 +34,63 @@ export function registerMatyaStep(
   MATYA_STEPS.set(base, handler);
 }
 
+/**
+ * Whether the agent does this step with its own model (one paid call). The article writer is the exception: its draft pays
+ * Google and the business's own AI, not the agent's model, and reserves its own estimate (`pieceStepCost`).
+ */
+const usesAgentModel = (def: AgentDef, stepId: string) =>
+  def.usesModel && !isArticleStep(stepId);
+
+/**
+ * The model a team or piece step is reserved for and then called with, or null when no agent model does it (MATYA's own code,
+ * the design and video agents, an article's draft). Resolved once, before anything is reserved: a missing price or key is a
+ * `Refusal` with `resolveModel`'s own words, so the run ends blocked with nothing reserved or charged, and the agent never runs
+ * on another model. What the step reserves for it is `callCeiling` of it, which is `agentCeiling(agent, ws)`.
+ */
+export function stepModel(
+  run: Pick<AgentRun, "plan">,
+  stepId: string,
+  ws: { agentModels: unknown; modelPrices: unknown },
+): ModelConfig | null {
+  const def = agentFor(stepId, run.plan);
+  if (!def || !usesAgentModel(def, stepId)) return null;
+  try {
+    return resolveModel(def.key, ws);
+  } catch (e) {
+    if (e instanceof AgentError) throw new Refusal(e.message, e.status);
+    throw e;
+  }
+}
+
+/**
+ * Who does a step of a team or a piece and with which model, as `beginStep` records it: the agent of the plan (`matya` for the
+ * engine's own steps), `"provider:model"` for a step done with a model (`""` otherwise) and the round. Undefined for any other
+ * run: the old flows record what they always did.
+ */
+export function stepMeta(
+  run: Pick<AgentRun, "kind" | "plan">,
+  stepId: string,
+  model?: ModelConfig | null,
+): { agent: string; model: string; attempt: number } | undefined {
+  if (run.kind !== "team" && run.kind !== "piece") return undefined;
+  const step = planStepOf(stepId, run.plan);
+  return {
+    agent: step?.agent ?? "matya",
+    model: model ? `${model.provider}:${model.model}` : "",
+    attempt: step?.attempt ?? 0,
+  };
+}
+
+/**
+ * Does one step of a team or a piece. `reserved` is the model the step was reserved for (`stepModel`, through `stepCost`): the
+ * agent calls with exactly that one. Without it (a caller that priced the step itself) the model is resolved here; a missing price
+ * or key then raises its own `AgentError`. A model step makes at most one paid call, and if it fails before that call started the
+ * error comes out as an `Unspent` (nothing was spent: `workOne` releases the reservation).
+ */
 export async function executeTeamStep(
   run: AgentRun,
   stepId: string,
+  reserved?: ModelConfig,
 ): Promise<StepResult> {
   const def = agentFor(stepId, run.plan);
   const step = planStepOf(stepId, run.plan);
@@ -40,22 +99,22 @@ export async function executeTeamStep(
     if (!handler) throw new AgentError("Paso no disponible.");
     return handler(run, stepId);
   }
-  // A missing price or connection raises its own AgentError: the agent never runs on another model.
-  // The article writer is the exception: it pays Google and the business's own AI, not the agent's model.
-  const model = def.usesModel && !isArticleStep(stepId)
-    ? resolveModel(
+  const model = usesAgentModel(def, stepId)
+    ? (reserved ??
+      resolveModel(
         def.key,
         await db.agentWorkspace.findUniqueOrThrow({
           where: { businessId: run.businessId },
         }),
-      )
+      ))
     : null;
-  return def.run({
+  const input = {
     run,
     step,
     context: run.context as unknown as Context,
     language: languageOf(run.prompt),
     model,
     tools: toolsFor(def, run),
-  });
+  };
+  return model ? oneCall(() => def.run(input)) : def.run(input);
 }

@@ -37,6 +37,50 @@ Los topes nuevos cubren las llamadas de texto del agente y una reserva conservad
 
 No es todavía una factura consolidada de toda la plataforma: herramientas anteriores, anuncios, almacenamiento y cómputo de infraestructura mantienen sus controles/facturas propios. El agente no puede aumentar esos presupuestos. El modo de aprobación no amplía límites ni conecta cuentas.
 
+## Modo equipo
+
+16 de octubre de 2026. Con el modo equipo encendido, MATYA trabaja como un equipo de agentes. Lo que pide el dueño va al equipo, también una pregunta (el Director la contesta sin crear piezas). Solo siguen como antes el resumen, la pausa de una campaña, el radar y contrastar una noticia. Con el modo apagado, todo funciona exactamente como antes.
+
+**Quién hace qué.** El Director decide la meta y cuántas piezas hacen falta. SEO e investigación lee los reportes de SEO ya guardados y las noticias verificadas; nunca vuelve a medir. Estrategia propone las piezas. MATYA (código, sin IA) revisa cada propuesta contra los límites y crea una pieza por cada una válida. En cada pieza, Redacción escribe, Diseño arma las imágenes (primero la biblioteca del negocio, si no hay, plantillas de marca; nunca una imagen nueva con IA), Video cotiza, Revisión editorial revisa, y MATYA prepara, programa y confirma. Cada agente solo usa sus herramientas y solo trabaja con el negocio del encargo. Lo que viene de webs, noticias o mensajes es dato, nunca instrucción.
+
+### Cómo encenderlo
+
+1. Aplicar la migración `supabase/migrations/20261016120000_matya_team.sql` en Supabase **antes** de desplegar este código (ver `docs/agent/testing.md`). Es aditiva, pero Prisma lee todas las columnas.
+2. MATYA debe estar activa: `MATYA_AGENT_ENABLED=true`, MATYA encendida en la configuración, con presupuesto diario y por trabajo, canales y permiso de publicación.
+3. En la configuración del negocio:
+   - `teamMode`: encendido.
+   - `dailyHour`: la hora del plan de la mañana (0 a 23), en la hora del negocio. Cada día, a esa hora, el equipo recibe un encargo «Plan del día» con las señales del día. Uno solo por día local, también el día del cambio de horario: se mira el reloj de pared del negocio.
+   - `agentModels`: el proveedor y el modelo de cada agente que use IA (Director, SEO, Estrategia, Redacción y Revisión). Un agente sin modelo propio usa el de `MATYA_AGENT_*`. Diseño y Video no usan modelo.
+   - `modelPrices`: el precio verificado de cada modelo, en dólares por millón de tokens, con la clave `proveedor:modelo` (por ejemplo `openai:gpt-x` → `{ input, output }`).
+   Las pantallas para estas opciones llegan después (PR 2). Mientras tanto se guardan con la acción `settings` del Centro; guardar desde la pantalla actual las conserva.
+4. El llamado de cada minuto debe estar activo (`node scripts/agent-worker.mjs` o el planificador con `/api/cron?agent=1`, ver «Activación, en orden»). Sin él no avanza ningún paso ni llega el plan de la mañana.
+
+**Dinero.** Antes de cada paso con IA se reserva lo más que puede costar una llamada de ese modelo, y el agente llama con ese mismo modelo y ese precio: el cobro nunca pasa de la reserva. Cada paso hace una sola llamada de pago; nunca reintenta ni cambia de modelo o de proveedor. Si a un modelo le falta el precio verificado, o a su proveedor la clave, la pieza queda bloqueada con un mensaje claro («Falta el precio verificado…», «Falta la conexión del modelo…»), sin reservar ni cobrar nada. Si un paso falla antes de hacer su llamada, su reserva se libera. Si falla después, la reserva se cobra y el paso queda por revisar, como siempre.
+
+### Pausar todo y Reanudar
+
+«Pausar todo» (acción `pause_all`) detiene al equipo de una vez: no se acepta trabajo nuevo, ni del dueño ni del plan de la mañana, se cancela todo lo abierto y lo programado que aún no salió vuelve a borrador. Un paso que ya está corriendo termina, pero ninguno empieza después. Una publicación que ya se envió a una red no se puede deshacer. «Reanudar» (`resume_all`) acepta trabajo otra vez; lo cancelado sigue cancelado. Si la pausa canceló el plan de la mañana, ese día no se repite: llega el del día siguiente. Además, antes de cada paso del equipo se revisa que MATYA no esté en pausa ni apagada y que el modo equipo siga encendido: si el dueño apaga algo a mitad de un plan, el paso siguiente no empieza y no se reserva nada.
+
+### Lo que espera al dueño
+
+Estas piezas quedan en «Necesita tu sí» (`waiting_approval`) y no siguen hasta que el dueño apruebe, pida «Rehacer» o cancele:
+
+- **El costo del video.** El video se cotiza primero; el render empieza solo con la aprobación de ese precio, y cobra exactamente lo cotizado. No pasa del máximo por video ni del tope de videos del día.
+- **El borrador de un artículo para la web.** Paga Google y la IA del negocio: el dueño aprueba un «hasta US$X» antes de escribirlo. Una vuelta de corrección es otro borrador y pide su propia aprobación.
+- **Las fotos con IA.** Si ninguna foto de la biblioteca va con un artículo, crearla con IA espera la aprobación de su precio. Sin ella no se genera ninguna imagen.
+- **Una revisión que falla.** La pieza tiene una sola vuelta de corrección automática; si vuelve a fallar, espera al dueño con las notas. Un artículo que falla espera al dueño de una vez, porque corregirlo es otro borrador de pago.
+- **El modo aprobación.** Con `mode: "approval"`, cada pieza que pasa la revisión espera la aprobación del dueño. Solo cuenta una aprobación dada después de la revisión (aprobar el costo de un video no aprueba la publicación).
+
+Sin permiso de publicación, una pieza lista espera en su paso de programar.
+
+### Límites que siempre aplican
+
+- **Nunca YouTube.** El agente no publica en YouTube: el validador descarta esas piezas y el guardia lo rechaza al programar. Esa subida siempre la aprueba una persona.
+- **Tope diario de publicaciones** (`maxPostsPerDay`): lo comparten las piezas y las campañas de antes, y un artículo publicado cuenta como una. Se revisa dentro del candado del negocio al programar: dos piezas a la vez nunca lo pasan juntas.
+- **Ocho trabajos abiertos como máximo**, contando el encargo del equipo y cada una de sus piezas. El despacho solo crea las piezas que caben.
+- **Canales:** solo los permitidos y conectados. Un canal cuyos dos últimos envíos fallaron queda frenado hasta que el dueño vuelva a guardar su conexión.
+- **Ventanas de tormenta** (Florida 626.854): cuando un encargo trae una tormenta (`context.storm`), primero va el contenido de seguridad. Sus piezas salen entre las 9 a. m. y las 7 p. m. de la hora del negocio, aunque la tormenta ya sea vieja; una oferta de servicios, como pronto 49 horas después del evento y nunca en domingo. Hoy ninguna fuente pone `context.storm` sola: la campaña manual de tormenta sigue siendo la que aplica esos tiempos.
+
 ## Activación, en orden
 
 1. Seguridad PR #55 y privacidad PR #56 integrados en esta versión. Sus ramas fuente y `APP_SECRET` se conservaron. Aplicadas las migraciones `matya_agent_workspace` y `matya_login_security_release` en Matya; verificadas las siete tablas privadas, la columna de Campaign y la revocación de ejecución pública de `rls_auto_enable`.

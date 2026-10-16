@@ -13,6 +13,7 @@ import {
   type Context,
   type RunKind,
 } from "./schema";
+import { Refusal, teamRefusal } from "./guard";
 import { sourceUrl } from "./network";
 import { newsFresh } from "./freshness";
 import {
@@ -332,6 +333,11 @@ export async function beginStep(
       throw new AgentError(
         "Activa MATYA y define sus límites para ejecutar este encargo.",
       );
+    // `stepCost` already refused this before anything was reserved; checked again here, under the lock, for a switch the
+    // owner turned off in between (team mode off does not move the revision for the steps a piece runs after a wait).
+    const off =
+      run.kind === "team" || run.kind === "piece" ? teamRefusal(settings) : null;
+    if (off) throw new Refusal(off);
     const prior = await tx.agentStep.findUnique({
       where: { runId_name: { runId, name } },
     });
@@ -506,12 +512,14 @@ export async function finishStep(
  * `refused`: the step refused before it wrote or spent anything (a `Refusal`, such as the guard's). Then a running step
  * that reserved nothing is settled as `blocked`, with nothing charged, and the run ends `blocked`, not `uncertain`. A step
  * that holds a reservation is still uncertain: its outcome is not known.
+ * `unspent`: the step failed before it started any paid call (a team agent's model step, see `oneCall` in spend.ts), so its
+ * outcome is known: nothing was spent. Its reservation is released, not charged, and it ends `blocked` like a refusal.
  */
 export async function failRun(
   runId: string,
   token: string,
   message: string,
-  opts: { refused?: boolean } = {},
+  opts: { refused?: boolean; unspent?: boolean } = {},
 ) {
   const r = await db.agentRun.findUniqueOrThrow({ where: { id: runId } });
   return locked(r.businessId, async (tx) => {
@@ -523,7 +531,14 @@ export async function failRun(
     let charged = 0;
     let held = 0;
     for (const step of open) {
-      if (opts.refused && step.reservedCents === 0) {
+      if (opts.unspent || (opts.refused && step.reservedCents === 0)) {
+        if (step.reservedCents)
+          await tx.agentBudget.update({
+            where: {
+              businessId_day: { businessId: run.businessId, day: step.budgetDay },
+            },
+            data: { reservedCents: { decrement: step.reservedCents } },
+          });
         await tx.agentStep.update({
           where: { id: step.id },
           data: { status: "blocked", error: message, finishedAt: new Date() },
