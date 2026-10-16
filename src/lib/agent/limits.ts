@@ -25,10 +25,18 @@ function topicOf(plan: unknown): string | null {
   return typeof piece?.topic === "string" ? piece.topic : null;
 }
 
+/** The piece runs whose topic counts as used: still in progress, or done. Not blocked, cancelled or uncertain ones. */
+const USED_PIECE_STATUSES = [...OPEN_STATUSES, "completed"];
+/** The post statuses of a campaign that reached the calendar: scheduled, going out or gone out (a draft never did). */
+const CALENDAR_POST_STATUSES = ["scheduled", "publishing", "done", "partial", "failed"];
+
 /**
  * The topics already used: titles of the agent's campaigns and topics of its pieces from the last 30 days, newest first and
- * without repeats. Read for `businessId` only. `exceptRunId` is a piece run whose own topic and own `agent-<runId>` campaign
- * do not count (the editorial review asks about the piece it is reviewing).
+ * without repeats. Only what reached the calendar or may still reach it counts (R40): a piece run that is open or completed,
+ * and an agent campaign whose post was scheduled or published. A piece that was blocked, cancelled or left uncertain, and a
+ * campaign whose post stayed a draft, never went out, so its topic is free again the next morning. Read for `businessId` only.
+ * `exceptRunId` is a piece run whose own topic and own `agent-<runId>` campaign do not count (the editorial review asks about
+ * the piece it is reviewing).
  */
 export async function recentTopicsOf(
   businessId: string,
@@ -42,6 +50,7 @@ export async function recentTopicsOf(
         businessId,
         id: { startsWith: "agent-", ...(exceptRunId ? { not: `agent-${exceptRunId}` } : {}) },
         createdAt: { gte: since },
+        posts: { some: { businessId, status: { in: CALENDAR_POST_STATUSES } } },
       },
       select: { name: true },
       orderBy: { createdAt: "desc" },
@@ -51,6 +60,7 @@ export async function recentTopicsOf(
       where: {
         businessId,
         kind: "piece",
+        status: { in: USED_PIECE_STATUSES },
         createdAt: { gte: since },
         ...(exceptRunId ? { id: { not: exceptRunId } } : {}),
       },
@@ -78,7 +88,8 @@ export async function recentTopicsOf(
  *   (counting only deliveries after the owner last saved the connection) and never youtube; plus `seo` (the website)
  *   when web articles are allowed and the website is connected.
  * - `today`: the business's local day, the same key `AgentBudget` uses.
- * - `recentTopics`: titles of the agent's campaigns and topics of its pieces from the last 30 days.
+ * - `recentTopics`: titles of the agent's campaigns and topics of its pieces from the last 30 days that reached the calendar
+ *   or are still in progress (`recentTopicsOf`).
  * Everything is read for `businessId` only.
  */
 export async function pieceLimits(

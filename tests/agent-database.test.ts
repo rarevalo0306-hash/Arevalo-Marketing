@@ -16,7 +16,7 @@ import {
   planStepMeta,
   type StepResult,
 } from "@/lib/agent/queue";
-import { reworkSteps, stepsForPiece, type ReviewProblem } from "@/lib/agent/plan";
+import { reworkSteps, stepsForPiece, validatePieces, type ReviewProblem } from "@/lib/agent/plan";
 import type { AgentRun } from "@prisma/client";
 import { workOne, executeStep, analyzeResults, stepCost, drain, type StepCost } from "@/lib/agent/execution";
 import { stepModel } from "@/lib/agent/team-execution";
@@ -2181,8 +2181,17 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
         await spawnPieces(parent, [{ ...roof, id: "p1", topic: "Techos de tejas" }]);
         const old = await spawnPieces(parent, [{ ...roof, id: "p2", topic: "Tema de hace meses" }]);
         await db.agentRun.update({ where: { id: old[0].id }, data: { createdAt: agoDays(40) } });
+        // A campaign counts once its post was scheduled (R40), as these were.
         const campaign = (id: string, name: string, createdAt: Date, businessId = A) =>
-          db.campaign.create({ data: { id, businessId, name, createdAt } });
+          db.campaign.create({
+            data: {
+              id,
+              businessId,
+              name,
+              createdAt,
+              posts: { create: { id: `${id}-post`, businessId, text: name, status: "scheduled" } },
+            },
+          });
         await campaign("agent-c1", "Goteras en el techo", agoDays(10));
         await campaign("agent-c2", "Campaña de hace meses", agoDays(40));
         await campaign("manual-c3", "Campaña manual", agoDays(5));
@@ -2191,6 +2200,62 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
         expect([...l.recentTopics].sort()).toEqual(["Goteras en el techo", "Techos de tejas"]);
         // A topic seen there is dropped by the validator, in any capitals or accents.
         expect(l.recentTopics).not.toContain("Campaña manual");
+      });
+
+      it("solo cuentan los temas que llegaron al calendario o siguen en curso (R40)", async () => {
+        const parent = await teamParent();
+        const topics = ["Tema bloqueado", "Tema cancelado", "Tema incierto", "Tema completado", "Tema en espera"];
+        const pieces = await spawnPieces(
+          parent,
+          topics.map((topic, i) => ({ ...roof, id: `p${i + 1}`, topic })),
+        );
+        const statuses = ["blocked", "cancelled", "uncertain", "completed", "waiting_approval"];
+        for (const [i, piece] of pieces.entries())
+          await db.agentRun.update({ where: { id: piece.id }, data: { status: statuses[i] } });
+        // The agent's campaigns: only those whose post was scheduled or went out count.
+        const campaign = (id: string, name: string, post?: string) =>
+          db.campaign.create({
+            data: {
+              id,
+              businessId: A,
+              name,
+              ...(post ? { posts: { create: { id: `${id}-post`, businessId: A, text: name, status: post } } } : {}),
+            },
+          });
+        await campaign(`agent-${pieces[1].id}`, "Campaña de la pieza cancelada", "draft");
+        await campaign("agent-c-draft", "Campaña en borrador", "draft");
+        await campaign("agent-c-none", "Campaña sin publicación");
+        await campaign("agent-c-scheduled", "Campaña programada", "scheduled");
+        await campaign("agent-c-done", "Campaña publicada", "done");
+        await campaign("agent-c-partial", "Campaña con fallas", "partial");
+        // A post of another business is never read for this one.
+        await db.campaign.create({
+          data: {
+            id: "agent-c-of-b",
+            businessId: B,
+            name: "Campaña de B",
+            posts: { create: { id: "agent-c-of-b-post", businessId: B, text: "b", status: "scheduled" } },
+          },
+        });
+        const tomorrow = new Date(Date.now() + 86400000);
+        expect((await recentTopicsOf(A, tomorrow)).sort()).toEqual(
+          ["Campaña con fallas", "Campaña programada", "Campaña publicada", "Tema completado", "Tema en espera"].sort(),
+        );
+        // The next day, the Director may propose the blocked, cancelled or uncertain topics again; a completed one is a repeat.
+        const l = await limits({}, tomorrow);
+        const proposed = [
+          { ...roof, id: "p1", topic: "Tema bloqueado" },
+          { ...roof, id: "p2", topic: "Tema cancelado" },
+          { ...roof, id: "p3", topic: "Campaña de la pieza cancelada" },
+          { ...roof, id: "p4", topic: "Tema completado" },
+          { ...roof, id: "p5", topic: "Campaña publicada" },
+        ];
+        const r = validatePieces(proposed, { ...l, remainingPosts: 12 });
+        expect(r.pieces.map((p) => p.topic)).toEqual(["Tema bloqueado", "Tema cancelado", "Campaña de la pieza cancelada"]);
+        expect(r.dropped).toEqual([
+          { id: "p4", reason: "repetido" },
+          { id: "p5", reason: "repetido" },
+        ]);
       });
     });
 
@@ -2603,8 +2668,8 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
         const child = await pieceRun();
         const parent = await db.agentRun.findUniqueOrThrow({ where: { id: child.parentRunId! } });
         const [, sibling] = await spawnPieces(parent, [roof, { ...roof, id: "p2", topic }]);
-        // Only the first piece is worked on.
-        await db.agentRun.update({ where: { id: sibling.id }, data: { status: "cancelled" } });
+        // Only the first piece is worked on: the sibling already went out (a completed piece's topic is used, R40).
+        await db.agentRun.update({ where: { id: sibling.id }, data: { status: "completed" } });
         return { child, sibling };
       }
 
@@ -2642,6 +2707,16 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
             { id: "manual-campaign", businessId: A, name: "No es del agente" },
             { id: "agent-of-b", businessId: B, name: "Campaña de B" },
           ],
+        });
+        // Each campaign's post was scheduled: only then does its name count as a used topic (R40).
+        await db.post.createMany({
+          data: ["agent-" + child.id, "agent-other-run", "agent-old", "manual-campaign", "agent-of-b"].map((campaignId) => ({
+            id: `post-${campaignId}`,
+            businessId: campaignId === "agent-of-b" ? B : A,
+            campaignId,
+            text: "x",
+            status: "scheduled",
+          })),
         });
         const now = new Date();
         const all = await recentTopicsOf(A, now);
