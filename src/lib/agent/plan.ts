@@ -30,6 +30,13 @@ export const MAX_PIECES = 12;
 /** The steps of an article piece that write the article (`article`, `article-r<n>`): one paid draft each. */
 export const isArticleStep = (stepId: string) => /^article(-r\d+)?$/.test(stepId);
 
+/**
+ * The steps of a piece that only look at what already happened and spend nothing new: `verify` (what each channel answered for a
+ * post that already left) and `video_wait`, `video_wait:<n>` (a render that was already approved and paid). They finish even after
+ * the owner turned the team off (paused, team mode or MATYA off): stopping them would not save money, only lose the result.
+ */
+export const isObserveStep = (stepId: string) => stepId === "verify" || /^video_wait(:\d+)?$/.test(stepId);
+
 export const TEAM_STEPS = ["plan", "research", "strategy", "dispatch"] as const;
 
 const TEMPLATES: Record<PieceFormat, readonly string[]> = {

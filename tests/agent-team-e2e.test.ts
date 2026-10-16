@@ -7,17 +7,41 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentStep } from "@prisma/client";
 import { db } from "@/lib/db";
-import { changeRun, enqueue, saveSettings } from "@/lib/agent/queue";
+import { changeRun, enqueue, saveSettings, stepsOf } from "@/lib/agent/queue";
 import { stepCost, workOne } from "@/lib/agent/execution";
 import { AGENTS } from "@/lib/agent/agents";
 import { agentCeiling } from "@/lib/agent/models";
 import { callCeiling, MAX_OUTPUT, meteredAsk, modelConfig, usageCents } from "@/lib/agent/metered";
 import { Copy } from "@/lib/agent/schema";
+import { articleCharge, articleReserve } from "@/lib/agent/article-cost";
+import { pickText } from "@/lib/ai";
+import { advanceRender, startRender } from "@/lib/video-jobs";
+import { createArticleReport } from "@/lib/seo/writer-run";
+import { approveForSite, prepareForSite } from "@/lib/seo/site-article-run";
+import { SITE_TEXT_CENTS } from "@/lib/seo/site-article";
 import { DEFAULT_SETTINGS } from "@/components/agent/types";
 
 vi.mock("@/lib/media-formats", async (original) => ({
   ...(await original<typeof import("@/lib/media-formats")>()),
   storeDesign: vi.fn().mockImplementation(async (input: { shape: string }) => `https://example.com/e2e-${input.shape}.jpg`),
+}));
+// The render provider: configured, started and checked on without fal.ai (the quote, the price and the caps are the real ones).
+vi.mock("@/lib/video-jobs", async (original) => ({
+  ...(await original<typeof import("@/lib/video-jobs")>()),
+  videoBlocker: vi.fn().mockReturnValue(null),
+  startRender: vi.fn().mockResolvedValue({ status: "rendering" }),
+  advanceRender: vi.fn(),
+}));
+// The website article's paid providers (Google and the writer's AI, the translation, the photo, GitHub) are never real here.
+vi.mock("@/lib/seo/writer-run", async (original) => ({
+  ...(await original<typeof import("@/lib/seo/writer-run")>()),
+  createArticleReport: vi.fn(),
+}));
+vi.mock("@/lib/seo/site-article-run", async (original) => ({
+  ...(await original<typeof import("@/lib/seo/site-article-run")>()),
+  prepareForSite: vi.fn(),
+  approveForSite: vi.fn(),
+  sitePhotoCents: vi.fn().mockResolvedValue(4),
 }));
 
 const url = process.env.MATYA_TEST_DATABASE_URL ?? "";
@@ -164,6 +188,13 @@ async function workAll(max = 60): Promise<number> {
   while (await workOne(A)) if (++n >= max) throw new Error("The queue did not empty");
   return n;
 }
+/** The channel answered for the piece's post (as the publisher records it); the cycle then brings the piece back to `verify`. */
+async function delivered(pieceId: string) {
+  await db.postTarget.updateMany({ where: { postId: `agent-${pieceId}` }, data: { status: "sent" } });
+  await db.post.update({ where: { id: `agent-${pieceId}` }, data: { status: "done" } });
+  await changeRun(A, pieceId, "refresh");
+}
+const stepOf = (runId: string, name: string) => db.agentStep.findUnique({ where: { runId_name: { runId, name } } });
 const row = (id: string) => db.agentRun.findUniqueOrThrow({ where: { id } });
 const childrenOf = (id: string) => db.agentRun.findMany({ where: { parentRunId: id }, orderBy: { createdAt: "asc" } });
 const stepsOfRun = (runId: string) => db.agentStep.findMany({ where: { runId }, orderBy: { createdAt: "asc" } });
@@ -173,6 +204,8 @@ const workspace = () => db.agentWorkspace.findUniqueOrThrow({ where: { businessI
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 
 const MODEL_STEP = /^(plan|research|strategy|copy(-r\d+)?|review(-r\d+)?)$/;
+/** The piece steps that reserve their own money (the render's quote, the article's estimate, its publication). */
+const MONEY_STEP = /^(render|article(-r\d+)?|article_publish(:\d+)?)$/;
 const AGENT_OF_STEP: Record<string, string> = {
   plan: "director",
   research: "seo",
@@ -180,10 +213,15 @@ const AGENT_OF_STEP: Record<string, string> = {
   dispatch: "matya",
   copy: "copy",
   design: "design",
+  video: "video",
+  render: "matya",
+  video_wait: "matya",
   review: "review",
   prepare: "matya",
   schedule: "matya",
   verify: "matya",
+  article: "copy",
+  article_publish: "matya",
 };
 
 /** Every step names who did it, and every model step the model it was reserved for and called with: exactly the agent's ceiling. */
@@ -191,29 +229,31 @@ async function expectWhoAndModel(steps: AgentStep[]) {
   const ws = await workspace();
   expect(steps.length).toBeGreaterThan(0);
   for (const s of steps) {
-    expect(s.agent, s.name).toBe(AGENT_OF_STEP[s.name.replace(/-r\d+$/, "")]);
+    expect(s.agent, s.name).toBe(AGENT_OF_STEP[s.name.replace(/:\d+$/, "").replace(/-r\d+$/, "")]);
     if (MODEL_STEP.test(s.name)) {
       expect(s.model, s.name).toBe(MODEL_OF[s.agent as ModelAgent]);
       expect(s.reservedCents, s.name).toBe(agentCeiling(s.agent as ModelAgent, ws));
     } else {
       expect(s.model, s.name).toBe("");
-      expect(s.reservedCents, s.name).toBe(0);
+      // A money step's own reservation is checked by its test.
+      if (!MONEY_STEP.test(s.name)) expect(s.reservedCents, s.name).toBe(0);
     }
   }
 }
 
 /**
- * The money: nothing stays reserved, what was charged is exactly what the provider billed (each agent's paid steps, in order, are
- * its calls), no step charged more than it reserved, and nothing went over a reservation (MATYA was never switched off for it).
+ * The money: nothing stays reserved, what was charged is exactly what the AI provider billed plus `other` (what the piece's own
+ * money steps charged: a render, an article), each agent's paid model steps, in order, are its calls, no step charged more than
+ * it reserved, and nothing went over a reservation (MATYA was never switched off for it).
  */
-async function expectMoney() {
+async function expectMoney(other = 0) {
   const [steps, runs, budget, ws] = await Promise.all([
     db.agentStep.findMany({ where: { run: { businessId: A } }, orderBy: { createdAt: "asc" } }),
     db.agentRun.findMany({ where: { businessId: A } }),
     db.agentBudget.aggregate({ where: { businessId: A }, _sum: { reservedCents: true, chargedCents: true } }),
     workspace(),
   ]);
-  const billed = sum(calls.map((c) => c.cents));
+  const billed = sum(calls.map((c) => c.cents)) + other;
   expect(budget._sum).toEqual({ reservedCents: 0, chargedCents: billed });
   expect(sum(steps.map((s) => s.chargedCents))).toBe(billed);
   expect(sum(runs.map((r) => r.chargedCents))).toBe(billed);
@@ -221,7 +261,7 @@ async function expectMoney() {
   for (const s of steps) expect(s.chargedCents, s.name).toBeLessThanOrEqual(s.reservedCents);
   for (const agent of Object.keys(MODEL_OF) as ModelAgent[])
     expect(
-      steps.filter((s) => s.agent === agent && s.chargedCents > 0).map((s) => s.chargedCents),
+      steps.filter((s) => s.agent === agent && MODEL_STEP.test(s.name) && s.chargedCents > 0).map((s) => s.chargedCents),
       agent,
     ).toEqual(calls.filter((c) => c.agent === agent).map((c) => c.cents));
   expect(ws.enabled).toBe(true);
@@ -258,8 +298,8 @@ describe.skipIf(!safe)("the team end to end (local database, simulated AI)", () 
         },
       },
     });
-    // Other test files run the cron for every business at once: this business's morning plan is marked as already made,
-    // so a cycle run elsewhere never queues one here in the middle of a test.
+    // Other test files run the cron for every business at once: this business's morning plan is marked as already made, for a
+    // day (9999-12-31) always after today, so `isDailyDue` never fires for it and no cycle elsewhere queues one mid-test.
     await db.agentRun.create({
       data: { businessId: A, requestKey: `daily-${A}-9999-12-31`, kind: "team", origin: "daily", status: "completed", prompt: "Plan del día", context: {} },
     });
@@ -288,9 +328,7 @@ describe.skipIf(!safe)("the team end to end (local database, simulated AI)", () 
     expect(post.targets.map((t) => t.channel)).toEqual(["facebook"]);
     expect(await row(piece.id)).toMatchObject({ status: "waiting_provider" });
     // The channel answers; the cycle brings the piece back and it ends.
-    await db.postTarget.updateMany({ where: { postId: post.id }, data: { status: "sent" } });
-    await db.post.update({ where: { id: post.id }, data: { status: "done" } });
-    await changeRun(A, piece.id, "refresh");
+    await delivered(piece.id);
     await workAll();
     expect(await row(piece.id)).toMatchObject({ status: "completed", error: "" });
 
@@ -452,6 +490,194 @@ describe.skipIf(!safe)("the team end to end (local database, simulated AI)", () 
     const budget = await db.agentBudget.aggregate({ where: { businessId: A }, _sum: { reservedCents: true, chargedCents: true } });
     expect(budget._sum).toEqual({ reservedCents: 0, chargedCents: sum(calls.slice(0, 3).map((c) => c.cents)) + ceiling });
     expect((await workspace()).enabled).toBe(true);
+  });
+
+  it.each([
+    ["team mode is turned off", { teamMode: false }],
+    ["MATYA is turned off", { enabled: false }],
+    ["everything is paused", { pausedAt: new Date() }],
+  ])("a post that already left is still verified when %s: the piece ends completed", async (_name, data) => {
+    const team = await ask("Prepara contenido sobre techos");
+    await workAll();
+    const [piece] = await childrenOf(team.id);
+    expect(await row(piece.id)).toMatchObject({ status: "waiting_provider" });
+    await delivered(piece.id);
+    // Straight on the row ("Pausar todo" itself would cancel the piece), with the revision moved as a settings save would.
+    await db.agentWorkspace.update({ where: { businessId: A }, data: { ...data, revision: { increment: 1 } } });
+    await workAll();
+    expect(await row(piece.id)).toMatchObject({ status: "completed", error: "" });
+    expect(await stepOf(piece.id, "verify")).toMatchObject({ status: "succeeded", agent: "matya", reservedCents: 0, chargedCents: 0 });
+    await db.agentWorkspace.update({ where: { businessId: A }, data: { teamMode: true, enabled: true, pausedAt: null } });
+    await expectMoney();
+  });
+
+  it("the old flow keeps its own check: a campaign's verify step does not run with MATYA off", async () => {
+    await saveSettings(A, { ...settings, teamMode: false });
+    const campaign = await ask("Prepara una campaña", { kind: "campaign" });
+    await db.agentRun.update({ where: { id: campaign.id }, data: { stage: stepsOf(campaign).indexOf("verify") } });
+    await db.agentWorkspace.update({ where: { businessId: A }, data: { enabled: false } });
+    await workOne(A);
+    expect(await row(campaign.id)).toMatchObject({ status: "blocked", error: "Activa MATYA y define sus límites para ejecutar este encargo." });
+    expect(await stepOf(campaign.id, "verify")).toBeNull();
+    await db.agentWorkspace.update({ where: { businessId: A }, data: { enabled: true } });
+  });
+
+  describe("a video piece", () => {
+    const VIDEO_COPY = { ...COPY, script: "Tres consejos para revisar tu techo antes de la lluvia." };
+    const ready = { status: "ready", videoUrl: "https://example.com/e2e-video.mp4", storyboard: { texts: {} } };
+    beforeEach(() => {
+      answers.strategy = [{ pieces: [{ ...PIECE, topic: "Video: revisa tu techo antes de la lluvia", format: "video" }] }];
+      answers.copy = [VIDEO_COPY];
+      // The first check finds the render still working, the next ones find it ready.
+      vi.mocked(advanceRender)
+        .mockReset()
+        .mockResolvedValueOnce({ status: "rendering", storyboard: { texts: {} } } as never)
+        .mockResolvedValue(ready as never);
+    });
+    /** The team, then the piece's copy, design and quote: it waits for the owner to approve the video's price. */
+    async function quoted() {
+      const team = await ask("Prepara un video sobre techos");
+      await workAll();
+      const [piece] = await childrenOf(team.id);
+      expect(await row(piece.id)).toMatchObject({ status: "waiting_approval", reservedCents: 0 });
+      const quote = (await stepOf(piece.id, "video"))!;
+      expect(quote).toMatchObject({ agent: "video", status: "succeeded", reservedCents: 0, chargedCents: 0 });
+      expect(startRender).not.toHaveBeenCalled();
+      return { team, piece, cents: (quote.output as { cents: number }).cents };
+    }
+
+    it("is quoted, approved, rendered at exactly its quote, waited for, reviewed, scheduled and verified", async () => {
+      const { team, piece, cents } = await quoted();
+      expect(cents).toBeGreaterThan(0);
+      await changeRun(A, piece.id, "approve");
+      await workAll();
+      // The render started once, at the quoted price, and the piece waits for the provider.
+      expect(startRender).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(startRender).mock.calls[0][2]).toBe(cents);
+      expect(await stepOf(piece.id, "render")).toMatchObject({ status: "succeeded", agent: "matya", reservedCents: cents, chargedCents: cents });
+      expect(await row(piece.id)).toMatchObject({ status: "waiting_provider" });
+      await changeRun(A, piece.id, "refresh");
+      await workAll();
+      const post = await db.post.findUniqueOrThrow({ where: { id: `agent-${piece.id}` } });
+      expect(post).toMatchObject({ status: "scheduled", kind: "video", mediaUrl: ready.videoUrl });
+      await delivered(piece.id);
+      await workAll();
+      expect(await row(piece.id)).toMatchObject({ status: "completed", error: "" });
+      const steps = await stepsOfRun(piece.id);
+      expect(steps.map((s) => s.name)).toEqual([
+        "copy", "design", "video", "render", "video_wait:0", "video_wait:1", "review", "prepare", "schedule", "verify",
+      ]);
+      expect(startRender).toHaveBeenCalledTimes(1);
+      expect(calls.map((c) => c.agent)).toEqual(["director", "seo", "strategy", "copy", "review"]);
+      await expectWhoAndModel([...(await stepsOfRun(team.id)), ...steps]);
+      await expectMoney(cents);
+    });
+
+    it("a paid render still finishes its wait after the team is switched off; the next step that would spend does not start", async () => {
+      const { piece, cents } = await quoted();
+      await changeRun(A, piece.id, "approve");
+      await workAll();
+      expect(await row(piece.id)).toMatchObject({ status: "waiting_provider" });
+      await saveSettings(A, { ...settings, teamMode: false });
+      await changeRun(A, piece.id, "refresh");
+      await workAll();
+      // The wait only looked at the render already paid for: it finished. The review (a paid call) was refused before anything.
+      expect(await stepOf(piece.id, "video_wait:1")).toMatchObject({ status: "succeeded", output: { status: "ready" }, reservedCents: 0 });
+      expect(await row(piece.id)).toMatchObject({ status: "blocked", error: expect.stringContaining("modo equipo"), reservedCents: 0 });
+      expect(await stepOf(piece.id, "review")).toBeNull();
+      expect(startRender).toHaveBeenCalledTimes(1);
+      expect(calls.map((c) => c.agent)).toEqual(["director", "seo", "strategy", "copy"]);
+      await saveSettings(A, settings);
+      await expectMoney(cents);
+    });
+  });
+
+  it("an article piece: its draft waits for the owner's estimate, is written within it, reviewed and published on the website", async () => {
+    vi.stubEnv("DATAFORSEO_LOGIN", "synthetic");
+    vi.stubEnv("DATAFORSEO_PASSWORD", "synthetic");
+    await db.business.update({
+      where: { id: A },
+      data: { website: "https://techos-e2e.com", seoLocationCode: 1015116, seoLocationName: "Miami,Florida,United States" },
+    });
+    await db.connection.create({ data: { businessId: A, channel: "seo", secret: "synthetic-no-provider-access" } });
+    const REPORT = { id: "e2e-article", score: 82, cost: 0.002, pagesRead: 4, provider: "gemini" };
+    vi.mocked(createArticleReport).mockImplementation(async (businessId) => {
+      await db.seoReport.create({
+        data: {
+          id: REPORT.id,
+          businessId,
+          kind: "article",
+          data: {
+            version: 1,
+            keyword: "reparación de techos",
+            language: "es",
+            draft: {
+              title: "Reparación de techos en Miami",
+              metaDescription: "Guía para revisar el techo de la casa.",
+              slug: "reparacion-de-techos",
+              h1: "Reparación de techos",
+              outline: [],
+              markdown: "Una gotera en el techo necesita revisión pronto. Revisa las tejas y las canaletas después de cada tormenta.",
+              socialPost: "",
+            },
+            score: REPORT.score,
+            cost: REPORT.cost,
+            provider: REPORT.provider,
+            createdAt: new Date().toISOString(),
+          },
+        },
+      });
+      return REPORT;
+    });
+    vi.mocked(prepareForSite).mockResolvedValue({
+      photo: { kind: "library", itemId: "i1", url: "https://example.com/p.jpg", thumb: "https://example.com/p.jpg", label: "Techo" },
+      es: { title: "Reparación de techos en Miami" },
+      en: { title: "Roof repair in Miami" },
+      urlEs: "https://techos-e2e.com/es/reparacion-de-techos",
+      urlEn: "https://techos-e2e.com/en/roof-repair",
+      spentCents: 0,
+    } as never);
+    vi.mocked(approveForSite).mockResolvedValue({
+      url: "https://techos-e2e.com/es/reparacion-de-techos",
+      urlEn: "https://techos-e2e.com/en/roof-repair",
+      costCents: SITE_TEXT_CENTS,
+      photoFailed: false,
+      already: false,
+    } as never);
+    answers.strategy = [
+      { pieces: [{ id: "p1", topic: "Reparación de techos en Miami", objective: "", channels: ["seo"], format: "articulo", keyword: "reparación de techos" }] },
+    ];
+    const team = await ask("Prepara un artículo sobre techos");
+    await workAll();
+    const [piece] = await childrenOf(team.id);
+    // The draft costs money (Google and the writer's AI): nothing is written, reserved or asked before the owner approves.
+    expect(await row(piece.id)).toMatchObject({ status: "waiting_approval", reservedCents: 0 });
+    expect(await message(piece.id)).toContain("hasta US$");
+    expect(await stepOf(piece.id, "article")).toBeNull();
+    expect(createArticleReport).not.toHaveBeenCalled();
+    await changeRun(A, piece.id, "approve");
+    await workAll();
+    expect(createArticleReport).toHaveBeenCalledTimes(1);
+    expect(approveForSite).toHaveBeenCalledTimes(1);
+    expect(await row(piece.id)).toMatchObject({ status: "completed", error: "" });
+    const business = await db.business.findUniqueOrThrow({ where: { id: A } });
+    const estimate = articleReserve(pickText(business.aiText));
+    const article = (await stepOf(piece.id, "article"))!;
+    expect(article).toMatchObject({ agent: "copy", model: "", status: "succeeded", reservedCents: estimate });
+    expect(article.chargedCents).toBe(articleCharge(REPORT.cost, REPORT.provider, estimate));
+    expect(article.chargedCents).toBeLessThanOrEqual(estimate);
+    const published = (await stepOf(piece.id, "article_publish"))!;
+    expect(published).toMatchObject({ agent: "matya", status: "succeeded", reservedCents: SITE_TEXT_CENTS, chargedCents: SITE_TEXT_CENTS });
+    // The published article counts as one of the day's posts.
+    const posts = await db.agentBudget.aggregate({ where: { businessId: A }, _sum: { posts: true } });
+    expect(posts._sum.posts).toBe(1);
+    const steps = await stepsOfRun(piece.id);
+    expect(steps.map((s) => s.name)).toEqual(["article", "review", "article_publish"]);
+    // The review read the article's own text and is the piece's one model call.
+    expect(calls.map((c) => c.agent)).toEqual(["director", "seo", "strategy", "review"]);
+    expect(calls[3].user).toContain("Una gotera en el techo");
+    await expectWhoAndModel([...(await stepsOfRun(team.id)), ...steps]);
+    await expectMoney(article.chargedCents + published.chargedCents);
   });
 
   it.each([

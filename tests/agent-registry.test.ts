@@ -17,14 +17,40 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+// The providers behind the tools that pay: never called for real here (the ledger must refuse before them).
+vi.mock("@/lib/video-jobs", async (original) => ({
+  ...(await original<typeof import("@/lib/video-jobs")>()),
+  createProject: vi.fn(),
+  startRender: vi.fn(),
+}));
+vi.mock("@/lib/seo/writer-run", async (original) => ({
+  ...(await original<typeof import("@/lib/seo/writer-run")>()),
+  createArticleReport: vi.fn(),
+}));
+// The design tool would draw and store an image: never here.
+vi.mock("@/lib/media-formats", async (original) => ({
+  ...(await original<typeof import("@/lib/media-formats")>()),
+  storeDesign: vi.fn().mockRejectedValue(new Error("no storage in this test")),
+}));
+vi.mock("@/lib/seo/site-article-run", async (original) => ({
+  ...(await original<typeof import("@/lib/seo/site-article-run")>()),
+  prepareForSite: vi.fn(),
+  approveForSite: vi.fn(),
+}));
+
 import { AgentError } from "@/lib/agent/access";
 import { AGENTS, agentFor } from "@/lib/agent/agents";
 import { toolsFor, type ToolName } from "@/lib/agent/tools";
 import { stepsForPiece } from "@/lib/agent/plan";
 import { executeTeamStep, registerMatyaStep, stepMeta, stepModel } from "@/lib/agent/team-execution";
 import { Refusal } from "@/lib/agent/guard";
-import { Unspent } from "@/lib/agent/spend";
-import type { ModelConfig } from "@/lib/agent/metered";
+import { oneCall, paidCall, Unspent } from "@/lib/agent/spend";
+import { meteredAsk, type ModelConfig } from "@/lib/agent/metered";
+import { createProject, startRender } from "@/lib/video-jobs";
+import { createArticleReport } from "@/lib/seo/writer-run";
+import { approveForSite, prepareForSite } from "@/lib/seo/site-article-run";
+import type { Storyboard } from "@/lib/video-plan";
+import { z } from "zod";
 import { db } from "@/lib/db";
 
 const piecePlan = (steps = stepsForPiece("video")) => ({
@@ -236,6 +262,8 @@ describe("executeTeamStep", () => {
     MATYA_AGENT_OUTPUT_USD_PER_MILLION: "2.5",
   };
 
+  /** The model a step was reserved for, as `stepCost` hands it over. */
+  const model: ModelConfig = { provider: "gemini", model: "gemini-x", inputRate: 0.3, outputRate: 2.5, key: "k" };
   beforeEach(() => {
     workspace.row = { agentModels: {}, modelPrices: {} };
     for (const [k, v] of Object.entries(env)) vi.stubEnv(k, v);
@@ -250,13 +278,15 @@ describe("executeTeamStep", () => {
       .spyOn(AGENTS.director, "run")
       .mockResolvedValue({ data: { ok: 1 } });
     const r = run();
-    await expect(executeTeamStep(r, "plan")).resolves.toEqual({ data: { ok: 1 } });
+    const reserved = stepModel(r, "plan", workspace.row);
+    await expect(executeTeamStep(r, "plan", reserved!)).resolves.toEqual({ data: { ok: 1 } });
     expect(spy).toHaveBeenCalledTimes(1);
     const input = spy.mock.calls[0][0];
     expect(input.run).toBe(r);
     expect(input.step).toEqual({ id: "plan", agent: "director", attempt: 0 });
     expect(input.context).toBe(r.context);
     expect(input.language).toBe("es");
+    expect(input.model).toBe(reserved);
     expect(input.model).toMatchObject({ provider: "gemini", model: "gemini-x", key: "k" });
     expect(() => input.tools.use("renderDesign")).toThrow(/no está permitida para director/);
   });
@@ -265,27 +295,26 @@ describe("executeTeamStep", () => {
     const spy = vi
       .spyOn(AGENTS.seo, "run")
       .mockResolvedValue({ data: {} });
-    await executeTeamStep(run({ prompt: "Please prepare the summary" }), "research");
+    await executeTeamStep(run({ prompt: "Please prepare the summary" }), "research", model);
     expect(spy.mock.calls[0][0].language).toBe("en");
   });
 
   it("en una pieza pasa el paso del plan con su ronda", async () => {
     const spy = vi.spyOn(AGENTS.copy, "run").mockResolvedValue({ data: {} });
     const r = run({ kind: "piece", plan: piecePlan() } as never);
-    await executeTeamStep(r, "copy-r1");
+    await executeTeamStep(r, "copy-r1", model);
     expect(spy.mock.calls[0][0].step).toEqual({ id: "copy-r1", agent: "copy", attempt: 1 });
   });
 
-  it("sin precio o sin conexión deja pasar el error del modelo y no llama al agente", async () => {
+  it("un paso con IA sin el modelo reservado no corre: nunca se resuelve otra vez aquí, ni se llama al agente", async () => {
     const spy = vi.spyOn(AGENTS.seo, "run").mockResolvedValue({ data: {} });
-    workspace.row = {
-      agentModels: { seo: { provider: "gemini", model: "sin-precio" } },
-      modelPrices: {},
-    };
-    await expect(executeTeamStep(run(), "research")).rejects.toThrow(
-      "Falta el precio verificado del modelo gemini:sin-precio para el agente seo.",
-    );
+    vi.mocked(db.agentWorkspace.findUniqueOrThrow).mockClear();
+    const missing = executeTeamStep(run(), "research");
+    // Nothing was called: the reservation is released (Unspent), not charged.
+    await expect(missing).rejects.toBeInstanceOf(Unspent);
+    await expect(missing).rejects.toThrow("Error interno: el paso no recibió el modelo para el que se reservó.");
     expect(spy).not.toHaveBeenCalled();
+    expect(db.agentWorkspace.findUniqueOrThrow).not.toHaveBeenCalled();
   });
 
   it("el artículo no usa el modelo del agente de redacción: ni se busca su precio ni se pasa un modelo", async () => {
@@ -302,9 +331,10 @@ describe("executeTeamStep", () => {
     expect(spy.mock.calls[0][0].model).toBeNull();
     expect(spy.mock.calls[0][0].step).toEqual({ id: "article", agent: "copy", attempt: 0 });
     const copyPlan = { kind: "piece", piece: { id: "p1" }, steps: stepsForPiece("post") };
-    await expect(executeTeamStep(run({ kind: "piece", plan: copyPlan } as never), "copy")).rejects.toThrow(
+    expect(() => stepModel(run({ kind: "piece", plan: copyPlan } as never), "copy", workspace.row)).toThrow(
       "Falta el precio verificado del modelo gemini:sin-precio para el agente copy.",
     );
+    expect(stepModel(r, "article", workspace.row)).toBeNull();
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
@@ -342,8 +372,8 @@ describe("executeTeamStep", () => {
   it("un agente con modelo que falla antes de su llamada no gastó nada (Unspent); sin modelo, el error sigue igual", async () => {
     vi.spyOn(AGENTS.copy, "run").mockRejectedValue(new AgentError("Falta completar el paso anterior."));
     const piece = run({ kind: "piece", plan: piecePlan() } as never);
-    await expect(executeTeamStep(piece, "copy")).rejects.toBeInstanceOf(Unspent);
-    await expect(executeTeamStep(piece, "copy")).rejects.toThrow("Falta completar el paso anterior.");
+    await expect(executeTeamStep(piece, "copy", model)).rejects.toBeInstanceOf(Unspent);
+    await expect(executeTeamStep(piece, "copy", model)).rejects.toThrow("Falta completar el paso anterior.");
     vi.spyOn(AGENTS.design, "run").mockRejectedValue(new AgentError("El diseño no está listo."));
     const design = executeTeamStep(piece, "design");
     await expect(design).rejects.toThrow("El diseño no está listo.");
@@ -398,6 +428,90 @@ describe("executeTeamStep", () => {
     await expect(executeTeamStep(r, "inventado")).rejects.toThrow(AgentError);
     await expect(executeTeamStep(run({ plan: null } as never), "plan")).rejects.toThrow(
       "Paso no disponible.",
+    );
+  });
+});
+
+describe("lo que paga deja constancia de su llamada (paidCall)", () => {
+  const r = { id: "run-1", businessId: "biz-1" } as AgentRun;
+  const config: ModelConfig = { provider: "openai", model: "x", inputRate: 1, outputRate: 4, key: "k" };
+  /**
+   * Every path that pays someone, and what it would pay. A new one (a tool or a provider call) must call `paidCall()` before it
+   * pays and be added here: inside a team agent's model step (`oneCall`) that is what keeps it to one paid call.
+   */
+  const PAYING: [string, () => Promise<unknown>, () => unknown][] = [
+    ["meteredAsk (the AI provider)", () => meteredAsk(z.object({ t: z.string() }), "s", {}, config), () => fetch],
+    [
+      "startVideo (createProject + startRender)",
+      () => toolsFor({ key: "matya", tools: ["startVideo"] }, r).use("startVideo")({} as Storyboard, 10, "approved"),
+      () => [createProject, startRender],
+    ],
+    [
+      "writeArticle (createArticleReport: DataForSEO and the AI)",
+      () => toolsFor({ key: "copy", tools: ["writeArticle"] }, r).use("writeArticle")("reparar techo", "es"),
+      () => createArticleReport,
+    ],
+    [
+      "publishArticle (prepareForSite, the translation)",
+      () => toolsFor({ key: "matya", tools: ["publishArticle"] }, r).use("publishArticle")("rep1"),
+      () => prepareForSite,
+    ],
+    [
+      "publishArticle approved (approveForSite, the photo)",
+      () => toolsFor({ key: "matya", tools: ["publishArticle"] }, r).use("publishArticle")("rep1", { approved: true, expectedCents: 4 }),
+      () => approveForSite,
+    ],
+  ];
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  it.each(PAYING)("%s counts as the step's paid call, before it pays", async (_name, pay, payers) => {
+    vi.stubGlobal("fetch", vi.fn());
+    // The step already made its one paid call: this one is refused before anyone is paid.
+    await expect(
+      oneCall(async () => {
+        paidCall();
+        return pay();
+      }),
+    ).rejects.toThrow("Este paso ya hizo su llamada de pago: no se hizo otra.");
+    for (const payer of [payers()].flat()) expect(payer).not.toHaveBeenCalled();
+  });
+
+  it("of every tool, exactly startVideo, writeArticle and publishArticle record a paid call", async () => {
+    // Every tool, with whether it pays: a new tool does not compile here until someone says whether it pays someone.
+    const PAYS: Record<ToolName, boolean> = {
+      readContext: false,
+      readSeoReports: false,
+      readCalendar: false,
+      readSignals: false,
+      readStepOutput: false,
+      brandKit: false,
+      listLibrary: false,
+      renderDesign: false,
+      channelRules: false,
+      videoQuote: false,
+      startVideo: true,
+      writeArticle: true,
+      publishArticle: true,
+    };
+    vi.stubGlobal("fetch", vi.fn());
+    const recorded: string[] = [];
+    for (const name of Object.keys(PAYS) as ToolName[]) {
+      const tool = toolsFor({ key: "matya", tools: [name] }, r).use(name) as (...args: unknown[]) => unknown;
+      try {
+        // The step's one paid call was already made: a tool that records its own is refused right away.
+        await oneCall(async () => {
+          paidCall();
+          return tool("facebook", {}, "es");
+        });
+      } catch (e) {
+        if (e instanceof Error && e.message.startsWith("Este paso ya hizo su llamada de pago")) recorded.push(name);
+      }
+    }
+    expect(recorded.sort()).toEqual(
+      (Object.keys(PAYS) as ToolName[]).filter((n) => PAYS[n]).sort(),
     );
   });
 });

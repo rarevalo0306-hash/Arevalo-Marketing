@@ -160,33 +160,50 @@ export type GuardFacts = {
 
 const KEEP = " La publicación quedó como borrador.";
 
+/** How each switch is told to the owner: when a step of the team stops (`step`) or when a piece is not scheduled (`schedule`). */
+const SWITCH_WORDS = {
+  step: {
+    paused: "MATYA está en pausa: el equipo no sigue hasta que la reanudes.",
+    teamOff: "El modo equipo está apagado: el equipo no sigue con este trabajo.",
+    off: "MATYA está apagada: actívala para que el equipo siga con este trabajo.",
+  },
+  schedule: {
+    paused: "MATYA está en pausa: no se programa nada hasta que la reanudes.",
+    teamOff: "El modo equipo está apagado: las piezas del equipo no se programan.",
+    off: "MATYA está apagada: actívala para programar sus piezas.",
+  },
+} as const;
+
 /**
- * Why nothing of the team's pieces may go on now because of the switches, or null: everything paused; team mode, MATYA or the
- * publishing permission off. The first one that applies, in this order (the pause is what the owner did last and must undo
- * first). `refusalOf` starts with these; a piece's steps that spend money check them too before they reserve anything.
+ * Why no step of the team's work (a team run or one of its pieces) may start now, or null: everything paused, team mode off or
+ * MATYA off, the first that applies in this order (the pause is what the owner did last and must undo first). Checked before each
+ * of those steps reserves anything (`stepCost`) and again when it begins (`beginStep`), so a switch the owner turned off in the
+ * middle of a plan stops the next step at no cost; the steps that only observe (`isObserveStep`) are not stopped. The publishing
+ * permission is not one of them: the team may still prepare a piece, which then waits at its schedule step (`workOne`) or is
+ * refused by the guard there. `words`: how the reason is told (`switchesRefusal` tells it as a piece that is not scheduled).
+ */
+export function teamRefusal(
+  ws: Pick<GuardFacts["ws"], "pausedAt" | "teamMode" | "enabled">,
+  words: keyof typeof SWITCH_WORDS = "step",
+): string | null {
+  const say = SWITCH_WORDS[words];
+  if (ws.pausedAt) return say.paused;
+  if (!ws.teamMode) return say.teamOff;
+  if (!ws.enabled) return say.off;
+  return null;
+}
+/**
+ * Why nothing of the team's pieces may go on now because of the switches, or null: `teamRefusal`'s three (told as a piece that
+ * is not scheduled), then the publishing permission off. `refusalOf` starts with these; a piece's steps that spend money check
+ * them too before they reserve anything.
  */
 export function switchesRefusal(
   ws: Pick<GuardFacts["ws"], "pausedAt" | "teamMode" | "enabled" | "allowPublish">,
 ): string | null {
-  if (ws.pausedAt) return "MATYA está en pausa: no se programa nada hasta que la reanudes.";
-  if (!ws.teamMode) return "El modo equipo está apagado: las piezas del equipo no se programan.";
-  if (!ws.enabled) return "MATYA está apagada: actívala para programar sus piezas.";
-  if (!ws.allowPublish) return "El permiso de publicación de MATYA está apagado.";
-  return null;
-}
-/**
- * Why no step of the team's work (a team run or one of its pieces) may start now, or null: everything paused, team mode off or
- * MATYA off, the first that applies in this order. Checked before each of those steps reserves anything (`stepCost`), so a switch
- * the owner turned off in the middle of a plan stops the next step at no cost. The publishing permission is not one of them: the
- * team may still prepare a piece, which then waits at its schedule step (`workOne`) or is refused by the guard there.
- */
-export function teamRefusal(
-  ws: Pick<GuardFacts["ws"], "pausedAt" | "teamMode" | "enabled">,
-): string | null {
-  if (ws.pausedAt) return "MATYA está en pausa: el equipo no sigue hasta que la reanudes.";
-  if (!ws.teamMode) return "El modo equipo está apagado: el equipo no sigue con este trabajo.";
-  if (!ws.enabled) return "MATYA está apagada: actívala para que el equipo siga con este trabajo.";
-  return null;
+  return (
+    teamRefusal(ws, "schedule") ??
+    (ws.allowPublish ? null : "El permiso de publicación de MATYA está apagado.")
+  );
 }
 const list = (channels: string[]) => channels.join(", ");
 

@@ -3,7 +3,6 @@
 // El modelo de un paso se resuelve UNA vez, antes de reservar (`stepModel`, desde `stepCost`): se reserva el tope de una llamada
 // de ese modelo y el agente llama con ese mismo modelo, a esa misma tarifa. Así lo cobrado nunca pasa de lo reservado.
 import type { AgentRun } from "@prisma/client";
-import { db } from "@/lib/db";
 import { AgentError } from "./access";
 import { agentFor, planStepOf, type AgentDef } from "./agents";
 import { Refusal } from "./guard";
@@ -12,7 +11,7 @@ import { resolveModel } from "./models";
 import { isArticleStep } from "./plan";
 import type { StepResult } from "./queue";
 import { languageOf, type Context } from "./schema";
-import { oneCall } from "./spend";
+import { oneCall, Unspent } from "./spend";
 import { toolsFor } from "./tools";
 
 export type MatyaStepHandler = (
@@ -82,10 +81,11 @@ export function stepMeta(
 }
 
 /**
- * Does one step of a team or a piece. `reserved` is the model the step was reserved for (`stepModel`, through `stepCost`): the
- * agent calls with exactly that one. Without it (a caller that priced the step itself) the model is resolved here; a missing price
- * or key then raises its own `AgentError`. A model step makes at most one paid call, and if it fails before that call started the
- * error comes out as an `Unspent` (nothing was spent: `workOne` releases the reservation).
+ * Does one step of a team or a piece. `reserved` is the model the step was reserved for (`stepModel`, through `stepCost`): an
+ * agent that uses a model calls with exactly that one, and the model is never resolved a second time here. Without it such a
+ * step does not run (an internal error, as an `Unspent`: nothing was called, so nothing is charged). A model step makes at most
+ * one paid call, and if it fails before that call started the error comes out as an `Unspent` (`workOne` releases the
+ * reservation).
  */
 export async function executeTeamStep(
   run: AgentRun,
@@ -99,15 +99,12 @@ export async function executeTeamStep(
     if (!handler) throw new AgentError("Paso no disponible.");
     return handler(run, stepId);
   }
-  const model = usesAgentModel(def, stepId)
-    ? (reserved ??
-      resolveModel(
-        def.key,
-        await db.agentWorkspace.findUniqueOrThrow({
-          where: { businessId: run.businessId },
-        }),
-      ))
-    : null;
+  const usesModel = usesAgentModel(def, stepId);
+  const model = usesModel ? (reserved ?? null) : null;
+  if (usesModel && !model)
+    throw new Unspent(
+      "Error interno: el paso no recibió el modelo para el que se reservó. No se hizo ninguna llamada.",
+    );
   const input = {
     run,
     step,

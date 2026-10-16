@@ -18,6 +18,7 @@ import { sourceUrl } from "./network";
 import { newsFresh } from "./freshness";
 import {
   isArticleStep,
+  isObserveStep,
   Piece,
   PieceFormat,
   problemsOf,
@@ -329,14 +330,17 @@ export async function beginStep(
       throw new AgentError(
         "El conocimiento o los permisos cambiaron. Crea un encargo nuevo con la configuración actual.",
       );
-    if (!["briefing", "pause"].includes(run.kind) && !settings.enabled)
+    // The steps of the team that only observe (`isObserveStep`: a post that already left, a render already paid) finish even
+    // with the switches off; the old flows keep their check as it was.
+    const team = run.kind === "team" || run.kind === "piece";
+    const observing = team && isObserveStep(name);
+    if (!["briefing", "pause"].includes(run.kind) && !observing && !settings.enabled)
       throw new AgentError(
         "Activa MATYA y define sus límites para ejecutar este encargo.",
       );
     // `stepCost` already refused this before anything was reserved; checked again here, under the lock, for a switch the
     // owner turned off in between (team mode off does not move the revision for the steps a piece runs after a wait).
-    const off =
-      run.kind === "team" || run.kind === "piece" ? teamRefusal(settings) : null;
+    const off = team && !observing ? teamRefusal(settings) : null;
     if (off) throw new Refusal(off);
     const prior = await tx.agentStep.findUnique({
       where: { runId_name: { runId, name } },

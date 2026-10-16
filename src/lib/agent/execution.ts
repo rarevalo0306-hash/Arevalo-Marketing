@@ -54,7 +54,7 @@ import {
   teamRefusal,
   todayOf,
 } from "./guard";
-import { Piece } from "./plan";
+import { isObserveStep, Piece } from "./plan";
 import { approvalNeeded, pieceStepCost, publishStepName, waitForOwner, waitForVideo } from "./piece-steps";
 import { channelTexts } from "./review-rules";
 import { readStepOutput } from "./tools";
@@ -70,18 +70,17 @@ async function output(runId: string, name: string) {
     throw new AgentError("Falta completar el paso anterior.");
   return step.output;
 }
-/**
- * What a step reserves before it runs (`workOne`), and for a step of the team done with an agent's model, that model: the step is
- * reserved for it and the agent calls with exactly it (`executeTeamStep`), so the charge can never pass the reservation.
- */
+/** The cents a step reserves, with the model it was reserved for when an agent's model does it (see `stepCost`). */
 export type StepCost = number | { cents: number; model: ModelConfig };
 /**
- * What a step reserves before it runs: the one place every step is priced.
+ * What a step reserves before it runs (`workOne`): the one place every step is priced.
  * - A step of a team or of a piece first checks the team's switches (paused, team mode, MATYA): any of them off is a `Refusal`
- *   and nothing is reserved. Then a piece's money steps (the video's quote, the render at its quoted price, the article and its
- *   publication) are `pieceStepCost`'s; a step done with an agent's model (the director's plan, the research, the strategy, the
- *   copy and the review, with their rounds) reserves the most one call of that model costs (`agentCeiling`), with the model it
- *   resolved (a missing price or key is a `Refusal`); every other step (design, video, MATYA's own code) reserves nothing.
+ *   and nothing is reserved; only the steps that observe (`verify`, `video_wait`: `isObserveStep`) still finish. Then a piece's
+ *   money steps (the video's quote, the render at its quoted price, the article and its publication) are `pieceStepCost`'s; a
+ *   step done with an agent's model (the director's plan, the research, the strategy, the copy and the review, with their rounds)
+ *   reserves the most one call of that model costs (`agentCeiling`) and returns that model, which the agent then calls with
+ *   (`executeTeamStep`): the charge never passes the reservation. A missing price or key is a `Refusal`. Every other step
+ *   (design, video, MATYA's own code) reserves nothing.
  * - Every step of the old flows keeps the cost it always had, as a plain number.
  */
 export async function stepCost(name: string, run?: AgentRun): Promise<StepCost> {
@@ -89,7 +88,7 @@ export async function stepCost(name: string, run?: AgentRun): Promise<StepCost> 
     const ws = await db.agentWorkspace.findUniqueOrThrow({
       where: { businessId: run.businessId },
     });
-    const off = teamRefusal(ws);
+    const off = isObserveStep(name) ? null : teamRefusal(ws);
     if (off) throw new Refusal(off);
     if (run.kind === "piece") {
       const own = await pieceStepCost(name, run);

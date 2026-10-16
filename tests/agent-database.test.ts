@@ -18,7 +18,8 @@ import {
 } from "@/lib/agent/queue";
 import { reworkSteps, stepsForPiece, type ReviewProblem } from "@/lib/agent/plan";
 import type { AgentRun } from "@prisma/client";
-import { workOne, executeStep, analyzeResults, stepCost, drain } from "@/lib/agent/execution";
+import { workOne, executeStep, analyzeResults, stepCost, drain, type StepCost } from "@/lib/agent/execution";
+import { stepModel } from "@/lib/agent/team-execution";
 import { enqueueDailyPlans } from "@/lib/agent/daily";
 import { collectSignals } from "@/lib/agent/signals";
 import { runAgentCycle } from "@/lib/agent/service";
@@ -34,7 +35,7 @@ import { ensureStoredCopy } from "@/lib/library-files";
 import { AGENTS } from "@/lib/agent/agents";
 import { Copy as CopySchema, type Context } from "@/lib/agent/schema";
 import { boundedContext } from "@/lib/agent/bounded-context";
-import { meteredAsk, modelConfig } from "@/lib/agent/metered";
+import { meteredAsk, modelConfig, type ModelConfig } from "@/lib/agent/metered";
 import { MEDIA_POLICY, SYSTEM } from "@/lib/agent/prompts";
 import { CALENDAR_LIMITS, readStepOutput, toolsFor } from "@/lib/agent/tools";
 import { assertCanSchedule, Refusal } from "@/lib/agent/guard";
@@ -136,6 +137,20 @@ const ask = (
   text = "Prepara una campaña",
   extra: Record<string, unknown> = {},
 ) => enqueue(A, { text, requestKey: key(crypto.randomUUID()), ...extra });
+/**
+ * A fixed reservation for a test that prices the steps itself. Like `stepCost`, it hands over the model a team agent's step is
+ * reserved for: the executor only ever calls with that one (it never resolves the model again). The old flows and the steps
+ * without a model get the plain number.
+ */
+const reserving =
+  (cents: (name: string, run: AgentRun) => number) =>
+  async (name: string, run: AgentRun): Promise<StepCost> => {
+    const n = cents(name, run);
+    if (run.kind !== "team" && run.kind !== "piece") return n;
+    const ws = await db.agentWorkspace.findUniqueOrThrow({ where: { businessId: run.businessId } });
+    const model = stepModel(run, name, ws);
+    return model ? { cents: n, model } : n;
+  };
 const research = {
   summary: "Objetivo",
   audience: "Propietarios",
@@ -278,7 +293,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     await libraryItem("unreviewed", { status: "new" });
     await libraryItem("unrelated", { tags: ["automóviles"], quality: 5 });
     const r = await visualRun("campaign");
-    await workOne(A, executeStep, () => 0);
+    await workOne(A, executeStep, reserving(() => 0));
     expect(storeDesign).toHaveBeenCalledTimes(3);
     for (const [input, businessId] of vi.mocked(storeDesign).mock.calls) {
       expect(businessId).toBe(A);
@@ -299,7 +314,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     await libraryItem("private", { privacy: ["document"] });
     await libraryItem("skipped", { choice: "skip" });
     const r = await visualRun("campaign");
-    await workOne(A, executeStep, () => 0);
+    await workOne(A, executeStep, reserving(() => 0));
     expect(storeDesign).toHaveBeenCalledTimes(3);
     for (const [input] of vi.mocked(storeDesign).mock.calls) {
       expect(input.photoUrl).toBeUndefined();
@@ -326,7 +341,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     await libraryItem("other-company-clip", { businessId: B, kind: "video", durationSec: 8, quality: 5 });
     await libraryItem("private-clip", { kind: "video", privacy: ["child"], durationSec: 8, quality: 5 });
     const r = await visualRun("video");
-    await workOne(A, executeStep, () => 0);
+    await workOne(A, executeStep, reserving(() => 0));
     await workOne(A, executeStep, (name) => name === "video" ? 50 : 0);
     expect(startRender).toHaveBeenCalledTimes(1);
     const args = vi.mocked(startRender).mock.calls[0];
@@ -346,7 +361,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     const usedElsewhere = await libraryItem("used-today", { usedCount: 1, lastUsedAt: new Date() });
     const clip = await libraryItem("clip", { kind: "video", durationSec: 8 });
     const r = await visualRun("video");
-    await workOne(A, executeStep, () => 0);
+    await workOne(A, executeStep, reserving(() => 0));
     await workOne(A, executeStep, (name) => name === "video" ? 50 : 0);
     expect(startRender).toHaveBeenCalledTimes(1);
     const storyboard = (await loadProject(A, vi.mocked(startRender).mock.calls[0][1])).project.storyboard;
@@ -374,7 +389,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       const r = await ask("Prepara una campaña sobre techos");
       await workOne(A, async () => ({ data: research }), () => 0);
       vi.mocked(meteredAsk).mockResolvedValueOnce({ value: copy, usage });
-      await workOne(A, executeStep, () => 10);
+      await workOne(A, executeStep, reserving(() => 10));
       expect(meteredAsk).toHaveBeenCalledTimes(1);
       const [schema, system, payload, config] = vi.mocked(meteredAsk).mock.calls[0];
       expect(schema).toBe(CopySchema);
@@ -398,7 +413,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       const r = await ask(prompt, { kind });
       await workOne(A, async () => ({ data: research }), () => 0);
       await workOne(A, async () => ({ data: { ...copy, title: "Techos", headline: "¿Cómo cuidas tu techo?" } }), () => 0);
-      await workOne(A, executeStep, () => 0);
+      await workOne(A, executeStep, reserving(() => 0));
       return db.agentStep.findUniqueOrThrow({ where: { runId_name: { runId: r.id, name: "design" } } });
     };
     const shapes = ["square", "story", "wide"] as const;
@@ -604,7 +619,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
   });
   it("executes a campaign through real preparation/scheduling and per-channel verification", async () => {
     const r = await prepared();
-    await workOne(A, executeStep, () => 0);
+    await workOne(A, executeStep, reserving(() => 0));
     expect(
       await db.post.findUnique({ where: { id: `agent-${r.id}` } }),
     ).toMatchObject({ status: "scheduled" });
@@ -622,26 +637,26 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       where: { id: `agent-${r.id}` },
       data: { status: "done" },
     });
-    await workOne(A, executeStep, () => 0);
+    await workOne(A, executeStep, reserving(() => 0));
     const done = await db.agentRun.findUniqueOrThrow({ where: { id: r.id } });
     expect(done.status).toBe("completed");
     expect(JSON.stringify(done.result)).toContain("fixture-confirmation");
   });
   it("waits for optional approval and records it on the same run", async () => {
     const r = await prepared("approval");
-    await workOne(A, executeStep, () => 0);
+    await workOne(A, executeStep, reserving(() => 0));
     expect(await db.agentRun.findUnique({ where: { id: r.id } })).toMatchObject(
       { status: "waiting_approval", stage: 4 },
     );
     await changeRun(A, r.id, "approve");
-    await workOne(A, executeStep, () => 0);
+    await workOne(A, executeStep, reserving(() => 0));
     expect(
       await db.post.findUnique({ where: { id: `agent-${r.id}` } }),
     ).toMatchObject({ status: "scheduled" });
   });
   it("cancellation unschedules only an unclaimed post", async () => {
     const r = await prepared();
-    await workOne(A, executeStep, () => 0);
+    await workOne(A, executeStep, reserving(() => 0));
     await changeRun(A, r.id, "cancel");
     expect(
       await db.post.findUnique({ where: { id: `agent-${r.id}` } }),
@@ -650,7 +665,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
   });
   it("legacy publishing cannot bypass disabled or revised agent policy", async () => {
     const r = await prepared();
-    await workOne(A, executeStep, () => 0);
+    await workOne(A, executeStep, reserving(() => 0));
     await saveSettings(A, { ...settings, allowPublish: false });
     expect(await claimAgentPost(`agent-${r.id}`)).toEqual({ count: 0 });
     expect(
@@ -785,12 +800,12 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       projectCost((await loadProject(A, args[1])).project.storyboard),
     );
     expect(quote).toBeLessThanOrEqual(50);
-    await workOne(A, executeStep, () => 0);
+    await workOne(A, executeStep, reserving(() => 0));
     expect(await db.agentRun.findUnique({ where: { id: r.id } })).toMatchObject(
       { status: "waiting_provider", stage: 4, chargedCents: 50 },
     );
     await changeRun(A, r.id, "refresh");
-    await workOne(A, executeStep, () => 0);
+    await workOne(A, executeStep, reserving(() => 0));
     expect(startRender).toHaveBeenCalledTimes(1);
     expect(advanceRender).toHaveBeenCalledTimes(2);
     expect(
@@ -817,7 +832,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
   });
   it("caps actual delivery on the sending day, including delayed scheduled work", async () => {
     const r = await prepared();
-    await workOne(A, executeStep, () => 0);
+    await workOne(A, executeStep, reserving(() => 0));
     await db.agentBudget.updateMany({
       where: { businessId: A },
       data: { deliveries: 3 },
@@ -1161,7 +1176,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
   });
   it("refuses redo unless a piece waits right after its review, and two clicks add one round", async () => {
     const r = await prepared("approval");
-    await workOne(A, executeStep, () => 0);
+    await workOne(A, executeStep, reserving(() => 0));
     expect(await row(r.id)).toMatchObject({ status: "waiting_approval", stage: 4 });
     await expect(changeRun(A, r.id, "redo")).rejects.toThrow("rehacer");
     expect(await row(r.id)).toMatchObject({ status: "waiting_approval", plan: null });
@@ -1409,7 +1424,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
         .mockResolvedValue({ data: { goal: "Más llamadas", maxPieces: 2, reply: "" } });
       let calls: (typeof director.mock.calls);
       try {
-        await workOne(A, executeStep, () => 0);
+        await workOne(A, executeStep, reserving(() => 0));
         calls = [...director.mock.calls];
       } finally {
         // Even if the step fails, the spy must not leak into the next test.
@@ -1447,7 +1462,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
           reply({ reply: "Abrimos de 8 a 5.", goal: "Responder", maxPieces: 0 }),
         );
         vi.stubGlobal("fetch", fetchStub);
-        await workOne(A, executeStep, () => 10);
+        await workOne(A, executeStep, reserving(() => 10));
         expect(fetchStub).toHaveBeenCalledTimes(1);
         expect(await row(team.id)).toMatchObject({
           status: "completed",
@@ -1459,7 +1474,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
           await db.agentMessage.findFirstOrThrow({ where: { runId: team.id, role: "assistant" } }),
         ).toMatchObject({ text: "Abrimos de 8 a 5." });
         // Nothing is left to run.
-        expect(await workOne(A, executeStep, () => 10)).toBe(false);
+        expect(await workOne(A, executeStep, reserving(() => 10))).toBe(false);
       });
 
       it("a plan with no pieces and no text still ends the run, with the default text", async () => {
@@ -1470,12 +1485,12 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
           "fetch",
           vi.fn().mockResolvedValue(reply({ reply: "", goal: "Nada", maxPieces: 0 })),
         );
-        await workOne(A, executeStep, () => 10);
+        await workOne(A, executeStep, reserving(() => 10));
         expect(await row(team.id)).toMatchObject({ status: "completed", chargedCents: 1 });
         expect(
           await db.agentMessage.findFirstOrThrow({ where: { runId: team.id, role: "assistant" } }),
         ).toMatchObject({ text: "No hace falta contenido nuevo por ahora." });
-        expect(await workOne(A, executeStep, () => 10)).toBe(false);
+        expect(await workOne(A, executeStep, reserving(() => 10))).toBe(false);
       });
 
       it("a plan continues to research, which makes no paid call without saved reports or news", async () => {
@@ -1486,9 +1501,9 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
           .fn()
           .mockResolvedValue(reply({ reply: "", goal: "Más llamadas por goteras", maxPieces: 3 }));
         vi.stubGlobal("fetch", fetchStub);
-        await workOne(A, executeStep, () => 10);
+        await workOne(A, executeStep, reserving(() => 10));
         expect(await row(team.id)).toMatchObject({ status: "queued", stage: 1, chargedCents: 1 });
-        await workOne(A, executeStep, () => 10);
+        await workOne(A, executeStep, reserving(() => 10));
         // The research step ran (it cost nothing) and the provider was called only for the plan.
         expect(fetchStub).toHaveBeenCalledTimes(1);
         const step = await db.agentStep.findUniqueOrThrow({
@@ -1504,14 +1519,14 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       stubModel(true);
       const child = await pieceRun();
       // Copy and design are stubbed; the review step is routed to the review agent, whose run is a spy here.
-      const stubbed = async (run: AgentRun, name: string): Promise<StepResult> =>
-        ["copy", "design"].includes(name) ? { data: {} } : executeStep(run, name);
+      const stubbed = async (run: AgentRun, name: string, model?: ModelConfig): Promise<StepResult> =>
+        ["copy", "design"].includes(name) ? { data: {} } : executeStep(run, name, model);
       const review = vi
         .spyOn(AGENTS.review, "run")
         .mockResolvedValue({ data: { approved: true, problems: [], ruleProblems: [] } });
       let calls: typeof review.mock.calls;
       try {
-        for (let i = 0; i < 3; i++) await workOne(A, stubbed, () => 0);
+        for (let i = 0; i < 3; i++) await workOne(A, stubbed, reserving(() => 0));
         calls = [...review.mock.calls];
       } finally {
         review.mockRestore();
@@ -1535,7 +1550,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       const team = await ask("x", { kind: "team" });
       const run = vi.spyOn(AGENTS.director, "run");
       try {
-        await workOne(A, executeStep, () => 0);
+        await workOne(A, executeStep, reserving(() => 0));
         expect(run).not.toHaveBeenCalled();
       } finally {
         run.mockRestore();
@@ -1549,7 +1564,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
 
     it("keeps the old kinds on their old route", async () => {
       const r = await ask("Ponme al día", { kind: "briefing" });
-      await workOne(A, executeStep, () => 0);
+      await workOne(A, executeStep, reserving(() => 0));
       expect(await row(r.id)).toMatchObject({ status: "completed", error: "" });
     });
 
@@ -1808,8 +1823,8 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     /** The team's first steps are stubbed with their output; every other step is the real one. */
     const stub =
       (outputs: Record<string, unknown>) =>
-      async (run: AgentRun, name: string): Promise<StepResult> =>
-        name in outputs ? { data: outputs[name] } : executeStep(run, name);
+      async (run: AgentRun, name: string, model?: ModelConfig): Promise<StepResult> =>
+        name in outputs ? { data: outputs[name] } : executeStep(run, name, model);
     async function team(strategy: unknown, plan: unknown = PLAN) {
       const run = await ask("Prepara contenido de goteras", { kind: "team" });
       // plan, research, strategy (stubbed) and then the real dispatch.
@@ -1980,7 +1995,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       await saveSettings(A, teamSettings());
       const parent = await ask("x", { kind: "team" });
       await db.agentRun.update({ where: { id: parent.id }, data: { stage: 3 } });
-      await workOne(A, executeStep, () => 0);
+      await workOne(A, executeStep, reserving(() => 0));
       // Like any step that fails after it began: the run stops and keeps the message (nothing was reserved).
       expect(await row(parent.id)).toMatchObject({
         status: "uncertain",
@@ -2215,7 +2230,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
         );
         vi.stubGlobal("fetch", fetchStub);
         const run = stub({ plan: PLAN, research: { items: [{ kind: "news", detail: "d", source: "news@n1" }], digest: [] } });
-        for (let i = 0; i < 4; i++) await workOne(A, run, () => 10);
+        for (let i = 0; i < 4; i++) await workOne(A, run, reserving(() => 10));
 
         // One paid call, for the strategy only.
         expect(fetchStub).toHaveBeenCalledTimes(1);
@@ -2291,7 +2306,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       const photo = await libraryItem("techos-photo");
       const child = await pieceOf();
       vi.mocked(meteredAsk).mockResolvedValueOnce({ value: ROOF_COPY, usage });
-      await workOne(A, executeStep, () => 10);
+      await workOne(A, executeStep, reserving(() => 10));
       expect(meteredAsk).toHaveBeenCalledTimes(1);
       const [schema, system, payload, model] = vi.mocked(meteredAsk).mock.calls[0];
       expect(schema).toBe(CopySchema);
@@ -2317,7 +2332,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       }).filter((n) => n.blocking);
       expect(blocking).toEqual([]);
 
-      await workOne(A, executeStep, () => 0);
+      await workOne(A, executeStep, reserving(() => 0));
       expect(meteredAsk).toHaveBeenCalledTimes(1);
       expect(designStore()).toHaveLength(3);
       for (const [input, businessId] of designStore()) {
@@ -2336,8 +2351,8 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     it("a piece with no library photo uses its brand templates", async () => {
       const child = await pieceOf();
       vi.mocked(meteredAsk).mockResolvedValueOnce({ value: ROOF_COPY, usage });
-      await workOne(A, executeStep, () => 10);
-      await workOne(A, executeStep, () => 0);
+      await workOne(A, executeStep, reserving(() => 10));
+      await workOne(A, executeStep, reserving(() => 0));
       expect(designStore()).toHaveLength(3);
       for (const [input] of designStore()) expect(input.photoUrl).toBeUndefined();
       expect(await output(child.id, "design")).toMatchObject({
@@ -2352,11 +2367,11 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       vi.mocked(meteredAsk)
         .mockResolvedValueOnce({ value: ROOF_COPY, usage })
         .mockResolvedValueOnce({ value: ROOF_COPY_R1, usage });
-      const exec = async (run: AgentRun, name: string): Promise<StepResult> =>
+      const exec = async (run: AgentRun, name: string, model?: ModelConfig): Promise<StepResult> =>
         name === "review"
           ? { data: { approved: false, problems: PROBLEMS }, insertSteps: reworkSteps(PROBLEMS, 0) }
-          : executeStep(run, name);
-      for (let i = 0; i < 5; i++) await workOne(A, exec, (name) => (name.startsWith("copy") ? 10 : 0));
+          : executeStep(run, name, model);
+      for (let i = 0; i < 5; i++) await workOne(A, exec, reserving((name) => (name.startsWith("copy") ? 10 : 0)));
       return { photo, child };
     }
 
@@ -2463,15 +2478,15 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     /** Copy and design are stubbed (the writer's round `copy-r1` answers `fixed`); the review is the real agent. */
     const exec =
       (first: object, fixed: object = first, ran: string[] = []) =>
-      async (run: AgentRun, name: string): Promise<StepResult> => {
+      async (run: AgentRun, name: string, model?: ModelConfig): Promise<StepResult> => {
         ran.push(name);
         if (name === "copy") return { data: first };
         if (name.startsWith("copy-r")) return { data: fixed };
         if (name.startsWith("design")) return { data: DESIGN };
-        return executeStep(run, name);
+        return executeStep(run, name, model);
       };
-    /** The review steps reserve a paid call; everything else is free. */
-    const cost = (name: string) => (name.startsWith("review") ? 10 : 0);
+    /** The review steps reserve a paid call (with their model); everything else is free. */
+    const cost = reserving((name: string) => (name.startsWith("review") ? 10 : 0));
     const stepOf = (runId: string, name: string) =>
       db.agentStep.findUniqueOrThrow({ where: { runId_name: { runId, name } } });
     const SEQUENCE = ["copy", "design", "review", "copy-r1", "design-r1", "review-r1"];
@@ -3171,12 +3186,12 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     // ---------- The video ----------
 
     /** copy and design are stubbed; the video step and everything after it are the real ones, with the real costs. */
-    const exec = (run: AgentRun, name: string): Promise<StepResult> =>
+    const exec = (run: AgentRun, name: string, model?: ModelConfig): Promise<StepResult> =>
       name === "copy"
         ? Promise.resolve({ data: VCOPY })
         : name === "design"
           ? Promise.resolve({ data: VDESIGN })
-          : executeStep(run, name);
+          : executeStep(run, name, model);
     const cost = (name: string, run: AgentRun) => (name === "copy" || name === "design" ? 0 : stepCost(name, run));
     async function quoted() {
       const [piece] = await spawnPieces(await teamParent(), [VIDEO]);
@@ -3704,7 +3719,8 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       });
       const piece = await article();
       // The review is the only step of the model; it reserves its call as the engine will (Task 13 wires this).
-      const costOf = (name: string, run: AgentRun) => (name === "review" ? 10 : stepCost(name, run));
+      const costOf = (name: string, run: AgentRun) =>
+        name === "review" ? reserving(() => 10)(name, run) : stepCost(name, run);
       await workOne(A, executeStep, costOf);
       expect(await row(piece.id)).toMatchObject({ status: "waiting_approval", stage: 0 });
       // The owner saves the settings while the draft waits: the approval that follows still takes the piece to the end.
@@ -3744,10 +3760,10 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       // Rehacer while the first draft's photo waits.
       await changeRun(A, piece.id, "redo");
       expect(stepsOf(await row(piece.id))).toEqual(["article", "review", "article-r1", "review-r1", "article_publish"]);
-      const exec = (run: AgentRun, name: string): Promise<StepResult> =>
+      const exec = (run: AgentRun, name: string, model?: ModelConfig): Promise<StepResult> =>
         name === "review-r1"
           ? Promise.resolve({ data: { approved: true, problems: [], ruleProblems: [] } })
-          : executeStep(run, name);
+          : executeStep(run, name, model);
       // The new draft is paid and asks for its own approval.
       await workOne(A, exec);
       expect(createArticleReport).not.toHaveBeenCalled();
@@ -3780,10 +3796,10 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       const piece = await reviewedArticle();
       await workOne(A);
       await changeRun(A, piece.id, "redo");
-      const exec = (run: AgentRun, name: string): Promise<StepResult> =>
+      const exec = (run: AgentRun, name: string, model?: ModelConfig): Promise<StepResult> =>
         name === "review-r1"
           ? Promise.resolve({ data: { approved: true, problems: [], ruleProblems: [] } })
-          : executeStep(run, name);
+          : executeStep(run, name, model);
       await workOne(A, exec);
       await changeRun(A, piece.id, "approve");
       await workOne(A, exec);
@@ -3818,10 +3834,11 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       await saveSettings(A, { ...settings, teamMode: true, objective: "Otro objetivo" });
       await changeRun(A, piece.id, "approve");
       // The review is the one step of the model; it reserves its call as the engine will (Task 13 wires this).
-      const costOf = (name: string, run: AgentRun) => (name.startsWith("review") ? 10 : cost(name, run));
+      const costOf = (name: string, run: AgentRun) =>
+        name.startsWith("review") ? reserving(() => 10)(name, run) : cost(name, run);
       const ran: string[] = [];
       for (let i = 0; i < 5; i++)
-        await workOne(A, (run, name) => (ran.push(name), exec(run, name)), costOf);
+        await workOne(A, (run, name, model) => (ran.push(name), exec(run, name, model)), costOf);
       expect(ran).toEqual(["render", "video_wait:0", "review", "prepare", "schedule"]);
       const post = await db.post.findUniqueOrThrow({ where: { id: `agent-${piece.id}` } });
       expect(post).toMatchObject({ status: "scheduled", kind: "video", mediaUrl: "https://example.com/piece.mp4" });
@@ -4058,7 +4075,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       const piece = await article();
       await done(piece.id, "article", { reportId: "rep1" });
       await goTo(piece, "review");
-      await workOne(A, executeStep, () => 0);
+      await workOne(A, executeStep, reserving(() => 0));
       const review = await stepOf(piece.id, "review");
       expect(review).toMatchObject({
         agent: "review",
@@ -4084,7 +4101,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       const asIs = await article();
       await done(asIs.id, "article", { reportId: "rep1" });
       await goTo(asIs, "review");
-      await workOne(A, executeStep, () => 0);
+      await workOne(A, executeStep, reserving(() => 0));
       expect(await row(asIs.id)).toMatchObject({ status: "waiting_approval" });
       // Approve as it is: R5 wants an approval after the review, and it is that one.
       await changeRun(A, asIs.id, "approve");
@@ -4096,7 +4113,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       const redone = await article({ id: "p5", topic: "Otro tema de techos" });
       await done(redone.id, "article", { reportId: "rep1" });
       await goTo(redone, "review");
-      await workOne(A, executeStep, () => 0);
+      await workOne(A, executeStep, reserving(() => 0));
       expect(await row(redone.id)).toMatchObject({ status: "waiting_approval" });
       await changeRun(A, redone.id, "redo");
       expect(stepsOf(await row(redone.id))).toEqual(["article", "review", "article-r1", "review-r1", "article_publish"]);
@@ -4122,7 +4139,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
         value: { approved: true, problems: [] },
         usage: { inputTokens: 100, outputTokens: 50, cents: 3, model: "gemini-x" },
       });
-      await workOne(A, executeStep, (name) => (name === "review" ? 10 : 0));
+      await workOne(A, executeStep, reserving((name) => (name === "review" ? 10 : 0)));
       expect(meteredAsk).toHaveBeenCalledTimes(1);
       const payload = vi.mocked(meteredAsk).mock.calls[0][2] as { copy: { title: string; texts: Record<string, string> }; design: { mediaType: string } };
       expect(payload.copy.title).toBe("Reparación de techos en Miami");
@@ -4139,7 +4156,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       await db.seoReport.update({ where: { id: "rep1" }, data: { businessId: B } });
       await done(piece.id, "article", { reportId: "rep1" });
       await goTo(piece, "review");
-      await workOne(A, executeStep, () => 0);
+      await workOne(A, executeStep, reserving(() => 0));
       // The review stops before its paid call: nothing was spent, so the piece is blocked (not left with an outcome to check).
       expect(await row(piece.id)).toMatchObject({ status: "blocked", error: expect.stringContaining("anterior") });
       expect(meteredAsk).not.toHaveBeenCalled();
@@ -4155,7 +4172,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     /** A campaign run with its post scheduled: queued right before `verify`. */
     async function scheduled() {
       const r = await prepared();
-      await workOne(A, executeStep, () => 0);
+      await workOne(A, executeStep, reserving(() => 0));
       expect(await post(`agent-${r.id}`)).toMatchObject({ status: "scheduled" });
       return r;
     }
@@ -4671,7 +4688,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       const r = await prepared("approval");
       expect(stepsOf(await row(r.id))[(await row(r.id)).stage]).toBe("schedule");
       afterNextClaim(() => pauseAll(A));
-      await workOne(A, executeStep, () => 0);
+      await workOne(A, executeStep, reserving(() => 0));
       expect(await row(r.id)).toMatchObject({ status: "cancelled", leaseToken: "", leaseUntil: null, reservedCents: 0, error: "Trabajo cancelado." });
       expect(await db.agentStep.count({ where: { runId: r.id, name: "schedule" } })).toBe(0);
       expect(await post(`agent-${r.id}`)).toMatchObject({ status: "draft" }); // prepared, never scheduled
@@ -4682,7 +4699,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       const r = await scheduled();
       // A plain flag, so the post is still scheduled and the verify branch would park the run.
       afterNextClaim(() => db.agentRun.update({ where: { id: r.id }, data: { cancelRequested: true } }));
-      await workOne(A, executeStep, () => 0);
+      await workOne(A, executeStep, reserving(() => 0));
       expect(await row(r.id)).toMatchObject({ status: "cancelled", leaseToken: "", leaseUntil: null, error: "Trabajo cancelado." });
       expect(await db.agentStep.count({ where: { runId: r.id, name: "verify" } })).toBe(0);
     });
