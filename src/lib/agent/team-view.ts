@@ -1,6 +1,6 @@
 // La vista del equipo: en qué columna del tablero está cada encargo, cómo va y qué espera del dueño.
 // Módulo puro y seguro para el cliente: sin base de datos, sin red y sin el registro de agentes (`agents/index`, solo del servidor).
-// Lo consumen las pantallas Hoy y Equipo, los emails de alerta y la sección del reporte diario; `loadTeamRuns` (service.ts) lo llena.
+// Lo consumen las pantallas Hoy y Equipo, los emails de alerta y la sección del reporte diario; `loadTeamRuns` (team-load.ts) lo llena.
 import { TEAM_STEPS, isArticleStep, problemsOf, stepsOfPlan } from "./plan";
 
 export type TeamStepView = {

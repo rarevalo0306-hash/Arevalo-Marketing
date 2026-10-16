@@ -27,6 +27,8 @@ import { dailyPlanKey, enqueueDailyPlans } from "@/lib/agent/daily";
 import { collectSignals } from "@/lib/agent/signals";
 import { runAgentCycle, loadTeamRuns, snapshot, teamSnapshot } from "@/lib/agent/service";
 import { sendAgentAlerts } from "@/lib/agent/alerts";
+import { loadMatyaDaily } from "@/lib/agent/daily-section";
+import { runDailyReports, sendDailyReport } from "@/lib/daily-report";
 import { SenderConfigError, sendSeoEmail } from "@/lib/seo/alerts";
 import { boardColumn, needsYou } from "@/lib/agent/team-view";
 import { claimAgentPost } from "@/lib/agent/publication";
@@ -87,6 +89,16 @@ vi.mock("@/lib/agent/alerts", async (original) => {
   const real = await original<typeof import("@/lib/agent/alerts")>();
   return { ...real, sendAgentAlerts: vi.fn(real.sendAgentAlerts) };
 });
+// The team's daily reports are real (a test of the report sends them through the mocked sender), unless a test of the cycle gives the
+// call a fixed answer or makes it fail. The section's loading is real too, unless a test makes it fail.
+vi.mock("@/lib/daily-report", async (original) => {
+  const real = await original<typeof import("@/lib/daily-report")>();
+  return { ...real, runDailyReports: vi.fn(real.runDailyReports) };
+});
+vi.mock("@/lib/agent/daily-section", async (original) => {
+  const real = await original<typeof import("@/lib/agent/daily-section")>();
+  return { ...real, loadMatyaDaily: vi.fn(real.loadMatyaDaily) };
+});
 // The real provider call, unless a test gives it a fixed answer (`mockResolvedValueOnce`).
 vi.mock("@/lib/agent/metered", async (original) => {
   const real = await original<typeof import("@/lib/agent/metered")>();
@@ -131,6 +143,8 @@ import {
   loadVideoMedia,
   maxCentsPerVideo,
 } from "@/lib/video-jobs";
+/** What `runDailyReports` does when no test replaced it: every test starts from it. */
+const realRunDailyReports = vi.mocked(runDailyReports).getMockImplementation() as typeof runDailyReports;
 const url = process.env.MATYA_TEST_DATABASE_URL ?? "";
 const safe =
   !!url &&
@@ -238,6 +252,7 @@ const pinWeekdayMorning = () => vi.useFakeTimers({ toFake: ["Date"], now: weekda
 describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    vi.mocked(runDailyReports).mockReset().mockImplementation(realRunDailyReports);
     vi.mocked(videoBlocker).mockReturnValue(null);
     process.env.MATYA_AGENT_ENABLED = "true";
     await db.business.deleteMany({ where: { id: { in: [A, B] } } });
@@ -6044,6 +6059,20 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       expect(await sendAgentAlerts(later(3))).toEqual(none);
     });
 
+    it("a business with nothing to say does not read the registry of sent alerts", async () => {
+      const read = vi.spyOn(db.seoReport, "findMany");
+      try {
+        expect(await sendAgentAlerts(NOW)).toEqual(none);
+        expect(read).not.toHaveBeenCalled();
+        // With something to say, the registry is read (what was already told must not be told again).
+        await video(A, "Techos");
+        expect(await sendAgentAlerts(later(1))).toEqual({ sent: 1, skipped: 0, errors: 0 });
+        expect(read).toHaveBeenCalled();
+      } finally {
+        read.mockRestore();
+      }
+    });
+
     it("alerts older than 30 days are forgotten, so a fact that still stands is told again", async () => {
       const waiting = await video(A, "Techos");
       expect(await sendAgentAlerts(NOW)).toEqual({ sent: 1, skipped: 0, errors: 0 });
@@ -6057,6 +6086,8 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       await saveSettings(A, { ...settings, teamMode: true, enabled: false });
       await saveSettings(B, { ...settings, industry: "commercial-security-ni", enabled: false });
       await video(A, "Techos");
+      // The tick also runs the daily reports: here they find nothing, so the only email is the alert (they have their own tests).
+      vi.mocked(runDailyReports).mockResolvedValue({ checked: 0, sent: 0, skipped: 0, errors: 0, waiting: 0, businesses: [] });
 
       vi.mocked(drain).mockResolvedValueOnce(0);
       await runAgentCycle(A);
@@ -6087,6 +6118,363 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       vi.mocked(sendAgentAlerts).mockClear();
       await runAgentCycle();
       expect(sendAgentAlerts).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("the MATYA section of the daily report", () => {
+    const NOW = new Date("2026-10-16T12:00:00Z"); // 08:00 in New York (A): today is 2026-10-16, the report is for 2026-10-15
+    const TODAY = "2026-10-16";
+    const YESTERDAY = "2026-10-15";
+    const MINUTE = 60_000;
+    const sender = { name: "Ricardo PA", email: "avisos@example.com", apiKey: "synthetic-no-provider-access", via: "app" as const };
+    let seq = 0;
+    beforeEach(async () => {
+      vi.mocked(sendSeoEmail).mockReset().mockResolvedValue(sender);
+      // The AI never writes the report's highlights here: no paid call.
+      vi.stubEnv("GEMINI_API_KEY", "");
+      await db.business.update({ where: { id: A }, data: { ownerEmail: "dueno-a@example.com", createdAt: new Date("2020-01-01T00:00:00Z") } });
+      await db.business.update({ where: { id: B }, data: { createdAt: new Date("2021-01-01T00:00:00Z") } });
+      await saveSettings(A, { ...settings, teamMode: true, dailyHour: 7 });
+      await ticked(NOW);
+      vi.useFakeTimers({ toFake: ["Date"], now: NOW });
+    });
+    afterEach(() => vi.unstubAllEnvs());
+    /** The worker's once-a-minute call ran a minute before `at`. */
+    const ticked = (at: Date, minutesAgo = 1) =>
+      db.agentWorkspace.update({ where: { businessId: A }, data: { tickAt: new Date(at.getTime() - minutesAgo * MINUTE) } });
+    /** Today's morning plan, as the cron makes it (its key is the day's). */
+    const morningPlan = (status: string, businessId = A) =>
+      db.agentRun.create({
+        data: {
+          businessId,
+          requestKey: dailyPlanKey(businessId, TODAY),
+          kind: "team",
+          origin: "daily",
+          prompt: "Plan del día",
+          context: {},
+          status,
+          plan: { kind: "team" },
+          createdAt: new Date("2026-10-16T11:00:00Z"),
+        },
+      });
+    const stepOf = (runId: string, name: string, output: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+      db.agentStep.create({ data: { runId, name, specialist: "matya", agent: "director", budgetDay: TODAY, status: "succeeded", output: output as never, ...extra } });
+    const planned = async (status = "completed") => {
+      const plan = await morningPlan(status);
+      await stepOf(plan.id, "plan", { goal: "Conseguir llamadas de dueños con goteras" });
+      await stepOf(plan.id, "dispatch", {
+        pieces: [
+          { id: "p1", topic: "Techos <b>seguros</b>", objective: "Que llamen hoy", channels: ["facebook", "instagram"], format: "video", keyword: "" },
+          { id: "p2", topic: "Goteras", objective: "", channels: ["facebook"], format: "post", keyword: "" },
+        ],
+        dropped: [],
+      });
+      return plan;
+    };
+    const dailyRows = (businessId = A) => db.seoReport.findMany({ where: { businessId, kind: "daily" }, orderBy: { createdAt: "asc" } });
+    const mail = (i = 0) => vi.mocked(sendSeoEmail).mock.calls[i][0];
+    const mailTo = (businessId: string) => vi.mocked(sendSeoEmail).mock.calls.map(([m]) => m).filter((m) => m.businessId === businessId);
+    /** A video piece parked at its render: it waits for the owner's go-ahead. */
+    const waitingVideo = (businessId: string, topic: string) =>
+      db.agentRun.create({
+        data: {
+          businessId,
+          requestKey: `daily-section-${seq++}-${crypto.randomUUID()}`,
+          kind: "piece",
+          prompt: "x",
+          context: {},
+          status: "waiting_approval",
+          stage: stepsForPiece("video").findIndex((s) => s.id === "render"),
+          plan: { kind: "piece", piece: { ...roof, topic, format: "video" }, steps: stepsForPiece("video") },
+        },
+      });
+
+    it("a team-mode report waits for the morning plan, then goes out with the MATYA section", async () => {
+      const plan = await morningPlan("running");
+      // 08:00, the plan at 07:00 still running and the tick fresh: the day is not claimed, nothing goes out.
+      expect(await runDailyReports(new Date(), { teamOnly: true })).toEqual({ checked: 0, sent: 0, skipped: 0, errors: 0, waiting: 1, businesses: [] });
+      expect(sendSeoEmail).not.toHaveBeenCalled();
+      expect(await dailyRows()).toHaveLength(0);
+
+      // The plan ends: the next tick sends the report of yesterday with the section.
+      await stepOf(plan.id, "plan", { goal: "Conseguir llamadas de dueños con goteras" });
+      await stepOf(plan.id, "dispatch", {
+        pieces: [{ id: "p1", topic: "Techos <b>seguros</b>", objective: "Que llamen hoy", channels: ["facebook", "instagram"], format: "video", keyword: "" }],
+        dropped: [],
+      });
+      await db.agentRun.update({ where: { id: plan.id }, data: { status: "completed" } });
+      expect(await runDailyReports(new Date(), { teamOnly: true })).toEqual({ checked: 1, sent: 1, skipped: 0, errors: 0, waiting: 0, businesses: [A] });
+      expect(sendSeoEmail).toHaveBeenCalledTimes(1);
+      expect(mail()).toMatchObject({ businessId: A, to: ["dueno-a@example.com"] });
+      for (const title of ["Ayer", "Hoy", "Te necesita"]) expect(mail().html).toContain(`>${title}</td>`);
+      expect(mail().html).toContain("Conseguir llamadas de dueños con goteras");
+      expect(mail().html).toContain("Techos &lt;b&gt;seguros&lt;/b&gt;");
+      expect(mail().html).not.toContain("<b>seguros</b>");
+      expect(mail().html).toContain(`/b/${A}/matya`);
+      expect(mail().text).toContain("HOY");
+      const [record] = await dailyRows();
+      expect(record.data).toMatchObject({ day: YESTERDAY, trigger: "cron", state: "sent" });
+
+      // Sent once: the next tick has nothing to do.
+      expect(await runDailyReports(new Date(), { teamOnly: true })).toEqual({ checked: 0, sent: 0, skipped: 0, errors: 0, waiting: 0, businesses: [] });
+      expect(sendSeoEmail).toHaveBeenCalledTimes(1);
+    });
+
+    it("the wait ends three hours after the plan's hour, whatever the plan is doing", async () => {
+      await morningPlan("running");
+      /** The tick of `minutes` after 08:00 (each one finds the worker's call alive a minute before). */
+      const tickAt = async (minutes: number) => {
+        const at = new Date(NOW.getTime() + minutes * MINUTE);
+        vi.setSystemTime(at);
+        await ticked(at);
+        return runDailyReports(new Date(), { teamOnly: true });
+      };
+      // 09:59: still waiting. 10:00 is dailyHour 7 plus three hours.
+      expect(await tickAt(119)).toMatchObject({ sent: 0, waiting: 1 });
+      expect(sendSeoEmail).not.toHaveBeenCalled();
+      expect(await tickAt(120)).toMatchObject({ sent: 1, waiting: 0 });
+      expect(mail().html).toContain("El plan de hoy todavía no está listo.");
+    });
+
+    it.each([
+      ["the tick stopped (older than 10 minutes)", async () => ticked(NOW, 11)],
+      ["the tick never ran", async () => db.agentWorkspace.update({ where: { businessId: A }, data: { tickAt: null } })],
+      ["MATYA is off", async () => saveSettings(A, { ...settings, teamMode: true, enabled: false })],
+      ["MATYA is paused", async () => db.agentWorkspace.update({ where: { businessId: A }, data: { pausedAt: NOW } })],
+    ])("goes out without waiting when %s: no plan is coming", async (_name, change) => {
+      await morningPlan("running");
+      await change();
+      expect(await runDailyReports(new Date(), { teamOnly: true })).toMatchObject({ checked: 1, sent: 1, waiting: 0, businesses: [A] });
+      expect(mail().html).toContain(">Hoy</td>");
+    });
+
+    it.each(["blocked", "uncertain", "cancelled"])("goes out when the morning plan ended as %s", async (status) => {
+      await morningPlan(status);
+      expect(await runDailyReports(new Date(), { teamOnly: true })).toMatchObject({ sent: 1, waiting: 0 });
+      // It stopped before the director's plan: there is no plan to tell.
+      expect(mail().html).toContain("El plan de hoy todavía no está listo.");
+    });
+
+    it("teamMode off: the report is unchanged and has no MATYA section", async () => {
+      await saveSettings(A, { ...settings, teamMode: false });
+      // No plan, and it is only 08:00: a business without team mode never waits.
+      expect(await runDailyReports(new Date())).toEqual({ checked: 1, sent: 1, skipped: 0, errors: 0, waiting: 0, businesses: [A] });
+      expect(mail().html).not.toContain("Te necesita");
+      expect(mail().html).not.toContain("Abrir el Centro MATYA");
+      expect(mail().html).not.toContain(`/b/${A}/matya`);
+      expect(mail().text).not.toContain("TE NECESITA");
+      expect(mail().html).toContain("Ver el reporte completo");
+      expect(await loadMatyaDaily(A, YESTERDAY, "America/New_York", NOW)).toBeNull();
+      // A workspace that was never made is the same as team mode off.
+      await db.agentWorkspace.delete({ where: { businessId: A } });
+      expect(await loadMatyaDaily(A, YESTERDAY, "America/New_York", NOW)).toBeNull();
+    });
+
+    it("teamOnly skips businesses without team mode, and a waiting business does not use up the call's places", async () => {
+      await db.business.update({ where: { id: B }, data: { ownerEmail: "dueno-b@example.com" } });
+      await saveSettings(B, { ...settings, industry: "commercial-security-ni", teamMode: false });
+      await morningPlan("completed");
+      expect(await runDailyReports(new Date(), { teamOnly: true })).toMatchObject({ checked: 1, sent: 1, waiting: 0, businesses: [A] });
+      expect(mailTo(B)).toHaveLength(0);
+      expect(await dailyRows(B)).toHaveLength(0);
+      // Without the switch, B is one of the businesses of the call.
+      expect(await runDailyReports(new Date())).toMatchObject({ checked: 1, sent: 1, businesses: [B] });
+      expect(mailTo(B)).toHaveLength(1);
+      expect(mailTo(B)[0].html).not.toContain("Te necesita");
+
+      // A waiting, B ready, one place: the wait does not take it.
+      await db.seoReport.deleteMany({ where: { businessId: { in: [A, B] }, kind: "daily" } });
+      await db.agentRun.updateMany({ where: { businessId: A, requestKey: dailyPlanKey(A, TODAY) }, data: { status: "running" } });
+      await saveSettings(B, { ...settings, industry: "commercial-security-ni", teamMode: true, enabled: false });
+      vi.mocked(sendSeoEmail).mockClear();
+      expect(await runDailyReports(new Date(), { teamOnly: true, max: 1 })).toMatchObject({ checked: 1, sent: 1, waiting: 1, businesses: [B] });
+      expect(mailTo(A)).toHaveLength(0);
+    });
+
+    it("a manual report of yesterday goes out at once, with the section, while the morning plan is still running", async () => {
+      await morningPlan("running");
+      const out = await sendDailyReport(A, YESTERDAY, { trigger: "manual", now: new Date() });
+      expect(out.state).toBe("sent");
+      expect(mail().html).toContain(">Te necesita</td>");
+      expect(mail().html).toContain("El plan de hoy todavía no está listo.");
+    });
+
+    it("the report still goes out, without the section, when the section cannot be loaded", async () => {
+      await planned();
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        vi.mocked(loadMatyaDaily).mockRejectedValueOnce(new TypeError("boom: secret detail"));
+        expect((await sendDailyReport(A, YESTERDAY, { trigger: "cron", now: new Date() })).state).toBe("sent");
+        expect(mail().html).toContain("Ver el reporte completo");
+        expect(mail().html).not.toContain("Te necesita");
+        expect(log).toHaveBeenCalledWith("[reporte-diario] la sección MATYA no se pudo cargar", "TypeError");
+        expect(JSON.stringify(log.mock.calls)).not.toContain("secret detail");
+      } finally {
+        log.mockRestore();
+      }
+    });
+
+    describe("loadMatyaDaily", () => {
+      const sentPost = (id: string, businessId: string, targets: { channel: string; status?: string; sentAt: string }[]) =>
+        db.post.create({
+          data: {
+            id,
+            businessId,
+            text: "t",
+            status: "done",
+            targets: { create: targets.map((t) => ({ channel: t.channel, status: t.status ?? "sent", sentAt: new Date(t.sentAt) })) },
+          },
+          include: { targets: true },
+        });
+      const metric = (postTargetId: string, businessId: string, channel: string, fetchedAt: string, reach: number, likes: number, comments: number) =>
+        db.postMetric.create({ data: { postTargetId, businessId, channel, fetchedAt: new Date(fetchedAt), reach, likes, comments } });
+      const spend = async (businessId: string, name: string, budgetDay: string, agent: string, chargedCents: number) => {
+        const run = await db.agentRun.create({
+          data: { businessId, requestKey: `daily-section-${seq++}-${crypto.randomUUID()}`, kind: "piece", prompt: "x", context: {}, status: "completed" },
+        });
+        await db.agentStep.create({ data: { runId: run.id, name, specialist: "matya", budgetDay, status: "succeeded", agent, chargedCents } });
+      };
+
+      it("tells yesterday: the agent's own sent posts of that local day by channel, their latest results and what the team spent", async () => {
+        // Yesterday in New York is 04:00Z of the 15th to 04:00Z of the 16th.
+        const one = await sentPost("agent-ds-1", A, [
+          { channel: "facebook", sentAt: "2026-10-15T15:00:00Z" },
+          { channel: "instagram", sentAt: "2026-10-15T16:00:00Z" },
+        ]);
+        const two = await sentPost("agent-ds-2", A, [{ channel: "facebook", sentAt: "2026-10-16T03:59:00Z" }]);
+        const fb1 = one.targets.find((t) => t.channel === "facebook")!;
+        const fb2 = two.targets[0];
+        // Only the latest result of each post counts.
+        await metric(fb1.id, A, "facebook", "2026-10-15T18:00:00Z", 100, 5, 1);
+        await metric(fb1.id, A, "facebook", "2026-10-16T09:00:00Z", 300, 9, 2);
+        await metric(fb2.id, A, "facebook", "2026-10-16T09:00:00Z", 50, 1, 0);
+        // Not counted: the day before, the day after (just past midnight), a failed delivery, a post the agent did not make,
+        // another business's post.
+        await sentPost("agent-ds-old", A, [{ channel: "facebook", sentAt: "2026-10-15T03:59:00Z" }]);
+        await sentPost("agent-ds-new", A, [{ channel: "facebook", sentAt: "2026-10-16T04:00:00Z" }]);
+        await sentPost("agent-ds-failed", A, [{ channel: "linkedin", status: "failed", sentAt: "2026-10-15T15:00:00Z" }]);
+        const manual = await sentPost("manual-ds-1", A, [{ channel: "facebook", sentAt: "2026-10-15T15:00:00Z" }]);
+        await metric(manual.targets[0].id, A, "facebook", "2026-10-16T09:00:00Z", 9999, 999, 99);
+        await sentPost("agent-ds-b", B, [{ channel: "facebook", sentAt: "2026-10-15T15:00:00Z" }]);
+        // The team's spending of that day: its agents' steps, not the old steps without an agent, not other days, not another business.
+        await spend(A, "copy", YESTERDAY, "copy", 7);
+        await spend(A, "plan", YESTERDAY, "director", 5);
+        await spend(A, "old", YESTERDAY, "", 100);
+        await spend(A, "copy", TODAY, "copy", 40);
+        await spend(B, "copy", YESTERDAY, "copy", 1000);
+
+        const m = await loadMatyaDaily(A, YESTERDAY, "America/New_York", NOW);
+        expect(m?.yesterday).toEqual({
+          byChannel: [
+            { channel: "facebook", posts: 2 },
+            { channel: "instagram", posts: 1 },
+          ],
+          reach: 350,
+          likes: 10,
+          comments: 2,
+          cents: 12,
+        });
+        expect(m?.today).toBeNull();
+        expect(m?.needs).toEqual([]);
+      });
+
+      it("a quiet yesterday is all zeros", async () => {
+        expect((await loadMatyaDaily(A, YESTERDAY, "America/New_York", NOW))?.yesterday).toEqual({ byChannel: [], reach: 0, likes: 0, comments: 0, cents: 0 });
+      });
+
+      it("tells today from the morning plan's own key: the goal of its plan step and the pieces of its dispatch step", async () => {
+        // Yesterday's plan and another business's are not today's.
+        const old = await db.agentRun.create({
+          data: { businessId: A, requestKey: dailyPlanKey(A, YESTERDAY), kind: "team", origin: "daily", prompt: "x", context: {}, status: "completed", plan: { kind: "team" } },
+        });
+        await stepOf(old.id, "plan", { goal: "Meta de ayer" });
+        await morningPlan("completed", B).then((r) => stepOf(r.id, "plan", { goal: "Meta de B" }));
+        expect((await loadMatyaDaily(A, YESTERDAY, "America/New_York", NOW))?.today).toBeNull();
+
+        await planned();
+        const m = await loadMatyaDaily(A, YESTERDAY, "America/New_York", NOW);
+        expect(m?.today).toEqual({
+          goal: "Conseguir llamadas de dueños con goteras",
+          pieces: [
+            { topic: "Techos <b>seguros</b>", format: "video", channels: ["facebook", "instagram"], objective: "Que llamen hoy" },
+            { topic: "Goteras", format: "post", channels: ["facebook"], objective: "" },
+          ],
+        });
+      });
+
+      it("a plan still running is today's plan so far: what its steps have said, and nothing for a step that did not finish", async () => {
+        const plan = await morningPlan("running");
+        await stepOf(plan.id, "plan", { goal: "Meta parcial" });
+        await stepOf(plan.id, "dispatch", { pieces: [{ id: "p9", topic: "No terminó", objective: "", channels: ["facebook"], format: "post", keyword: "" }], dropped: [] }, { status: "running" });
+        expect((await loadMatyaDaily(A, YESTERDAY, "America/New_York", NOW))?.today).toEqual({ goal: "Meta parcial", pieces: [] });
+      });
+
+      it("a damaged step output is ignored, not an error", async () => {
+        const plan = await morningPlan("completed");
+        await stepOf(plan.id, "plan", { goal: 7 });
+        await stepOf(plan.id, "dispatch", { pieces: [{ topic: "Sin canales" }, "x", null, { topic: "Bien", format: "post", channels: ["facebook", 3], objective: "o" }] });
+        expect((await loadMatyaDaily(A, YESTERDAY, "America/New_York", NOW))?.today).toEqual({
+          goal: "",
+          pieces: [
+            { topic: "Sin canales", format: "", channels: [], objective: "" },
+            { topic: "Bien", format: "post", channels: ["facebook"], objective: "o" },
+          ],
+        });
+      });
+
+      it("tells what waits for the owner: the open team runs, oldest first, and only this business's", async () => {
+        const first = await waitingVideo(A, "Goteras");
+        await waitingVideo(B, "Cortinas");
+        const m = await loadMatyaDaily(A, YESTERDAY, "America/New_York", NOW);
+        expect(m?.needs).toEqual([{ topic: "Goteras", kind: "video" }]);
+        await db.agentRun.update({ where: { id: first.id }, data: { status: "completed" } });
+        expect((await loadMatyaDaily(A, YESTERDAY, "America/New_York", NOW))?.needs).toEqual([]);
+      });
+    });
+
+    it("the global tick runs the team's daily reports after the alerts; an owner's cycle does not, and a failure never breaks the cycle", async () => {
+      vi.useRealTimers();
+      // Off, so the cycle makes no morning plan of its own.
+      await saveSettings(A, { ...settings, teamMode: true, enabled: false });
+      const nothing = { checked: 0, sent: 0, skipped: 0, errors: 0, waiting: 0, businesses: [] };
+      vi.mocked(runDailyReports).mockResolvedValue(nothing);
+
+      vi.mocked(drain).mockResolvedValueOnce(0);
+      await runAgentCycle(A);
+      expect(runDailyReports).not.toHaveBeenCalled();
+
+      vi.mocked(drain).mockResolvedValueOnce(0);
+      expect(await runAgentCycle()).toEqual({ steps: 0, published: 0 });
+      expect(runDailyReports).toHaveBeenCalledTimes(1);
+      const [at, opts] = vi.mocked(runDailyReports).mock.calls[0];
+      expect(at).toBeInstanceOf(Date);
+      expect(opts).toEqual({ max: 2, budgetMs: 15000, teamOnly: true });
+      expect(vi.mocked(sendAgentAlerts).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(runDailyReports).mock.invocationCallOrder[0]);
+
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        // A report that fails: the cycle goes on, and the log names only the kind of error.
+        vi.mocked(runDailyReports).mockRejectedValueOnce(new TypeError("boom: secret detail"));
+        vi.mocked(drain).mockResolvedValueOnce(0);
+        await expect(runAgentCycle()).resolves.toEqual({ steps: 0, published: 0 });
+        expect(log).toHaveBeenCalledWith("MATYA daily reports did not complete", "TypeError");
+        expect(JSON.stringify(log.mock.calls)).not.toContain("secret detail");
+
+        // Alerts that fail do not keep the reports from running: each has its own try/catch.
+        vi.mocked(runDailyReports).mockClear();
+        vi.mocked(sendAgentAlerts).mockRejectedValueOnce(new TypeError("alerts down"));
+        vi.mocked(drain).mockResolvedValueOnce(0);
+        await runAgentCycle();
+        expect(runDailyReports).toHaveBeenCalledTimes(1);
+      } finally {
+        log.mockRestore();
+      }
+
+      // Behind the same switch as the rest of the cycle.
+      process.env.MATYA_AGENT_ENABLED = "false";
+      vi.mocked(runDailyReports).mockClear();
+      await runAgentCycle();
+      expect(runDailyReports).not.toHaveBeenCalled();
     });
   });
 });

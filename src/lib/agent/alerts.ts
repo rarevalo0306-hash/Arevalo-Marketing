@@ -16,6 +16,7 @@ import { dailyPlanKey } from "./daily";
 import { brakedOf } from "./guard";
 import { stepsOfPlan } from "./plan";
 import { DAY_BUDGET_ERROR, OVER_RESERVATION_ERROR, json, locked } from "./queue";
+import { loadTeamRuns } from "./team-load";
 import { needsYou, type TeamRunView } from "./team-view";
 
 export type AlertType = "video" | "revision" | "freno" | "presupuesto" | "apagado" | "plan";
@@ -225,8 +226,6 @@ type Outcome = "none" | "skipped" | "sent" | "failed";
 
 /** The facts of one business now, read with its team's view (`loadTeamRuns`) and the few things that view does not hold. */
 async function factsOf(w: Workspace, now: Date): Promise<{ facts: AlertFact[]; day: string }> {
-  // `service.ts` calls this file from the worker's tick, so it is read here, when needed, and not at load (no import cycle).
-  const { loadTeamRuns } = await import("./service");
   const { businessId } = w;
   const { today, tz, runs } = await loadTeamRuns(businessId, now);
   const { from, to } = dayRange(tz, today);
@@ -273,6 +272,8 @@ async function alertBusiness(w: Workspace, now: Date): Promise<Outcome> {
   });
   if (!business) return "none";
   const { facts, day } = await factsOf(w, now);
+  // Nothing to say: the registry of the last 30 days is not read (this runs for every team business every minute).
+  if (!facts.length) return "none";
   const recorded = await recordedKeys(db, businessId, now);
   if (!facts.some((f) => !recorded.has(f.key))) return "none";
   const to = dailyRecipients(business);
