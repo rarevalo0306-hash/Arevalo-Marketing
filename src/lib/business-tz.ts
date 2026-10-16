@@ -71,6 +71,13 @@ export function yesterday(tz: string, now = new Date()): string {
   return addDays(localDay(now, tz), -1);
 }
 
+/** Minutes shown by the business's wall clock since its midnight (07:30 is 450 whatever the day's length). */
+export function clockMinutes(tz: string, now: Date): number {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", hour: "2-digit", minute: "2-digit" }).formatToParts(now);
+  const at = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  return at("hour") * 60 + at("minute");
+}
+
 /** Minutos desde la medianoche del negocio (0 = justo a las 00:00). */
 export function minutesSinceMidnight(tz: string, now = new Date()): number {
   return Math.floor((now.getTime() - dayStart(tz, localDay(now, tz)).getTime()) / 60_000);

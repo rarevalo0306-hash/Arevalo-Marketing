@@ -7,6 +7,13 @@ export class AgentError extends Error {
     super(message);
   }
 }
+/**
+ * Prisma's error for a table (P2021) or a column (P2022) that is not in the database: the MATYA migrations were not applied in this
+ * environment yet.
+ */
+export function isMissingMigration(e: unknown): boolean {
+  return typeof e === "object" && e !== null && "code" in e && (e.code === "P2021" || e.code === "P2022");
+}
 export async function requireAgentOwner(businessId: string) {
   if (process.env.MATYA_AGENT_ENABLED !== "true")
     throw new AgentError(

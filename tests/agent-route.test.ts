@@ -37,7 +37,7 @@ vi.mock("@/lib/agent/service", () => ({
 }));
 
 import { AgentError } from "@/lib/agent/access";
-import { POST } from "@/app/api/agent/[id]/route";
+import { GET, POST } from "@/app/api/agent/[id]/route";
 
 const ORIGIN = "https://app.example";
 const send = (body: unknown, headers: Record<string, string> = { origin: ORIGIN }) =>
@@ -83,6 +83,46 @@ describe("POST /api/agent/[id]: pause all, resume and redo", () => {
     expect(res.status).toBe(202);
     expect(mocks.changeRun).toHaveBeenCalledExactlyOnceWith("biz1", "run-1", "redo");
     expect(mocks.runAgentCycle).toHaveBeenCalledExactlyOnceWith("biz1");
+  });
+
+  it("redo with a 501-character note is 400", async () => {
+    const res = await send({ action: "redo", runId: "run-1", note: "n".repeat(501) });
+    expect(res.status).toBe(400);
+    expect(await json(res)).toEqual({ error: "Revisa los campos del formulario." });
+    expect(mocks.changeRun).not.toHaveBeenCalled();
+    expect(mocks.runAgentCycle).not.toHaveBeenCalled();
+    // 500 is the longest one that goes through; a note that is not text is refused too.
+    expect((await send({ action: "redo", runId: "run-1", note: "n".repeat(500) })).status).toBe(202);
+    for (const note of [5, null, ["x"], { text: "x" }]) {
+      vi.clearAllMocks();
+      expect((await send({ action: "redo", runId: "run-1", note })).status).toBe(400);
+      expect(mocks.changeRun).not.toHaveBeenCalled();
+    }
+  });
+
+  it("redo passes the trimmed note to changeRun", async () => {
+    const res = await send({ action: "redo", runId: "run-1", note: "  x  " });
+    expect(res.status).toBe(202);
+    expect(mocks.changeRun).toHaveBeenCalledExactlyOnceWith("biz1", "run-1", "redo", { note: "x" });
+    expect(mocks.changeRun.mock.calls[0][3]).toEqual({ note: "x" });
+    expect(mocks.runAgentCycle).toHaveBeenCalledExactlyOnceWith("biz1");
+    // The spaces count against nothing: 500 characters plus the spaces around them are still 500.
+    vi.clearAllMocks();
+    expect((await send({ action: "redo", runId: "run-1", note: ` ${"n".repeat(500)} ` })).status).toBe(202);
+    expect(mocks.changeRun.mock.calls[0][3]).toEqual({ note: "n".repeat(500) });
+  });
+
+  it("a redo with no text in its note is a plain redo, and only redo carries a note", async () => {
+    for (const note of [undefined, "", "   "]) {
+      vi.clearAllMocks();
+      expect((await send({ action: "redo", runId: "run-1", note })).status).toBe(202);
+      expect(mocks.changeRun).toHaveBeenCalledExactlyOnceWith("biz1", "run-1", "redo");
+    }
+    for (const action of ["cancel", "approve", "refresh"]) {
+      vi.clearAllMocks();
+      expect((await send({ action, runId: "run-1", note: "x" })).status).toBe(202);
+      expect(mocks.changeRun).toHaveBeenCalledExactlyOnceWith("biz1", "run-1", action);
+    }
   });
 
   it("redo needs a run id, like cancel and approve", async () => {
@@ -139,5 +179,45 @@ describe("POST /api/agent/[id]: pause all, resume and redo", () => {
     expect(res.status).toBe(400);
     expect(await json(res)).toEqual({ error: expect.stringContaining("Solo se puede rehacer") });
     expect(mocks.runAgentCycle).not.toHaveBeenCalled();
+  });
+});
+
+describe("the MATYA migration not applied in this environment", () => {
+  const MISSING = "Falta aplicar la migración del centro de MATYA en este entorno.";
+  const load = () => GET(new Request(`${ORIGIN}/api/agent/biz1`), { params: Promise.resolve({ id: "biz1" }) });
+  /** What Prisma throws for a table (P2021) or a column (P2022) that is not in the database. */
+  const prismaError = (code: string) => Object.assign(new Error("The column `AgentWorkspace.tickAt` does not exist"), { code });
+
+  it.each(["P2021", "P2022"])("%s on GET is the migration message (503), not a generic failure", async (code) => {
+    mocks.snapshot.mockRejectedValue(prismaError(code));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const res = await load();
+      expect(res.status).toBe(503);
+      expect(await json(res)).toEqual({ error: MISSING });
+      expect(log).not.toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it.each(["P2021", "P2022"])("%s on an action is the same message", async (code) => {
+    mocks.pauseAll.mockRejectedValue(prismaError(code));
+    const res = await send({ action: "pause_all" });
+    expect(res.status).toBe(503);
+    expect(await json(res)).toEqual({ error: MISSING });
+  });
+
+  it("any other database error is still the generic failure (500), logged by its name only", async () => {
+    mocks.snapshot.mockRejectedValue(prismaError("P2002"));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const res = await load();
+      expect(res.status).toBe(500);
+      expect(await json(res)).toEqual({ error: "No se pudo completar la solicitud. Tus datos guardados se conservan." });
+      expect(log).toHaveBeenCalledWith("MATYA request failed", "Error");
+    } finally {
+      log.mockRestore();
+    }
   });
 });

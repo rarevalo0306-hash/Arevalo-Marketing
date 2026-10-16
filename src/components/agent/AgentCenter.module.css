@@ -498,6 +498,16 @@
 .settings > button {
   align-self: flex-start;
 }
+/* «Guardar» con algo por corregir: se ve apagado pero se puede pulsar (entonces el formulario marca lo que falta); solo `disabled` lo bloquea. */
+.settings > button:global(.btn)[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.settings > button:global(.btn):global(.on)[aria-disabled="true"]:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-ink);
+}
 .formGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -742,10 +752,14 @@
   --agent-accent: #73d8cb;
   --agent-tint: #153b35;
 }
+:global([data-theme="noche"]) .fieldError,
 :global([data-theme="noche"]) .inlineError,
 :global([data-theme="noche"]) .runStatus[data-status="blocked"],
 :global([data-theme="noche"]) .runStatus[data-status="uncertain"] {
   color: #ffab94;
+}
+:global([data-theme="noche"]) .settings input[aria-invalid="true"] {
+  border-color: #ffab94;
 }
 @media (max-width: 1200px) {
   .workspace {

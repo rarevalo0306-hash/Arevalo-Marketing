@@ -1,49 +1,16 @@
 "use client";
 import Link from "next/link";
-import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useT } from "@/components/I18n";
-import { AgentSettings } from "./AgentSettings";
+import { AgentSettings, nextFormKey } from "./AgentSettings";
+import { Output, labels, safeHref, stepNames, usd } from "./shared";
+import { TeamRoster } from "./TeamRoster";
+import { TeamToday } from "./TeamToday";
 import { useVoice } from "./useVoice";
+import { teamWorking } from "@/lib/agent/team-view";
 import type { Snapshot, RunView, NewsView } from "./types";
 import s from "./AgentCenter.module.css";
 
-const labels: Record<string, [string, string]> = {
-  queued: ["En cola", "Queued"],
-  running: ["Trabajando", "Working"],
-  waiting_approval: ["Listo para revisar", "Ready for review"],
-  waiting_provider: ["Esperando al canal", "Waiting for channel"],
-  completed: ["Completado", "Completed"],
-  blocked: ["Necesita atención", "Needs attention"],
-  uncertain: ["Resultado por comprobar", "Result to verify"],
-  cancelled: ["Cancelado", "Cancelled"],
-  succeeded: ["Listo", "Done"],
-};
-const stepNames: Record<string, [string, string]> = {
-  research: ["Investigación y SEO", "Research & SEO"],
-  copy: ["Redacción", "Copywriting"],
-  design: ["Diseño", "Design"],
-  prepare: ["Campaña preparada", "Campaign prepared"],
-  schedule: ["Programación", "Scheduling"],
-  verify: ["Resultado por canal", "Channel results"],
-  briefing: ["Resumen del negocio", "Business briefing"],
-  conversation: ["MATYA", "MATYA"],
-  radar: ["Radar de noticias", "News radar"],
-  optimize: ["Análisis de resultados", "Results analysis"],
-  video: ["Render de video", "Video render"],
-  video_wait: ["Comprobación del video", "Video status"],
-  verify_news: ["Verificar fuente original", "Verify original source"],
-  pause: ["Pausa de campaña", "Pause campaign"],
-};
-const usd = (v: number) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
-    v / 100,
-  );
-const safeHref = (v: unknown) =>
-  typeof v === "string" &&
-  (/^https:\/\//.test(v) || /^\/b\//.test(v) || /^\/media\//.test(v))
-    ? v
-    : undefined;
 function Icon({ type }: { type: "mic" | "send" | "stop" | "sound" | "arrow" }) {
   return (
     <svg
@@ -77,18 +44,33 @@ function Icon({ type }: { type: "mic" | "send" | "stop" | "sound" | "arrow" }) {
   );
 }
 
+/** The tabs of the center, in order. Hoy (`today`) and Equipo (`team`) exist only with team mode on. */
+const TAB_KEYS: readonly string[] = ["activity", "today", "team", "knowledge", "news", "results", "settings"];
+
+/**
+ * The tab the center opens on: the one the URL asks for (`?tab=`, as the team's alert emails and the daily report link to Hoy) when
+ * it is one of the center's tabs, Hoy and Equipo only while team mode is on; otherwise the conversation.
+ */
+export function initialTab(param: string | null | undefined, teamOn: boolean): string {
+  if (!param || !TAB_KEYS.includes(param)) return "activity";
+  return (param === "today" || param === "team") && !teamOn ? "activity" : param;
+}
+
 export function AgentCenter({
   businessId,
   initial,
   setupError,
+  tab: askedTab,
 }: {
   businessId: string;
   initial: Snapshot | null;
   setupError?: string;
+  /** The tab the URL asks for (`?tab=`), read once, on the first render. */
+  tab?: string;
 }) {
   const { t, lang } = useT();
   const [data, setData] = useState(initial);
-  const [tab, setTab] = useState("activity");
+  const [chosenTab, setTab] = useState(() => initialTab(askedTab, !!initial?.settings?.teamMode));
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(setupError ?? "");
@@ -159,9 +141,12 @@ export function AgentCenter({
       mounted.current = false;
     };
   }, []);
-  const pending = !!data?.runs.some((r) =>
-    ["queued", "running", "waiting_provider"].includes(r.status),
-  );
+  // The pieces of a team request are not in `runs` (the request completes as soon as it has spawned them): they count too.
+  const teamWork = teamWorking(data?.team ?? null);
+  const pending =
+    !!data?.runs.some((r) =>
+      ["queued", "running", "waiting_provider"].includes(r.status),
+    ) || teamWork.pending;
   useEffect(() => {
     if (!pending) return;
     let timer: ReturnType<typeof setTimeout>;
@@ -212,6 +197,12 @@ export function AgentCenter({
     // Speech follows a new response, never each polling render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.messages, data?.runs]);
+  // The settings form starts over from the saved settings when they change, but not for «Pausar todo» (see nextFormKey).
+  const savedRevision = data?.settings?.revision ?? 0;
+  const savedPaused = !!data?.settings?.pausedAt;
+  const [formKey, setFormKey] = useState(() => ({ key: savedRevision, revision: savedRevision, paused: savedPaused }));
+  const form = nextFormKey(formKey, savedRevision, savedPaused);
+  if (form !== formKey) setFormKey(form);
   const status = (key: string) => t(...(labels[key] ?? [key, key]));
   if (!data)
     return (
@@ -230,7 +221,11 @@ export function AgentCenter({
         </Link>
       </section>
     );
+  const teamOn = !!data.settings?.teamMode;
+  // The Hoy and Equipo tabs exist only with team mode on: if it turns off while the owner is there, the view goes back to the conversation.
+  const tab = (chosenTab === "today" || chosenTab === "team") && !teamOn ? "activity" : chosenTab;
   const active = data.runs.find((r) => r.status === "running");
+  const working = !!active || teamWork.running;
   const exceptions = data.posts.filter((p) =>
     ["failed", "partial", "publishing"].includes(p.status),
   );
@@ -239,7 +234,7 @@ export function AgentCenter({
       <header className={s.header}>
         <div className={s.title}>
           <div
-            className={`${s.agent} ${active ? s.working : ""}`}
+            className={`${s.agent} ${working ? s.working : ""}`}
             aria-hidden="true"
           >
             <svg viewBox="0 0 72 72">
@@ -264,7 +259,7 @@ export function AgentCenter({
           <div>
             <h1>MATYA</h1>
             <p>
-              {active
+              {working
                 ? t("Coordinando tu marketing", "Coordinating your marketing")
                 : t(
                     "Tu equipo de marketing, en un solo lugar",
@@ -281,6 +276,12 @@ export function AgentCenter({
       <nav className={s.tabs} aria-label={t("Centro MATYA", "MATYA workspace")}>
         {[
           ["activity", "Conversación", "Conversation"],
+          ...(teamOn
+            ? [
+                ["today", "Hoy", "Today"],
+                ["team", "Equipo", "Team"],
+              ]
+            : []),
           ["knowledge", "Conocimiento", "Knowledge"],
           ["news", "Noticias", "News"],
           ["results", "Resultados", "Results"],
@@ -590,6 +591,15 @@ export function AgentCenter({
           </aside>
         </div>
       )}
+      {tab === "today" && (
+        <TeamToday
+          data={data}
+          busy={busy}
+          act={mutate}
+          onSettings={() => setTab("settings")}
+        />
+      )}
+      {tab === "team" && <TeamRoster data={data} />}
       {tab === "knowledge" && (
         <section className={s.knowledge}>
           <div className={s.sectionTitle}>
@@ -800,9 +810,10 @@ export function AgentCenter({
       )}
       {tab === "settings" && (
         <AgentSettings
-          key={data.settings?.revision ?? 0}
+          key={form.key}
           data={data}
           busy={busy}
+          act={mutate}
           saveError={error}
           saveNotice={notice}
           save={async (settings) => {
@@ -893,114 +904,6 @@ function RunCard({
         )}
       </div>
     </details>
-  );
-}
-function Output({ value }: { value: Record<string, unknown> | null }) {
-  if (!value) return null;
-  return (
-    <div className={s.output}>
-      {[
-        "text",
-        "summary",
-        "angle",
-        "audience",
-        "title",
-        "script",
-        "videoStatus",
-      ].map((key) =>
-        typeof value[key] === "string" ? (
-          <p key={key}>{value[key] as string}</p>
-        ) : null,
-      )}
-      {Array.isArray(value.assets) && (
-        <div className={s.assets}>
-          {value.assets.map(
-            (a: { url?: string; shape?: string; alt?: string }, i) =>
-              safeHref(a.url) ? (
-                <a
-                  key={i}
-                  href={safeHref(a.url)}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <Image
-                    unoptimized
-                    loading="lazy"
-                    src={safeHref(a.url)!}
-                    alt={a.alt ?? a.shape ?? "Diseño"}
-                    width="160"
-                    height="160"
-                  />
-                  <span>{a.shape}</span>
-                </a>
-              ) : null,
-          )}
-        </div>
-      )}
-      {value.variants && typeof value.variants === "object"
-        ? Object.entries(value.variants).map(([channel, text]) =>
-            typeof text === "string" ? (
-              <details key={channel}>
-                <summary>{channel}</summary>
-                <p>{text}</p>
-              </details>
-            ) : null,
-          )
-        : null}
-      {safeHref(value.videoUrl) && (
-        <a href={safeHref(value.videoUrl)} target="_blank" rel="noreferrer">
-          Ver video
-        </a>
-      )}
-      {Array.isArray(value.facts) &&
-        value.facts.map((f: { text: string; source: string }, i) => (
-          <p key={i}>
-            {f.text}{" "}
-            <a href={safeHref(f.source)} target="_blank" rel="noreferrer">
-              Fuente
-            </a>
-          </p>
-        ))}
-      {Array.isArray(value.uncertainties) &&
-        value.uncertainties.map((u: string, i) => (
-          <p className={s.note} key={i}>
-            {u}
-          </p>
-        ))}
-      {Array.isArray(value.decisions) &&
-        value.decisions.map(
-          (
-            d: {
-              campaignId: string;
-              name: string;
-              decision: string;
-              reason: string;
-            },
-            i,
-          ) => (
-            <p key={i}>
-              <strong>{d.name}</strong>
-              <br />
-              {d.decision}
-              <br />
-              {d.reason}
-            </p>
-          ),
-        )}
-      {Array.isArray(value.channels) &&
-        value.channels
-          .filter((x) => typeof x === "object")
-          .map((c: { channel: string; status: string; url?: string }, i) => (
-            <p key={i}>
-              {c.channel}: {c.status}{" "}
-              {safeHref(c.url) && (
-                <a href={safeHref(c.url)} target="_blank" rel="noreferrer">
-                  Ver resultado
-                </a>
-              )}
-            </p>
-          ))}
-    </div>
   );
 }
 function NewsItem({

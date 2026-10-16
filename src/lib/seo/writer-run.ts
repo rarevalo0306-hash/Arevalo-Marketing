@@ -81,11 +81,13 @@ export async function articleSetup(businessId: string, rawKeyword: string): Prom
  * Escribe un artículo para Google: mira los 10 primeros (DataForSEO), lee las páginas que ganan, arma las metas, la IA escribe
  * y se revisa con un puntaje. Se guarda como reporte «article» del negocio. Devuelve su id, el puntaje, lo que costó Google (USD),
  * cuántas páginas se leyeron y la IA que lo escribió. Es de pago: una consulta de Google y una llamada a la IA, sin reintentos.
+ * `notes`: lo que el dueño pidió cambiar en este nuevo borrador (la nota de «Rehacer» del equipo de agentes); la IA los recibe como comentarios.
  */
 export async function createArticleReport(
   businessId: string,
   rawKeyword: string,
   language: WriterLang,
+  notes?: string[],
 ): Promise<{ id: string; score: number; cost: number; pagesRead: number; provider: string }> {
   const { keyword, business: b, zone } = await articleSetup(businessId, rawKeyword);
   const research = await researchKeyword(keyword, zone, language);
@@ -93,7 +95,7 @@ export async function createArticleReport(
     throw bi("Google no devolvió resultados para esa búsqueda en tu zona. Prueba con otras palabras.", "Google returned no results for that search in your area. Try other words.");
   const targets = contentTargets(research);
   const brief = briefFor(research, targets, zone.name);
-  const draft = cleanDraft(await writeSeoArticle({ business: b, keyword, language, brief }));
+  const draft = cleanDraft(await writeSeoArticle({ business: b, keyword, language, brief, ...(notes?.length ? { notes } : {}) }));
   const { score, checklist } = scoreDraft(draft, keyword, targets, { phone: b.phone, website: b.website });
   const provider = pickText(b.aiText) ?? "";
   const report: ArticleReport = {

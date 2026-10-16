@@ -7,7 +7,7 @@ import { AgentError } from "../access";
 import { articleCharge, articleKeyword, articleWrittenText } from "../article-cost";
 import { oneLine } from "../bounded-context";
 import { writeCopy } from "../content-steps";
-import { isArticleStep, Piece, problemsOf } from "../plan";
+import { isArticleStep, ownerNoteProblems, Piece, problemsOf } from "../plan";
 import type { StepResult } from "../queue";
 import type { AgentInput } from "./types";
 
@@ -94,7 +94,13 @@ async function runArticle(input: AgentInput): Promise<StepResult> {
   if (!piece.success) throw new AgentError("La pieza no tiene un plan válido.");
   if (piece.data.format !== "articulo") throw new AgentError("Agente no disponible.");
   const keyword = articleKeyword(piece.data);
-  const made = await input.tools.use("writeArticle")(keyword);
+  // A rework round the owner asked for with a note: the new draft is written with it. A plain draft is asked for as always.
+  const notes =
+    input.step.attempt >= 1
+      ? ownerNoteProblems(input.context, input.step.attempt).map((p) => p.detail)
+      : [];
+  const write = input.tools.use("writeArticle");
+  const made = await (notes.length ? write(keyword, undefined, notes) : write(keyword));
   // This step's own reservation: what finishStep compares the charge with.
   const step = await db.agentStep.findFirst({
     where: { runId: input.run.id, run: { businessId: input.run.businessId }, name: input.step.id },
@@ -130,8 +136,11 @@ export async function runCopy(input: AgentInput): Promise<StepResult> {
     research: researchOf(research),
     request: requestOf(piece.data, oneLine(field(plan, "goal"), GOAL_MAX), input.language),
     piece: piece.data,
-    // The latest review (`review`, or its latest round): every problem it found, for the writer to fix.
-    notes: rework ? problemsOf(review) : [],
+    // The latest review (`review`, or its latest round): every problem it found, for the writer to fix; then the note the owner
+    // wrote on "Rehacer" for this round, if any.
+    notes: rework
+      ? [...problemsOf(review), ...ownerNoteProblems(input.context, input.step.attempt)]
+      : [],
     model: input.model,
   });
   return {

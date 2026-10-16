@@ -7,10 +7,13 @@
 // y los próximos pasos (así el dueño sabe que todo funciona y que la app no se quedó callada). Si el dueño lo prefiere,
 // en los ajustes del reporte puede pedir «solo cuando pase algo» (fila Connection "report_settings"): entonces ese día
 // queda anotado como «sin email» y no se manda nada.
+//
+// Con el modo equipo encendido el reporte lleva además la sección MATYA (ayer, hoy, te necesita) y espera el plan de la mañana
+// (agent/daily-section.ts); la vuelta global del agente también lo manda, solo para esos negocios.
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { askGemini } from "@/lib/ai";
-import { businessTz, dailyDueDay, dailyKey } from "@/lib/business-tz";
+import { businessTz, dailyDueDay, dailyKey, localDay } from "@/lib/business-tz";
 import { decryptJson, encryptJson } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import { BiError } from "@/lib/i18n";
@@ -19,6 +22,8 @@ import { numbersGrounded } from "@/lib/seo/report";
 import { escapeHtml } from "@/lib/text";
 import { adSnapshot, buildPeriodReport, dayPeriod, isQuiet, isSingleDay, periodText, rangeQuery, reportCounts, type PeriodReport, type RangePeriod } from "@/lib/report-period";
 import { loadPeriodInputs } from "@/lib/report-period-load";
+import { loadMatyaDaily, matyaReportReady, matyaSectionHtml, matyaSectionText, type MatyaDaily } from "@/lib/agent/daily-section";
+import { dailyPlanKey } from "@/lib/agent/daily";
 import { highlightFacts, reportSections, ruleHighlights, type ViewSection } from "@/lib/report-period-view";
 import { APP_HOST } from "@/lib/app-host";
 
@@ -138,7 +143,13 @@ Rules:
 // ---------- El email (puro) ----------
 
 export type BuiltEmail = { subject: string; html: string; text: string };
-export type DailyEmailOpts = { baseUrl?: string; /** Máximo de líneas por sección (el resto: «y N más en la app»). */ maxItems?: number };
+export type DailyEmailOpts = {
+  baseUrl?: string;
+  /** Máximo de líneas por sección (el resto: «y N más en la app»). */
+  maxItems?: number;
+  /** La sección MATYA (ayer, hoy, te necesita): va después de las demás. Sin ella el email queda como siempre. */
+  matya?: MatyaDaily | null;
+};
 
 const FONT = "font-family:Arial,Helvetica,sans-serif;";
 const TONE: Record<string, string> = { bad: "#b42318", good: "#067647", neutral: "#475467" };
@@ -274,7 +285,7 @@ ${highlights.items.map((h) => `<tr><td style="${FONT}padding:4px 14px 6px 14px;f
 <tr><td style="height:8px;line-height:8px;font-size:0;">&nbsp;</td></tr>
 </table></td></tr>
 <tr><td style="padding:0 22px 12px 22px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-${sections.map((s) => sectionHtml(s, strong, base, maxItems, lang)).join("\n")}
+${sections.map((s) => sectionHtml(s, strong, base, maxItems, lang)).join("\n")}${opts.matya ? `\n${matyaSectionHtml(opts.matya, lang, base, r.business.id, strong)}` : ""}
 </table></td></tr>
 <tr><td align="center" style="padding:8px 22px 22px 22px;"><a href="${escapeHtml(full)}" style="${FONT}display:inline-block;background:${color};color:${fg};text-decoration:none;font-weight:bold;font-size:15px;padding:13px 24px;border-radius:8px;">${escapeHtml(t("Ver el reporte completo", "See the full report"))}</a></td></tr>
 <tr><td style="${FONT}padding:14px 22px 20px 22px;border-top:1px solid #e5e7eb;font-size:12px;line-height:1.5;color:#6b7280;">
@@ -290,6 +301,7 @@ ${escapeHtml(t(`Este email lo manda ${APP_NAME} para ${r.business.name}. Las hor
     topTitle.toUpperCase(),
     ...highlights.items.map((h) => `- ${h}`),
     ...sections.map((s) => sectionText(s, base, maxItems)),
+    ...(opts.matya ? [matyaSectionText(opts.matya, lang, base, r.business.id)] : []),
     "",
     `${t("Ver el reporte completo", "See the full report")}: ${full}`,
     "",
@@ -472,7 +484,14 @@ export async function sendDailyReport(businessId: string, day: string, opts: { t
       return { state: "skipped", to, subject: "", recordId: claim.id };
     }
     const highlights = await reportHighlights(built.report, lang, { ai: true });
-    const email = buildDailyEmail(built.report, lang, highlights, { baseUrl: opts.baseUrl });
+    // The MATYA section of a business with team mode on. If it cannot be read, the report goes out without it.
+    let matya: MatyaDaily | null = null;
+    try {
+      matya = await loadMatyaDaily(businessId, day, tz, now);
+    } catch (e) {
+      console.error("[reporte-diario] la sección MATYA no se pudo cargar", e instanceof Error ? e.name : "unknown");
+    }
+    const email = buildDailyEmail(built.report, lang, highlights, { baseUrl: opts.baseUrl, matya });
     await finishRecord(claim.id, { to, subject: email.subject, lang, quiet, counts, highlights, ads: snapshot });
     const sender = await sendSeoEmail({ businessId, to, ...email });
     await finishRecord(claim.id, { state: "sent", sentAt: new Date().toISOString(), sender: senderLabel(sender), error: "", retry: false });
@@ -514,27 +533,75 @@ export async function sendRangeReport(businessId: string, period: RangePeriod, o
 
 // ---------- El cron ----------
 
-export type DailyRunResult = { checked: number; sent: number; skipped: number; errors: number; businesses: string[] };
+export type DailyRunResult = {
+  checked: number;
+  sent: number;
+  skipped: number;
+  errors: number;
+  /** Negocios con modo equipo cuyo reporte espera el plan de la mañana: su día no se reclama y no cuentan en `max`. */
+  waiting: number;
+  businesses: string[];
+};
 
 /**
- * Lo llama el cron (cada minuto o cuando corra): para cada negocio con el reporte diario encendido, si ya pasó su
- * medianoche y el día de ayer no se mandó, lo manda. Como mucho `max` negocios por llamada y dentro de `budgetMs`
- * (el resto sigue en la próxima). Nunca manda dos veces el mismo día (ver claimDay); nunca manda días viejos atrasados.
+ * Los negocios (de los dados) con modo equipo cuyo reporte de ayer todavía espera el plan de la mañana de hoy (ver `matyaReportReady`).
+ * Dos consultas para todos: sus espacios de trabajo y los encargos del plan de hoy (la clave lleva el día local de cada negocio).
  */
-export async function runDailyReports(now = new Date(), opts: { max?: number; budgetMs?: number } = {}): Promise<DailyRunResult> {
+async function waitingForPlan(list: { id: string; tz: string }[], now: Date): Promise<Set<string>> {
+  const spaces = list.length
+    ? await db.agentWorkspace.findMany({
+        where: { businessId: { in: list.map((b) => b.id) }, teamMode: true },
+        select: { businessId: true, enabled: true, pausedAt: true, tickAt: true, dailyHour: true },
+      })
+    : [];
+  if (!spaces.length) return new Set();
+  const spaceOf = new Map(spaces.map((w) => [w.businessId, w]));
+  const team = list.filter((b) => spaceOf.has(b.id)).map((b) => ({ ...b, key: dailyPlanKey(b.id, localDay(now, b.tz)) }));
+  const runs = await db.agentRun.findMany({
+    where: { businessId: { in: team.map((b) => b.id) }, requestKey: { in: team.map((b) => b.key) } },
+    select: { businessId: true, requestKey: true, status: true },
+  });
+  const status = new Map(runs.map((r) => [`${r.businessId}|${r.requestKey}`, r.status]));
+  const waiting = new Set<string>();
+  for (const b of team) {
+    const w = spaceOf.get(b.id);
+    if (!w) continue;
+    const ready = matyaReportReady({
+      teamMode: true,
+      enabled: w.enabled,
+      paused: w.pausedAt !== null,
+      tickAt: w.tickAt,
+      dailyHour: w.dailyHour,
+      tz: b.tz,
+      now,
+      dailyRunStatus: status.get(`${b.id}|${b.key}`) ?? null,
+    });
+    if (!ready) waiting.add(b.id);
+  }
+  return waiting;
+}
+
+/**
+ * Lo llama el cron (cada minuto o cuando corra) y la vuelta global del agente: para cada negocio con el reporte diario encendido, si ya
+ * pasó su medianoche y el día de ayer no se mandó, lo manda. Como mucho `max` negocios por llamada y dentro de `budgetMs`
+ * (el resto sigue en la próxima). Nunca manda dos veces el mismo día (ver claimDay); nunca manda días viejos atrasados.
+ * Un negocio con modo equipo espera antes el plan de la mañana (`matyaReportReady`): mientras espera no reclama el día, cuenta en
+ * `waiting` y no gasta uno de los `max`. Con `teamOnly` solo se consideran los negocios con modo equipo.
+ */
+export async function runDailyReports(now = new Date(), opts: { max?: number; budgetMs?: number; teamOnly?: boolean } = {}): Promise<DailyRunResult> {
   const started = Date.now();
   const max = opts.max ?? 5;
   const budget = opts.budgetMs ?? 90_000;
-  const out: DailyRunResult = { checked: 0, sent: 0, skipped: 0, errors: 0, businesses: [] };
+  const out: DailyRunResult = { checked: 0, sent: 0, skipped: 0, errors: 0, waiting: 0, businesses: [] };
   const list = await db.business.findMany({
-    where: { reportDaily: true, OR: [{ reportEmail: { not: "" } }, { ownerEmail: { not: "" } }] },
+    where: { reportDaily: true, OR: [{ reportEmail: { not: "" } }, { ownerEmail: { not: "" } }], ...(opts.teamOnly ? { agentWorkspace: { teamMode: true } } : {}) },
     select: { id: true, timezone: true, reportEmail: true, ownerEmail: true },
     orderBy: { createdAt: "asc" },
     take: 1000,
   });
   const due = list
-    .map((b) => ({ id: b.id, day: dailyDueDay(null, businessTz(b), now), ok: dailyRecipients(b).length > 0 }))
-    .filter((x): x is { id: string; day: string; ok: boolean } => Boolean(x.day && x.ok));
+    .map((b) => ({ id: b.id, tz: businessTz(b), day: dailyDueDay(null, businessTz(b), now), ok: dailyRecipients(b).length > 0 }))
+    .filter((x): x is { id: string; tz: string; day: string; ok: boolean } => Boolean(x.day && x.ok));
   if (!due.length) return out;
   // Lo ya mandado (o que no hay que reintentar) en las últimas 50 horas, en UNA consulta.
   const recent = await db.seoReport.findMany({
@@ -546,8 +613,18 @@ export async function runDailyReports(now = new Date(), opts: { max?: number; bu
     const rec = readDailyRecord(r.data);
     if (rec && rec.day && rec.trigger !== "range" && closesDay(rec, r.createdAt, now)) closed.add(`${r.businessId}|${rec.day}`);
   }
+  // Antes de reclamar ningún día: los de modo equipo que todavía esperan su plan (solo los que de verdad se iban a mandar). Si no se
+  // puede saber, nadie espera: todos siguen como sin modo equipo (un fallo aquí nunca deja a ningún negocio sin su reporte).
+  const waiting = await waitingForPlan(due.filter((d) => !closed.has(`${d.id}|${d.day}`)), now).catch((e: unknown) => {
+    console.error("[reporte-diario] no se pudo saber qué negocios esperan el plan de la mañana", e instanceof Error ? e.name : "unknown");
+    return new Set<string>();
+  });
   for (const d of due) {
     if (closed.has(`${d.id}|${d.day}`)) continue;
+    if (waiting.has(d.id)) {
+      out.waiting += 1;
+      continue;
+    }
     if (out.checked >= max || Date.now() - started > budget) break;
     out.checked += 1;
     try {

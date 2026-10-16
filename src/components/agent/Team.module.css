@@ -1,0 +1,573 @@
+/* Las pestañas Hoy y Equipo del Centro MATYA. Van dentro de `.root` de AgentCenter.module.css: de ahí hereda --agent-accent y --agent-tint. */
+.today {
+  display: grid;
+  gap: 32px;
+  min-width: 0;
+}
+.today h2 {
+  font-size: 18px;
+  letter-spacing: -0.02em;
+  margin: 0 0 12px;
+}
+
+/* Avisos */
+.notices {
+  display: grid;
+  gap: 10px;
+}
+.notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 14px 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 14px;
+}
+.notice[data-tone="warn"] {
+  background: var(--warn-bg, var(--surface-2));
+  border-color: var(--warn-line, #b13c22);
+}
+.notice p {
+  flex: 1 1 260px;
+  min-width: 0;
+  margin: 0;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+/* Bloques */
+.block {
+  min-width: 0;
+}
+.plan {
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.goal {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.meta {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.empty {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.block > .empty + .board {
+  margin-top: 16px;
+}
+.topic {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.error {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #b13c22;
+  overflow-wrap: anywhere;
+}
+.state {
+  font-size: 12px;
+  color: var(--muted);
+}
+.state[data-state="working"],
+.state[data-state="running"],
+.state[data-state="done"],
+.state[data-state="succeeded"] {
+  color: var(--agent-accent);
+}
+.state[data-state="attention"],
+.state[data-state="blocked"],
+.state[data-state="uncertain"],
+.state[data-state="failed"] {
+  color: #b13c22;
+}
+
+/* Necesita tu sí */
+.needs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.need {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px 18px;
+  border: 1px solid var(--line-strong);
+  border-left: 4px solid var(--agent-accent);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+.need[data-kind="video"],
+.need[data-kind="revision"] {
+  border-left-color: #b13c22;
+}
+.tag {
+  padding: 2px 8px;
+  border-radius: 5px;
+  background: var(--agent-tint);
+  color: #085c54;
+  font-size: 12px;
+  font-weight: 600;
+}
+.text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+.problems {
+  margin: 0;
+  padding: 0 0 0 18px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.problems li + li {
+  margin-top: 6px;
+}
+.problems b {
+  font-weight: 600;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.redo {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+}
+.redo label {
+  font-size: 13px;
+  font-weight: 500;
+}
+.redo textarea {
+  width: 100%;
+  min-height: 84px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--field-bg, var(--surface));
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+
+/* Tablero: tantas columnas como quepan con un ancho que se pueda leer (hasta las siete), una debajo de otra en la angosta. Se reparte por el ancho
+   de la zona y no por el de la pantalla: el menú lateral le quita unos 270 px, y siete columnas fijas quedaban de 115 px en una pantalla de 1280. */
+.board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
+  gap: 12px;
+  align-items: start;
+}
+.column {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.columnHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 2px 10px;
+}
+.columnHead h3 {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.columnHead span {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.cards {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cards > li {
+  min-width: 0;
+}
+.card {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+.card summary {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  padding-right: 22px;
+  cursor: pointer;
+  list-style: none;
+}
+.card summary::-webkit-details-marker {
+  display: none;
+}
+/* El marcador de <details> está oculto: esta flecha avisa que la tarjeta se abre (hacia abajo cerrada, hacia arriba abierta). */
+.chevron {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 0.15s ease;
+}
+.card[open] > summary .chevron {
+  top: 7px;
+  transform: rotate(-135deg);
+}
+.card summary .meta {
+  margin: 0;
+}
+.cardFoot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 8px;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.steps {
+  margin: 12px 0 0;
+  padding: 0 0 0 18px;
+  font-size: 12px;
+}
+.steps > li {
+  margin-bottom: 12px;
+  padding-left: 2px;
+  min-width: 0;
+}
+.stepHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 8px;
+}
+.steps .meta {
+  margin: 2px 0 0;
+}
+/* Lo que dijo cada revisión en el detalle de la pieza: el veredicto toma los colores de `.state` (también los del tema noche). */
+.review {
+  margin: 6px 0 0;
+}
+.verdict {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+
+/* Equipo: una fila por agente (nombre, IA, estado, gasto) y el total del día. Solo usa los colores del tema, así que el tema noche no necesita los suyos. */
+.roster {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+}
+.roster h2 {
+  font-size: 18px;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.agents {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.agentRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 1.8fr) minmax(88px, auto);
+  grid-template-areas: "name ai status spend";
+  align-items: start;
+  gap: 8px 16px;
+  min-width: 0;
+  padding: 14px 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+.agentName {
+  grid-area: name;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.agentAi {
+  grid-area: ai;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.model {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.note {
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.agentStatus {
+  grid-area: status;
+  min-width: 0;
+}
+.agentStatus .state {
+  font-size: 13px;
+  font-weight: 600;
+}
+.agentStatus .error {
+  margin-top: 2px;
+}
+.agentSpend {
+  grid-area: spend;
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  min-width: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.agentSpend strong {
+  font-size: 14px;
+}
+.total {
+  min-width: 0;
+  padding: 14px 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.totalLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+  margin: 0;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.totalLine strong {
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+
+/* Pantallas medianas y angostas: las columnas del tablero ya pasan a filas de varias por su ancho mínimo (arriba); en el teléfono se apilan */
+@media (max-width: 719px) {
+  .board {
+    display: flex;
+    flex-direction: column;
+    /* La grilla ancha alinea al inicio; apiladas, cada columna ocupa todo el ancho sin importar su contenido ni una tarjeta abierta. */
+    align-items: stretch;
+  }
+  .column[data-empty] {
+    display: none;
+  }
+  .notice :global(.btn) {
+    min-height: 44px;
+  }
+  .actions :global(.btn) {
+    flex: 1 1 auto;
+    min-height: 44px;
+  }
+  /* Cada agente es una tarjeta: nombre y gasto arriba, y debajo su IA y su estado a todo el ancho. */
+  .agentRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "name spend"
+      "ai ai"
+      "status status";
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chevron {
+    transition: none;
+  }
+}
+
+/* Tema noche: el rojo y el verde oscuro de arriba no se leen sobre fondos negros; mismos colores que AgentCenter.module.css. */
+:global([data-theme="noche"]) .error,
+:global([data-theme="noche"]) .state[data-state="attention"],
+:global([data-theme="noche"]) .state[data-state="blocked"],
+:global([data-theme="noche"]) .state[data-state="uncertain"],
+:global([data-theme="noche"]) .state[data-state="failed"] {
+  color: #ffab94;
+}
+:global([data-theme="noche"]) .need[data-kind="video"],
+:global([data-theme="noche"]) .need[data-kind="revision"] {
+  border-left-color: #ffab94;
+}
+:global([data-theme="noche"]) .tag {
+  color: var(--agent-accent);
+}
+
+/* Configuración del modo equipo: la sección «Modo equipo» del formulario de la configuración. Solo usa los colores del tema (y los avisos de arriba), así que el tema noche no necesita los suyos. */
+.config {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  min-width: 0;
+}
+.config h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.config .note {
+  margin: 0;
+}
+.switchBlock,
+.hourBlock,
+.group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+}
+.hourBlock {
+  max-width: 320px;
+}
+.aiList,
+.priceList {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.aiRow,
+.priceRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+  padding: 14px 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+.aiName,
+.priceId {
+  display: block;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.aiFields,
+.priceFields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 12px 16px;
+  min-width: 0;
+}
+.aiFields > *,
+.priceFields > * {
+  min-width: 0;
+}
+.aiStatus {
+  min-width: 0;
+}
+.aiStatus .state {
+  font-size: 13px;
+  font-weight: 600;
+}
+.aiStatus .error {
+  margin: 0;
+}
+.pauseBlock {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  min-width: 0;
+  padding: 14px 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.pauseText {
+  flex: 1 1 260px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.pauseText p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.pauseText .note {
+  font-size: 12px;
+}
+@media (max-width: 719px) {
+  .pauseBlock :global(.btn) {
+    flex: 1 1 auto;
+    min-height: 44px;
+  }
+  .aiRow,
+  .priceRow {
+    padding: 12px 14px;
+  }
+}

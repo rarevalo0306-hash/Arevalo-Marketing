@@ -17,8 +17,10 @@ import { Refusal, teamRefusal } from "./guard";
 import { sourceUrl } from "./network";
 import { newsFresh } from "./freshness";
 import {
+  cleanOwnerNote,
   isArticleStep,
   isObserveStep,
+  ownerProblem,
   Piece,
   PieceFormat,
   problemsOf,
@@ -40,6 +42,13 @@ export const OPEN_STATUSES = [
   "waiting_approval",
   "waiting_provider",
 ] as const;
+/** Why a step was refused before any paid call: the run's own cap, the business's cap for the day, or a charge over the reservation. */
+export const RUN_BUDGET_ERROR =
+  "El encargo alcanzó el límite de gasto. No se hizo una nueva llamada de pago.";
+export const DAY_BUDGET_ERROR =
+  "Se acabó el presupuesto de IA de hoy. No se hizo una nueva llamada de pago.";
+export const OVER_RESERVATION_ERROR =
+  "El consumo superó la reserva: revisa las tarifas antes de continuar.";
 /** Most open runs a business may have at once (`enqueue` refuses the next one; a team's pieces count too). */
 export const OPEN_RUN_CAP = 8;
 /** The owner's requests that stay what they are with team mode on: they are not work for the team. */
@@ -359,16 +368,13 @@ export async function beginStep(
       create: { businessId: run.businessId, day },
       update: {},
     });
-    if (
-      cost &&
-      (current.chargedCents + current.reservedCents + cost >
-        settings.runBudgetCents ||
-        budget.chargedCents + budget.reservedCents + cost >
-          settings.dailyBudgetCents)
-    )
-      throw new AgentError(
-        "El encargo alcanzó el límite de gasto. No se hizo una nueva llamada de pago.",
-      );
+    if (cost) {
+      // The day's cap goes first: when both are over, what the owner can act on is that the day's money is gone.
+      if (budget.chargedCents + budget.reservedCents + cost > settings.dailyBudgetCents)
+        throw new AgentError(DAY_BUDGET_ERROR);
+      if (current.chargedCents + current.reservedCents + cost > settings.runBudgetCents)
+        throw new AgentError(RUN_BUDGET_ERROR);
+    }
     await tx.agentBudget.update({
       where: { id: budget.id },
       data: { reservedCents: { increment: cost } },
@@ -488,9 +494,7 @@ export async function finishStep(
         leaseUntil: null,
         reservedCents: { decrement: step.reservedCents },
         chargedCents: { increment: cents },
-        error: over
-          ? "El consumo superó la reserva: revisa las tarifas antes de continuar."
-          : "",
+        error: over ? OVER_RESERVATION_ERROR : "",
       },
     });
     if (over)
@@ -635,10 +639,12 @@ async function cancelRun(tx: Prisma.TransactionClient, run: AgentRun) {
     },
   });
 }
+/** `note`: what the owner wrote on "Rehacer" for the writer (only a redo reads it). */
 export async function changeRun(
   businessId: string,
   runId: string,
   action: "cancel" | "approve" | "refresh" | "redo",
+  opts: { note?: string } = {},
 ) {
   return locked(businessId, async (tx) => {
     const run = await tx.agentRun.findFirst({
@@ -661,7 +667,7 @@ export async function changeRun(
         data: { status: "queued", approvedAt: new Date() },
       });
     }
-    if (action === "redo") return redo(tx, run, settings);
+    if (action === "redo") return redo(tx, run, settings, opts.note);
     if (run.status !== "waiting_provider")
       throw new AgentError("El trabajo no está esperando una publicación.");
     return tx.agentRun.update({
@@ -731,11 +737,15 @@ export async function resumeAll(businessId: string): Promise<void> {
  * (`loadContext` and the current revision), so a settings save while the piece waited does not block its first step at
  * `beginStep`'s revision check. The keys the engine added to the snapshot (`piece`, `signals`, `storm`, `news`,
  * `campaignId`, and any other that `loadContext` does not make) stay as they were.
+ * The owner's `note` (trimmed, at most `OWNER_NOTE_MAX` characters; a blank one is no note) goes to the writer of the new round
+ * as a "dueño" problem, after the ones the review found, and is kept in the snapshot as `ownerNote: { round, text }`: `round`
+ * is the number of the round this redo adds, so a later round never reads it. Without a note nothing is added.
  */
 async function redo(
   tx: Prisma.TransactionClient,
   run: AgentRun,
   settings: { enabled: boolean; revision: number },
+  rawNote?: string,
 ) {
   const enabled = settings.enabled;
   const piece = piecePlan(run);
@@ -764,17 +774,15 @@ async function redo(
   });
   const problems =
     review?.status === "succeeded" ? problemsOf(review.output) : [];
-  // An approved review still gets a round: the owner asked for it.
+  const note = cleanOwnerNote(rawNote);
+  // An approved review still gets a round: the owner asked for it. The note is one more problem for the writer, or the
+  // reason for the round when the review found none.
   const round = reworkSteps(
-    problems.length
-      ? problems
-      : [
-          {
-            kind: "dueño",
-            detail: "El dueño pidió rehacer la pieza.",
-            sendBackTo: "copy",
-          },
-        ],
+    note
+      ? [...problems, ownerProblem(note)]
+      : problems.length
+        ? problems
+        : [ownerProblem("El dueño pidió rehacer la pieza.")],
     0,
     format.data,
   );
@@ -794,11 +802,14 @@ async function redo(
   }));
   if (!added.length) throw new AgentError("No hay nada que rehacer.");
   const fresh = await loadContext(run.businessId, tx);
-  const context = {
+  const context: Record<string, unknown> = {
     ...(run.context as Record<string, unknown>),
     ...fresh,
     revision: settings.revision,
   };
+  // The note is for this round only: one from an earlier Rehacer goes away with it.
+  if (note) context.ownerNote = { round: n, text: note };
+  else delete context.ownerNote;
   // Inserted at the waiting step's place: the stage now points at the first new step.
   return tx.agentRun.update({
     where: { id: run.id },

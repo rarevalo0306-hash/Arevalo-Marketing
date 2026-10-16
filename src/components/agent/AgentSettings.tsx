@@ -1,13 +1,66 @@
 "use client";
-import { useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useT } from "@/components/I18n";
 import { INDUSTRIES } from "@/lib/agent/industry";
-import { formatUsd, readCount, readUsd } from "@/lib/agent/settings-input";
+import { defaultModelIds, formatUsd, pruneModelPrices, readCount, readUsd, submitDecision } from "@/lib/agent/settings-input";
 import { CHANNELS } from "@/lib/channels";
 import type { Settings } from "@/lib/agent/schema";
+import { TeamSettings } from "./TeamSettings";
 import { DEFAULT_SETTINGS, type Snapshot } from "./types";
 import s from "./AgentCenter.module.css";
 type NumberKey = "dailyBudgetCents" | "runBudgetCents" | "maxPostsPerDay" | "radarHours";
+
+/** Which form the settings tab shows: its `key` changes when the form must start over from the saved settings. */
+export type FormKey = { key: number; revision: number; paused: boolean };
+
+/**
+ * The form starts over (a new `key`) whenever the saved settings change, except for «Pausar todo»: it moves the revision too, but
+ * it changes nothing the form shows, so what the owner typed and has not saved stays. Lifting the pause moves no revision.
+ */
+export function nextFormKey(prev: FormKey, revision: number, paused: boolean): FormKey {
+  if (revision === prev.revision) return paused === prev.paused ? prev : { ...prev, paused };
+  return { key: !prev.paused && paused ? prev.key : revision, revision, paused };
+}
+/**
+ * What the form does when the owner submits it. Nothing is saved while a field is marked (`reveal` makes the quiet fields say what is
+ * wrong) or while a request runs; otherwise it saves what is in the form. A price stays in the form while its model is not chosen
+ * (to come back to), but it is not saved, unless it is the price of the default model (`defaults`) some agents work with.
+ */
+export async function submitSettings(
+  event: { preventDefault: () => void },
+  ctx: {
+    invalid: readonly string[];
+    busy: boolean;
+    value: Settings;
+    save: (settings: Settings) => Promise<boolean>;
+    reveal: () => void;
+    defaults?: readonly string[];
+  },
+): Promise<void> {
+  event.preventDefault();
+  const { save, reveal } = submitDecision(ctx.invalid, ctx.busy);
+  if (reveal) ctx.reveal();
+  if (save) await ctx.save({ ...ctx.value, modelPrices: pruneModelPrices(ctx.value.modelPrices, ctx.value.agentModels, ctx.defaults) });
+}
+
+/** Puts the cursor on the first marked field of the form, so the owner lands on what to fix. */
+export function focusFirstInvalid(form: { querySelector: (selector: string) => { focus: () => void } | null } | null): void {
+  form?.querySelector('[aria-invalid="true"]')?.focus();
+}
+
+/**
+ * «Guardar». With a field to fix it is `aria-disabled`, not `disabled`: it looks off, but a click or Enter still submits, and the form
+ * answers by showing what is wrong. Only a request in flight really disables it.
+ */
+export function SaveButton({ busy, blocked }: { busy: boolean; blocked: boolean }) {
+  const { t } = useT();
+  return (
+    <button disabled={busy} aria-disabled={blocked && !busy ? true : undefined} className="btn on" type="submit">
+      {busy ? t("Guardando…", "Saving…") : t("Guardar configuración", "Save settings")}
+    </button>
+  );
+}
+
 /**
  * A number the owner types: the text stays as typed (it can be cleared and accepts a decimal comma) and only valid
  * numbers inside min–max reach the settings. `usd` values are cents, shown as dollars with two decimals.
@@ -85,12 +138,15 @@ function NumberField({
 export function AgentSettings({
   data,
   save,
+  act,
   busy,
   saveError,
   saveNotice,
 }: {
   data: Snapshot;
   save: (settings: Settings) => Promise<boolean>;
+  /** Sends an action that is not a save («Pausar todo» / «Reanudar»); it resolves to whether it went through. */
+  act: (body: Record<string, unknown>) => Promise<boolean>;
   busy: boolean;
   saveError: string;
   saveNotice: string;
@@ -101,20 +157,32 @@ export function AgentSettings({
   );
   const set = <K extends keyof Settings>(key: K, v: Settings[K]) =>
     setValue((old) => ({ ...old, [key]: v }));
-  // Number fields whose text is not a valid number yet: saving waits until they are fixed.
-  const [invalid, setInvalid] = useState<NumberKey[]>([]);
+  // Fields whose text cannot be saved as it is yet (a number that does not read, a model without a name, a price left empty):
+  // saving waits until they are fixed.
+  const [invalid, setInvalid] = useState<string[]>([]);
+  // How many times the owner tried to save while something was marked: from the first, the fields that stayed quiet until touched
+  // say what is wrong, and each try puts the cursor on the first one.
+  const [attempts, setAttempts] = useState(0);
+  const form = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (attempts) focusFirstInvalid(form.current);
+  }, [attempts]);
+  const markInvalid = useCallback(
+    (key: string, bad: boolean) =>
+      setInvalid((old) => (bad ? (old.includes(key) ? old : [...old, key]) : old.includes(key) ? old.filter((k) => k !== key) : old)),
+    [],
+  );
   const setNumber = (key: NumberKey) => (v: number | null) => {
-    setInvalid((old) => (v === null ? [...new Set([...old, key])] : old.filter((k) => k !== key)));
+    markInvalid(key, v === null);
     if (v !== null) set(key, v);
   };
   return (
     <form
+      ref={form}
       className={s.settings}
-      onSubmit={async (e) => {
-        e.preventDefault();
-        if (invalid.length) return;
-        await save(value);
-      }}
+      onSubmit={(e) =>
+        submitSettings(e, { invalid, busy, value, save, reveal: () => setAttempts((n) => n + 1), defaults: defaultModelIds(data.team?.agents) })
+      }
     >
       <div className={s.sectionTitle}>
         <h2>{t("Cómo trabaja MATYA", "How MATYA works")}</h2>
@@ -283,6 +351,7 @@ export function AgentSettings({
           {t("Activar radar periódico", "Enable periodic news radar")}
         </label>
       </div>
+      <TeamSettings value={value} set={set} data={data} busy={busy} act={act} onInvalid={markInvalid} revealErrors={attempts > 0} />
       <div className={s.sectionTitle}>
         <h2>{t("Fuentes de la industria", "Industry sources")}</h2>
         <p>
@@ -521,16 +590,12 @@ export function AgentSettings({
       {invalid.length > 0 && (
         <p className={s.saveFeedback} data-error="true" role="alert">
           {t(
-            "Corrige los números marcados para poder guardar.",
-            "Fix the highlighted numbers to save.",
+            "Corrige los campos marcados para poder guardar.",
+            "Fix the highlighted fields to save.",
           )}
         </p>
       )}
-      <button disabled={busy || invalid.length > 0} className="btn on" type="submit">
-        {busy
-          ? t("Guardando…", "Saving…")
-          : t("Guardar configuración", "Save settings")}
-      </button>
+      <SaveButton busy={busy} blocked={invalid.length > 0} />
     </form>
   );
 }

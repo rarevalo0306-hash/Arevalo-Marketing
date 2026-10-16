@@ -1,22 +1,92 @@
 import { db } from "@/lib/db";
 import { localDay } from "@/lib/business-tz";
+import { runDailyReports } from "@/lib/daily-report";
 import { publishPost } from "@/lib/publish";
 import { AgentError } from "./access";
+import { AGENTS } from "./agents";
 import { modelConfig } from "./metered";
+import { resolveModel } from "./models";
 import { enqueue, json, stepsOf } from "./queue";
+import { AgentKeyEnum, ModelChoice } from "./schema";
+import { loadTeamRuns, objectOrNull } from "./team-load";
+import type { TeamAgentView, TeamSnapshot } from "./team-view";
 import { enqueueDailyPlans } from "./daily";
+import { sendAgentAlerts } from "./alerts";
 import { drain } from "./execution";
 import { loadContext } from "./context";
 import { industryFor, toolCatalog } from "./industry";
 import { readSource, sourceUrl } from "./network";
 import { plain } from "./news";
 
+// The team's runs are read by `team-load.ts` (no import cycle with the alerts and the daily report); this file keeps the name.
+export { loadTeamRuns };
+
+/**
+ * The team's view of a business: its runs (`loadTeamRuns`) and its seven agents with the model each works with, whether it can
+ * work yet (and why not) and what it did today.
+ */
+export async function teamSnapshot(
+  businessId: string,
+  now = new Date(),
+): Promise<TeamSnapshot> {
+  const { today, tz, runs } = await loadTeamRuns(businessId, now);
+  const [ws, spent] = await Promise.all([
+    db.agentWorkspace.findUnique({
+      where: { businessId },
+      select: { agentModels: true, modelPrices: true },
+    }),
+    // `budgetDay` is the local day the step reserved on: the same key as the daily budget.
+    db.agentStep.groupBy({
+      by: ["agent"],
+      where: { budgetDay: today, run: { businessId } },
+      _count: { _all: true },
+      _sum: { chargedCents: true },
+    }),
+  ]);
+  const models = { agentModels: ws?.agentModels ?? {}, modelPrices: ws?.modelPrices ?? {} };
+  const fallback = ModelChoice.safeParse({
+    provider: process.env.MATYA_AGENT_PROVIDER,
+    model: process.env.MATYA_AGENT_MODEL,
+  }).data;
+  const agents = AgentKeyEnum.options.map((key): TeamAgentView => {
+    const { label, usesModel } = AGENTS[key];
+    const chosen = ModelChoice.safeParse(objectOrNull(models.agentModels)?.[key]).data;
+    const choice = chosen ?? fallback;
+    let problem = "";
+    // An agent that makes no AI call does not need a model.
+    if (usesModel)
+      try {
+        resolveModel(key, models);
+      } catch (error) {
+        problem = error instanceof AgentError ? error.message : "No se pudo comprobar el modelo.";
+      }
+    const used = spent.find((s) => s.agent === key);
+    return {
+      key,
+      label,
+      usesModel,
+      model: usesModel && choice ? `${choice.provider}:${choice.model}` : "",
+      own: chosen !== undefined,
+      ready: problem === "",
+      problem,
+      steps: used?._count._all ?? 0,
+      cents: used?._sum.chargedCents ?? 0,
+    };
+  });
+  return { today, tz, runs, agents };
+}
+
 export async function snapshot(businessId: string) {
+  const now = new Date();
+  // One read of the workspace (a plain promise, awaited twice): the recent runs depend on its team mode.
+  const workspace = db.agentWorkspace.findUnique({ where: { businessId } }).then((w) => w);
   const [context, settings, runs, messages, news] = await Promise.all([
     loadContext(businessId),
-    db.agentWorkspace.findUnique({ where: { businessId } }),
-    db.agentRun.findMany({
-      where: { businessId },
+    workspace,
+    workspace.then((w) => db.agentRun.findMany({
+      // With team mode on, the pieces of a team request are its own cards (`team`) and the recent list keeps the requests. With it
+      // off there is no board: a piece left from team mode is listed here, as before team mode, so it can still be approved or cancelled.
+      where: { businessId, ...(w?.teamMode ? { parentRunId: null } : {}) },
       orderBy: { createdAt: "desc" },
       take: 20,
       select: {
@@ -42,7 +112,7 @@ export async function snapshot(businessId: string) {
           },
         },
       },
-    }),
+    })),
     db.agentMessage.findMany({
       where: { businessId },
       orderBy: { createdAt: "desc" },
@@ -68,10 +138,20 @@ export async function snapshot(businessId: string) {
   } catch {
     /* visible setup state */
   }
-  const day = localDay(new Date(), context.business.timezone);
-  const budget = await db.agentBudget.findUnique({
-    where: { businessId_day: { businessId, day } },
-  });
+  const day = localDay(now, context.business.timezone);
+  // The team's view comes with the workspace, team mode on or off: the settings show each agent's readiness before it is turned on.
+  const [budget, team] = await Promise.all([
+    db.agentBudget.findUnique({
+      where: { businessId_day: { businessId, day } },
+    }),
+    // A failure of the team's view must not take the whole Centro MATYA down with it (the settings show it for every workspace).
+    settings
+      ? teamSnapshot(businessId, now).catch((error: unknown) => {
+          console.error("MATYA team view did not load", error instanceof Error ? error.name : "unknown");
+          return null;
+        })
+      : null,
+  ]);
   return JSON.parse(
     JSON.stringify({
       business: context.business,
@@ -82,6 +162,7 @@ export async function snapshot(businessId: string) {
       news,
       budget,
       aiReady,
+      team,
       tools: toolCatalog(businessId),
       connections: context.connections,
       posts: context.posts,
@@ -164,6 +245,10 @@ const notNow = (error: unknown) =>
 export async function runAgentCycle(businessId?: string) {
   if (process.env.MATYA_AGENT_ENABLED !== "true")
     return { steps: 0, published: 0 };
+  // Only the worker's per-minute tick leaves its mark: an owner's cycle (`businessId`) is not the heartbeat. The revision stays
+  // where it is, because a tick is not a settings change.
+  if (businessId === undefined)
+    await db.agentWorkspace.updateMany({ data: { tickAt: new Date() } });
   const workspaces = await db.agentWorkspace.findMany({
     // A paused workspace asks for nothing (`enqueue` refuses): no radar, no news checks.
     where: {
@@ -296,5 +381,21 @@ export async function runAgentCycle(businessId?: string) {
         },
       });
   }
+  // The team's email alerts go out from the worker's tick only (an owner's cycle is not it), after the queue was worked, the agent's
+  // posts went out and the channel waits were swept, so they tell what is true now. They can never take the cycle down.
+  if (businessId === undefined)
+    try {
+      await sendAgentAlerts(new Date());
+    } catch (error) {
+      console.error("MATYA alerts did not complete", error instanceof Error ? error.name : "unknown");
+    }
+  // The daily report of the businesses with team mode goes out from here too, once their morning plan is done (the cron of the
+  // platform may run only once a day). It has its own try/catch: neither it nor the alerts can take the cycle down.
+  if (businessId === undefined)
+    try {
+      await runDailyReports(new Date(), { max: 2, budgetMs: 15000, teamOnly: true });
+    } catch (error) {
+      console.error("MATYA daily reports did not complete", error instanceof Error ? error.name : "unknown");
+    }
   return { steps, published };
 }

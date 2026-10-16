@@ -137,6 +137,15 @@ describe("createArticleReport", () => {
     expect(readArticleReport(saved.data)).toMatchObject({ keyword: "reparación de techos", draft: { title: DRAFT.title } });
   });
 
+  it("las notas del dueño llegan a la IA solo cuando las hay; sin ellas la llamada es la de siempre", async () => {
+    await createArticleReport("b1", "reparación de techos", "es");
+    expect(vi.mocked(writeSeoArticle).mock.calls[0][0]).not.toHaveProperty("notes");
+    await createArticleReport("b1", "reparación de techos", "es", []);
+    expect(vi.mocked(writeSeoArticle).mock.calls[1][0]).not.toHaveProperty("notes");
+    await createArticleReport("b1", "reparación de techos", "es", ["Menciona el seguro de inundación"]);
+    expect(vi.mocked(writeSeoArticle).mock.calls[2][0]).toMatchObject({ keyword: "reparación de techos", language: "es", notes: ["Menciona el seguro de inundación"] });
+  });
+
   it("deja solo los últimos artículos del negocio", async () => {
     m.findMany.mockResolvedValue([{ id: "old1" }, { id: "old2" }]);
     await createArticleReport("b1", "reparación de techos", "es");

@@ -1,6 +1,6 @@
 import { after, NextResponse } from "next/server";
 import { z } from "zod";
-import { AgentError, requireAgentOwner, sameOrigin } from "@/lib/agent/access";
+import { AgentError, isMissingMigration, requireAgentOwner, sameOrigin } from "@/lib/agent/access";
 import {
   changeRun,
   enqueue,
@@ -20,7 +20,7 @@ function failure(e: unknown) {
   if (e instanceof AgentError) return response({ error: e.message }, e.status);
   if (e instanceof z.ZodError || e instanceof SyntaxError)
     return response({ error: "Revisa los campos del formulario." }, 400);
-  if (typeof e === "object" && e && "code" in e && e.code === "P2021")
+  if (isMissingMigration(e))
     return response(
       {
         error:
@@ -88,10 +88,18 @@ export async function POST(
       return response({ ok: true });
     }
     let runId: string | undefined;
-    if (["cancel", "approve", "refresh", "redo"].includes(body.action))
-      await changeRun(id, z.string().max(100).parse(body.runId), body.action);
-    // A morning plan cancelled by the pause is not queued again the same day; the next local day brings the next one.
-    else if (body.action === "resume_all") await resumeAll(id);
+    if (["cancel", "approve", "refresh", "redo"].includes(body.action)) {
+      const target = z.string().max(100).parse(body.runId);
+      // Only "Rehacer" carries a note for the writer: the owner's own text, without the spaces around it, at most 500 characters.
+      const note =
+        body.action === "redo"
+          ? z.string().trim().max(500).optional().parse(body.note)
+          : undefined;
+      if (note) await changeRun(id, target, body.action, { note });
+      else await changeRun(id, target, body.action);
+    } else if (body.action === "resume_all")
+      // A morning plan cancelled by the pause is not queued again the same day; the next local day brings the next one.
+      await resumeAll(id);
     else if (body.action === "message") runId = (await enqueue(id, body)).id;
     else if (body.action !== "work")
       throw new AgentError("Acción desconocida.");

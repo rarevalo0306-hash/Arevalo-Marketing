@@ -45,15 +45,15 @@ No es todavía una factura consolidada de toda la plataforma: herramientas anter
 
 ### Cómo encenderlo
 
-1. Aplicar la migración `supabase/migrations/20261016120000_matya_team.sql` en Supabase **antes** de desplegar este código (ver `docs/agent/testing.md`). Es aditiva, pero Prisma lee todas las columnas.
-2. MATYA debe estar activa: `MATYA_AGENT_ENABLED=true`, MATYA encendida en la configuración, con presupuesto diario y por trabajo, canales y permiso de publicación.
+1. Aplicar las migraciones `supabase/migrations/20261016120000_matya_team.sql` y `supabase/migrations/20261017120000_matya_tick.sql` en Supabase **antes** de desplegar este código (ver `docs/agent/testing.md`). Son aditivas e idempotentes, pero Prisma lee todas las columnas: sin ellas el Centro MATYA falla. La segunda agrega `AgentWorkspace.tickAt`, la marca del llamado de cada minuto (paso 4).
+2. MATYA debe estar activa: `MATYA_AGENT_ENABLED=true`, MATYA encendida en la configuración, con presupuesto diario y por trabajo, canales y permiso de publicación. Con el presupuesto diario en $0 no hay plan de la mañana (ver «Reporte diario»).
 3. En la configuración del negocio:
    - `teamMode`: encendido.
    - `dailyHour`: la hora del plan de la mañana (0 a 23), en la hora del negocio. Cada día, a esa hora, el equipo recibe un encargo «Plan del día» con las señales del día. Uno solo por día local, también el día del cambio de horario: se mira el reloj de pared del negocio.
    - `agentModels`: el proveedor y el modelo de cada agente que use IA (Director, SEO, Estrategia, Redacción y Revisión). Un agente sin modelo propio usa el de `MATYA_AGENT_*`. Diseño y Video no usan modelo.
    - `modelPrices`: el precio verificado de cada modelo, en dólares por millón de tokens, con la clave `proveedor:modelo` (por ejemplo `openai:gpt-x` → `{ input, output }`).
-   Las pantallas para estas opciones llegan después (PR 2). Mientras tanto se guardan con la acción `settings` del Centro; guardar desde la pantalla actual las conserva.
-4. El llamado de cada minuto debe estar activo (`node scripts/agent-worker.mjs` o el planificador con `/api/cron?agent=1`, ver «Activación, en orden»). Sin él no avanza ningún paso ni llega el plan de la mañana.
+   Todo esto se cambia en la pestaña Configuración, sección «Modo equipo» (ver «Pantallas»), y se guarda con «Guardar configuración».
+4. El llamado de cada minuto debe estar activo (`node scripts/agent-worker.mjs` o el planificador con `/api/cron?agent=1`, ver «Activación, en orden»). Sin él no avanza ningún paso ni llega el plan de la mañana, y el Centro lo avisa si pasan más de 10 minutos sin él (ver «Pantallas»).
 
 **Dinero.**
 
@@ -61,6 +61,23 @@ No es todavía una factura consolidada de toda la plataforma: herramientas anter
 - **Los pasos de la pieza que cuestan por su cuenta** siguen sus propias reglas: el borrador del artículo paga en un solo paso a quien lo escribe (DataForSEO y la IA del negocio), hasta el estimado que aprobó el dueño; el render cobra exactamente lo cotizado; la publicación del artículo reserva y cobra lo más que pueden costar su traducción y la elección de su foto con la IA del negocio (el «hasta» que ya vio el dueño), o la foto con IA aprobada. Lo que reservan se cobra si fallan después de empezar.
 - **Dos cuentas que conviene prever:** una publicación que el horario pasa a la mañana siguiente cuenta en el tope de publicaciones del día en que sale, no del día en que se programó, así que el plan de esa mañana ya la ve y deja menos lugar; y publicar un artículo en la web necesita en el presupuesto del día, además de su borrador, unos US$0.06 con Gemini, US$0.05 con OpenAI o US$0.58 con Claude.
 - **El cobro nunca pasa de la reserva** mientras el proveedor respete el tope de respuesta que se le pide (también sus tokens de razonamiento). Si alguna vez cobrara más, el freno de siempre lo detiene: el trabajo queda bloqueado y MATYA se apaga hasta revisar las tarifas.
+
+### Pantallas
+
+Con el modo encendido, el Centro MATYA suma dos pestañas, **Hoy** y **Equipo**, y la configuración suma la sección «Modo equipo». Con el modo apagado no aparece nada de esto, y si el dueño lo apaga mientras mira una de esas pestañas, el Centro vuelve a Conversación. Solo un Administrador ve el Centro, como siempre.
+
+- **Hoy.** De arriba abajo:
+  - Avisos: «MATYA está en pausa desde…» con el botón «Reanudar», y una advertencia si el llamado de cada minuto no está activo (no hay marca en `tickAt`, o tiene más de 10 minutos), con un enlace a la configuración. La marca la pone solo el llamado de cada minuto, no el ciclo que el dueño pide desde la pantalla.
+  - «El plan de hoy»: la meta que escribió el Director en el plan de la mañana y cuántas piezas creó; mientras no hay plan, dice a qué hora llega.
+  - «Necesita tu sí»: cada pieza que espera al dueño, con su motivo (video con costo, artículo, no pasó la revisión, lista para publicar), el texto de MATYA y los problemas de la revisión, y los botones «Aprobar», «Rehacer» y «Cancelar».
+  - «Tablero del equipo»: una tarjeta por encargo en siete columnas (Investigación, Estrategia, Redacción, Diseño o video, Revisión, Programada, Publicada). En el teléfono las columnas se apilan y las vacías se ocultan. Cada tarjeta se abre para ver sus pasos: quién lo hizo, con qué modelo, cuánto cobró y lo que produjo. Muestra todo lo que sigue abierto, de cualquier día, y lo terminado hoy.
+- **Equipo.** Una fila por agente: su IA (el modelo propio o «Usa el modelo por defecto»; Diseño y Video no usan IA), si está listo o qué le falta, y sus pasos y gasto de hoy; al final, el total del equipo contra el límite diario.
+- **Configuración › Modo equipo.**
+  - El interruptor «Modo equipo» y la hora del plan de la mañana, en la hora del negocio.
+  - Los permisos: publicar en redes sociales y publicar artículos en la web.
+  - «IA de cada agente»: proveedor y modelo de Director, SEO e investigación, Estrategia, Redacción y Revisión; y «Precios de los modelos», los dólares por millón de tokens de cada modelo elegido. Tras guardar, la pantalla dice si cada agente quedó listo.
+  - La misma advertencia del llamado de cada minuto.
+  - «Pausar todo» y «Reanudar» (ver la sección siguiente). A diferencia del resto, se aplican al momento: no esperan a «Guardar configuración».
 
 ### Pausar todo y Reanudar
 
@@ -78,6 +95,8 @@ Estas piezas quedan en «Necesita tu sí» (`waiting_approval`) y no siguen hast
 
 Sin permiso de publicación, una pieza de redes (post o carrusel) se prepara y espera antes de programarse (`schedule`). Una pieza de video o un artículo no se hace: queda bloqueada en su paso `video` o `article`, antes de cotizar o de escribir, sin gastar nada.
 
+**Rehacer con una nota.** Con «Rehacer» el dueño puede escribir, si quiere, hasta 500 caracteres (sin espacios al principio ni al final) sobre lo que quiere distinto. Quien escribe la pieza, y quien escribe el artículo, la recibe como la petición del dueño para esa nueva versión, después de los problemas de la revisión. La nota vale solo para esa vuelta: un nuevo «Rehacer» sin nota la quita. Sin nota, «Rehacer» funciona como antes. Se muestra siempre como texto. Un borrador de artículo que espera su aprobación de pago no se rehace: se aprueba o se cancela.
+
 ### Límites que siempre aplican
 
 - **Nunca YouTube.** El agente no publica en YouTube: el validador descarta esas piezas y el guardia lo rechaza al programar. Esa subida siempre la aprueba una persona.
@@ -87,6 +106,36 @@ Sin permiso de publicación, una pieza de redes (post o carrusel) se prepara y e
 - **Ocho trabajos abiertos como máximo**, contando el encargo del equipo y cada una de sus piezas. El despacho solo crea las piezas que caben.
 - **Canales:** solo los permitidos y conectados. Un canal cuyos dos últimos envíos fallaron queda frenado hasta que el dueño vuelva a guardar su conexión.
 - **Ventanas de tormenta** (Florida 626.854): cuando un encargo trae una tormenta (`context.storm`), primero va el contenido de seguridad. Sus piezas salen entre las 9 a. m. y las 7 p. m. de la hora del negocio, aunque la tormenta ya sea vieja; una oferta de servicios, como pronto 49 horas después del evento y nunca en domingo. Las piezas de un public adjuster de Florida nunca salen en domingo, tampoco las de seguridad. Hoy ninguna fuente pone `context.storm` sola: la campaña manual de tormenta sigue siendo la que aplica esos tiempos.
+
+### Avisos por email
+
+Con el modo equipo encendido, MATYA avisa por email lo que de verdad necesita al dueño. Los manda el llamado de cada minuto, un solo email por negocio con todo lo nuevo, agrupado por tipo. El asunto empieza con «MATYA te necesita:» y el tipo del primer aviso, y suma «y N avisos más» si hay otros tipos. Son seis:
+
+1. **Un video espera tu aprobación.** Ya cotizado, para decidir el costo.
+2. **Una pieza no pasó la revisión.** Espera al dueño con las notas de la revisión; él decide si se rehace.
+3. **Un canal salió del plan.** Sus dos últimos envíos fallaron; se arregla guardando de nuevo la conexión. Las caídas de posición en Google siguen en las alertas de SEO y no se repiten aquí.
+4. **Se acabó el presupuesto de hoy.** El equipo no hace más llamadas de pago hasta mañana.
+5. **MATYA se apagó sola.** Un cobro pasó de lo reservado; mientras siga apagada y dentro de las 24 horas siguientes.
+6. **El plan de la mañana se detuvo.** Quedó bloqueado o incierto.
+
+- **Tope:** como máximo 5 emails de aviso por negocio y por día local (`AgentBudget.alerts`). El resto espera a mañana. Un aviso que sigue en pie no se repite durante 30 días.
+- **A quién llegan:** a los destinatarios del reporte diario: el email del reporte (hasta tres, separados por comas) o, si está vacío, el del dueño del negocio. Sin ninguno, no sale nada. Van en el idioma del reporte y sus enlaces usan `PUBLIC_BASE_URL`.
+- **Si el envío falla, no se reintenta.** El aviso queda anotado como fallido (así un correo roto no se repite cada minuto) y ese intento no cuenta entre los 5. Si el problema sigue en pie pasados los 30 días, se avisa otra vez. El motivo queda anotado en el registro del aviso, no en la pantalla.
+- Cada vuelta manda emails a 5 negocios como máximo, y un negocio sin nada nuevo no cuenta.
+
+### Reporte diario
+
+Con el modo equipo encendido, el reporte diario lleva al final la sección «Tu equipo MATYA» con tres partes y un botón al Centro MATYA:
+
+- **Ayer:** las piezas que el equipo publicó, por canal; los resultados más recientes de esas publicaciones (alcance, me gusta, comentarios) y lo que gastó el equipo.
+- **Hoy:** la meta y las piezas del plan de la mañana, o «El plan de hoy todavía no está listo».
+- **Te necesita:** lo que espera al dueño, o «Nada espera tu respuesta».
+
+**Cuándo sale.** Un negocio con modo equipo espera el plan de la mañana, para poder contarlo. Deja de esperar cuando ya no viene un plan (MATYA apagada o en pausa, o el llamado de cada minuto sin actividad) o cuando el plan terminó, sea como sea; y, como tarde, a la hora del plan más 3 horas, nunca después de las 23:00 de la hora del negocio (`min(hora + 3, 23:00)`). El llamado de cada minuto envía también los reportes de estos negocios cuando ya pueden salir, así que el cron de la plataforma puede correr una sola vez al día. Si la sección no se puede leer, el reporte sale sin ella.
+
+**Con el modo apagado no cambia nada:** el reporte no lleva la sección y no cambia de horario.
+
+**Un negocio con modo equipo y el presupuesto diario en $0 no recibe plan de la mañana** (el plan solo se pide con un presupuesto mayor que cero), así que su reporte espera hasta ese tope, `min(hora + 3, 23:00)`. Para que el plan y el reporte lleguen a su hora, el negocio necesita un presupuesto diario mayor que cero.
 
 ## Activación, en orden
 
