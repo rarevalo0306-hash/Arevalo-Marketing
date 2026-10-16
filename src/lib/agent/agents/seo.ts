@@ -3,12 +3,20 @@
 import { z } from "zod";
 import type { SeoKind } from "@/lib/seo/reports";
 import { AgentError } from "../access";
-import { boundedContext, oneLine } from "../bounded-context";
-import { meteredAsk } from "../metered";
+import {
+  fitPayload,
+  oneLine,
+  shrinkKey,
+  shrinkList,
+  shrinkText,
+  slimContext,
+  type Shrink,
+  type SlimContext,
+} from "../bounded-context";
+import { meteredAsk, promptBytes } from "../metered";
 import { SYSTEM } from "../prompts";
 import type { StepResult } from "../queue";
-import type { Context } from "../schema";
-import { DIGEST_TOTAL, seoDigest } from "../seo-digest";
+import { seoDigest, type SeoDigestItem } from "../seo-digest";
 import type { AgentInput } from "./types";
 
 export const Opportunities = z.object({
@@ -60,6 +68,31 @@ const instructions = (language: "es" | "en") =>
   " Items with stale=true come from an old report: say so in the detail. You cannot measure, search or open anything; if the data holds nothing useful, return no items." +
   ` Write the details in ${language === "en" ? "English" : "Spanish"}.`;
 
+type NewsItem = { source: string; title: string; summary: string };
+type Payload = { context: SlimContext; request: string; digest: SeoDigestItem[]; news: NewsItem[] };
+
+/**
+ * Lowest value first: the digest from its tail (it is ordered by value: drops, rank, questions, gap, then the other
+ * reports), the news text, then the business profile and objective. The request is never cut.
+ */
+const SHRINKS: Shrink<Payload>[] = [
+  shrinkList<Payload, SeoDigestItem>((p) => p.digest, (p, digest) => ({ ...p, digest })),
+  shrinkText<Payload>(
+    (p) => p.news[0]?.summary,
+    (p, summary) => ({ ...p, news: p.news.map((n, i) => (i === 0 ? { ...n, summary } : n)) }),
+    [200, 0],
+  ),
+  shrinkList<Payload, NewsItem>((p) => p.news, (p, news) => ({ ...p, news })),
+  shrinkKey<Payload, "context">(
+    "context",
+    shrinkText<SlimContext>((c) => c.business.aiProfile, (c, aiProfile) => ({ ...c, business: { ...c.business, aiProfile } }), [200, 0]),
+  ),
+  shrinkKey<Payload, "context">(
+    "context",
+    shrinkText<SlimContext>((c) => c.objective, (c, objective) => ({ ...c, objective }), [300, 0]),
+  ),
+];
+
 /** The `research` step of a team run. */
 export async function runSeo(input: AgentInput): Promise<StepResult> {
   // Only saved reports are read, two of each kind; nothing is measured again.
@@ -75,15 +108,12 @@ export async function runSeo(input: AgentInput): Promise<StepResult> {
       ),
     )
   ).flat();
-  const digest = seoDigest(saved, new Date(), STALE_DAYS).slice(0, DIGEST_TOTAL);
+  const digest = seoDigest(saved, new Date(), STALE_DAYS);
 
   // `context.news` is the verified item the run was started from; `enqueue` only attaches one that is fresh (`newsFresh`).
   // It goes once, cut short and without its evidence, under the source id `news@<id>`.
-  const context: Context & { signals?: unknown } = { ...input.context };
-  const stored = context.news;
-  delete context.news;
-  delete context.signals;
-  const news =
+  const stored = input.context.news;
+  const news: NewsItem[] =
     stored && typeof stored.id === "string" && stored.id
       ? [
           {
@@ -100,24 +130,21 @@ export async function runSeo(input: AgentInput): Promise<StepResult> {
   if (!input.model)
     throw new AgentError("Falta configurar el modelo del agente SEO.");
 
-  const r = await meteredAsk(
-    Opportunities,
-    instructions(input.language),
-    {
-      context: boundedContext(context),
-      request: input.run.prompt,
-      digest,
-      news,
-    },
-    input.model,
-  );
-  // A source the model made up is not evidence: only ids from what was sent stay.
-  const allowed = new Set([...digest, ...news].map((x) => x.source));
+  // Only what the research needs (a slim context, not the study, knowledge, posts or messages), trimmed to fit the call.
+  const system = instructions(input.language);
+  const sent = fitPayload<Payload>(
+    { context: slimContext(input.context), request: input.run.prompt, digest, news },
+    (payload) => promptBytes(Opportunities, system, payload),
+    SHRINKS,
+  ).payload;
+  const r = await meteredAsk(Opportunities, system, sent, input.model);
+  // A source the model made up is not evidence: only ids from what was really sent stay.
+  const allowed = new Set([...sent.digest, ...sent.news].map((x) => x.source));
   const items = r.value.items.filter((i) => allowed.has(i.source));
   return {
     data: {
       items,
-      digest,
+      digest: sent.digest,
       dropped: r.value.items.length - items.length,
       usage: r.usage,
     },

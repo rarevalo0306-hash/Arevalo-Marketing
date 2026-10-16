@@ -188,7 +188,8 @@ describe("seoDigest", () => {
     expect(out[0].detail.length).toBeLessThanOrEqual(300);
   });
 
-  it("acota cuántos items salen de cada parte", () => {
+  it("acota cuántos items salen de cada parte, con los límites exactos", () => {
+    expect(DIGEST_LIMITS).toEqual({ drops: 6, rank: 6, questions: 8, gap: 8, perKind: 2 });
     const many = Array.from({ length: 60 }, (_, i) => row(`kw ${i}`, 10 + i, { questions: [`¿Pregunta ${i}?`] }));
     const out = seoDigest(
       [
@@ -199,10 +200,12 @@ describe("seoDigest", () => {
       STALE,
     );
     const count = (k: string) => out.filter((i) => i.kind === k).length;
-    expect(count("rank")).toBeLessThanOrEqual(8);
-    expect(count("question")).toBeLessThanOrEqual(8);
-    expect(count("gap")).toBeLessThanOrEqual(8);
-    expect(out.length).toBeLessThanOrEqual(30);
+    // Una sola revisión: sin con qué comparar no hay bajadas.
+    expect([count("drop"), count("rank"), count("question"), count("gap")]).toEqual([0, 6, 8, 8]);
+    expect(out).toHaveLength(22);
+    // Las más cercanas al primer lugar entran primero, y de las oportunidades las mejores.
+    expect(out.filter((i) => i.kind === "rank").map((i) => i.detail.match(/"([^"]+)"/)?.[1])).toEqual(["kw 0", "kw 1", "kw 2", "kw 3", "kw 4", "kw 5"]);
+    expect(out.filter((i) => i.kind === "gap").map((i) => i.detail.match(/"([^"]+)"/)?.[1])).toEqual(["gap 39", "gap 38", "gap 37", "gap 36", "gap 35", "gap 34", "gap 33", "gap 32"]);
   });
 
   it("no cambia lo que recibe y da lo mismo con el orden de entrada distinto", () => {
@@ -325,6 +328,26 @@ describe("seoDigest: los demás tipos de reporte", () => {
     const out = seoDigest(all, NOW, STALE);
     expect(out).toHaveLength(7 * DIGEST_LIMITS.perKind);
     expect(out.length).toBeLessThanOrEqual(DIGEST_TOTAL);
+  });
+
+  it("con todo al máximo salen exactamente 42 items: 6 bajadas, 6 posiciones, 8 preguntas, 8 oportunidades y 2 de cada otro tipo", () => {
+    const prevRows = Array.from({ length: 60 }, (_, i) => row(`kw ${i}`, 4, { questions: [`¿Pregunta ${i}?`] }));
+    const curRows = Array.from({ length: 60 }, (_, i) => row(`kw ${i}`, 12 + i, { questions: [`¿Pregunta ${i}?`] }));
+    const reports = [
+      { kind: "rank" as const, createdAt: ago(1), data: rankData(curRows) },
+      { kind: "rank" as const, createdAt: ago(8), data: rankData(prevRows) },
+      { kind: "gap" as const, createdAt: ago(1), data: gapData(Array.from({ length: 40 }, (_, i) => gapRow(`gap ${i}`, { opportunity: i }))) },
+      ...kinds.flatMap((kind) => [1, 2, 3].map((d) => ({ kind, createdAt: ago(d), data: SAVED[kind].data }))),
+    ];
+    const out = seoDigest(reports, NOW, STALE);
+    const count = (k: string) => out.filter((i) => i.kind === k).length;
+    expect([count("drop"), count("rank"), count("question"), count("gap")]).toEqual([6, 6, 8, 8]);
+    for (const kind of kinds) expect(count(kind)).toBe(2);
+    expect(out).toHaveLength(42);
+    expect(out).toHaveLength(DIGEST_TOTAL);
+    // El orden es el de valor: bajadas, posiciones, preguntas, oportunidades y, al final, los demás tipos.
+    const order = out.map((i) => i.kind).filter((k, i, all) => k !== all[i - 1]);
+    expect(order).toEqual(["drop", "rank", "question", "gap", ...kinds]);
   });
 
   it("el texto de la web dentro de un resumen queda en una línea y acotado", () => {

@@ -1254,9 +1254,14 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       const director = vi
         .spyOn(AGENTS.director, "run")
         .mockResolvedValue({ data: { goal: "Más llamadas", maxPieces: 2, reply: "" } });
-      await workOne(A, executeStep, () => 0);
-      const calls = [...director.mock.calls];
-      director.mockRestore();
+      let calls: (typeof director.mock.calls);
+      try {
+        await workOne(A, executeStep, () => 0);
+        calls = [...director.mock.calls];
+      } finally {
+        // Even if the step fails, the spy must not leak into the next test.
+        director.mockRestore();
+      }
       expect(calls).toHaveLength(1);
       const input = calls[0][0];
       expect(input.step).toEqual({ id: "plan", agent: "director", attempt: 0 });
@@ -1363,9 +1368,12 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       await saveSettings(A, { ...settings, teamMode: true });
       const team = await ask("x", { kind: "team" });
       const run = vi.spyOn(AGENTS.director, "run");
-      await workOne(A, executeStep, () => 0);
-      expect(run).not.toHaveBeenCalled();
-      run.mockRestore();
+      try {
+        await workOne(A, executeStep, () => 0);
+        expect(run).not.toHaveBeenCalled();
+      } finally {
+        run.mockRestore();
+      }
       const after = await row(team.id);
       expect(after.error).toBe(
         "Falta configurar el modelo y sus tarifas verificadas para MATYA. El resumen de actividad sigue disponible.",
