@@ -25,7 +25,7 @@ import { readSource } from "@/lib/agent/network";
 import { storeDesign } from "@/lib/media-formats";
 import { ensureStoredCopy } from "@/lib/library-files";
 import { AGENTS } from "@/lib/agent/agents";
-import { toolsFor } from "@/lib/agent/tools";
+import { CALENDAR_LIMITS, toolsFor } from "@/lib/agent/tools";
 import { BUILTIN_TEMPLATES } from "@/lib/design-shapes";
 import type { VideoMedia } from "@/lib/video-plan";
 vi.mock("@/lib/library-files", () => ({
@@ -1292,7 +1292,9 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       expect(run).not.toHaveBeenCalled();
       run.mockRestore();
       const after = await row(team.id);
-      expect(after.error).toContain("modelo");
+      expect(after.error).toBe(
+        "Falta configurar el modelo y sus tarifas verificadas para MATYA. El resumen de actividad sigue disponible.",
+      );
       expect(after.chargedCents).toBe(0);
     });
 
@@ -1326,29 +1328,36 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       expect(await spoofed("copy")).toBeNull();
     });
 
-    it("readCalendar lists this business's posts and campaigns around now and nothing else", async () => {
-      const post = (id: string, extra: Record<string, unknown>) =>
+    const calendarPost = (id: string, scheduledAt: Date, extra: Record<string, unknown> = {}) => ({
+      id,
+      businessId: A,
+      text: `Texto ${id}`,
+      status: "scheduled",
+      createdAt: scheduledAt,
+      scheduledAt,
+      ...extra,
+    });
+    const calendarCampaign = (id: string, startsAt: Date, extra: Record<string, unknown> = {}) => ({
+      id,
+      businessId: A,
+      name: id,
+      startsAt,
+      createdAt: startsAt,
+      ...extra,
+    });
+    const ago = (days: number) => new Date(Date.now() - days * DAY);
+
+    it("readCalendar lists this business's posts scheduled in the window and nothing else", async () => {
+      const post = (id: string, scheduledAt: Date, extra: Record<string, unknown> = {}) =>
         db.post.create({
-          data: {
-            id,
-            businessId: A,
-            text: `Texto ${id}`,
-            status: "scheduled",
-            targets: { create: [{ channel: "facebook" }] },
-            ...extra,
-          },
+          data: { ...calendarPost(id, scheduledAt, extra), targets: { create: [{ channel: "facebook" }] } } as never,
         });
-      const old = new Date(Date.now() - 40 * DAY);
-      await post("cal-recent", { createdAt: new Date(Date.now() - 10 * DAY), scheduledAt: new Date(Date.now() - 10 * DAY) });
-      await post("cal-next", { createdAt: old, scheduledAt: new Date(Date.now() + 3 * DAY) });
-      await post("cal-old", { createdAt: old, scheduledAt: old });
-      await post("cal-far", { createdAt: old, scheduledAt: new Date(Date.now() + 20 * DAY) });
-      await db.post.create({ data: { id: "cal-b", businessId: B, text: "De B" } });
-      await db.campaign.create({ data: { id: "cal-camp", businessId: A, name: "Activa" } });
-      await db.campaign.create({
-        data: { id: "cal-camp-old", businessId: A, name: "Vieja", createdAt: old, startsAt: old },
-      });
-      await db.campaign.create({ data: { id: "cal-camp-b", businessId: B, name: "De B" } });
+      await post("cal-recent", ago(10));
+      await post("cal-next", ago(-3), { createdAt: ago(40) });
+      await post("cal-old", ago(40));
+      // Created today but scheduled beyond the window: not listed, and `to` says why.
+      await post("cal-far", ago(-20), { createdAt: new Date() });
+      await db.post.create({ data: calendarPost("cal-b", ago(1), { businessId: B }) as never });
       const calendar = await toolsFor(AGENTS.director, await ask()).use("readCalendar")();
       expect(calendar.posts.map((p) => p.id)).toEqual(["cal-recent", "cal-next"]);
       expect(calendar.posts[1]).toMatchObject({
@@ -1357,8 +1366,78 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
         text: "Texto cal-next",
         campaignId: null,
       });
-      expect(calendar.campaigns.map((c) => c.id)).toEqual(["cal-camp"]);
+      expect(calendar.truncated).toEqual({ past: false, upcoming: false, campaigns: false });
       expect(Date.parse(calendar.to) - Date.parse(calendar.from)).toBe(37 * DAY);
+    });
+
+    it("readCalendar lists the campaigns that overlap the window, running and evergreen ones included", async () => {
+      const campaign = (id: string, startsAt: Date, extra: Record<string, unknown> = {}) =>
+        db.campaign.create({ data: calendarCampaign(id, startsAt, extra) as never });
+      await campaign("camp-running", ago(90), { status: "active", endsAt: ago(-30) });
+      await campaign("camp-ended-recent", ago(60), { status: "ended", endsAt: ago(5) });
+      await campaign("camp-evergreen", ago(40));
+      await campaign("camp-now", new Date());
+      await campaign("camp-soon", ago(-3));
+      await campaign("camp-ended-old", ago(90), { status: "ended", endsAt: ago(60) });
+      await campaign("camp-closed", ago(50), { status: "stopped" });
+      await campaign("camp-future", ago(-20));
+      await db.campaign.create({ data: calendarCampaign("camp-b", ago(1), { businessId: B }) as never });
+      const calendar = await toolsFor(AGENTS.director, await ask()).use("readCalendar")();
+      expect(calendar.campaigns.map((c) => c.id)).toEqual([
+        "camp-running",
+        "camp-ended-recent",
+        "camp-evergreen",
+        "camp-now",
+        "camp-soon",
+      ]);
+      expect(calendar.campaigns[0]).toMatchObject({ status: "active", endsAt: expect.any(String) });
+      expect(calendar.campaigns[2]).toMatchObject({ status: "draft", endsAt: null });
+    });
+
+    it("readCalendar keeps the upcoming posts when the past is busy and says it cut", async () => {
+      const { past } = CALENDAR_LIMITS;
+      const hour = 3600000;
+      await db.post.createMany({
+        data: [
+          ...Array.from({ length: past + 25 }, (_, i) =>
+            calendarPost(`busy-past-${i}`, new Date(Date.now() - (i + 1) * hour)),
+          ),
+          ...[1, 2, 3].map((d) => calendarPost(`busy-next-${d}`, ago(-d))),
+        ] as never,
+      });
+      const calendar = await toolsFor(AGENTS.director, await ask()).use("readCalendar")();
+      const ids = calendar.posts.map((p) => p.id);
+      // The most recent of the past, oldest first, then everything that is coming.
+      expect(ids).toEqual([
+        ...Array.from({ length: past }, (_, i) => `busy-past-${past - 1 - i}`),
+        "busy-next-1",
+        "busy-next-2",
+        "busy-next-3",
+      ]);
+      expect(calendar.truncated).toEqual({ past: true, upcoming: false, campaigns: false });
+    });
+
+    it("readCalendar keeps the soonest upcoming posts and the latest campaigns when they overflow", async () => {
+      const { upcoming, campaigns } = CALENDAR_LIMITS;
+      const hour = 3600000;
+      await db.post.createMany({
+        data: Array.from({ length: upcoming + 5 }, (_, i) =>
+          calendarPost(`soon-${i}`, new Date(Date.now() + (i + 1) * 2 * hour)),
+        ) as never,
+      });
+      await db.campaign.createMany({
+        data: Array.from({ length: campaigns + 2 }, (_, i) =>
+          calendarCampaign(`many-${i}`, new Date(Date.now() - (i + 1) * hour)),
+        ) as never,
+      });
+      const calendar = await toolsFor(AGENTS.director, await ask()).use("readCalendar")();
+      expect(calendar.posts.map((p) => p.id)).toEqual(
+        Array.from({ length: upcoming }, (_, i) => `soon-${i}`),
+      );
+      expect(calendar.campaigns.map((c) => c.id)).toEqual(
+        Array.from({ length: campaigns }, (_, i) => `many-${campaigns - 1 - i}`),
+      );
+      expect(calendar.truncated).toEqual({ past: false, upcoming: true, campaigns: true });
     });
 
     it("readSeoReports reads only this business's latest reports of a kind", async () => {

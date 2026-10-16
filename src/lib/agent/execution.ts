@@ -47,9 +47,6 @@ import { SYSTEM, MEDIA_POLICY } from "./prompts";
 import { libraryMedia } from "./library";
 import { executeTeamStep } from "./team-execution";
 
-// Agents reuse these through the leaf module `prompts.ts`; they stay importable from here too.
-export { SYSTEM, MEDIA_POLICY };
-
 function boundedContext(c: Context) {
   return {
     ...c,

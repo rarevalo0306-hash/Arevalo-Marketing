@@ -43,10 +43,23 @@ export type ToolName =
   | "writeArticle"
   | "publishArticle";
 
+/** How many rows `readCalendar` returns at most from each part (it asks one more to know it cut). */
+export const CALENDAR_LIMITS = { past: 40, upcoming: 40, campaigns: 30 } as const;
+/**
+ * The business's calendar. The window is `[from, to]` = the last 30 days up to the next 7, in ISO.
+ * - `posts`: those whose `scheduledAt` is in the window (a draft counts from when it was made),
+ *   oldest first. A post scheduled further ahead than `to` is not listed.
+ * - `campaigns`: those that overlap the window (`startsAt <= to` and no end or `endsAt >= from`),
+ *   so a campaign that started earlier and still runs is listed. One closed without an end date
+ *   (`stopped`, `ended`) is not. Oldest start first.
+ * - `truncated`: a part had more rows than `CALENDAR_LIMITS`. Past posts keep the most recent and
+ *   upcoming posts the soonest; campaigns keep the most recently started. Past and upcoming
+ *   posts are capped apart, so a busy month never hides what is about to go out.
+ */
 export type Calendar = {
-  /** ISO. The window: the last 30 days up to the next 7. */
   from: string;
   to: string;
+  truncated: { past: boolean; upcoming: boolean; campaigns: boolean };
   posts: {
     id: string;
     status: string;
@@ -91,6 +104,10 @@ export type ToolImpl = {
   /** The output of the run's succeeded step `base`, or of its latest rework (`base-r<n>`); null if none. */
   readStepOutput: (base: string) => Promise<unknown>;
   brandKit: () => Promise<BrandKit>;
+  /**
+   * Not a pure read: a Drive clip that was picked is copied into storage so the storyboard has
+   * a URL (a write; it can throw for an oversized or unsupported clip). Photos are only read.
+   */
   listLibrary: (idea: string, options?: LibraryOptions) => Promise<VideoMedia[]>;
   renderDesign: (input: DesignInput, meta?: PhotoMeta) => Promise<string>;
   channelRules: (channel: ChannelId, draft: Draft) => Note[];
@@ -121,42 +138,45 @@ const IMPLS: { [K in ToolName]: (run: AgentRun) => ToolImpl[K] } = {
     latestReports(run.businessId, kind, Math.min(Math.max(Math.trunc(take) || 1, 1), 10)),
 
   readCalendar: (run) => async () => {
-    const now = Date.now();
-    const from = new Date(now - 30 * DAY);
-    const to = new Date(now + 7 * DAY);
-    const [posts, campaigns] = await Promise.all([
+    const nowMs = Date.now();
+    const now = new Date(nowMs);
+    const from = new Date(nowMs - 30 * DAY);
+    const to = new Date(nowMs + 7 * DAY);
+    const postSelect = {
+      id: true,
+      status: true,
+      kind: true,
+      subject: true,
+      text: true,
+      scheduledAt: true,
+      createdAt: true,
+      campaignId: true,
+      targets: { select: { channel: true } },
+    } as const;
+    const [past, upcoming, campaigns] = await Promise.all([
       db.post.findMany({
-        where: {
-          businessId: run.businessId,
-          OR: [
-            { createdAt: { gte: from } },
-            { scheduledAt: { gte: from, lte: to } },
-          ],
-        },
+        where: { businessId: run.businessId, scheduledAt: { gte: from, lt: now } },
+        orderBy: { scheduledAt: "desc" },
+        take: CALENDAR_LIMITS.past + 1,
+        select: postSelect,
+      }),
+      db.post.findMany({
+        where: { businessId: run.businessId, scheduledAt: { gte: now, lte: to } },
         orderBy: { scheduledAt: "asc" },
-        take: 60,
-        select: {
-          id: true,
-          status: true,
-          kind: true,
-          subject: true,
-          text: true,
-          scheduledAt: true,
-          createdAt: true,
-          campaignId: true,
-          targets: { select: { channel: true } },
-        },
+        take: CALENDAR_LIMITS.upcoming + 1,
+        select: postSelect,
       }),
       db.campaign.findMany({
         where: {
           businessId: run.businessId,
+          startsAt: { lte: to },
           OR: [
-            { createdAt: { gte: from } },
-            { startsAt: { gte: from, lte: to } },
+            { endsAt: { gte: from } },
+            { endsAt: null, status: { notIn: ["stopped", "ended"] } },
           ],
         },
-        orderBy: { startsAt: "asc" },
-        take: 30,
+        orderBy: { startsAt: "desc" },
+        take: CALENDAR_LIMITS.campaigns + 1,
         select: {
           id: true,
           name: true,
@@ -169,17 +189,27 @@ const IMPLS: { [K in ToolName]: (run: AgentRun) => ToolImpl[K] } = {
         },
       }),
     ]);
+    const keepPast = past.slice(0, CALENDAR_LIMITS.past).reverse();
+    const keepUpcoming = upcoming.slice(0, CALENDAR_LIMITS.upcoming);
+    const keepCampaigns = campaigns.slice(0, CALENDAR_LIMITS.campaigns).reverse();
     return {
       from: from.toISOString(),
       to: to.toISOString(),
-      posts: posts.map(({ targets, text, scheduledAt, createdAt, ...p }) => ({
-        ...p,
-        text: text.slice(0, 300),
-        scheduledAt: scheduledAt.toISOString(),
-        createdAt: createdAt.toISOString(),
-        channels: targets.map((t) => t.channel),
-      })),
-      campaigns: campaigns.map(({ startsAt, endsAt, ...c }) => ({
+      truncated: {
+        past: past.length > CALENDAR_LIMITS.past,
+        upcoming: upcoming.length > CALENDAR_LIMITS.upcoming,
+        campaigns: campaigns.length > CALENDAR_LIMITS.campaigns,
+      },
+      posts: [...keepPast, ...keepUpcoming].map(
+        ({ targets, text, scheduledAt, createdAt, ...p }) => ({
+          ...p,
+          text: text.slice(0, 300),
+          scheduledAt: scheduledAt.toISOString(),
+          createdAt: createdAt.toISOString(),
+          channels: targets.map((t) => t.channel),
+        }),
+      ),
+      campaigns: keepCampaigns.map(({ startsAt, endsAt, ...c }) => ({
         ...c,
         startsAt: startsAt.toISOString(),
         endsAt: endsAt?.toISOString() ?? null,
