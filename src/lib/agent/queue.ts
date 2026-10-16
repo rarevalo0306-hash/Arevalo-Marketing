@@ -40,6 +40,13 @@ export const OPEN_STATUSES = [
 ] as const;
 /** Most open runs a business may have at once (`enqueue` refuses the next one; a team's pieces count too). */
 export const OPEN_RUN_CAP = 8;
+/** The owner's requests that stay what they are with team mode on: they are not work for the team. */
+const SOLO_KINDS: ReadonlySet<RunKind> = new Set<RunKind>([
+  "briefing",
+  "pause",
+  "radar",
+  "verify_news",
+]);
 /** Context keys that `loadContext`, `enqueue`'s own checks or `spawnPieces` set: never from a caller. */
 const OWNED_CONTEXT = new Set<string>([
   "business",
@@ -138,9 +145,10 @@ export async function enqueue(
   } = {},
 ) {
   const input = MessageInput.parse(raw);
-  const kind = input.kind ?? inferKind(input.text);
+  // What was asked for, from the body or from the text. With team mode on the lock below may turn it into a team run.
+  const requested = input.kind ?? inferKind(input.text);
   // Pieces only come from their team run (`spawnPieces`): a planless piece has no steps.
-  if (kind === "piece")
+  if (requested === "piece")
     throw new AgentError("Ese tipo de encargo no se puede pedir directamente.");
   // Never read from `raw`: the owner's HTTP body must not pass as the daily cycle.
   const origin = opts.origin === "daily" ? "daily" : "owner";
@@ -158,13 +166,13 @@ export async function enqueue(
     if (!c) throw new AgentError("Campaña no encontrada.", 404);
     context.campaignId = c.id;
   }
-  if (kind === "pause" && !context.campaignId)
+  if (requested === "pause" && !context.campaignId)
     throw new AgentError("Selecciona la campaña que quieres pausar.");
   if (input.newsId) {
     const n = await db.agentNews.findFirst({
       where: { id: input.newsId, businessId },
     });
-    if (!n || (kind !== "verify_news" && !newsFresh(n)))
+    if (!n || (requested !== "verify_news" && !newsFresh(n)))
       throw new AgentError(
         "Esta noticia necesita contrastar su fuente, fecha y vigencia antes de crear contenido.",
       );
@@ -184,13 +192,23 @@ export async function enqueue(
       },
     });
     if (prior) return prior;
-    if (kind === "team") {
-      const ws = await tx.agentWorkspace.findUnique({ where: { businessId } });
-      if (!ws?.teamMode)
-        throw new AgentError(
-          "Activa el modo equipo para pedir trabajo al equipo.",
-        );
-    }
+    const ws = await tx.agentWorkspace.findUnique({ where: { businessId } });
+    // "Pausar todo": nothing new is asked for, by the owner or by the morning plan, until it is resumed.
+    if (ws?.pausedAt)
+      throw new AgentError(
+        "MATYA está en pausa. Reanúdalo para pedir trabajo.",
+        409,
+      );
+    if (requested === "team" && !ws?.teamMode)
+      throw new AgentError(
+        "Activa el modo equipo para pedir trabajo al equipo.",
+      );
+    // With team mode on, what the owner asks for goes to the team (a question too: the Director answers with no pieces),
+    // except the few things that are not work for the team. Decided here, with the settings as they are under the lock.
+    const kind: RunKind =
+      origin === "owner" && ws?.teamMode && !SOLO_KINDS.has(requested)
+        ? "team"
+        : requested;
     // A team's pieces count too; `spawnPieces` itself never checks this cap.
     const pending = await tx.agentRun.count({
       where: {
@@ -288,10 +306,12 @@ export async function beginStep(
     // draft and its publication, with its second pass `article_publish:<n>`) re-read the current switches before they reserve
     // anything (`pieceStepCost`), and the render's wait (`video_wait:<n>`) and the review (`review`, `review-r<n>`) that follow
     // only read what the earlier steps saved. A save in between must not leave a piece charged for a step and blocked at the next.
+    // The last one, `verify`, only reads the post the piece already scheduled: a save after the post went out must not stop it.
     const guardedLater =
       run.kind === "piece" &&
       (name === "prepare" ||
         name === "schedule" ||
+        name === "verify" ||
         name === "render" ||
         /^video_wait(:\d+)?$/.test(name) ||
         /^review(-r\d+)?$/.test(name) ||
@@ -569,6 +589,30 @@ export async function recoverExpired() {
     );
   return expired.length;
 }
+/**
+ * Cancels one run: its scheduled posts go back to draft while still unclaimed (an in-flight provider call cannot be undone;
+ * its status remains visible in History), a run that is waiting is cancelled at once and a running one finishes its step in
+ * flight and is cancelled there (`finishStep`). A run that already ended is returned as it is. Runs inside the caller's
+ * business lock.
+ */
+async function cancelRun(tx: Prisma.TransactionClient, run: AgentRun) {
+  if (terminal.includes(run.status)) return run;
+  await tx.post.updateMany({
+    where: {
+      businessId: run.businessId,
+      campaign: { agentRunId: run.id },
+      status: "scheduled",
+    },
+    data: { status: "draft" },
+  });
+  return tx.agentRun.update({
+    where: { id: run.id },
+    data: {
+      cancelRequested: true,
+      ...(run.status === "running" ? {} : { status: "cancelled" }),
+    },
+  });
+}
 export async function changeRun(
   businessId: string,
   runId: string,
@@ -579,26 +623,7 @@ export async function changeRun(
       where: { id: runId, businessId },
     });
     if (!run) throw new AgentError("Trabajo no encontrado.", 404);
-    if (action === "cancel") {
-      if (terminal.includes(run.status)) return run;
-      // Scheduled agent posts are reverted only while still unclaimed. An in-flight
-      // provider call cannot be undone; its status remains visible in History.
-      await tx.post.updateMany({
-        where: {
-          businessId,
-          campaign: { agentRunId: runId },
-          status: "scheduled",
-        },
-        data: { status: "draft" },
-      });
-      return tx.agentRun.update({
-        where: { id: runId },
-        data: {
-          cancelRequested: true,
-          ...(run.status === "running" ? {} : { status: "cancelled" }),
-        },
-      });
-    }
+    if (action === "cancel") return cancelRun(tx, run);
     const settings = await tx.agentWorkspace.findUniqueOrThrow({
       where: { businessId },
     });
@@ -622,6 +647,55 @@ export async function changeRun(
       data: { status: "queued" },
     });
   });
+}
+
+/**
+ * "Pausar todo", in one locked transaction: the workspace is paused (no new work, and no agent post goes out), its revision
+ * moves (a post stamped with the old one is refused when it is claimed), every open run is cancelled the way the owner's
+ * "Cancelar" does it (a step already running finishes and its run ends cancelled there; none after it starts) and every
+ * agent post still scheduled goes back to draft. A post already claimed for publication cannot be undone. A business with
+ * no workspace yet gets one, paused. Pausing again keeps the first pause time.
+ */
+export async function pauseAll(businessId: string): Promise<void> {
+  await locked(businessId, async (tx) => {
+    const current = await tx.agentWorkspace.findUnique({
+      where: { businessId },
+      select: { pausedAt: true },
+    });
+    await tx.agentWorkspace.upsert({
+      where: { businessId },
+      create: { businessId, pausedAt: new Date() },
+      update: {
+        pausedAt: current?.pausedAt ?? new Date(),
+        revision: { increment: 1 },
+      },
+    });
+    const open = await tx.agentRun.findMany({
+      where: { businessId, status: { in: [...OPEN_STATUSES] } },
+    });
+    for (const run of open) await cancelRun(tx, run);
+    // Whatever the agent still has scheduled, whichever run it belongs to.
+    await tx.post.updateMany({
+      where: {
+        businessId,
+        status: "scheduled",
+        OR: [
+          { id: { startsWith: "agent-" } },
+          { campaign: { agentRunId: { not: null } } },
+        ],
+      },
+      data: { status: "draft" },
+    });
+  });
+}
+/** Lifts "Pausar todo". What it cancelled stays cancelled; new work is accepted again. */
+export async function resumeAll(businessId: string): Promise<void> {
+  await locked(businessId, (tx) =>
+    tx.agentWorkspace.updateMany({
+      where: { businessId },
+      data: { pausedAt: null },
+    }),
+  );
 }
 
 /**

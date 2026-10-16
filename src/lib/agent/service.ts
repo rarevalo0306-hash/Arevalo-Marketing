@@ -4,6 +4,7 @@ import { publishPost } from "@/lib/publish";
 import { AgentError } from "./access";
 import { modelConfig } from "./metered";
 import { enqueue, json, stepsOf } from "./queue";
+import { enqueueDailyPlans } from "./daily";
 import { drain } from "./execution";
 import { loadContext } from "./context";
 import { industryFor, toolCatalog } from "./industry";
@@ -161,7 +162,12 @@ export async function runAgentCycle(businessId?: string) {
   if (process.env.MATYA_AGENT_ENABLED !== "true")
     return { steps: 0, published: 0 };
   const workspaces = await db.agentWorkspace.findMany({
-    where: { ...(businessId ? { businessId } : {}), enabled: true },
+    // A paused workspace asks for nothing (`enqueue` refuses): no radar, no news checks.
+    where: {
+      ...(businessId ? { businessId } : {}),
+      enabled: true,
+      pausedAt: null,
+    },
     take: 20,
   });
   for (const w of workspaces) {
@@ -200,6 +206,12 @@ export async function runAgentCycle(businessId?: string) {
         if (!(error instanceof AgentError && error.status === 429)) throw error;
       }
     }
+  }
+  // The morning plan goes in the queue before the cycle drains it. If it cannot be made, the queue is still worked.
+  try {
+    await enqueueDailyPlans(new Date(), businessId);
+  } catch {
+    console.error("MATYA daily plans did not complete");
   }
   const steps = await drain(businessId, 80000);
   // Only agent-owned posts; the legacy scheduler continues to own every other post.

@@ -1,7 +1,13 @@
 import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { AgentError, requireAgentOwner, sameOrigin } from "@/lib/agent/access";
-import { changeRun, enqueue, saveSettings } from "@/lib/agent/queue";
+import {
+  changeRun,
+  enqueue,
+  pauseAll,
+  resumeAll,
+  saveSettings,
+} from "@/lib/agent/queue";
 import { runAgentCycle, snapshot, verifyNews } from "@/lib/agent/service";
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
@@ -76,9 +82,15 @@ export async function POST(
       );
       return response({ ok: true });
     }
+    // "Pausar todo": nothing runs after it, so there is no cycle to start.
+    if (body.action === "pause_all") {
+      await pauseAll(id);
+      return response({ ok: true });
+    }
     let runId: string | undefined;
-    if (["cancel", "approve", "refresh"].includes(body.action))
+    if (["cancel", "approve", "refresh", "redo"].includes(body.action))
       await changeRun(id, z.string().max(100).parse(body.runId), body.action);
+    else if (body.action === "resume_all") await resumeAll(id);
     else if (body.action === "message") runId = (await enqueue(id, body)).id;
     else if (body.action !== "work")
       throw new AgentError("Acción desconocida.");

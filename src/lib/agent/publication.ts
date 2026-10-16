@@ -37,6 +37,7 @@ export async function claimAgentPost(
       process.env.MATYA_AGENT_ENABLED === "true" &&
       !!run &&
       !!settings?.enabled &&
+      !settings.pausedAt &&
       settings.allowPublish &&
       settings.revision === context?.revision &&
       !run.cancelRequested &&
