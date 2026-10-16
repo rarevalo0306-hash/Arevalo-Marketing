@@ -88,9 +88,18 @@ describe("matyaReportReady", () => {
     expect(ready({ dailyHour: 4, now: new Date("2026-03-08T11:00:00Z") })).toBe(true);
   });
 
-  it("never reaches the clock rule for a plan at 21:00 or later: that day's report waits for the plan itself", () => {
-    expect(ready({ dailyHour: 21, now: at("23:59") })).toBe(false);
-    expect(ready({ dailyHour: 21, now: at("23:59"), dailyRunStatus: "completed" })).toBe(true);
+  it("waits at most until 23:00 local: a late plan hour cannot lose that day's report", () => {
+    // Plan at 22:00, no plan coming and a fresh tick: 22 + 3 hours would be after midnight, so 23:00 is the limit.
+    expect(ready({ dailyHour: 22, now: at("22:59") })).toBe(false);
+    expect(ready({ dailyHour: 22, now: at("23:00") })).toBe(true);
+    expect(ready({ dailyHour: 22, now: at("23:59") })).toBe(true);
+    expect(ready({ dailyHour: 23, now: at("22:59") })).toBe(false);
+    expect(ready({ dailyHour: 23, now: at("23:00") })).toBe(true);
+    // The plan itself still ends the wait before that.
+    expect(ready({ dailyHour: 22, now: at("22:59"), dailyRunStatus: "completed" })).toBe(true);
+    // An ordinary hour keeps its three hours.
+    expect(ready({ dailyHour: 7, now: at("09:59") })).toBe(false);
+    expect(ready({ dailyHour: 7, now: at("10:00") })).toBe(true);
   });
 });
 

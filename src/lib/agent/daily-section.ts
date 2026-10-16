@@ -26,12 +26,14 @@ export type MatyaDaily = {
 const PLAN_ENDED: ReadonlySet<string> = new Set(["completed", "blocked", "uncertain", "cancelled"]);
 /** How long after the plan's hour the report stops waiting for it. */
 const WAIT_HOURS = 3;
+/** The latest hour (local) the report waits for the plan: a plan at 21:00 or later would otherwise outlast the day it reports on. */
+const WAIT_LIMIT_HOUR = 23;
 
 /**
  * Whether a business's report of yesterday can go out now. A team-mode business waits for the morning plan of today, so the
  * report can tell it; it stops waiting when no plan is coming (team mode off, MATYA off or paused, the once-a-minute call not
  * running) or the plan ended (completed, blocked, uncertain or cancelled), and at the latest `WAIT_HOURS` after `dailyHour` by the
- * business's wall clock (a plan at 21:00 or later never reaches that clock before midnight: that day it waits for the plan itself).
+ * business's wall clock, never later than 23:00 (a plan at 21:00 or later would otherwise wait past midnight and lose that day's report).
  * `dailyRunStatus` is the status of today's plan request, or null when it does not exist.
  */
 export function matyaReportReady(input: {
@@ -48,7 +50,7 @@ export function matyaReportReady(input: {
   // The same rule as the Hoy screen; `now` is the moment the question is asked.
   if (isTickStale(input.now.toISOString(), input.tickAt?.toISOString() ?? null)) return true;
   if (input.dailyRunStatus !== null && PLAN_ENDED.has(input.dailyRunStatus)) return true;
-  return clockMinutes(input.tz, input.now) >= (input.dailyHour + WAIT_HOURS) * 60;
+  return clockMinutes(input.tz, input.now) >= Math.min(input.dailyHour + WAIT_HOURS, WAIT_LIMIT_HOUR) * 60;
 }
 
 const text = (value: unknown) => (typeof value === "string" ? value : "");

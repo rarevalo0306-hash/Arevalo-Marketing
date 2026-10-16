@@ -6236,6 +6236,22 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       expect(mail().html).toContain("El plan de hoy todavía no está listo.");
     });
 
+    it("a late plan hour cannot lose the day's report: the wait ends at 23:00 local at the latest", async () => {
+      await saveSettings(A, { ...settings, teamMode: true, dailyHour: 22 });
+      await morningPlan("running");
+      const tickAt = async (iso: string) => {
+        const at = new Date(iso);
+        vi.setSystemTime(at);
+        await ticked(at);
+        return runDailyReports(new Date(), { teamOnly: true });
+      };
+      // 22:59 in New York (03:00Z is 23:00): 22 + 3 hours is past midnight, so the limit is 23:00.
+      expect(await tickAt("2026-10-17T02:59:00Z")).toMatchObject({ sent: 0, waiting: 1 });
+      expect(sendSeoEmail).not.toHaveBeenCalled();
+      expect(await tickAt("2026-10-17T03:00:00Z")).toMatchObject({ sent: 1, waiting: 0, businesses: [A] });
+      expect((await dailyRows())[0].data).toMatchObject({ day: YESTERDAY, state: "sent" });
+    });
+
     it.each([
       ["the tick stopped (older than 10 minutes)", async () => ticked(NOW, 11)],
       ["the tick never ran", async () => db.agentWorkspace.update({ where: { businessId: A }, data: { tickAt: null } })],
