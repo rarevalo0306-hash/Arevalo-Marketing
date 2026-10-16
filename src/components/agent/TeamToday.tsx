@@ -92,7 +92,7 @@ export function TeamToday({
   busy: boolean;
   act: (body: Record<string, unknown>) => Promise<boolean>;
   /** Takes the owner to the settings tab (the tick warning's link). */
-  onSettings?: () => void;
+  onSettings: () => void;
 }) {
   const { t, lang } = useT();
   const id = useId();
@@ -105,8 +105,9 @@ export function TeamToday({
   const plan = dailyPlan(team);
   const planGoal = plan ? goalOf(plan) : "";
   const planPieces = plan ? piecesOf(plan) : null;
-  // A missing, unreadable or old tick means the worker is not calling the engine every minute.
-  const tickAge = settings?.tickAt ? Date.now() - Date.parse(settings.tickAt) : Number.NaN;
+  // A missing, unreadable or old tick means the worker is not calling the engine every minute. Both times come from the server
+  // (the tick and the moment the snapshot was taken), so the owner's own clock can neither hide nor fake the warning.
+  const tickAge = settings?.tickAt ? Date.parse(data.capturedAt) - Date.parse(settings.tickAt) : Number.NaN;
   const tickStale = !(tickAge <= TICK_STALE_MS);
   const pausedSince = settings?.pausedAt ? fmtDateTime(settings.pausedAt, lang, tz) : "";
 
@@ -295,6 +296,7 @@ function BoardCard({ run, agents }: { run: TeamRunView; agents: TeamAgentView[] 
           </span>
           <span>{usd(run.chargedCents)}</span>
         </span>
+        <span className={s.chevron} aria-hidden="true" />
       </summary>
       <ol className={s.steps}>
         {run.steps.map((st, i) => {

@@ -1,7 +1,8 @@
 // La pestaña Hoy del Centro MATYA: avisos, el plan de hoy, «Necesita tu sí» y el tablero del equipo.
 // Se pinta con `renderToStaticMarkup` (sin DOM) y el CSS Module simulado, como tests/youtube-fields.test.tsx.
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentCenter } from "@/components/agent/AgentCenter";
 import { I18nProvider } from "@/components/I18n";
 import { TeamToday, redoBody } from "@/components/agent/TeamToday";
@@ -12,7 +13,9 @@ vi.mock("@/components/agent/AgentCenter.module.css", () => ({ default: new Proxy
 vi.mock("@/components/agent/Team.module.css", () => ({ default: new Proxy({}, { get: (_, k) => String(k) }) }));
 
 const MIN = 60_000;
-const ago = (minutes: number) => new Date(Date.now() - minutes * MIN).toISOString();
+// The snapshot's own clock: the tick is measured against the moment the server took it, never against the browser's.
+const CAPTURED = "2026-10-16T18:00:00.000Z";
+const before = (minutes: number, at = CAPTURED) => new Date(Date.parse(at) - minutes * MIN).toISOString();
 
 const agent = (key: string, es: string, en: string, extra: Partial<TeamAgentView> = {}): TeamAgentView => ({
   key,
@@ -79,7 +82,7 @@ const teamRun = (extra: Partial<TeamRunView> = {}) => run({ kind: "team", plan: 
 const snap = ({
   settings = {},
   team = {},
-  capturedAt = new Date().toISOString(),
+  capturedAt = CAPTURED,
 }: {
   settings?: Record<string, unknown>;
   team?: Partial<TeamSnapshot> | null;
@@ -87,7 +90,7 @@ const snap = ({
 } = {}): Snapshot => ({
   business: { id: "b1", name: "Techos Pérez" } as Snapshot["business"],
   industry: { key: "general", name: "General", geography: "Miami", audience: "Familias", focus: [] },
-  settings: { ...DEFAULT_SETTINGS, enabled: true, revision: 1, teamMode: true, dailyHour: 7, pausedAt: null, tickAt: ago(1), ...settings },
+  settings: { ...DEFAULT_SETTINGS, enabled: true, revision: 1, teamMode: true, dailyHour: 7, pausedAt: null, tickAt: before(1, capturedAt), ...settings },
   runs: [],
   messages: [],
   news: [],
@@ -101,7 +104,7 @@ const snap = ({
   capturedAt,
 });
 const render = (over: Parameters<typeof snap>[0] = {}, busy = false) =>
-  renderToStaticMarkup(<TeamToday data={snap(over)} busy={busy} act={async () => true} />);
+  renderToStaticMarkup(<TeamToday data={snap(over)} busy={busy} act={async () => true} onSettings={() => {}} />);
 
 const TICK_WARNING = "El llamado de cada minuto no está activo: el equipo no avanza ni llega el plan de la mañana.";
 
@@ -122,14 +125,36 @@ describe("Hoy: avisos", () => {
   });
 
   it("shows the tick warning when tickAt is null or 11 minutes old, not when 2 minutes old", () => {
-    for (const tickAt of [null, ago(11)]) {
+    for (const tickAt of [null, before(11)]) {
       const html = render({ settings: { tickAt } });
       expect(html).toContain(TICK_WARNING);
       expect(html).toContain("Ver configuración");
     }
-    const fresh = render({ settings: { tickAt: ago(2) } });
+    const fresh = render({ settings: { tickAt: before(2) } });
     expect(fresh).not.toContain("El llamado de cada minuto");
     expect(fresh).not.toContain("Ver configuración");
+  });
+
+  it("warns only past 10 minutes, and also for a tick it cannot read", () => {
+    expect(render({ settings: { tickAt: before(10) } })).not.toContain("El llamado de cada minuto");
+    expect(render({ settings: { tickAt: new Date(Date.parse(CAPTURED) - 10 * MIN - 1000).toISOString() } })).toContain("El llamado de cada minuto");
+    expect(render({ settings: { tickAt: "no es una fecha" } })).toContain("El llamado de cada minuto");
+    // A tick that landed just after the snapshot was taken is not old.
+    expect(render({ settings: { tickAt: before(-1) } })).not.toContain("El llamado de cada minuto");
+  });
+
+  describe("with a wrong clock on the owner's device", () => {
+    afterEach(() => vi.useRealTimers());
+
+    it("neither hides a stale tick nor fakes a warning for a fresh one", () => {
+      for (const wrongNow of ["2020-01-01T00:00:00.000Z", "2031-06-01T00:00:00.000Z"]) {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(wrongNow));
+        expect(render({ settings: { tickAt: before(11) } })).toContain("El llamado de cada minuto");
+        expect(render({ settings: { tickAt: before(2) } })).not.toContain("El llamado de cada minuto");
+        vi.useRealTimers();
+      }
+    });
   });
 
   it("keeps working without a team snapshot (nothing loaded yet)", () => {
@@ -287,6 +312,14 @@ describe("Hoy: el tablero", () => {
     expect(html).toContain("Hoy todavía no hay piezas.");
   });
 
+  it("each card shows a chevron that is hidden from assistive technology and adds no text", () => {
+    const card = run({ plan: piecePlan(POST, { ...roof, topic: "Con flecha" }), stage: 0 });
+    const html = columnOf(render({ team: { runs: [card] } }), "redaccion");
+    const summary = html.match(/<summary>[\s\S]*?<\/summary>/)?.[0] ?? "";
+    expect(summary).toContain('<span class="chevron" aria-hidden="true"></span>');
+    expect(summary.indexOf("chevron")).toBeGreaterThan(summary.indexOf("Con flecha"));
+  });
+
   it("does not say there are no pieces when the board has some", () => {
     const html = render({ team: { runs: [run()] } });
     expect(html).not.toContain("Hoy todavía no hay piezas.");
@@ -367,7 +400,7 @@ describe("Hoy en inglés", () => {
     });
     const html = renderToStaticMarkup(
       <I18nProvider lang="en">
-        <TeamToday data={snap({ settings: { pausedAt: "2026-10-16T18:30:00.000Z", tickAt: null }, team: { runs: [blocked] } })} busy={false} act={async () => true} />
+        <TeamToday data={snap({ settings: { pausedAt: "2026-10-16T18:30:00.000Z", tickAt: null }, team: { runs: [blocked] } })} busy={false} act={async () => true} onSettings={() => {}} />
       </I18nProvider>,
     );
     for (const text of [
@@ -394,7 +427,7 @@ describe("Hoy en inglés", () => {
     expect(html).not.toContain("Aprobar");
     const empty = renderToStaticMarkup(
       <I18nProvider lang="en">
-        <TeamToday data={snap()} busy={false} act={async () => true} />
+        <TeamToday data={snap()} busy={false} act={async () => true} onSettings={() => {}} />
       </I18nProvider>,
     );
     expect(empty).toContain("Nothing is waiting for your approval.");
@@ -432,5 +465,80 @@ describe("AgentCenter: la pestaña Hoy", () => {
     const order = ["Conversación", "Hoy", "Conocimiento"].map((name) => html.indexOf(`>${name}<`));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+});
+
+describe("Team.module.css", () => {
+  const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+  const TEAM = read("src/components/agent/Team.module.css");
+  const CENTER = read("src/components/agent/AgentCenter.module.css");
+  const GLOBALS = read("src/app/globals.css");
+  const block = (css: string, head: string) => {
+    const at = css.indexOf(head);
+    expect(at, head).toBeGreaterThanOrEqual(0);
+    return css.slice(at, css.indexOf("}", at));
+  };
+  const hex = (css: string, name: string) => {
+    const found = new RegExp(`(?<![\\w-])${name}:\\s*(#[0-9a-f]{6})`, "i").exec(css)?.[1];
+    expect(found, name).toBeDefined();
+    return found!;
+  };
+  const luminance = (color: string) => {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const contrast = (a: string, b: string) => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+
+  it("stacks the board on phones with every column stretched to the full width", () => {
+    const at = TEAM.indexOf("@media (max-width: 719px)");
+    expect(at).toBeGreaterThanOrEqual(0);
+    const phones = TEAM.slice(at, TEAM.indexOf("\n}\n", at));
+    const board = /\.board \{([^}]*)\}/.exec(phones)?.[1] ?? "";
+    expect(board).toContain("display: flex");
+    expect(board).toContain("flex-direction: column");
+    expect(board).toContain("align-items: stretch");
+  });
+
+  it("has a night-theme colour for each hard-coded colour", () => {
+    for (const selector of [
+      ".error",
+      '.state[data-state="attention"]',
+      '.state[data-state="blocked"]',
+      '.state[data-state="uncertain"]',
+      '.need[data-kind="video"]',
+      '.need[data-kind="revision"]',
+      ".tag",
+    ])
+      expect(TEAM, selector).toContain(`:global([data-theme="noche"]) ${selector}`);
+  });
+
+  it("keeps every text on its background at 4.5:1 in the day and the night theme", () => {
+    const day = { surface: hex(block(GLOBALS, ":root {"), "--surface"), surface2: hex(block(GLOBALS, ":root {"), "--surface-2"), muted: hex(block(GLOBALS, ":root {"), "--muted") };
+    const nightTokens = block(GLOBALS, 'html[data-theme="noche"] {');
+    const night = { surface: hex(nightTokens, "--surface"), surface2: hex(nightTokens, "--surface-2"), muted: hex(nightTokens, "--muted"), ground: hex(nightTokens, "--ground") };
+    const dayAccent = block(CENTER, ".root {");
+    const nightAccent = block(CENTER, ':global([data-theme="noche"]) .root {');
+    const dayError = hex(block(TEAM, ".error {"), "color");
+    const nightError = hex(block(TEAM, ':global([data-theme="noche"]) .error,'), "color");
+    const dayTag = hex(block(TEAM, ".tag {"), "color");
+    const pairs: [string, string, string][] = [
+      ["day error on a card", dayError, day.surface],
+      ["day error on the column", dayError, day.surface2],
+      ["day tag", dayTag, hex(dayAccent, "--agent-tint")],
+      ["day state on a card", hex(dayAccent, "--agent-accent"), day.surface],
+      ["day muted on a card", day.muted, day.surface],
+      ["day muted on the column", day.muted, day.surface2],
+      ["night error on a card", nightError, night.surface],
+      ["night error on the column", nightError, night.surface2],
+      ["night tag", hex(nightAccent, "--agent-accent"), hex(nightAccent, "--agent-tint")],
+      ["night state on a card", hex(nightAccent, "--agent-accent"), night.surface],
+      ["night muted on a card", night.muted, night.surface],
+      ["night muted on the column", night.muted, night.surface2],
+      ["night muted on the page", night.muted, night.ground],
+    ];
+    for (const [name, text, background] of pairs) expect(contrast(text, background), `${name}: ${text} on ${background}`).toBeGreaterThanOrEqual(4.5);
   });
 });

@@ -234,13 +234,31 @@
   overflow-wrap: anywhere;
 }
 .card summary {
+  position: relative;
   display: grid;
   gap: 4px;
+  padding-right: 22px;
   cursor: pointer;
   list-style: none;
 }
 .card summary::-webkit-details-marker {
   display: none;
+}
+/* El marcador de <details> está oculto: esta flecha avisa que la tarjeta se abre (hacia abajo cerrada, hacia arriba abierta). */
+.chevron {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 0.15s ease;
+}
+.card[open] > summary .chevron {
+  top: 7px;
+  transform: rotate(-135deg);
 }
 .card summary .meta {
   margin: 0;
@@ -285,6 +303,8 @@
   .board {
     display: flex;
     flex-direction: column;
+    /* La grilla ancha alinea al inicio; apiladas, cada columna ocupa todo el ancho sin importar su contenido ni una tarjeta abierta. */
+    align-items: stretch;
   }
   .column[data-empty] {
     display: none;
@@ -296,4 +316,26 @@
     flex: 1 1 auto;
     min-height: 44px;
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chevron {
+    transition: none;
+  }
+}
+
+/* Tema noche: el rojo y el verde oscuro de arriba no se leen sobre fondos negros; mismos colores que AgentCenter.module.css. */
+:global([data-theme="noche"]) .error,
+:global([data-theme="noche"]) .state[data-state="attention"],
+:global([data-theme="noche"]) .state[data-state="blocked"],
+:global([data-theme="noche"]) .state[data-state="uncertain"],
+:global([data-theme="noche"]) .state[data-state="failed"] {
+  color: #ffab94;
+}
+:global([data-theme="noche"]) .need[data-kind="video"],
+:global([data-theme="noche"]) .need[data-kind="revision"] {
+  border-left-color: #ffab94;
+}
+:global([data-theme="noche"]) .tag {
+  color: var(--agent-accent);
 }
