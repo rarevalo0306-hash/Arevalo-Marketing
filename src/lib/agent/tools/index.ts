@@ -8,7 +8,12 @@ import { designStyleOf } from "@/lib/design-style";
 import type { Brand, DesignInput } from "@/lib/design";
 import { storeDesign } from "@/lib/media-formats";
 import type { PhotoMeta } from "@/lib/photo-meta";
+import { BiError } from "@/lib/i18n";
 import { latestReports, type SeoKind } from "@/lib/seo/reports";
+import { approveCostCents, type SitePhoto } from "@/lib/seo/site-article";
+import { approveForSite, prepareForSite, sitePhotoApproval, sitePhotoCents } from "@/lib/seo/site-article-run";
+import type { WriterLang } from "@/lib/seo/writer";
+import { createArticleReport } from "@/lib/seo/writer-run";
 import {
   createProject,
   maxCentsPerVideo,
@@ -91,6 +96,16 @@ export type LibraryOptions = {
   reuse?: string[];
 };
 export type VideoQuote = { storyboard: Storyboard; cents: number; maxCents: number };
+/** A written article: its saved report (`SeoReport` kind `article`), the score, what Google cost (USD), the pages read and the AI. */
+export type ArticleMade = { id: string; score: number; cost: number; pagesRead: number; provider: string };
+/**
+ * What `publishArticle` did. `published: false`: the article is prepared for the website but its photo is an extra cost (an AI
+ * image to create, or one already created that the owner has not seen yet): nothing was generated or published, and
+ * `photoCents` is what authorizing it will cost. `published: true`: it is on the website.
+ */
+export type ArticlePublish =
+  | { published: false; photo: SitePhoto["kind"]; photoCents: number; title: string; urlEs: string; urlEn: string }
+  | { published: true; url: string; urlEn: string; costCents: number; photoFailed: boolean; already: boolean };
 
 /** What each tool is, once it is bound to a run. The types of the later tasks' tools are refined by them. */
 export type ToolImpl = {
@@ -121,8 +136,17 @@ export type ToolImpl = {
     cents: number,
     actor?: "auto" | "approved",
   ) => Promise<{ projectId: string; status: string }>;
-  writeArticle: (input: unknown) => Promise<unknown>;
-  publishArticle: (input: unknown) => Promise<unknown>;
+  /**
+   * One paid draft (Google, then the AI): `createArticleReport` for the run's business. The language is the one the
+   * business's customers search in unless given. The caller must have reserved and been allowed to spend: this reserves nothing.
+   */
+  writeArticle: (keyword: string, language?: WriterLang) => Promise<ArticleMade>;
+  /**
+   * The website part of an article. `{ approved: false }` (the default): prepares the preview (the translation, a few cents) and
+   * publishes it with `approveForSite` when its photo costs nothing extra; an AI photo waits (`published: false`).
+   * `{ approved: true }`: the owner approved that photo's cost, so it authorizes the already prepared preview at its price now.
+   */
+  publishArticle: (reportId: string, options?: { approved?: boolean }) => Promise<ArticlePublish>;
 };
 export type Tools = { use<T extends ToolName>(name: T): ToolImpl[T] };
 
@@ -178,6 +202,29 @@ export async function readStepOutput(
 const later = async (): Promise<never> => {
   throw new AgentError("Herramienta no disponible todavía.");
 };
+
+/** The error of the website article's functions (bilingual) as an `AgentError` in Spanish, the run's language of errors. */
+export const agentErrorOf = (e: unknown): unknown =>
+  e instanceof BiError ? new AgentError(e.message) : e;
+
+/** The language an article is written in: the one the business's customers search in (as the writer's form defaults to). */
+async function articleLanguage(businessId: string): Promise<WriterLang> {
+  const b = await db.business.findUnique({ where: { id: businessId }, select: { seoLanguage: true } });
+  return b?.seoLanguage === "en" ? "en" : "es";
+}
+
+/** What `publishArticle` reports of a published article: where it is and what it cost. */
+const publishedOf = (p: Awaited<ReturnType<typeof approveForSite>>): ArticlePublish => ({
+  published: true,
+  url: p.url,
+  urlEn: p.urlEn,
+  costCents: p.costCents,
+  photoFailed: p.photoFailed,
+  already: p.already,
+});
+
+/** A photo that is an extra cost to authorize: one the AI has to create, or one it created that the owner has not approved. */
+export const photoNeedsApproval = (photo: SitePhoto) => photo.kind === "generate" || photo.kind === "generated";
 
 const IMPLS: { [K in ToolName]: (run: AgentRun) => ToolImpl[K] } = {
   readContext: (run) => () => loadContext(run.businessId),
@@ -333,8 +380,38 @@ const IMPLS: { [K in ToolName]: (run: AgentRun) => ToolImpl[K] } = {
     return { projectId: row.id, status: project.status };
   },
 
-  writeArticle: () => later,
-  publishArticle: () => later,
+  // The same function the writer's form calls. Google and the AI are paid: only a step that reserved the cost calls this.
+  writeArticle: (run) => async (keyword, language) => {
+    try {
+      return await createArticleReport(run.businessId, keyword, language ?? (await articleLanguage(run.businessId)));
+    } catch (e) {
+      throw agentErrorOf(e);
+    }
+  },
+
+  // Prepare, then authorize at the price the photo has: an AI photo is created only by the second call, after the owner's click.
+  publishArticle: (run) => async (reportId, options = {}) => {
+    try {
+      const businessId = run.businessId;
+      if (options.approved) {
+        const { cents } = await sitePhotoApproval(businessId, reportId);
+        return publishedOf(await approveForSite(businessId, reportId, cents));
+      }
+      const prepared = await prepareForSite(businessId, reportId);
+      if (photoNeedsApproval(prepared.photo))
+        return {
+          published: false,
+          photo: prepared.photo.kind,
+          photoCents: approveCostCents(prepared.photo, await sitePhotoCents(businessId)),
+          title: prepared.es.title,
+          urlEs: prepared.urlEs,
+          urlEn: prepared.urlEn,
+        };
+      return publishedOf(await approveForSite(businessId, reportId, approveCostCents(prepared.photo, 0)));
+    } catch (e) {
+      throw agentErrorOf(e);
+    }
+  },
 };
 
 /** The tools one agent may use for one run. Asking for any other tool is an error. */

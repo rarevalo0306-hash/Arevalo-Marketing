@@ -5,6 +5,7 @@ import {
   TEAM_STEPS,
   capByDirector,
   directorMax,
+  isArticleStep,
   problemsOf,
   reworkSteps,
   stepsForPiece,
@@ -593,5 +594,18 @@ describe("problemsOf", () => {
     expect(problemsOf({ problems: [problem, { kind: "x" }, "basura", null, { ...problem, sendBackTo: "video" }] })).toEqual([problem]);
     for (const output of [null, undefined, "x", 5, [], [problem], {}, { problems: "no" }, { problems: {} }, { problems: [] }])
       expect(problemsOf(output)).toEqual([]);
+  });
+});
+
+describe("isArticleStep", () => {
+  it("reconoce los pasos que escriben el artículo y sus vueltas de corrección, y ningún otro", () => {
+    for (const id of ["article", "article-r1", "article-r12"]) expect(isArticleStep(id)).toBe(true);
+    for (const id of ["article_publish", "article_publish:1", "articles", "article-r", "article-r1x", "xarticle", "copy", "review-r1", ""])
+      expect(isArticleStep(id)).toBe(false);
+  });
+
+  it("cada paso de las plantillas y de la corrección de un artículo que escribe es de los que reconoce", () => {
+    const ids = [...stepsForPiece("articulo"), ...reworkSteps([{ kind: "x", detail: "y", sendBackTo: "copy" }], 0, "articulo")].map((s) => s.id);
+    expect(ids.filter(isArticleStep)).toEqual(["article", "article-r1"]);
   });
 });

@@ -16,7 +16,8 @@ import {
 } from "@/lib/agent/queue";
 import { reworkSteps, stepsForPiece, type ReviewProblem } from "@/lib/agent/plan";
 import type { AgentRun } from "@prisma/client";
-import { workOne, executeStep, analyzeResults } from "@/lib/agent/execution";
+import { workOne, executeStep, analyzeResults, stepCost } from "@/lib/agent/execution";
+import { runAgentCycle } from "@/lib/agent/service";
 import { claimAgentPost } from "@/lib/agent/publication";
 import { loadContext } from "@/lib/agent/context";
 import { pieceLimits, recentTopicsOf } from "@/lib/agent/limits";
@@ -38,6 +39,10 @@ import { stormSchedule } from "@/lib/storm";
 import { localToUtc } from "@/lib/time";
 import { BUILTIN_TEMPLATES } from "@/lib/design-shapes";
 import type { VideoMedia } from "@/lib/video-plan";
+import { approveCostCents, SITE_TEXT_CENTS, type SitePhoto } from "@/lib/seo/site-article";
+import { prepareForSite, approveForSite, sitePhotoApproval, sitePhotoCents } from "@/lib/seo/site-article-run";
+import { createArticleReport } from "@/lib/seo/writer-run";
+import { writeAiCents } from "@/lib/rankfix-shape";
 vi.mock("@/lib/library-files", () => ({
   ensureStoredCopy: vi.fn().mockImplementation(async (id) =>
     `https://example.com/stored-${id}.mp4`,
@@ -58,13 +63,30 @@ vi.mock("@/lib/agent/network", async (original) => ({
   ...(await original<typeof import("@/lib/agent/network")>()),
   readSource: vi.fn(),
 }));
-vi.mock("@/lib/video-jobs", async (original) => ({
-  ...(await original<typeof import("@/lib/video-jobs")>()),
-  videoBlocker: vi.fn().mockReturnValue(null),
-  startRender: vi.fn().mockResolvedValue({ status: "rendering" }),
-  advanceRender: vi
-    .fn()
-    .mockResolvedValue({ status: "rendering", storyboard: { texts: {} } }),
+vi.mock("@/lib/video-jobs", async (original) => {
+  const real = await original<typeof import("@/lib/video-jobs")>();
+  return {
+    ...real,
+    // The real maximum, unless a test lowers it.
+    maxCentsPerVideo: vi.fn(real.maxCentsPerVideo),
+    videoBlocker: vi.fn().mockReturnValue(null),
+    startRender: vi.fn().mockResolvedValue({ status: "rendering" }),
+    advanceRender: vi
+      .fn()
+      .mockResolvedValue({ status: "rendering", storyboard: { texts: {} } }),
+  };
+});
+// The website article's paid calls (Google, the AI, the translation, the photo, GitHub) are never real in these tests.
+vi.mock("@/lib/seo/site-article-run", async (original) => ({
+  ...(await original<typeof import("@/lib/seo/site-article-run")>()),
+  prepareForSite: vi.fn(),
+  approveForSite: vi.fn(),
+  sitePhotoCents: vi.fn().mockResolvedValue(4),
+  sitePhotoApproval: vi.fn(),
+}));
+vi.mock("@/lib/seo/writer-run", async (original) => ({
+  ...(await original<typeof import("@/lib/seo/writer-run")>()),
+  createArticleReport: vi.fn(),
 }));
 import {
   videoBlocker,
@@ -3050,6 +3072,620 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       // Nothing was scheduled or counted by the checks.
       expect(await postOf(piece.id)).toMatchObject({ status: "draft" });
       expect(await db.agentBudget.findUnique({ where: { businessId_day: { businessId: A, day } } })).toMatchObject({ posts: 0 });
+    });
+  });
+  describe("approved video renders and website articles for pieces", () => {
+    const VIDEO = { ...roof, id: "p3", topic: "Video de techos", format: "video" as const, channels: ["facebook"] };
+    const ARTICLE = {
+      ...roof,
+      id: "p4",
+      topic: "Reparación de techos en Miami",
+      format: "articulo" as const,
+      channels: ["seo"],
+      keyword: "reparación de techos",
+    };
+    const VCOPY = {
+      ...copy,
+      title: "Techos",
+      headline: "Cuida tu techo",
+      variants: { facebook: "Cuida tu techo antes de la lluvia.", instagram: "", google: "", linkedin: "", x: "", seo: "" },
+      script: "Tres consejos para cuidar tu techo antes de la lluvia.",
+    };
+    const VDESIGN = {
+      assets: [{ shape: "square", url: "https://example.com/v-square.jpg", rights: "Plantilla", alt: "Techo con la marca" }],
+      mediaSelection: { source: "brand_template", libraryItems: [], generatedFromScratch: false },
+    };
+    const stepOf = (runId: string, name: string) =>
+      db.agentStep.findUnique({ where: { runId_name: { runId, name } } });
+    const budget = () => db.agentBudget.findFirst({ where: { businessId: A } });
+    const money = async () => {
+      const b = await budget();
+      return { reservedCents: b?.reservedCents ?? 0, chargedCents: b?.chargedCents ?? 0 };
+    };
+    const message = (runId: string) => db.agentMessage.findFirst({ where: { runId, role: "assistant" } });
+    const workspace = (data: Record<string, unknown>) => db.agentWorkspace.update({ where: { businessId: A }, data });
+    const done = (runId: string, name: string, output: unknown) =>
+      db.agentStep.create({
+        data: {
+          runId,
+          name,
+          specialist: "matya",
+          budgetDay: localDay(new Date(), "America/New_York"),
+          status: "succeeded",
+          output: output as never,
+          finishedAt: new Date(),
+        },
+      });
+    const goTo = async (run: AgentRun, step: string, status = "queued") =>
+      db.agentRun.update({ where: { id: run.id }, data: { stage: stepsOf(run).indexOf(step), status } });
+
+    // ---------- The video ----------
+
+    /** copy and design are stubbed; the video step and everything after it are the real ones, with the real costs. */
+    const exec = (run: AgentRun, name: string): Promise<StepResult> =>
+      name === "copy"
+        ? Promise.resolve({ data: VCOPY })
+        : name === "design"
+          ? Promise.resolve({ data: VDESIGN })
+          : executeStep(run, name);
+    const cost = (name: string, run: AgentRun) => (name === "copy" || name === "design" ? 0 : stepCost(name, run));
+    async function quoted() {
+      const [piece] = await spawnPieces(await teamParent(), [VIDEO]);
+      for (let i = 0; i < 3; i++) await workOne(A, exec, cost);
+      return piece;
+    }
+    const quoteOf = async (runId: string) =>
+      (await stepOf(runId, "video"))!.output as { storyboard: { scenes: unknown[] }; provider: string; cents: number };
+
+    it("el video espera aprobación y no gasta hasta aprobar", async () => {
+      const piece = await quoted();
+      const video = await stepOf(piece.id, "video");
+      const quote = await quoteOf(piece.id);
+      expect(video).toMatchObject({ agent: "video", status: "succeeded", reservedCents: 0, chargedCents: 0 });
+      expect(quote.provider).toBe("fal.ai");
+      expect(quote.cents).toBe(projectCost(quote.storyboard as never));
+      expect(quote.storyboard.scenes.length).toBeGreaterThan(1);
+      const text = (await message(piece.id))!.text;
+      expect(text).toBe(`Video listo para generar con fal.ai: US$${(quote.cents / 100).toFixed(2)}. Apruébalo para empezar.`);
+      // Waiting at the render, with nothing started, reserved or charged.
+      const waiting = await row(piece.id);
+      expect(waiting).toMatchObject({ status: "waiting_approval", reservedCents: 0, chargedCents: 0 });
+      expect(stepsOf(waiting)[waiting.stage]).toBe("render");
+      expect(startRender).not.toHaveBeenCalled();
+      expect(await money()).toEqual({ reservedCents: 0, chargedCents: 0 });
+      expect(await db.agentStep.count({ where: { runId: piece.id, name: { startsWith: "render" } } })).toBe(0);
+
+      await changeRun(A, piece.id, "approve");
+      await workOne(A, exec, cost);
+      expect(startRender).toHaveBeenCalledTimes(1);
+      const [businessId, projectId, cents, actor] = vi.mocked(startRender).mock.calls[0];
+      expect(businessId).toBe(A);
+      expect(cents).toBe(quote.cents);
+      expect(actor).toBe("approved");
+      // The project is the quoted storyboard, created for this business.
+      expect((await loadProject(A, projectId)).project.storyboard.scenes).toHaveLength(quote.storyboard.scenes.length);
+      expect(await stepOf(piece.id, "render")).toMatchObject({
+        agent: "matya",
+        status: "succeeded",
+        reservedCents: quote.cents,
+        chargedCents: quote.cents,
+        output: { projectId, cents: quote.cents },
+      });
+      const next = await row(piece.id);
+      expect(next).toMatchObject({ status: "queued", chargedCents: quote.cents, reservedCents: 0 });
+      expect(stepsOf(next)[next.stage]).toBe("video_wait");
+    });
+
+    it("render reserves exactly the quoted cents while it runs and charges exactly them", async () => {
+      const piece = await quoted();
+      const { cents } = await quoteOf(piece.id);
+      await changeRun(A, piece.id, "approve");
+      let during: Awaited<ReturnType<typeof money>> | null = null;
+      await workOne(A, async (run, name) => {
+        during = await money();
+        return exec(run, name);
+      }, cost);
+      expect(during).toEqual({ reservedCents: cents, chargedCents: 0 });
+      expect(await money()).toEqual({ reservedCents: 0, chargedCents: cents });
+      expect(await row(piece.id)).toMatchObject({ chargedCents: cents, reservedCents: 0 });
+    });
+
+    it("render refuses a quote over maxCentsPerVideo before reserving or starting anything", async () => {
+      const piece = await quoted();
+      const over = maxCentsPerVideo() + 1;
+      await db.agentStep.update({
+        where: { runId_name: { runId: piece.id, name: "video" } },
+        data: { output: { ...(await quoteOf(piece.id)), cents: over } as never },
+      });
+      await changeRun(A, piece.id, "approve");
+      await workOne(A, exec, cost);
+      expect(startRender).not.toHaveBeenCalled();
+      expect(await row(piece.id)).toMatchObject({
+        status: "blocked",
+        error: expect.stringContaining("máximo"),
+        reservedCents: 0,
+        chargedCents: 0,
+      });
+      expect(await stepOf(piece.id, "render")).toBeNull();
+      expect(await money()).toEqual({ reservedCents: 0, chargedCents: 0 });
+    });
+
+    it("render refuses a quote that no longer matches its storyboard's price", async () => {
+      const piece = await quoted();
+      const quote = await quoteOf(piece.id);
+      await db.agentStep.update({
+        where: { runId_name: { runId: piece.id, name: "video" } },
+        data: { output: { ...quote, cents: quote.cents + 1 } as never },
+      });
+      await changeRun(A, piece.id, "approve");
+      await workOne(A, exec, cost);
+      expect(startRender).not.toHaveBeenCalled();
+      expect(await row(piece.id)).toMatchObject({ status: "blocked", error: expect.stringContaining("precio"), reservedCents: 0 });
+      expect(await money()).toEqual({ reservedCents: 0, chargedCents: 0 });
+    });
+
+    it.each([
+      ["paused", { pausedAt: new Date() }, "pausa"],
+      ["off", { enabled: false }, "apagada"],
+    ])("render is refused with MATYA %s: nothing is reserved or started", async (_name, data, expected) => {
+      const piece = await quoted();
+      await changeRun(A, piece.id, "approve");
+      await workspace(data);
+      await workOne(A, exec, cost);
+      expect(startRender).not.toHaveBeenCalled();
+      expect(await row(piece.id)).toMatchObject({ status: "blocked", error: expect.stringContaining(expected), reservedCents: 0, chargedCents: 0 });
+      expect(await money()).toEqual({ reservedCents: 0, chargedCents: 0 });
+    });
+
+    it("render never starts without an approval given after the quote", async () => {
+      const piece = await quoted();
+      // Something put the piece back in the queue without the owner's click.
+      await db.agentRun.update({ where: { id: piece.id }, data: { status: "queued" } });
+      await workOne(A, exec, cost);
+      expect(startRender).not.toHaveBeenCalled();
+      expect(await row(piece.id)).toMatchObject({ status: "waiting_approval", reservedCents: 0, chargedCents: 0 });
+      expect(await money()).toEqual({ reservedCents: 0, chargedCents: 0 });
+      // An approval older than the quote does not count either.
+      await db.agentRun.update({ where: { id: piece.id }, data: { status: "queued", approvedAt: new Date(0) } });
+      await workOne(A, exec, cost);
+      expect(startRender).not.toHaveBeenCalled();
+      expect(await row(piece.id)).toMatchObject({ status: "waiting_approval" });
+    });
+
+    it("the video step refuses a quote over the maximum before asking the owner", async () => {
+      const real = vi.mocked(maxCentsPerVideo).getMockImplementation()!;
+      // A video costs about a cent: a maximum of nothing is what it goes over.
+      vi.mocked(maxCentsPerVideo).mockReturnValue(0);
+      try {
+        const piece = await quoted();
+        expect(await row(piece.id)).toMatchObject({
+          status: "blocked",
+          error: expect.stringContaining("máximo"),
+          reservedCents: 0,
+          chargedCents: 0,
+        });
+        expect(await stepOf(piece.id, "video")).toMatchObject({ status: "blocked", chargedCents: 0 });
+        expect(await message(piece.id)).toMatchObject({ text: expect.stringContaining("máximo") });
+        expect(startRender).not.toHaveBeenCalled();
+      } finally {
+        vi.mocked(maxCentsPerVideo).mockImplementation(real);
+      }
+    });
+
+    it("without a configured render the piece stops before the quote, with nothing reserved", async () => {
+      vi.mocked(videoBlocker).mockReturnValue("fal");
+      const [piece] = await spawnPieces(await teamParent(), [VIDEO]);
+      for (let i = 0; i < 3; i++) await workOne(A, exec, cost);
+      expect(await row(piece.id)).toMatchObject({ status: "blocked", error: expect.stringContaining("render de video"), reservedCents: 0 });
+      expect(await stepOf(piece.id, "video")).toBeNull();
+    });
+
+    it("video_wait of a piece reuses the render's project and finishes when it is ready", async () => {
+      vi.mocked(advanceRender).mockResolvedValue({ status: "rendering", storyboard: { texts: {} } } as never);
+      const piece = await quoted();
+      await changeRun(A, piece.id, "approve");
+      await workOne(A, exec, cost);
+      const projectId = (await stepOf(piece.id, "render"))!.output as { projectId: string };
+      await workOne(A, exec, cost);
+      expect(advanceRender).toHaveBeenCalledWith(A, projectId.projectId);
+      expect(await row(piece.id)).toMatchObject({ status: "waiting_provider" });
+      expect(await stepOf(piece.id, "video_wait:0")).toMatchObject({ status: "succeeded", chargedCents: 0 });
+      vi.mocked(advanceRender).mockResolvedValueOnce({ status: "ready", videoUrl: "https://example.com/piece.mp4", storyboard: { texts: {} } } as never);
+      await changeRun(A, piece.id, "refresh");
+      await workOne(A, exec, cost);
+      expect(await stepOf(piece.id, "video_wait:1")).toMatchObject({ output: { videoUrl: "https://example.com/piece.mp4" } });
+      const after = await row(piece.id);
+      expect(stepsOf(after)[after.stage]).toBe("review");
+    });
+
+    it("the cycle requeues a video piece waiting at video_wait, and a campaign video as before", async () => {
+      const [piece] = await spawnPieces(await teamParent(), [VIDEO]);
+      await goTo(piece, "video_wait", "waiting_provider");
+      // A piece waiting elsewhere (here at its render) is not touched.
+      const [other] = await spawnPieces(await teamParent(), [{ ...VIDEO, id: "p5", topic: "Otro video" }]);
+      await goTo(other, "render", "waiting_provider");
+      const campaign = await ask("Prepara un video", { kind: "video" });
+      await db.agentRun.update({ where: { id: campaign.id }, data: { stage: 4, status: "waiting_provider" } });
+      expect(stepsOf(campaign)[4]).toBe("video_wait");
+      await runAgentCycle(A);
+      expect(await row(piece.id)).toMatchObject({ status: "queued" });
+      expect(await row(campaign.id)).toMatchObject({ status: "queued" });
+      expect(await row(other.id)).toMatchObject({ status: "waiting_provider" });
+    });
+
+    // ---------- The website article ----------
+
+    const piecePhone = "305-555-0100";
+    beforeEach(async () => {
+      vi.stubEnv("DATAFORSEO_LOGIN", "synthetic");
+      vi.stubEnv("DATAFORSEO_PASSWORD", "synthetic");
+      vi.stubEnv("GEMINI_API_KEY", "synthetic-no-provider-access");
+      vi.stubEnv("ANTHROPIC_API_KEY", "");
+      vi.stubEnv("OPENAI_API_KEY", "");
+      // The review agent's model (the editorial review is the only step of an article that uses it).
+      vi.stubEnv("MATYA_AGENT_PROVIDER", "gemini");
+      vi.stubEnv("MATYA_AGENT_MODEL", "gemini-x");
+      vi.stubEnv("MATYA_AGENT_INPUT_USD_PER_MILLION", "0.3");
+      vi.stubEnv("MATYA_AGENT_OUTPUT_USD_PER_MILLION", "2.5");
+      await db.business.update({
+        where: { id: A },
+        data: { phone: piecePhone, website: "https://mio.com", seoLocationCode: 1015116, seoLocationName: "Miami,Florida,United States" },
+      });
+      await db.connection.create({ data: { businessId: A, channel: "seo", secret: "synthetic-no-provider-access" } });
+      vi.mocked(sitePhotoCents).mockResolvedValue(4);
+    });
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      vi.mocked(prepareForSite).mockReset();
+      vi.mocked(approveForSite).mockReset();
+      vi.mocked(createArticleReport).mockReset();
+      vi.mocked(sitePhotoApproval).mockReset();
+    });
+    const article = async (over: Partial<typeof ARTICLE> = {}) => (await spawnPieces(await teamParent(), [{ ...ARTICLE, ...over }]))[0];
+    const REPORT = { id: "rep1", score: 82, cost: 0.002, pagesRead: 4, provider: "gemini" };
+    const library: SitePhoto = { kind: "library", itemId: "i1", url: "https://example.com/p.jpg", thumb: "https://example.com/p.jpg", label: "Techo" };
+    const prepared = (photo: SitePhoto) =>
+      ({ photo, es: { title: "Reparación de techos" }, en: { title: "Roof repair" }, urlEs: "https://mio.com/es/x", urlEn: "https://mio.com/en/x", spentCents: 0 }) as never;
+    const published = { url: "https://mio.com/es/x", urlEn: "https://mio.com/en/x", costCents: 1, photoFailed: false, already: false } as never;
+    /** The article is written and reviewed: the next step is its publication. */
+    async function reviewedArticle() {
+      const piece = await article();
+      await done(piece.id, "article", { reportId: "rep1" });
+      await done(piece.id, "review", { approved: true, problems: [], ruleProblems: [] });
+      await goTo(piece, "article_publish");
+      return piece;
+    }
+    /** An article's saved report with the given text (what the review reads). */
+    const saveReport = (markdown: string, id = "rep1") =>
+      db.seoReport.create({
+        data: {
+          id,
+          businessId: A,
+          kind: "article",
+          data: {
+            version: 1,
+            keyword: "reparación de techos",
+            language: "es",
+            draft: { title: "Reparación de techos en Miami", metaDescription: "Guía de reparación.", slug: "x", h1: "Reparación de techos", outline: [], markdown, socialPost: "" },
+            score: 80,
+            cost: 0.002,
+            provider: "gemini",
+            createdAt: new Date().toISOString(),
+          },
+        },
+      });
+
+    it("the article waits for the owner's approval with an estimate before the writer is called, and writes after it", async () => {
+      vi.mocked(createArticleReport).mockResolvedValue(REPORT);
+      const piece = await article();
+      await workOne(A);
+      expect(createArticleReport).not.toHaveBeenCalled();
+      expect(await row(piece.id)).toMatchObject({ status: "waiting_approval", stage: 0, reservedCents: 0, chargedCents: 0 });
+      expect(await stepOf(piece.id, "article")).toBeNull();
+      expect(await money()).toEqual({ reservedCents: 0, chargedCents: 0 });
+      const text = (await message(piece.id))!.text;
+      expect(text).toContain("hasta US$");
+      expect(text).toContain("reparación de techos");
+      // Asking again does not write either.
+      await db.agentRun.update({ where: { id: piece.id }, data: { status: "queued" } });
+      await workOne(A);
+      expect(createArticleReport).not.toHaveBeenCalled();
+
+      await changeRun(A, piece.id, "approve");
+      await workOne(A);
+      expect(createArticleReport).toHaveBeenCalledExactlyOnceWith(A, "reparación de techos", "es");
+      expect(await stepOf(piece.id, "article")).toMatchObject({ agent: "copy", status: "succeeded", output: { reportId: "rep1" } });
+      // Reserves the estimate it asked for, and charges Google's real cost plus the AI at the estimate it announced.
+      const ai = writeAiCents("gemini");
+      const step = await stepOf(piece.id, "article");
+      expect(step!.reservedCents).toBe(Math.ceil(0.2 + ai));
+      expect(step!.chargedCents).toBe(Math.min(step!.reservedCents, 1 + ai));
+      expect(await money()).toEqual({ reservedCents: 0, chargedCents: step!.chargedCents });
+      expect(await row(piece.id)).toMatchObject({ status: "queued", reservedCents: 0 });
+    });
+
+    it.each([
+      ["DataForSEO is not connected", () => vi.stubEnv("DATAFORSEO_LOGIN", ""), "DataForSEO"],
+      ["the AI key is missing", () => vi.stubEnv("GEMINI_API_KEY", ""), "clave de la IA"],
+      ["there is no Google area", () => db.business.update({ where: { id: A }, data: { seoLocationCode: null, seoLocationName: "" } }), "zona de Google"],
+      ["the website is not connected", () => db.connection.deleteMany({ where: { businessId: A, channel: "seo" } }), "no están conectados"],
+      ["web articles are off", () => workspace({ allowWebArticles: false }), "permiso para publicar en seo"],
+      ["MATYA is paused", () => workspace({ pausedAt: new Date() }), "pausa"],
+    ])("an article that cannot be written costs nothing: %s", async (_name, setup, expected) => {
+      vi.mocked(createArticleReport).mockResolvedValue(REPORT);
+      const piece = await article();
+      await setup();
+      await workOne(A);
+      expect(await row(piece.id)).toMatchObject({ status: "blocked", error: expect.stringContaining(expected), reservedCents: 0, chargedCents: 0 });
+      expect(await stepOf(piece.id, "article")).toBeNull();
+      expect(createArticleReport).not.toHaveBeenCalled();
+      expect(await money()).toEqual({ reservedCents: 0, chargedCents: 0 });
+    });
+
+    it("a second draft (the rework round) asks again: the first approval does not pay for it", async () => {
+      vi.mocked(createArticleReport).mockResolvedValue(REPORT);
+      const piece = await article();
+      // The first draft was approved, written and reviewed; the review sent it back.
+      await db.agentRun.update({ where: { id: piece.id }, data: { approvedAt: new Date(Date.now() - 60000) } });
+      await done(piece.id, "article", { reportId: "rep0" });
+      await done(piece.id, "review", { approved: false, problems: [{ kind: "telefono", detail: "x", sendBackTo: "copy" }] });
+      await db.agentRun.update({
+        where: { id: piece.id },
+        data: {
+          plan: {
+            kind: "piece",
+            piece: ARTICLE,
+            steps: [
+              { id: "article", agent: "copy", attempt: 0 },
+              { id: "review", agent: "review", attempt: 0 },
+              { id: "article-r1", agent: "copy", attempt: 1 },
+              { id: "review-r1", agent: "review", attempt: 1 },
+              { id: "article_publish", agent: "matya", attempt: 0 },
+            ],
+          },
+          stage: 2,
+        },
+      });
+      await workOne(A);
+      expect(createArticleReport).not.toHaveBeenCalled();
+      expect(await row(piece.id)).toMatchObject({ status: "waiting_approval", stage: 2, reservedCents: 0 });
+      expect(await stepOf(piece.id, "article-r1")).toBeNull();
+      await changeRun(A, piece.id, "approve");
+      await workOne(A);
+      expect(createArticleReport).toHaveBeenCalledTimes(1);
+      expect(await stepOf(piece.id, "article-r1")).toMatchObject({ agent: "copy", attempt: 1, status: "succeeded", output: { reportId: "rep1" } });
+    });
+
+    it("artículo con foto de la biblioteca se publica solo", async () => {
+      const piece = await reviewedArticle();
+      vi.mocked(prepareForSite).mockResolvedValue(prepared(library));
+      vi.mocked(approveForSite).mockResolvedValue(published);
+      await workOne(A);
+      expect(prepareForSite).toHaveBeenCalledExactlyOnceWith(A, "rep1");
+      expect(approveForSite).toHaveBeenCalledExactlyOnceWith(A, "rep1", approveCostCents(library, 0));
+      expect(await stepOf(piece.id, "article_publish")).toMatchObject({
+        agent: "matya",
+        status: "succeeded",
+        reservedCents: SITE_TEXT_CENTS,
+        chargedCents: SITE_TEXT_CENTS,
+        output: { reportId: "rep1", url: "https://mio.com/es/x" },
+      });
+      expect(await row(piece.id)).toMatchObject({ status: "completed", reservedCents: 0 });
+      expect(await money()).toEqual({ reservedCents: 0, chargedCents: SITE_TEXT_CENTS });
+    });
+
+    it("artículo que necesita generar foto espera aprobación", async () => {
+      const piece = await reviewedArticle();
+      const generate: SitePhoto = { kind: "generate", idea: "A roof" };
+      vi.mocked(prepareForSite).mockResolvedValue(prepared(generate));
+      vi.mocked(approveForSite).mockResolvedValue(published);
+      vi.mocked(sitePhotoApproval).mockResolvedValue({ photo: generate, cents: 4 });
+      await workOne(A);
+      // The translation was paid; nothing was generated or published.
+      expect(approveForSite).not.toHaveBeenCalled();
+      expect(await row(piece.id)).toMatchObject({ status: "waiting_approval", reservedCents: 0, chargedCents: SITE_TEXT_CENTS });
+      const waiting = await row(piece.id);
+      expect(stepsOf(waiting)[waiting.stage]).toBe("article_publish");
+      expect(await stepOf(piece.id, "article_publish")).toMatchObject({ status: "succeeded", output: { photoCents: 4 } });
+      expect((await message(piece.id))!.text).toContain("US$0.04");
+
+      // Without the owner's click it stays put and spends nothing.
+      await db.agentRun.update({ where: { id: piece.id }, data: { status: "queued" } });
+      await workOne(A);
+      expect(approveForSite).not.toHaveBeenCalled();
+      expect(await row(piece.id)).toMatchObject({ status: "waiting_approval" });
+
+      await changeRun(A, piece.id, "approve");
+      let during: Awaited<ReturnType<typeof money>> | null = null;
+      vi.mocked(approveForSite).mockImplementationOnce(async () => {
+        during = await money();
+        return published;
+      });
+      await workOne(A);
+      expect(prepareForSite).toHaveBeenCalledTimes(1);
+      expect(approveForSite).toHaveBeenCalledExactlyOnceWith(A, "rep1", 4);
+      expect(during).toEqual({ reservedCents: 4, chargedCents: SITE_TEXT_CENTS });
+      expect(await stepOf(piece.id, "article_publish:1")).toMatchObject({ status: "succeeded", reservedCents: 4, chargedCents: 4 });
+      expect(await row(piece.id)).toMatchObject({ status: "completed", chargedCents: SITE_TEXT_CENTS + 4 });
+    });
+
+    it("an image whose price went up since the owner approved it is not generated", async () => {
+      const piece = await reviewedArticle();
+      const generate: SitePhoto = { kind: "generate", idea: "A roof" };
+      vi.mocked(prepareForSite).mockResolvedValue(prepared(generate));
+      vi.mocked(sitePhotoApproval).mockResolvedValue({ photo: generate, cents: 4 });
+      await workOne(A);
+      await changeRun(A, piece.id, "approve");
+      vi.mocked(sitePhotoApproval).mockResolvedValue({ photo: generate, cents: 7 });
+      await workOne(A);
+      expect(approveForSite).not.toHaveBeenCalled();
+      expect(await row(piece.id)).toMatchObject({ status: "blocked", error: expect.stringContaining("precio"), reservedCents: 0 });
+      expect(await money()).toEqual({ reservedCents: 0, chargedCents: SITE_TEXT_CENTS });
+    });
+
+    it("an already generated image still waits for the owner, and costs nothing more", async () => {
+      const piece = await reviewedArticle();
+      const generated: SitePhoto = { kind: "generated", url: "https://example.com/g.jpg", idea: "A roof", costCents: 4 };
+      vi.mocked(prepareForSite).mockResolvedValue(prepared(generated));
+      vi.mocked(approveForSite).mockResolvedValue(published);
+      vi.mocked(sitePhotoApproval).mockResolvedValue({ photo: generated, cents: 0 });
+      await workOne(A);
+      expect(approveForSite).not.toHaveBeenCalled();
+      expect(await row(piece.id)).toMatchObject({ status: "waiting_approval" });
+      await changeRun(A, piece.id, "approve");
+      await workOne(A);
+      expect(approveForSite).toHaveBeenCalledExactlyOnceWith(A, "rep1", approveCostCents(generated, 4));
+      expect(approveCostCents(generated, 4)).toBe(0);
+      expect(await row(piece.id)).toMatchObject({ status: "completed" });
+    });
+
+    it.each([
+      ["web articles are off", { allowWebArticles: false }, "permiso para publicar en seo"],
+      ["MATYA is paused", { pausedAt: new Date() }, "pausa"],
+      ["the publishing permission is off", { allowPublish: false }, "permiso de publicación"],
+      ["team mode is off", { teamMode: false }, "modo equipo"],
+    ])("publishing respects the switches: %s", async (_name, data, expected) => {
+      vi.mocked(prepareForSite).mockResolvedValue(prepared(library));
+      vi.mocked(approveForSite).mockResolvedValue(published);
+      const piece = await reviewedArticle();
+      await workspace(data);
+      await workOne(A);
+      expect(await row(piece.id)).toMatchObject({ status: "blocked", error: expect.stringContaining(expected), reservedCents: 0, chargedCents: 0 });
+      expect(prepareForSite).not.toHaveBeenCalled();
+      expect(approveForSite).not.toHaveBeenCalled();
+      expect(await money()).toEqual({ reservedCents: 0, chargedCents: 0 });
+    });
+
+    it("in approval mode an article is published only with an approval given after its review", async () => {
+      vi.mocked(prepareForSite).mockResolvedValue(prepared(library));
+      vi.mocked(approveForSite).mockResolvedValue(published);
+      // Each piece is made (team mode is saved with it), then put in approval mode and worked.
+      const waiting = async (id: string, approvedAt: Date | null) => {
+        const piece = await article({ id, topic: `Artículo ${id}` });
+        await done(piece.id, "article", { reportId: "rep1" });
+        await done(piece.id, "review", { approved: true, problems: [] });
+        await goTo(piece, "article_publish");
+        await db.agentRun.update({ where: { id: piece.id }, data: { approvedAt } });
+        await workspace({ mode: "approval" });
+        await workOne(A);
+        return row(piece.id);
+      };
+      // No approval, or one older than the review (the cost of the draft): nothing is prepared or published.
+      expect(await waiting("p4", null)).toMatchObject({ status: "blocked", error: expect.stringContaining("aprobación") });
+      expect(await waiting("p5", new Date(Date.now() - 60000))).toMatchObject({ status: "blocked" });
+      expect(prepareForSite).not.toHaveBeenCalled();
+      expect(approveForSite).not.toHaveBeenCalled();
+      expect(await money()).toEqual({ reservedCents: 0, chargedCents: 0 });
+      // An approval after the review lets it through.
+      expect(await waiting("p6", new Date(Date.now() + 1000))).toMatchObject({ status: "completed" });
+      expect(approveForSite).toHaveBeenCalledTimes(1);
+    });
+
+    it("a settings save after the article was asked for does not strand its publication: the guard checks the current settings", async () => {
+      vi.mocked(prepareForSite).mockResolvedValue(prepared(library));
+      vi.mocked(approveForSite).mockResolvedValue(published);
+      const piece = await reviewedArticle();
+      await saveSettings(A, { ...settings, teamMode: true, objective: "Otro objetivo" });
+      await workOne(A);
+      expect(await row(piece.id)).toMatchObject({ status: "completed" });
+      expect(approveForSite).toHaveBeenCalledTimes(1);
+      // The settings still decide: with web articles turned off by that save, the same piece is refused.
+      const second = await reviewedArticle();
+      await saveSettings(A, { ...settings, teamMode: true, allowWebArticles: false });
+      await workOne(A);
+      expect(await row(second.id)).toMatchObject({ status: "blocked", error: expect.stringContaining("permiso para publicar en seo") });
+      expect(approveForSite).toHaveBeenCalledTimes(1);
+    });
+
+    it("an article piece goes from the owner's approval to the website, and every cent is counted once", async () => {
+      for (const [k, v] of Object.entries({ MATYA_AGENT_PROVIDER: "gemini", MATYA_AGENT_MODEL: "gemini-x" })) vi.stubEnv(k, v);
+      vi.mocked(createArticleReport).mockImplementation(async () => {
+        await saveReport("Una gotera en el techo necesita revisión pronto. Llama al 305-555-0100 para una inspección.");
+        return REPORT;
+      });
+      vi.mocked(prepareForSite).mockResolvedValue(prepared(library));
+      vi.mocked(approveForSite).mockResolvedValue(published);
+      vi.mocked(meteredAsk).mockResolvedValueOnce({
+        value: { approved: true, problems: [] },
+        usage: { inputTokens: 100, outputTokens: 50, cents: 3, model: "gemini-x" },
+      });
+      const piece = await article();
+      // The review is the only step of the model; it reserves its call as the engine will (Task 13 wires this).
+      const costOf = (name: string, run: AgentRun) => (name === "review" ? 10 : stepCost(name, run));
+      await workOne(A, executeStep, costOf);
+      expect(await row(piece.id)).toMatchObject({ status: "waiting_approval", stage: 0 });
+      await changeRun(A, piece.id, "approve");
+      for (let i = 0; i < 3; i++) await workOne(A, executeStep, costOf);
+      const end = await row(piece.id);
+      expect(end).toMatchObject({ status: "completed", reservedCents: 0 });
+      expect(stepsOf(end)).toEqual(["article", "review", "article_publish"]);
+      const article_ = (await stepOf(piece.id, "article"))!;
+      const charged = article_.chargedCents + 3 + SITE_TEXT_CENTS;
+      expect(end.chargedCents).toBe(charged);
+      expect(await money()).toEqual({ reservedCents: 0, chargedCents: charged });
+      expect(createArticleReport).toHaveBeenCalledTimes(1);
+      expect(prepareForSite).toHaveBeenCalledTimes(1);
+      expect(approveForSite).toHaveBeenCalledTimes(1);
+      // The workspace stays on: no step charged more than it reserved.
+      expect(await db.agentWorkspace.findUniqueOrThrow({ where: { businessId: A } })).toMatchObject({ enabled: true });
+    });
+
+    it("a website that failed to publish keeps the reservation as uncertain and never repeats", async () => {
+      const piece = await reviewedArticle();
+      vi.mocked(prepareForSite).mockResolvedValue(prepared(library));
+      vi.mocked(approveForSite).mockRejectedValue(new Error("boom"));
+      await workOne(A);
+      expect(await row(piece.id)).toMatchObject({ status: "uncertain" });
+      await workOne(A);
+      expect(approveForSite).toHaveBeenCalledTimes(1);
+    });
+
+    it("the review reads the article report's text: a wrong phone in the article is caught without an AI call", async () => {
+      await saveReport("Para reparar tu techo llama al 305-000-0000 hoy mismo.");
+      const piece = await article();
+      await done(piece.id, "article", { reportId: "rep1" });
+      await goTo(piece, "review");
+      await workOne(A, executeStep, () => 0);
+      const review = await stepOf(piece.id, "review");
+      expect(review).toMatchObject({
+        agent: "review",
+        status: "succeeded",
+        chargedCents: 0,
+        output: { approved: false, problems: [{ kind: "telefono", sendBackTo: "copy" }] },
+      });
+      expect(meteredAsk).not.toHaveBeenCalled();
+      // The article goes back to its writer once, then is reviewed again.
+      expect(stepsOf(await row(piece.id))).toEqual(["article", "review", "article-r1", "review-r1", "article_publish"]);
+    });
+
+    it("the review judges an article with the right phone, sending the AI the article's own text", async () => {
+      await saveReport("Una gotera en el techo necesita revisión pronto. Llama al 305-555-0100 para una inspección.");
+      const piece = await article();
+      await done(piece.id, "article", { reportId: "rep1" });
+      await goTo(piece, "review");
+      vi.mocked(meteredAsk).mockResolvedValueOnce({
+        value: { approved: true, problems: [] },
+        usage: { inputTokens: 100, outputTokens: 50, cents: 3, model: "gemini-x" },
+      });
+      await workOne(A, executeStep, (name) => (name === "review" ? 10 : 0));
+      expect(meteredAsk).toHaveBeenCalledTimes(1);
+      const payload = vi.mocked(meteredAsk).mock.calls[0][2] as { copy: { title: string; texts: Record<string, string> }; design: { mediaType: string } };
+      expect(payload.copy.title).toBe("Reparación de techos en Miami");
+      expect(payload.copy.texts.seo).toContain("Una gotera en el techo");
+      expect(payload.design.mediaType).toBe("none");
+      expect(await stepOf(piece.id, "review")).toMatchObject({ chargedCents: 3, output: { approved: true } });
+      expect(await row(piece.id)).toMatchObject({ status: "queued" });
+    });
+
+    it("an article's report of another business is never read", async () => {
+      await saveReport("Llama al 305-555-0100.");
+      const piece = await article();
+      // The report belongs to A; a run of B pointing at it finds nothing.
+      await db.seoReport.update({ where: { id: "rep1" }, data: { businessId: B } });
+      await done(piece.id, "article", { reportId: "rep1" });
+      await goTo(piece, "review");
+      await workOne(A, executeStep, () => 0);
+      expect(await row(piece.id)).toMatchObject({ status: "uncertain", error: expect.stringContaining("anterior") });
     });
   });
 });

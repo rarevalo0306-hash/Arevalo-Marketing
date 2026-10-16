@@ -76,11 +76,12 @@ describe("registro de agentes", () => {
     }
   });
 
-  it("todos usan modelo menos el de diseño; tienen rótulo en español e inglés y son su propia clave", () => {
+  it("todos usan modelo menos el de diseño y el de video; tienen rótulo en español e inglés y son su propia clave", () => {
     for (const [key, a] of Object.entries(AGENTS)) {
       expect(a.key).toBe(key);
-      // El diseño reutiliza la biblioteca y las plantillas de marca: no hace ninguna llamada a una IA.
-      expect(a.usesModel).toBe(key !== "design");
+      // El diseño reutiliza la biblioteca y las plantillas de marca, y el video cotiza con la plantilla y el precio del render:
+      // ninguno hace una llamada a una IA.
+      expect(a.usesModel).toBe(key !== "design" && key !== "video");
       expect(a.label.es).toBeTruthy();
       expect(a.label.en).toBeTruthy();
     }
@@ -93,16 +94,9 @@ describe("registro de agentes", () => {
     expect(AGENTS.review.label.es).toBe("Revisión editorial");
   });
 
-  it("mientras no exista el agente de video, falla con un mensaje claro", async () => {
-    // Ya existen el Director, el agente SEO, el de estrategia, el de redacción, el de diseño y el de revisión
-    // (tests/agent-director-seo.test.ts, agent-strategy.test.ts, agent-copy-design.test.ts, agent-review.test.ts).
-    const done = ["director", "seo", "strategy", "copy", "design", "review"];
-    const todo = Object.values(AGENTS).filter((a) => !done.includes(a.key));
-    expect(todo.map((a) => a.key).sort()).toEqual(["video"]);
-    for (const a of todo)
-      await expect(a.run({} as never)).rejects.toThrow("Agente no disponible.");
-    for (const key of done as ("director" | "seo" | "strategy" | "copy" | "design" | "review")[])
-      expect(AGENTS[key].run).not.toBe(AGENTS.video.run);
+  it("los siete agentes tienen su propio código: ya no queda ningún marcador de «agente no disponible»", () => {
+    // Director, SEO, estrategia, redacción, diseño, video y revisión (tests/agent-*.test.ts).
+    expect(new Set(Object.values(AGENTS).map((a) => a.run)).size).toBe(7);
   });
 });
 
@@ -207,21 +201,15 @@ describe("herramientas cerradas", () => {
       expect(() => t.use(name as ToolName)).toThrow(/no está permitida/);
   });
 
-  it("las herramientas de etapas posteriores avisan que aún no existen", async () => {
-    const copy = toolsFor(AGENTS.copy, {} as AgentRun);
-    await expect(copy.use("writeArticle")({})).rejects.toThrow(
-      "Herramienta no disponible todavía.",
-    );
-    const other = toolsFor(
-      { key: "director", tools: ["readSignals", "publishArticle"] },
-      {} as AgentRun,
-    );
+  it("las señales de la mañana avisan que aún no existen; el artículo ya tiene sus dos herramientas", async () => {
+    const other = toolsFor({ key: "director", tools: ["readSignals"] }, {} as AgentRun);
     await expect(other.use("readSignals")()).rejects.toThrow(
       "Herramienta no disponible todavía.",
     );
-    await expect(other.use("publishArticle")({})).rejects.toThrow(
-      "Herramienta no disponible todavía.",
-    );
+    // writeArticle y publishArticle existen: cuentan con funciones reales (se prueban en tests/agent-database.test.ts).
+    const t = toolsFor({ key: "matya", tools: ["writeArticle", "publishArticle"] }, {} as AgentRun);
+    expect(typeof t.use("writeArticle")).toBe("function");
+    expect(typeof t.use("publishArticle")).toBe("function");
   });
 });
 
@@ -294,6 +282,26 @@ describe("executeTeamStep", () => {
       "Falta el precio verificado del modelo gemini:sin-precio para el agente seo.",
     );
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("el artículo no usa el modelo del agente de redacción: ni se busca su precio ni se pasa un modelo", async () => {
+    const spy = vi.spyOn(AGENTS.copy, "run").mockResolvedValue({ data: {} });
+    // The copy agent has no verified price here: a copy step stops, an article step goes on without a model.
+    workspace.row = {
+      agentModels: { copy: { provider: "gemini", model: "sin-precio" } },
+      modelPrices: {},
+    };
+    const articlePlan = { kind: "piece", piece: { id: "p1" }, steps: stepsForPiece("articulo") };
+    const r = run({ kind: "piece", plan: articlePlan } as never);
+    await executeTeamStep(r, "article");
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0][0].model).toBeNull();
+    expect(spy.mock.calls[0][0].step).toEqual({ id: "article", agent: "copy", attempt: 0 });
+    const copyPlan = { kind: "piece", piece: { id: "p1" }, steps: stepsForPiece("post") };
+    await expect(executeTeamStep(run({ kind: "piece", plan: copyPlan } as never), "copy")).rejects.toThrow(
+      "Falta el precio verificado del modelo gemini:sin-precio para el agente copy.",
+    );
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 
   it("los pasos de MATYA van al manejador registrado por su nombre base", async () => {

@@ -282,9 +282,12 @@ export async function beginStep(
     });
     const context = run.context as unknown as Context;
     // A piece's prepare and schedule only use what its earlier steps saved, and the guard checks every current setting when
-    // the piece is scheduled: a settings save since the piece was asked for does not stop them.
+    // the piece is scheduled: a settings save since the piece was asked for does not stop them. An article's publication
+    // (`article_publish`, and its second pass `article_publish:<n>`) is the same: it publishes what the article step saved, after
+    // the same guard check of the current settings.
     const guardedLater =
-      run.kind === "piece" && (name === "prepare" || name === "schedule");
+      run.kind === "piece" &&
+      (name === "prepare" || name === "schedule" || /^article_publish(:\d+)?$/.test(name));
     if (
       !["briefing", "pause"].includes(run.kind) &&
       !guardedLater &&

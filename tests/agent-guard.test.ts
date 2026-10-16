@@ -3,9 +3,11 @@
 import { describe, expect, it } from "vitest";
 import {
   approvedAfterReviews,
+  articleRefusal,
   brakedChannels,
   pieceScheduleAt,
   refusalOf,
+  switchesRefusal,
   type GuardFacts,
 } from "@/lib/agent/guard";
 import { stormSchedule } from "@/lib/storm";
@@ -251,6 +253,65 @@ describe("refusalOf", () => {
     expect(
       refusalOf({ ...all, approved: true, channels: ["instagram"], braked: [], ws: { ...all.ws, allowSocial: true } }),
     ).toContain("límite diario");
+  });
+});
+
+describe("switchesRefusal", () => {
+  const on = { pausedAt: null, teamMode: true, enabled: true, allowPublish: true };
+
+  it("no dice nada cuando todo está encendido, y cada interruptor apagado tiene su mensaje (la pausa va primero)", () => {
+    expect(switchesRefusal(on)).toBeNull();
+    expect(switchesRefusal({ ...on, pausedAt: new Date() })).toContain("pausa");
+    expect(switchesRefusal({ ...on, teamMode: false })).toContain("modo equipo");
+    expect(switchesRefusal({ ...on, enabled: false })).toContain("apagada");
+    expect(switchesRefusal({ ...on, allowPublish: false })).toContain("permiso de publicación");
+    expect(switchesRefusal({ pausedAt: new Date(), teamMode: false, enabled: false, allowPublish: false })).toContain("pausa");
+  });
+
+  it("son las mismas palabras de refusalOf, que solo les suma que la publicación quedó como borrador", () => {
+    const ws = { ...on, mode: "auto", allowSocial: true, allowWebArticles: true, channels: ["facebook"], maxPostsPerDay: 2 };
+    for (const off of [{ pausedAt: new Date() }, { teamMode: false }, { enabled: false }, { allowPublish: false }]) {
+      const w = { ...ws, ...off };
+      const facts: GuardFacts = { ws: w, format: "post", approved: true, channels: ["facebook"], connected: ["facebook"], braked: [], posts: 0 };
+      expect(refusalOf(facts)).toBe(`${switchesRefusal(w)} La publicación quedó como borrador.`);
+    }
+  });
+});
+
+describe("articleRefusal", () => {
+  const ws: GuardFacts["ws"] = {
+    pausedAt: null,
+    teamMode: true,
+    enabled: true,
+    allowPublish: true,
+    mode: "approval",
+    allowSocial: false,
+    allowWebArticles: true,
+    channels: [],
+    maxPostsPerDay: 1,
+  };
+  const website = ["seo"];
+
+  it("deja escribir un artículo cuando se puede publicar, sin pedir aprobación ni contar el cupo del día (un artículo no es una publicación)", () => {
+    // Approval mode, no social channels and no social posts allowed: none of it matters before the article is written.
+    expect(articleRefusal(ws, website)).toBeNull();
+    expect(articleRefusal({ ...ws, mode: "auto" }, website)).toBeNull();
+  });
+
+  it("no deja gastar en un artículo que no se podría publicar, con las mismas palabras del guardia y sin «borrador»", () => {
+    const off = (w: Partial<GuardFacts["ws"]>, connected = website) => articleRefusal({ ...ws, ...w }, connected);
+    expect(off({ pausedAt: new Date() })).toContain("pausa");
+    expect(off({ teamMode: false })).toContain("modo equipo");
+    expect(off({ enabled: false })).toContain("apagada");
+    expect(off({ allowPublish: false })).toContain("permiso de publicación");
+    expect(off({ allowWebArticles: false })).toContain("permiso para publicar en seo");
+    expect(off({}, ["facebook"])).toContain("no están conectados: seo");
+    expect(off({}, [])).toContain("no están conectados: seo");
+    for (const w of [{ pausedAt: new Date() }, { allowWebArticles: false }, { allowPublish: false }])
+      expect(off(w)).not.toContain("borrador");
+    // The pause still goes first.
+    expect(off({ pausedAt: new Date(), allowWebArticles: false })).toContain("pausa");
+    expect(articleRefusal(ws, website)).toBe(refusalOf({ ws: { ...ws, mode: "auto" }, format: "articulo", approved: true, channels: ["seo"], connected: website, braked: [], posts: 0 }));
   });
 });
 

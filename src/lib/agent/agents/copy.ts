@@ -1,10 +1,13 @@
 // El agente de redacción: escribe el texto de una pieza (post, carrusel o video) con la misma función que usa el flujo de campañas.
 // Lee la investigación y el plan del equipo, y en la vuelta de corrección los problemas que encontró la revisión. Una sola llamada pagada.
-// El artículo (`article`) es de otra tarea: por ahora este agente no lo hace.
+// También escribe el artículo para la web (`article`, `article-r<n>`) con la herramienta `writeArticle`: ese paso no usa el modelo del
+// agente y es de pago (Google y la IA del negocio), así que el motor reserva su costo y lo hace solo después de que el dueño lo aprueba.
+import { db } from "@/lib/db";
 import { AgentError } from "../access";
+import { articleCharge, articleKeyword, articleWrittenText } from "../article-cost";
 import { oneLine } from "../bounded-context";
 import { writeCopy } from "../content-steps";
-import { Piece, problemsOf } from "../plan";
+import { isArticleStep, Piece, problemsOf } from "../plan";
 import type { StepResult } from "../queue";
 import type { AgentInput } from "./types";
 
@@ -81,9 +84,32 @@ function requestOf(piece: Piece, goal: string, language: "es" | "en") {
   ].join("\n");
 }
 
-/** The `copy` step of a piece, and each of its rework rounds (`copy-r<n>`). */
+/**
+ * The `article` step of a piece, and each of its rework rounds (`article-r<n>`): one paid draft of the website article, saved as an
+ * article report (`{ reportId }`). It charges Google's real cost and the AI at the price the owner approved, never more than the
+ * step reserved (the engine reserved it, and asked for the approval, before this ran).
+ */
+async function runArticle(input: AgentInput): Promise<StepResult> {
+  const piece = Piece.safeParse(field(input.context, "piece"));
+  if (!piece.success) throw new AgentError("La pieza no tiene un plan válido.");
+  if (piece.data.format !== "articulo") throw new AgentError("Agente no disponible.");
+  const keyword = articleKeyword(piece.data);
+  const made = await input.tools.use("writeArticle")(keyword);
+  // This step's own reservation: what finishStep compares the charge with.
+  const step = await db.agentStep.findFirst({
+    where: { runId: input.run.id, run: { businessId: input.run.businessId }, name: input.step.id },
+    select: { reservedCents: true },
+  });
+  return {
+    data: { reportId: made.id },
+    cents: articleCharge(made.cost, made.provider, step?.reservedCents ?? 0),
+    text: articleWrittenText(oneLine(keyword, KEYWORD_MAX), made.score, made.cost, input.language),
+  };
+}
+
+/** The `copy` step of a piece, and each of its rework rounds (`copy-r<n>`); also its `article` steps. */
 export async function runCopy(input: AgentInput): Promise<StepResult> {
-  // `article` and `article-r<n>` are for the article writer, which does not exist yet.
+  if (isArticleStep(input.step.id)) return runArticle(input);
   if (!/^copy(-r\d+)?$/.test(input.step.id))
     throw new AgentError("Agente no disponible.");
   if (!input.model)

@@ -27,6 +27,9 @@ export type Piece = z.infer<typeof Piece>;
 /** The most pieces one plan can have: their ids run p1..p12 (the pattern of `Piece.id`), and the strategy and the director never ask for more. */
 export const MAX_PIECES = 12;
 
+/** The steps of an article piece that write the article (`article`, `article-r<n>`): one paid draft each. */
+export const isArticleStep = (stepId: string) => /^article(-r\d+)?$/.test(stepId);
+
 export const TEAM_STEPS = ["plan", "research", "strategy", "dispatch"] as const;
 
 const TEMPLATES: Record<PieceFormat, readonly string[]> = {

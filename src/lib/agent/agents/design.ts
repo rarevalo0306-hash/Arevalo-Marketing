@@ -7,7 +7,7 @@ import { Copy } from "../schema";
 import type { AgentInput } from "./types";
 
 /** The library ids a stored design output used (`mediaSelection.libraryItems`); anything unreadable is skipped. */
-function libraryIdsOf(output: unknown): string[] {
+export function libraryIdsOf(output: unknown): string[] {
   try {
     const items = (output as { mediaSelection?: { libraryItems?: unknown } } | null)
       ?.mediaSelection?.libraryItems;

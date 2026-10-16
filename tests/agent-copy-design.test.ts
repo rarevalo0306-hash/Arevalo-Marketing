@@ -278,8 +278,8 @@ describe("agente de redacción", () => {
   });
 
   describe("lo que no hace", () => {
-    it("el artículo todavía no existe: article y article-r<n> fallan sin leer nada ni llamar al modelo", async () => {
-      for (const step of ["article", "article-r1", "video", "copywriter", "review"]) {
+    it("solo hace copy y copy-r<n>, y el artículo: otros pasos fallan sin leer nada ni llamar al modelo", async () => {
+      for (const step of ["video", "copywriter", "review", "article_publish", "articles"]) {
         const { input, use } = setup({ step });
         await expect(runCopy(input)).rejects.toThrow("Agente no disponible.");
         expect(use).not.toHaveBeenCalled();

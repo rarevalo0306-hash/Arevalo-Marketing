@@ -6,6 +6,7 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
 import type { MediaType } from "@/lib/channels";
+import { readArticleReport, type ArticleReport } from "@/lib/seo/writer";
 import { AgentError } from "../access";
 import {
   fitPayload,
@@ -100,7 +101,7 @@ type Payload = {
   research: string[];
 };
 
-const instructions = (language: "es" | "en") =>
+const instructions = (language: "es" | "en", article: boolean) =>
   SYSTEM +
   "\n" +
   MEDIA_POLICY +
@@ -111,6 +112,9 @@ const instructions = (language: "es" | "en") =>
   " The server already checked the phone, the website, empty or too long texts, a missing photo or video and repeated topics: do not report those." +
   " Each problem has: kind (a short lowercase label of at most 40 characters, such as dato-inventado, ortografia, incoherente or tono), detail (what is wrong and how to fix it, one or two short sentences, at most 300 characters) and sendBackTo (\"copy\" when the text must change, \"design\" only when the image or its alt text must change)." +
   " When you approve, `problems` is empty. When you do not, list every real problem (at most 10) and never reject without saying why." +
+  (article
+    ? " This piece is an article for the business's website: all of it is `copy.texts.seo` (its title, its description and then its body, which is cut when it is very long). It has no image yet, because its photo is chosen when it is published: ignore the image rules and `design`, and send every problem back to \"copy\"."
+    : "") +
   ` Write each detail in ${language === "en" ? "English" : "Spanish"}.`;
 
 /**
@@ -141,6 +145,15 @@ const SHRINKS: Shrink<Payload>[] = [
   shrinkKey<Payload, "copy">(
     "copy",
     shrinkText<Payload["copy"]>((c) => c.summary, (c, summary) => ({ ...c, summary }), [300, 0]),
+  ),
+  // Last of all, and only a website article gets here: the model reads its first part (the rules read all of it before).
+  shrinkKey<Payload, "copy">(
+    "copy",
+    shrinkText<Payload["copy"]>(
+      (c) => c.texts.seo,
+      (c, seo) => ({ ...c, texts: { ...c.texts, seo } }),
+      [16_000, 12_000, 8_000, 4_000],
+    ),
   ),
 ];
 
@@ -213,6 +226,46 @@ const rejectedText = (title: string, problems: ReviewProblem[], attempt: number,
     : `La pieza «${title}» no pasó la revisión editorial${attempt >= 1 ? " ni después de corregirla" : ""} y espera tu decisión.\nProblemas:\n${list}\nPuedes aprobarla como está, pedir que se rehaga o cancelarla.`;
 };
 
+/**
+ * A saved article as the review reads a piece's text: its title, description and body are the text of the website (`seo`), its
+ * H1 is the headline. The rules and the model see everything the article would publish.
+ */
+function articleAsCopy(report: ArticleReport): Copy {
+  const d = report.draft;
+  const title = oneLine(d.title, TITLE_MAX) || oneLine(d.h1, TITLE_MAX) || oneLine(report.keyword, TITLE_MAX);
+  const description = oneLine(d.metaDescription, DETAIL_MAX);
+  return {
+    title,
+    headline: oneLine(d.h1, TITLE_MAX) || title,
+    summary: description,
+    variants: {
+      facebook: "",
+      instagram: "",
+      google: "",
+      linkedin: "",
+      x: "",
+      seo: [title, description, d.markdown.trim()].filter(Boolean).join("\n\n"),
+    },
+    script: "",
+    alt: "",
+  };
+}
+
+/**
+ * The text under review. A piece's is the output of its `copy` step. An article's is its saved report, the one the `article`
+ * step left (`{ reportId }`) read for this business only; an article step that left the text itself (a `Copy`) is read as it is.
+ * Null when the step before did not leave a text we can read.
+ */
+async function copyOf(article: boolean, written: unknown, businessId: string): Promise<Copy | null> {
+  const copy = Copy.safeParse(written);
+  if (copy.success) return copy.data;
+  const reportId = article ? field(written, "reportId") : undefined;
+  if (typeof reportId !== "string" || !reportId) return null;
+  const row = await db.seoReport.findFirst({ where: { id: reportId, businessId, kind: "article" } });
+  const report = row ? readArticleReport(row.data) : null;
+  return report ? articleAsCopy(report) : null;
+}
+
 /** The `review` step of a piece, and each of its rework rounds (`review-r<n>`). */
 export async function runReview(input: AgentInput): Promise<StepResult> {
   const { run, step, language } = input;
@@ -240,8 +293,8 @@ export async function runReview(input: AgentInput): Promise<StepResult> {
     }),
     recentTopicsOf(run.businessId, now, run.id),
   ]);
-  const copy = Copy.safeParse(written);
-  if (!copy.success) throw new AgentError("Falta completar el paso anterior.");
+  const copy = await copyOf(article, written, run.businessId);
+  if (!copy) throw new AgentError("Falta completar el paso anterior.");
 
   const images = imagesOf(design);
   const mediaType: MediaType = video != null ? "video" : images.length ? "photo" : "none";
@@ -250,7 +303,7 @@ export async function runReview(input: AgentInput): Promise<StepResult> {
     { name: business.name, phone: business.phone, website: business.website },
     now.getTime(),
   );
-  const title = oneLine(copy.data.title, TITLE_MAX);
+  const title = oneLine(copy.title, TITLE_MAX);
   const attempt = step.attempt;
 
   /** The step's result for a verdict: the next step, the one round of correction, or the owner's decision. */
@@ -277,7 +330,7 @@ export async function runReview(input: AgentInput): Promise<StepResult> {
 
   const ruleProblems = reviewRules({
     channels: piece.data.channels,
-    copy: copy.data,
+    copy,
     mediaType,
     business: { phone: business.phone, website: business.website },
     knownFacts: facts,
@@ -289,7 +342,7 @@ export async function runReview(input: AgentInput): Promise<StepResult> {
   if (!input.model)
     throw new AgentError("Falta configurar el modelo del agente de revisión.");
 
-  const system = instructions(language);
+  const system = instructions(language, article);
   const sent = fitPayload<Payload>(
     {
       context: slimContext(input.context),
@@ -302,12 +355,12 @@ export async function runReview(input: AgentInput): Promise<StepResult> {
         channels: piece.data.channels.map((c) => oneLine(c, 20)),
       },
       copy: {
-        title: copy.data.title,
-        headline: copy.data.headline,
-        summary: copy.data.summary,
-        texts: channelTexts(copy.data, piece.data.channels),
-        ...(copy.data.script ? { script: copy.data.script } : {}),
-        alt: copy.data.alt,
+        title: copy.title,
+        headline: copy.headline,
+        summary: copy.summary,
+        texts: channelTexts(copy, piece.data.channels),
+        ...(copy.script ? { script: copy.script } : {}),
+        alt: copy.alt,
       },
       design: { mediaType, assets: images },
       business: {

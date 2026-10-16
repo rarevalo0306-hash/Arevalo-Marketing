@@ -1,7 +1,5 @@
 // Los siete agentes del equipo. Cada uno trabaja con sus herramientas cerradas y, si las usa, con su propio modelo.
-import { AgentError } from "../access";
 import type { AgentKey, PlanStep } from "../plan";
-import type { StepResult } from "../queue";
 import { runCopy } from "./copy";
 import { runDesign } from "./design";
 import { runDirector } from "./director";
@@ -9,13 +7,9 @@ import { runReview } from "./review";
 import { runSeo } from "./seo";
 import { runStrategy } from "./strategy";
 import type { AgentDef } from "./types";
+import { runVideo } from "./video";
 
 export type { AgentDef, AgentInput } from "./types";
-
-/** Placeholder until each agent exists (video). */
-const unavailable = async (): Promise<StepResult> => {
-  throw new AgentError("Agente no disponible.");
-};
 
 export const AGENTS: Record<Exclude<AgentKey, "matya">, AgentDef> = {
   director: {
@@ -64,8 +58,9 @@ export const AGENTS: Record<Exclude<AgentKey, "matya">, AgentDef> = {
     key: "video",
     label: { es: "Video", en: "Video" },
     tools: ["readContext", "readStepOutput", "listLibrary", "videoQuote"],
-    usesModel: true,
-    run: unavailable,
+    // The video step quotes with the brand's template and the price of the render: no call to an AI.
+    usesModel: false,
+    run: runVideo,
   },
   review: {
     key: "review",

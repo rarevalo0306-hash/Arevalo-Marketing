@@ -3,7 +3,7 @@ import { localDay } from "@/lib/business-tz";
 import { publishPost } from "@/lib/publish";
 import { AgentError } from "./access";
 import { modelConfig } from "./metered";
-import { enqueue, json } from "./queue";
+import { enqueue, json, stepsOf } from "./queue";
 import { drain } from "./execution";
 import { loadContext } from "./context";
 import { industryFor, toolCatalog } from "./industry";
@@ -250,7 +250,8 @@ export async function runAgentCycle(businessId?: string) {
       where: { id: `agent-${run.id}`, businessId: run.businessId },
       select: { status: true },
     });
-    if (run.kind === "video" && run.stage === 4) {
+    // A render in progress (a campaign's video or a video piece's, whose wait is at another stage) is checked again every cycle.
+    if (stepsOf(run)[run.stage] === "video_wait") {
       await db.agentRun.updateMany({
         where: { id: run.id, status: "waiting_provider" },
         data: { status: "queued" },

@@ -7,9 +7,14 @@ import type { AgentRun } from "@prisma/client";
 const db = vi.hoisted(() => ({
   business: vi.fn(),
   workspace: vi.fn(),
+  report: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({
-  db: { business: { findUniqueOrThrow: db.business }, agentWorkspace: { findUniqueOrThrow: db.workspace } },
+  db: {
+    business: { findUniqueOrThrow: db.business },
+    agentWorkspace: { findUniqueOrThrow: db.workspace },
+    seoReport: { findFirst: db.report },
+  },
 }));
 vi.mock("@/lib/agent/limits", () => ({ recentTopicsOf: vi.fn() }));
 vi.mock("@/lib/agent/metered", async (original) => ({
@@ -131,6 +136,7 @@ beforeEach(() => {
   topics.mockReset();
   db.business.mockReset();
   db.workspace.mockReset();
+  db.report.mockReset();
   ask.mockResolvedValue({ value: APPROVED, usage });
   topics.mockResolvedValue([]);
 });
@@ -586,10 +592,7 @@ describe("lo que no es de la revisión o no se puede leer", () => {
     expect(readStep.mock.calls.map(([base]) => base).sort()).toEqual(["article", "research"]);
     expect(ask).toHaveBeenCalledTimes(1);
     expect((result.data as { approved: boolean }).approved).toBe(true);
-    // An article that was not written as text (the report only) cannot be reviewed yet.
-    await expect(
-      runReview(setup({ piece, outputs: { article: { reportId: "r1" }, research: RESEARCH } }).input),
-    ).rejects.toThrow("Falta completar el paso anterior.");
+    expect(db.report).not.toHaveBeenCalled();
   });
 
   it("un artículo no pide imagen ni video", async () => {
@@ -597,6 +600,91 @@ describe("lo que no es de la revisión o no se puede leer", () => {
     const article = { ...COPY, variants: { ...COPY.variants, seo: "Un artículo largo sobre goteras. ".repeat(20) }, usage };
     const result = await runReview(setup({ piece, outputs: { article, research: RESEARCH } }).input);
     expect((result.data as { ruleProblems: unknown[] }).ruleProblems).toEqual([]);
+  });
+});
+
+describe("la revisión de un artículo guardado como reporte", () => {
+  const piece = { ...PIECE, format: "articulo" as const, channels: ["seo"], topic: "Reparación de techos" };
+  const BODY = "Una gotera en el techo necesita revisión pronto. Llama al 305-555-0100 para una inspección. ".repeat(10);
+  const report = (markdown = BODY, extra: Record<string, unknown> = {}) => ({
+    data: {
+      version: 1,
+      keyword: "gotera en el techo",
+      language: "es",
+      draft: { title: "Gotera en el techo: qué hacer", metaDescription: "Guía rápida.", slug: "gotera", h1: "Gotera en el techo", outline: [], markdown, socialPost: "" },
+      score: 80,
+      cost: 0.002,
+      provider: "gemini",
+      createdAt: "2026-10-16T12:00:00.000Z",
+      ...extra,
+    },
+  });
+  const outputs = { article: { reportId: "r1" }, research: RESEARCH };
+
+  it("lee el texto del reporte del negocio de la pieza (no el de otro) y se lo manda a la IA tal como está", async () => {
+    db.report.mockResolvedValue(report());
+    const result = await runReview(setup({ piece, outputs }).input);
+    expect(db.report).toHaveBeenCalledExactlyOnceWith({ where: { id: "r1", businessId: "b1", kind: "article" } });
+    expect(ask).toHaveBeenCalledTimes(1);
+    const sent = ask.mock.calls[0][2] as { copy: { title: string; headline: string; summary: string; texts: Record<string, string> }; design: { mediaType: string; assets: unknown[] }; piece: { format: string } };
+    expect(sent.copy.title).toBe("Gotera en el techo: qué hacer");
+    expect(sent.copy.headline).toBe("Gotera en el techo");
+    expect(sent.copy.summary).toBe("Guía rápida.");
+    // What the article would publish, in the website's text: its title, its description and its body.
+    expect(sent.copy.texts).toEqual({ seo: `Gotera en el techo: qué hacer\n\nGuía rápida.\n\n${BODY.trim()}` });
+    expect(sent.design).toEqual({ mediaType: "none", assets: [] });
+    expect(sent.piece.format).toBe("articulo");
+    expect((result.data as { approved: boolean }).approved).toBe(true);
+    expect(promptBytes(ReviewVerdict, ask.mock.calls[0][1], sent)).toBeLessThan(PROMPT_BUDGET);
+    // The model is told an article has no image yet.
+    expect(ask.mock.calls[0][1]).toContain("article");
+  });
+
+  it("un teléfono que no es del negocio dentro del artículo se atrapa sin llamar a la IA y el artículo vuelve a su redactor", async () => {
+    db.report.mockResolvedValue(report("Si ves una gotera llama al 305-000-0000 hoy mismo. ".repeat(10)));
+    const result = await runReview(setup({ piece, outputs }).input);
+    expect(ask).not.toHaveBeenCalled();
+    expect(result.cents).toBe(0);
+    expect(result.data).toMatchObject({ approved: false, problems: [{ kind: "telefono", sendBackTo: "copy" }] });
+    expect(result.insertSteps?.map((x) => x.id)).toEqual(["article-r1", "review-r1"]);
+  });
+
+  it("un dato inventado o una web ajena en el artículo también se atrapan; un enlace a una fuente en el artículo no", async () => {
+    db.report.mockResolvedValue(report("Con nosotros tienes un descuento del 20% en toda reparación. ".repeat(5)));
+    const claims = await runReview(setup({ piece, outputs }).input);
+    expect(claims.data).toMatchObject({ approved: false, problems: [{ kind: "dato-inventado" }] });
+    db.report.mockResolvedValue(report("Más información en https://fuente.org/guia sobre goteras en el techo. ".repeat(5)));
+    expect((await runReview(setup({ piece, outputs }).input)).data).toMatchObject({ approved: true });
+  });
+
+  it("el tema repetido se atrapa con el tema de la pieza", async () => {
+    db.report.mockResolvedValue(report());
+    topics.mockResolvedValue(["reparación de techos"]);
+    const result = await runReview(setup({ piece, outputs }).input);
+    expect(result.data).toMatchObject({ approved: false, problems: [{ kind: "repetido" }] });
+    expect(ask).not.toHaveBeenCalled();
+  });
+
+  it("un artículo largo se recorta para la IA, no se manda a rehacer por largo; las reglas lo ven entero", async () => {
+    db.report.mockResolvedValue(report(`${"Texto de la guía de techos. ".repeat(900)}Llama al 305-000-0000.`));
+    const result = await runReview(setup({ piece, outputs }).input);
+    // The phone at the very end is still found by the rules.
+    expect(result.data).toMatchObject({ approved: false, problems: [{ kind: "telefono" }] });
+    db.report.mockResolvedValue(report("Texto de la guía de techos. ".repeat(900)));
+    const long = await runReview(setup({ piece, outputs }).input);
+    expect(ask).toHaveBeenCalledTimes(1);
+    const sent = ask.mock.calls[0][2];
+    expect(promptBytes(ReviewVerdict, ask.mock.calls[0][1], sent)).toBeLessThan(PROMPT_BUDGET);
+    expect((long.data as { problems: unknown[] }).problems).toEqual([]);
+  });
+
+  it("sin el reporte (no existe, es de otro negocio o no tiene texto) se detiene sin llamar a la IA", async () => {
+    db.report.mockResolvedValue(null);
+    await expect(runReview(setup({ piece, outputs }).input)).rejects.toThrow("Falta completar el paso anterior.");
+    db.report.mockResolvedValue({ data: { keyword: "x", draft: { markdown: "" } } });
+    await expect(runReview(setup({ piece, outputs }).input)).rejects.toThrow("Falta completar el paso anterior.");
+    await expect(runReview(setup({ piece, outputs: { article: { reportId: 5 }, research: RESEARCH } }).input)).rejects.toThrow("Falta completar el paso anterior.");
+    expect(ask).not.toHaveBeenCalled();
   });
 });
 

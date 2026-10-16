@@ -27,7 +27,6 @@ import {
   planContext,
   createProject,
   startRender,
-  advanceRender,
   videoBlocker,
   maxCentsPerVideo,
   projectCost,
@@ -55,6 +54,7 @@ import {
   todayOf,
 } from "./guard";
 import { Piece } from "./plan";
+import { approvalNeeded, pieceStepCost, publishStepName, waitForOwner, waitForVideo } from "./piece-steps";
 import { channelTexts } from "./review-rules";
 import { readStepOutput } from "./tools";
 
@@ -69,9 +69,15 @@ async function output(runId: string, name: string) {
     throw new AgentError("Falta completar el paso anterior.");
   return step.output;
 }
-/** `run` is for the per-run costs of later steps (team agents, quoted renders); unused for now. */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function stepCost(name: string, run?: AgentRun) {
+/**
+ * What a step reserves before it runs. A piece's money steps (the video's quote, the render at its quoted price, the article and
+ * its publication) are `pieceStepCost`'s; every other step, and every step of a campaign, keeps the cost it always had.
+ */
+export async function stepCost(name: string, run?: AgentRun): Promise<number> {
+  if (run?.kind === "piece") {
+    const own = await pieceStepCost(name, run);
+    if (own !== null) return own;
+  }
   if (name === "video" && videoBlocker())
     throw new AgentError(
       "Falta configurar el render de video y su almacenamiento. Los diseños y el guion están guardados.",
@@ -241,22 +247,7 @@ export async function executeStep(
   }
   if (name.startsWith("video_wait")) {
     const start = (await output(run.id, "video")) as { projectId: string };
-    const project = await advanceRender(run.businessId, start.projectId);
-    if (project.status === "failed")
-      throw new AgentError(
-        "El render de video falló. Revisa el proyecto en Videos antes de repetirlo.",
-      );
-    return {
-      data: {
-        projectId: start.projectId,
-        status: project.status,
-        videoUrl: project.videoUrl,
-        texts: project.storyboard.texts,
-      },
-      ...(project.status === "ready"
-        ? {}
-        : { state: "waiting_provider" as const, advance: false }),
-    };
+    return waitForVideo(run.businessId, start.projectId);
   }
   if (name === "prepare") return prepareCampaign(run);
   if (name === "schedule") return scheduleCampaign(run);
@@ -840,7 +831,7 @@ export type Executor = (run: AgentRun, name: string) => Promise<StepResult>;
 export async function workOne(
   businessId?: string,
   execute: Executor = executeStep,
-  costOf: (name: string, run: AgentRun) => number = stepCost,
+  costOf: (name: string, run: AgentRun) => number | Promise<number> = stepCost,
 ) {
   const run = await claimRun(businessId);
   if (!run) return false;
@@ -887,7 +878,17 @@ export async function workOne(
         return true;
       }
     }
-    const cost = costOf(name, run);
+    const cost = await costOf(name, run);
+    if (run.kind === "piece") {
+      // A piece's paid step goes on only with the owner's approval of that cost; without it nothing is reserved or called.
+      const waiting = await approvalNeeded(run, name, cost);
+      if (waiting !== null) {
+        await waitForOwner(run, waiting);
+        return true;
+      }
+      // The second pass of an article's publication (an AI photo the owner approved) is its own record.
+      if (name === "article_publish") name = await publishStepName(run);
+    }
     if (name === "video_wait") {
       const attempts = await db.agentStep.count({
         where: { runId: run.id, name: { startsWith: "video_wait:" } },

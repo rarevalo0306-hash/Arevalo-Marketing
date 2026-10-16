@@ -159,6 +159,21 @@ export type GuardFacts = {
 };
 
 const KEEP = " La publicación quedó como borrador.";
+
+/**
+ * Why nothing of the team's pieces may go on now because of the switches, or null: everything paused; team mode, MATYA or the
+ * publishing permission off. The first one that applies, in this order (the pause is what the owner did last and must undo
+ * first). `refusalOf` starts with these; a piece's steps that spend money check them too before they reserve anything.
+ */
+export function switchesRefusal(
+  ws: Pick<GuardFacts["ws"], "pausedAt" | "teamMode" | "enabled" | "allowPublish">,
+): string | null {
+  if (ws.pausedAt) return "MATYA está en pausa: no se programa nada hasta que la reanudes.";
+  if (!ws.teamMode) return "El modo equipo está apagado: las piezas del equipo no se programan.";
+  if (!ws.enabled) return "MATYA está apagada: actívala para programar sus piezas.";
+  if (!ws.allowPublish) return "El permiso de publicación de MATYA está apagado.";
+  return null;
+}
 const list = (channels: string[]) => channels.join(", ");
 
 /**
@@ -171,10 +186,8 @@ const list = (channels: string[]) => channels.join(", ");
 export function refusalOf(f: GuardFacts): string | null {
   const { ws } = f;
   const article = f.format === "articulo";
-  if (ws.pausedAt) return "MATYA está en pausa: no se programa nada hasta que la reanudes." + KEEP;
-  if (!ws.teamMode) return "El modo equipo está apagado: las piezas del equipo no se programan." + KEEP;
-  if (!ws.enabled) return "MATYA está apagada: actívala para programar sus piezas." + KEEP;
-  if (!ws.allowPublish) return "El permiso de publicación de MATYA está apagado." + KEEP;
+  const off = switchesRefusal(ws);
+  if (off) return off + KEEP;
   if (ws.mode === "approval" && !f.approved)
     return "La pieza necesita tu aprobación después de su revisión para programarse." + KEEP;
   if (!article && !ws.allowSocial)
@@ -198,6 +211,28 @@ export function refusalOf(f: GuardFacts): string | null {
     );
   if (f.posts >= ws.maxPostsPerDay) return "Se alcanzó el límite diario de publicaciones de MATYA." + KEEP;
   return null;
+}
+
+/**
+ * Why an article may not be written now, or null: the guard's own checks for a website article without the ones that only
+ * matter when it is published (an approval after the review, the day's count). Everything paused; team mode, MATYA or the
+ * publishing permission off; web articles not allowed; the website not connected. Nothing is spent for an article that could
+ * not be published afterwards. Same words as `refusalOf`, without its "stayed as a draft": nothing exists yet.
+ */
+export function articleRefusal(
+  ws: GuardFacts["ws"],
+  connected: string[],
+): string | null {
+  const refusal = refusalOf({
+    ws: { ...ws, mode: "auto" },
+    format: "articulo",
+    approved: true,
+    channels: ["seo"],
+    connected,
+    braked: [],
+    posts: 0,
+  });
+  return refusal === null ? null : refusal.replace(KEEP, "");
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> =>

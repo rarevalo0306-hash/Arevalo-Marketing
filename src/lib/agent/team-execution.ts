@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { AgentError } from "./access";
 import { agentFor, planStepOf } from "./agents";
 import { resolveModel } from "./models";
+import { isArticleStep } from "./plan";
 import type { StepResult } from "./queue";
 import { languageOf, type Context } from "./schema";
 import { toolsFor } from "./tools";
@@ -40,7 +41,8 @@ export async function executeTeamStep(
     return handler(run, stepId);
   }
   // A missing price or connection raises its own AgentError: the agent never runs on another model.
-  const model = def.usesModel
+  // The article writer is the exception: it pays Google and the business's own AI, not the agent's model.
+  const model = def.usesModel && !isArticleStep(stepId)
     ? resolveModel(
         def.key,
         await db.agentWorkspace.findUniqueOrThrow({
