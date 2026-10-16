@@ -97,6 +97,8 @@ export async function claimAgentPost(
       create: { businessId: post.businessId, day },
       update: {},
     });
+    // Whether everything but the day's cap allowed it: only then is the cap the reason a piece is told.
+    const allowedBeforeCap = allowed;
     const capped = budget.deliveries >= (settings?.maxPostsPerDay ?? 0);
     allowed = allowed && !capped;
     if (!allowed) {
@@ -109,8 +111,9 @@ export async function claimAgentPost(
           where: { id: run.id },
           data: {
             status: "blocked",
-            // A piece is told why, with the guard's words; a campaign keeps its message.
-            error: piece ? (refusal ?? (capped ? DAY_LIMIT : CHANGED)) : CHANGED,
+            // A piece is told why: the guard's words, the day's cap when that is the only reason, else the change; a campaign
+            // keeps its message.
+            error: piece ? (refusal ?? (allowedBeforeCap && capped ? DAY_LIMIT : CHANGED)) : CHANGED,
           },
         });
       return { count: 0 };

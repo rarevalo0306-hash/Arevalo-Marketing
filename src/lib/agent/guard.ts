@@ -154,8 +154,10 @@ export type GuardFacts = {
   connected: string[];
   /** The braked channels (`brakedOf`). */
   braked: string[];
-  /** The agent's posts already scheduled today (`AgentBudget.posts`). */
+  /** The agent's posts already counted on the day the post would go out (`AgentBudget.posts` of that day). */
   posts: number;
+  /** That day as the owner reads it ("lunes 19 de octubre"), when it is not today; the day's limit then names it. */
+  day?: string;
 };
 
 const KEEP = " La publicación quedó como borrador.";
@@ -240,7 +242,12 @@ export function refusalOf(f: GuardFacts): string | null {
       `Estos canales están frenados porque sus dos últimos envíos fallaron: ${list(braked)}. Revisa la conexión y vuelve a guardarla.` +
       KEEP
     );
-  if (f.posts >= ws.maxPostsPerDay) return "Se alcanzó el límite diario de publicaciones de MATYA." + KEEP;
+  if (f.posts >= ws.maxPostsPerDay)
+    return (
+      (f.day
+        ? `Se alcanzó el límite diario de publicaciones de MATYA para el ${f.day}, el día en que saldría.`
+        : "Se alcanzó el límite diario de publicaciones de MATYA.") + KEEP
+    );
   return null;
 }
 
@@ -270,6 +277,16 @@ export function articleRefusal(
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** A day as the owner reads it, in Spanish and in the business's time zone `tz`: "lunes 19 de octubre". */
+export function dayLabel(at: Date, tz: string): string {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("es", { timeZone: tz, weekday: "long", day: "numeric", month: "long" })
+      .formatToParts(at)
+      .map((p) => [p.type, p.value]),
+  );
+  return `${parts.weekday} ${parts.day} de ${parts.month}`;
+}
 
 /** `v[key]` of whatever it is, or undefined; never throws (stored JSON, getters). */
 function field(v: unknown, key: string): unknown {
@@ -303,7 +320,7 @@ export async function assertCanSchedule(
     where: { businessId },
     select: { channel: true, updatedAt: true },
   });
-  const { day } = await todayOf(tx, businessId, now);
+  const { day, tz } = await todayOf(tx, businessId, now);
   const budget = await tx.agentBudget.findUnique({
     where: { businessId_day: { businessId, day } },
     select: { posts: true },
@@ -316,6 +333,8 @@ export async function assertCanSchedule(
     connected: connections.map((c) => c.channel),
     braked: await brakedOf(tx, businessId, channels, connections),
     posts: budget?.posts ?? 0,
+    // A post the posting window moves to another day is refused with that day's name.
+    ...(day !== localDay(new Date(), tz) ? { day: dayLabel(now, tz) } : {}),
   });
   if (refusal) throw new Refusal(refusal);
 }

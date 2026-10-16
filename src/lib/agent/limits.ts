@@ -4,7 +4,7 @@ import type { AgentWorkspace } from "@prisma/client";
 import { businessTz, dayRange, localDay } from "@/lib/business-tz";
 import { db } from "@/lib/db";
 import { AgentError } from "./access";
-import { brakedOf } from "./guard";
+import { brakedOf, pieceScheduleAt } from "./guard";
 import type { PieceLimits } from "./plan";
 import { OPEN_RUN_CAP, OPEN_STATUSES } from "./queue";
 
@@ -81,9 +81,9 @@ export async function recentTopicsOf(
 
 /**
  * What a team may create today for this business.
- * - `remainingPosts`: the least of the places left in the day (`maxPostsPerDay` minus the agent's posts that go out today,
- *   `AgentBudget.posts`, which counts a post on its publishing day, so a post an earlier plan moved to this morning is in it;
- *   minus the open pieces made today) and the places left in the open-work cap (8 minus every open run, the team's
+ * - `remainingPosts`: the least of the places left in the day (`maxPostsPerDay` minus the agent's posts already counted on
+ *   the day a piece made now would go out, `AgentBudget.posts` of that day (R47: a Sunday plan of a public adjuster is
+ *   measured against Monday's posts, the day its pieces go out), minus the open pieces made on the planning day) and the places left in the open-work cap (8 minus every open run, the team's
  *   own run included). Never below 0.
  * - `channels`: those the owner allows and the business has connected, without the ones braked by repeated failures
  *   (counting only deliveries after the owner last saved the connection) and never youtube; plus `seo` (the website)
@@ -107,10 +107,13 @@ export async function pieceLimits(
   const tz = businessTz(business);
   const today = localDay(now, tz);
   const { from, to } = dayRange(tz, today);
+  // The day a piece made now would go out (R47), as the schedule step counts it (R45): today inside the posting window,
+  // else the next allowed morning.
+  const publishDay = localDay(pieceScheduleAt(null, now, tz, ws.industry), tz);
   const open = { businessId, status: { in: [...OPEN_STATUSES] } };
 
   const [budget, openToday, openAll, connections, recentTopics] = await Promise.all([
-    db.agentBudget.findUnique({ where: { businessId_day: { businessId, day: today } } }),
+    db.agentBudget.findUnique({ where: { businessId_day: { businessId, day: publishDay } } }),
     db.agentRun.count({
       where: { ...open, kind: "piece", createdAt: { gte: from, lt: to } },
     }),

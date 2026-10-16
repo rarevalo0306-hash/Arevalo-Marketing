@@ -201,6 +201,23 @@ async function prepared(mode = "auto") {
     );
   return r;
 }
+/**
+ * 11 am in Miami on the nearest weekday (today or the next Monday to Friday), close to the real date so the database's own
+ * clock (`createdAt`) stays near it. Workspace A is a public adjuster in Miami: at this hour a piece's post goes out in a
+ * minute and counts today, whatever the hour the suite runs at. Pin it with `pinWeekdayMorning`.
+ */
+function weekdayMorning(): Date {
+  const tz = "America/New_York";
+  let day = localDay(new Date(), tz);
+  for (let i = 0; i < 7; i++, day = addDays(day, 1)) {
+    const at = localToUtc(day, 0, "11:00", tz);
+    const weekday = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short" }).format(at);
+    if (weekday !== "Sat" && weekday !== "Sun") return at;
+  }
+  throw new Error("No weekday in a week.");
+}
+/** Only `Date` is faked, and it keeps moving from 11 am; every test restores the real clock (`afterEach`). */
+const pinWeekdayMorning = () => vi.useFakeTimers({ toFake: ["Date"], now: weekdayMorning(), shouldAdvanceTime: true });
 describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -240,6 +257,8 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       },
     });
   });
+  // A test that pinned the clock gets the real one back, even when it failed.
+  afterEach(() => vi.useRealTimers());
   afterAll(async () => {
     await db.business.deleteMany({ where: { id: { in: [A, B] } } });
     await db.$disconnect();
@@ -1935,6 +1954,8 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       });
 
     it("dispatch crea solo las piezas válidas y respeta el cupo compartido", async () => {
+      // A weekday morning: the plan's pieces go out today, so today's posts are the ones that count (R47).
+      pinWeekdayMorning();
       await saveSettings(A, teamSettings({ maxPostsPerDay: 2 }));
       // One post of the agent is already scheduled today: only one place is left.
       await db.agentBudget.create({ data: { businessId: A, day: todayA(), posts: 1 } });
@@ -2026,6 +2047,8 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     });
 
     it("sin cupo de publicaciones hoy, lo dice (y no culpa a la estrategia)", async () => {
+      // A weekday morning: the plan's pieces go out today, so today's posts are the ones that count (R47).
+      pinWeekdayMorning();
       await saveSettings(A, teamSettings({ maxPostsPerDay: 1 }));
       await db.agentBudget.create({ data: { businessId: A, day: todayA(), posts: 1 } });
       const parent = await team({ pieces: [] });
@@ -2178,13 +2201,17 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
         const parent = await teamParent();
         // Nothing else is open and nothing was scheduled: the day's limit, minus nothing.
         expect((await limits({ maxPostsPerDay: 6 })).remainingPosts).toBe(6);
-        await db.agentBudget.create({ data: { businessId: A, day: todayA(), posts: 1 } });
+        // The posts of the day a piece made now would go out (today in the posting window, else the next morning: R47).
+        const ny = "America/New_York";
+        const publishDay = localDay(pieceScheduleAt(null, new Date(), ny, "public-adjusting-fl"), ny);
+        await db.agentBudget.create({ data: { businessId: A, day: publishDay, posts: 1 } });
         expect((await limits({ maxPostsPerDay: 6 })).remainingPosts).toBe(5);
-        // Two open pieces created today take two more places.
+        // Two open pieces created today take two more places. (Their creation time is set from the same clock the plan reads.)
         await spawnPieces(parent, [
           { ...roof, id: "p1", topic: "Uno" },
           { ...roof, id: "p2", topic: "Dos" },
         ]);
+        await db.agentRun.updateMany({ where: { parentRunId: parent.id }, data: { createdAt: new Date() } });
         expect((await limits({ maxPostsPerDay: 6 })).remainingPosts).toBe(3);
         // A piece that is over no longer holds a place, and neither does one made on another day.
         await db.agentRun.updateMany({
@@ -2234,6 +2261,25 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
           data: { status: "blocked" },
         });
         expect((await limits({ maxPostsPerDay: 12 })).remainingPosts).toBe(7);
+      });
+
+      it("un plan de domingo de un public adjuster se mide con las publicaciones del lunes, el día en que saldrían (R47)", async () => {
+        const sunday = new Date("2026-10-18T15:00:00Z"); // Sunday 11 am in Miami: its pieces go out Monday at 9 am
+        await db.agentBudget.create({ data: { businessId: A, day: "2026-10-19", posts: 2 } }); // Monday, maxPostsPerDay - 1
+        const l = await limits({ maxPostsPerDay: 3 }, sunday);
+        expect(l).toMatchObject({ today: "2026-10-18", remainingPosts: 1 });
+        // Sunday's own row does not count: nothing of this plan goes out on Sunday.
+        await db.agentBudget.create({ data: { businessId: A, day: "2026-10-18", posts: 3 } });
+        expect((await limits({ maxPostsPerDay: 3 }, sunday)).remainingPosts).toBe(1);
+        // Another industry posts on a Sunday: its plan is measured against Sunday's posts.
+        expect((await limits({ maxPostsPerDay: 3, industry: "general" }, sunday)).remainingPosts).toBe(0);
+        // The open pieces made on the planning day (Sunday) still take their places.
+        const parent = await teamParent();
+        const [kid] = await spawnPieces(parent, [{ ...roof, id: "p1", topic: "Uno" }]);
+        await db.agentRun.update({ where: { id: kid.id }, data: { createdAt: new Date("2026-10-18T14:00:00Z") } });
+        expect((await limits({ maxPostsPerDay: 3 }, sunday)).remainingPosts).toBe(0);
+        // At 10 pm on a Saturday the next allowed morning is Monday too.
+        expect((await limits({ maxPostsPerDay: 4 }, new Date("2026-10-18T02:00:00Z"))).remainingPosts).toBe(2);
       });
 
       it("los temas recientes son las campañas del agente y las piezas de los últimos 30 días", async () => {
@@ -2849,10 +2895,14 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       db.post.findUnique({ where: { id: `agent-${runId}` }, include: { targets: true } });
     const stepOf = (runId: string, name: string) =>
       db.agentStep.findUnique({ where: { runId_name: { runId, name } } });
-    const budget = () => db.agentBudget.findFirst({ where: { businessId: A } });
+    /** The business's budget row of `day` (today in Miami unless told): each day has its own row. */
+    const budget = (day = localDay(new Date(), "America/New_York")) =>
+      db.agentBudget.findUnique({ where: { businessId_day: { businessId: A, day } } });
     const workspace = (data: Record<string, unknown>) => db.agentWorkspace.update({ where: { businessId: A }, data });
 
     it("prepares the piece's draft with only its channels' texts, schedules it through the guard and counts it once", async () => {
+      // A weekday morning: the post goes out in a minute and counts today, as does its delivery.
+      pinWeekdayMorning();
       const [piece] = await reviewed();
       await workOne(A);
       const draft = await postOf(piece.id);
@@ -2915,6 +2965,8 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     });
 
     it("two pieces at once never pass maxPostsPerDay: one is scheduled, the other is blocked with the daily limit", async () => {
+      // A weekday morning: both posts would go out, and count, today.
+      pinWeekdayMorning();
       const [x, y] = await drafted([roof, goteras]);
       await workspace({ maxPostsPerDay: 1 });
       // Two cron ticks at the same time, again and again (a tick that loses the claim to the other does nothing).
@@ -2932,6 +2984,8 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     });
 
     it("even when both schedule steps run at the very same time, only one passes the daily limit", async () => {
+      // A weekday morning: both posts would go out, and count, today.
+      pinWeekdayMorning();
       const [x, y] = await drafted([roof, goteras]);
       await workspace({ maxPostsPerDay: 1 });
       // Both pieces wait at the door of their schedule step, then go in together.
@@ -3109,6 +3163,20 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
         const monday9 = new Date("2026-10-19T13:00:00Z");
         afterEach(() => vi.useRealTimers());
 
+        it("a Sunday piece refused for Monday's limit is told the day it would go out", async () => {
+          const [piece] = await drafted();
+          await workspace({ maxPostsPerDay: 1 });
+          await db.agentBudget.create({ data: { businessId: A, day: "2026-10-19", posts: 1 } });
+          vi.useFakeTimers({ toFake: ["Date"], now: sunday });
+          await workOne(A);
+          expect(await postOf(piece.id)).toMatchObject({ status: "draft" });
+          expect(await row(piece.id)).toMatchObject({
+            status: "blocked",
+            error:
+              "Se alcanzó el límite diario de publicaciones de MATYA para el lunes 19 de octubre, el día en que saldría. La publicación quedó como borrador.",
+          });
+        });
+
         it("its posts go out Monday at 9 am, count on Monday, and Monday's plan has that much less room; nothing is refused at the claim", async () => {
           const pieces = await drafted([
             roof,
@@ -3141,7 +3209,11 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
           await workAll();
           expect(await postOf(third.id)).toMatchObject({ status: "scheduled", scheduledAt: monday9 });
           expect(await postOf(fourth.id)).toMatchObject({ status: "draft" });
-          expect(await row(fourth.id)).toMatchObject({ status: "blocked", error: expect.stringContaining("límite diario") });
+          // Refused on Monday for Monday: the plain message, without a day.
+          expect(await row(fourth.id)).toMatchObject({
+            status: "blocked",
+            error: "Se alcanzó el límite diario de publicaciones de MATYA. La publicación quedó como borrador.",
+          });
           expect(await day("2026-10-19")).toMatchObject({ posts: 3 });
 
           // At 9 am every scheduled post is claimed: none is blocked at the claim.
@@ -3273,6 +3345,36 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
         },
       );
 
+      it("at the claim a piece is told the day's cap only when the cap is the reason, never when something else stopped it", async () => {
+        const capAt = async () => {
+          const ws = await db.agentWorkspace.findUniqueOrThrow({ where: { businessId: A } });
+          const day = localDay(new Date(), "America/New_York");
+          await db.agentBudget.upsert({
+            where: { businessId_day: { businessId: A, day } },
+            create: { businessId: A, day, deliveries: ws.maxPostsPerDay },
+            update: { deliveries: ws.maxPostsPerDay },
+          });
+        };
+        const [onlyCap, alsoOther] = await drafted([roof, goteras]);
+        // Both are scheduled (and each then waits for its post at `verify`).
+        for (let i = 0; i < 8 && (await workOne(A)); i++);
+        for (const piece of [onlyCap, alsoOther]) expect(await postOf(piece.id)).toMatchObject({ status: "scheduled" });
+        await capAt();
+        expect(await claimAgentPost(`agent-${onlyCap.id}`)).toEqual({ count: 0 });
+        expect(await row(onlyCap.id)).toMatchObject({
+          status: "blocked",
+          error: "Se alcanzó el límite diario de publicaciones de MATYA. La publicación quedó como borrador.",
+        });
+        // Cancelled meanwhile and also at the cap: the cap is not the reason.
+        await db.agentRun.update({ where: { id: alsoOther.id }, data: { cancelRequested: true } });
+        expect(await claimAgentPost(`agent-${alsoOther.id}`)).toEqual({ count: 0 });
+        expect(await row(alsoOther.id)).toMatchObject({
+          status: "blocked",
+          error: "La configuración, la fuente o los permisos cambiaron. La publicación se conservó como borrador.",
+        });
+        expect(await postOf(alsoOther.id)).toMatchObject({ status: "draft" });
+      });
+
       it("a channel disconnected between scheduling and the claim refuses the piece's post (R46)", async () => {
         const [piece] = await drafted();
         await workOne(A);
@@ -3315,6 +3417,8 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     });
 
     it("a piece and a campaign of the old flow scheduled at the same time share the daily limit", async () => {
+      // A weekday morning: the piece's post and the campaign's both count today.
+      pinWeekdayMorning();
       const [piece] = await drafted();
       // The piece waits aside while the campaign is prepared by the old flow, then both are ready to schedule.
       await db.agentRun.update({ where: { id: piece.id }, data: { status: "waiting_approval" } });
@@ -3442,7 +3546,10 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     };
     const stepOf = (runId: string, name: string) =>
       db.agentStep.findUnique({ where: { runId_name: { runId, name } } });
-    const budget = () => db.agentBudget.findFirst({ where: { businessId: A } });
+    /** The business's budget row of `day` (today in Miami unless told): each day has its own row. */
+    const budget = (day = localDay(new Date(), "America/New_York")) =>
+      db.agentBudget.findUnique({ where: { businessId_day: { businessId: A, day } } });
+    /** What was reserved and charged today: steps spend on the day they run (`beginStep`). */
     const money = async () => {
       const b = await budget();
       return { reservedCents: b?.reservedCents ?? 0, chargedCents: b?.chargedCents ?? 0 };
@@ -4137,6 +4244,8 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     });
 
     it("a settings save during the video's quote wait never strands the piece: render, wait, review, prepare, schedule and verify all run", async () => {
+      // A weekday morning: the post goes out in a minute, so the whole piece runs and is paid for today.
+      pinWeekdayMorning();
       vi.mocked(advanceRender).mockResolvedValue({ status: "ready", videoUrl: "https://example.com/piece.mp4", storyboard: { texts: {} } } as never);
       vi.mocked(meteredAsk).mockResolvedValueOnce({
         value: { approved: true, problems: [] },
