@@ -309,6 +309,53 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     });
     expect((await loadContext(A)).knowledge).toHaveLength(0);
   });
+  it("stores the team settings and leaves the new columns at their old-behavior defaults", async () => {
+    const models = { director: { provider: "gemini", model: "gemini-2.5-flash" } };
+    const prices = { "gemini:gemini-2.5-flash": { input: 0.3, output: 2.5 } };
+    await saveSettings(A, {
+      ...settings,
+      teamMode: true,
+      dailyHour: 6,
+      agentModels: models,
+      modelPrices: prices,
+      allowSocial: false,
+    });
+    expect(
+      await db.agentWorkspace.findUnique({ where: { businessId: A } }),
+    ).toMatchObject({
+      teamMode: true,
+      dailyHour: 6,
+      agentModels: models,
+      modelPrices: prices,
+      allowSocial: false,
+      allowWebArticles: true,
+      pausedAt: null,
+    });
+    // B keeps the defaults saved in beforeEach: teamMode off means the pre-team behavior.
+    expect(
+      await db.agentWorkspace.findUnique({ where: { businessId: B } }),
+    ).toMatchObject({
+      teamMode: false,
+      dailyHour: 7,
+      agentModels: {},
+      modelPrices: {},
+      allowSocial: true,
+      allowWebArticles: true,
+      pausedAt: null,
+    });
+    const r = await ask();
+    expect(r).toMatchObject({ plan: null, parentRunId: null, origin: "owner" });
+    const step = await db.agentStep.create({
+      data: { runId: r.id, name: "x", specialist: "matya", budgetDay: "2026-10-16" },
+    });
+    expect(step).toMatchObject({ agent: "", model: "", attempt: 0 });
+    await db.agentBudget.create({ data: { businessId: A, day: "2026-10-16" } });
+    expect(
+      await db.agentBudget.findUniqueOrThrow({
+        where: { businessId_day: { businessId: A, day: "2026-10-16" } },
+      }),
+    ).toMatchObject({ alerts: 0 });
+  });
   it("blocks unconfigured video before reserving or charging any render", async () => {
     const r = await ask("Crea un video", { kind: "video" });
     await db.agentRun.update({ where: { id: r.id }, data: { stage: 3 } });
