@@ -10,8 +10,29 @@ export const RunKind = z.enum([
   "pause",
   "video",
   "verify_news",
+  "team",
+  "piece",
 ]);
 export type RunKind = z.infer<typeof RunKind>;
+export const AgentKeyEnum = z.enum([
+  "director",
+  "seo",
+  "strategy",
+  "copy",
+  "design",
+  "video",
+  "review",
+]);
+export const ModelChoice = z.object({
+  provider: z.enum(["openai", "claude", "gemini"]),
+  model: z.string().regex(/^[a-zA-Z0-9_.:-]{1,100}$/),
+});
+export type ModelChoice = z.infer<typeof ModelChoice>;
+/** Price per million tokens, in US dollars. */
+export const ModelPrice = z.object({
+  input: z.number().gt(0).max(1000),
+  output: z.number().gt(0).max(2000),
+});
 export const Source = z.object({
   name: z.string().trim().min(1).max(100),
   url: z.url().max(500),
@@ -55,6 +76,13 @@ export const Settings = z
     maxPostsPerDay: z.number().int().min(1).max(12),
     radarEnabled: z.boolean(),
     radarHours: z.number().int().min(6).max(168),
+    teamMode: z.boolean(),
+    dailyHour: z.number().int().min(0).max(23),
+    // Partial: an agent without an entry uses the default model.
+    agentModels: z.partialRecord(AgentKeyEnum, ModelChoice),
+    modelPrices: z.record(z.string(), ModelPrice),
+    allowSocial: z.boolean(),
+    allowWebArticles: z.boolean(),
   })
   .refine(
     (s) => s.runBudgetCents <= s.dailyBudgetCents,
@@ -93,6 +121,7 @@ export const Copy = z.object({
   script: z.string().max(5000),
   alt: z.string().max(250),
 });
+export type Copy = z.infer<typeof Copy>;
 export const Reply = z.object({ text: z.string().min(1).max(5000) });
 export type Context = {
   business: {
@@ -161,6 +190,9 @@ export const stepsFor = (kind: RunKind): string[] =>
     radar: ["radar"],
     optimize: ["optimize"],
     pause: ["pause"],
+    // The team plan (or the piece template) is stored on the run; these have no fixed recipe.
+    team: [],
+    piece: [],
   })[kind];
 export const roleFor = (step: string) =>
   ["research", "radar", "verify_news"].includes(step)
@@ -170,6 +202,11 @@ export const roleFor = (step: string) =>
       : step === "design" || step.startsWith("video")
         ? "diseno"
         : "matya";
+/** The language of the owner's request: English when it says so, Spanish by default. */
+export const languageOf = (prompt: string): "es" | "en" =>
+  /\b(please|campaign|summary|hello|create|prepare)\b/i.test(prompt)
+    ? "en"
+    : "es";
 export function inferKind(text: string): RunKind {
   const s = text
     .normalize("NFD")

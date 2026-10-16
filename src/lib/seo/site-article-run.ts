@@ -35,6 +35,7 @@ import {
   type SitePublished,
 } from "@/lib/seo/site-article";
 import { readArticleReport, type ArticleReport } from "@/lib/seo/writer";
+import { SITE_PHOTO_PICK_MAX_TOKENS } from "@/lib/seo/writer-limits";
 import { readStudy } from "@/lib/study-shape";
 
 const BIZ = {
@@ -131,7 +132,9 @@ async function aiPickPhoto(pref: string, topic: string, ranked: { item: PhotoIte
   const system =
     "You choose the hero photo for a business's website article from its own photo library. Only choose a photo that truly shows the article's topic; if none does, answer 0. Never choose a photo that would mislead (for example a different service).";
   const user = `Article topic:\n${topic.slice(0, 1500)}\n\nPhotos:\n${list}`;
-  const out = process.env.GEMINI_API_KEY ? await askGemini(AiPhotoPick, system, user, 800) : await ask(pref, AiPhotoPick, system, user, 800);
+  const out = process.env.GEMINI_API_KEY
+    ? await askGemini(AiPhotoPick, system, user, SITE_PHOTO_PICK_MAX_TOKENS)
+    : await ask(pref, AiPhotoPick, system, user, SITE_PHOTO_PICK_MAX_TOKENS);
   return { index: Math.max(0, Math.min(ranked.length, Math.round(out.best))), why: { es: out.why_es.slice(0, 200), en: out.why_en.slice(0, 200) } };
 }
 
@@ -390,4 +393,14 @@ export async function approveForSite(businessId: string, reportId: string, expec
 export async function sitePhotoCents(businessId: string): Promise<number> {
   const b = await db.business.findUnique({ where: { id: businessId }, select: { aiImage: true } });
   return b ? imageCents(b.aiImage) : 0;
+}
+
+/**
+ * Lo que costaría autorizar ahora el artículo con la foto que quedó en su vista previa guardada: la misma cuenta que hace
+ * `approveForSite` para comparar con lo que se le pasa. Es de solo lectura y gratis; no crea ni publica nada. Como `approveForSite`,
+ * rechaza una vista previa que falta o que quedó vieja porque el artículo cambió después de prepararla.
+ */
+export async function sitePhotoApproval(businessId: string, reportId: string): Promise<{ photo: SitePhoto; cents: number }> {
+  const { b, prepared } = await loadPrepared(businessId, reportId);
+  return { photo: prepared.photo, cents: approveCostCents(prepared.photo, imageCents(b.aiImage)) };
 }

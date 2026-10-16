@@ -66,4 +66,10 @@ export const DEFAULT_SETTINGS: Settings = {
   maxPostsPerDay: 3,
   radarEnabled: false,
   radarHours: 24,
+  teamMode: false,
+  dailyHour: 7,
+  agentModels: {},
+  modelPrices: {},
+  allowSocial: true,
+  allowWebArticles: true,
 };

@@ -1,0 +1,340 @@
+// Las reglas de la revisión editorial que no usan IA: canal, imagen o video, teléfono, web, datos inventados y tema repetido.
+// Módulo puro: sin base de datos ni red. Si alguna falla, el agente de revisión no llama a la IA (ahorra el costo).
+// Los textos de los problemas van en español y cortos: el dueño los lee y el redactor los recibe como notas.
+import { channelDef, channelName, notesFor, type ChannelId, type MediaType } from "@/lib/channels";
+import { oneLine } from "./bounded-context";
+import { normalizeTopic, type ReviewProblem } from "./plan";
+import { Copy } from "./schema";
+
+export type ReviewRulesInput = {
+  /** The channels of the piece. */
+  channels: string[];
+  copy: Copy;
+  mediaType: MediaType;
+  business: { phone: string; website: string };
+  /** What the business confirmed (its data and its unexpired knowledge): the only evidence for figures, offers and contacts. The team's research is not. */
+  knownFacts: string[];
+  /** Topics already used in the last 30 days, without this piece's own. */
+  recentTopics: string[];
+  topic: string;
+};
+
+/** The channels that have a text of their own in a `Copy` (the keys of `variants`). */
+const VARIANT_CHANNELS: readonly string[] = Object.keys(Copy.shape.variants.shape);
+/** A problem's detail is never longer than the review's schema allows. */
+const DETAIL_MAX = 300;
+
+const problem = (
+  kind: string,
+  detail: string,
+  sendBackTo: ReviewProblem["sendBackTo"],
+): ReviewProblem => ({ kind, detail: detail.slice(0, DETAIL_MAX), sendBackTo });
+
+/** Lower case, no accents, one space between words and "20 %" as "20%": how claims and facts are compared. */
+const fold = (s: string): string =>
+  s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+%/g, "%")
+    .replace(/\s+/g, " ");
+
+const list = (items: string[], max = 3) =>
+  items
+    .slice(0, max)
+    .map((i) => `«${i}»`)
+    .join(", ") + (items.length > max ? "…" : "");
+
+// ---------- Phones ----------
+
+/**
+ * The dashes, spaces and dots a writer (or an AI) may put inside a phone number, as the plain ones the rule reads: every Unicode
+ * hyphen and dash (U+2010 to U+2015) and the minus sign (U+2212) as `-`; the no-break, narrow no-break and thin spaces as a space;
+ * the middle dot (·) as `.`.
+ */
+const plainSeparators = (text: string): string =>
+  text
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    .replace(/[\u00a0\u202f\u2009]/g, " ")
+    .replace(/\u00b7/g, ".");
+
+/**
+ * A run of digits with phone separators (never across a line), not glued to a word (any letter), a price, a date or a link. A
+ * dot, a dash or a slash right before it is allowed only after a word of two letters or more: «Tel.305…», «WhatsApp/305…»,
+ * «Cel-305…» are phones; after a lone letter («W-1234567», «Lic.W-1234567», a Florida license) the digits are an ID, and glued
+ * to a letter («W123456») they are one too.
+ */
+const PHONE = /(?:(?<![\p{L}\p{N}_$€£.,/=#-])|(?<=\p{L}\p{L}[./-]))\+?\(?\d[\d ().-]{5,}\d(?![\p{L}\p{N}_])/gu;
+/** What looks like a phone but is a date, a year range, a price with thousands separators or a ZIP+4 code (33101-1234). */
+const NOT_A_PHONE = [
+  /^\d{4}-\d{1,2}-\d{1,2}$/,
+  /^\d{1,2}[-.]\d{1,2}[-.]\d{2,4}$/,
+  /^(?:19|20)\d{2}\s?-\s?(?:19|20)\d{2}$/,
+  /^\d{1,3}(?:[.,]\d{3}){2,}$/,
+  /^\d{5}-\d{4}$/,
+];
+
+type Phone = { shown: string; digits: string };
+
+/**
+ * Which numbers count as phones (R44). `lenient`: what the business confirmed (its phone, its facts), 7 to 15 digits; it only makes
+ * more numbers known. Otherwise, in the text under review: a number written with `+` and 7 to 15 digits, a US number (10 digits,
+ * or 11 starting with 1), or a number as long as the business's own phone (`own`, see `ownLengths`). Shorter or other numbers
+ * (an order, a local number of another length) are not checked; a license («W-1234567») never matches `PHONE` and a ZIP+4 is
+ * never a phone (`NOT_A_PHONE`).
+ */
+type PhoneRule = { lenient: true } | { lenient?: false; own: number[] };
+
+/** The calling codes of the countries the app knows (`COUNTRY_TZ` in business-tz.ts), to read a stored phone without separators. */
+const CALLING_CODES = ["502", "503", "504", "505", "506", "507", "593", "34", "51", "52", "53", "54", "56", "57", "58", "1"];
+
+/**
+ * The digit counts of the business's own phone: all its digits and, when it is written with its country code, the digits without
+ * it («+505 2222 3333» → 11 and 8; «2222 3333» → 8; «+1 305 555 0100» → 11 and 10). The code is the first group after `+`
+ * («+505 …»); with no separator after it, or with no `+` but more than 10 digits («505 2222 3333»), it is a known calling code at
+ * the start. Nothing for a phone that is not one (fewer than 7 or more than 15 digits).
+ */
+function ownLengths(phone: string): number[] {
+  const plain = plainSeparators(phone).trim();
+  const digits = plain.replace(/\D/g, "");
+  if (digits.length < 7 || digits.length > 15) return [];
+  const plus = plain.startsWith("+");
+  const written = plus ? /^\+\s*\(?(\d{1,3})(?:\)|[ .-])/.exec(plain)?.[1] : undefined;
+  const code =
+    written ?? (plus || digits.length > 10 ? CALLING_CODES.find((c) => digits.startsWith(c)) : undefined);
+  return code && digits.length - code.length >= 7 ? [digits.length, digits.length - code.length] : [digits.length];
+}
+
+/** The most digits a number of the text may have under `rule`: 15 with `+` (or leniently), else the longest the rule accepts. */
+const longestFor = (rule: PhoneRule, digits: string, plus: boolean): number =>
+  rule.lenient || plus ? 15 : Math.max(10, digits.startsWith("1") ? 11 : 0, ...rule.own);
+
+/** Whether a number with these digits is a phone under `rule` (`plus`: it is written with `+`). */
+function isPhone(rule: PhoneRule, digits: string, plus: boolean): boolean {
+  const n = digits.length;
+  if (rule.lenient || plus) return n >= 7 && n <= 15;
+  return n === 10 || (n === 11 && digits.startsWith("1")) || rule.own.includes(n);
+}
+
+/**
+ * The numbers one run holds, by its space-separated groups: a run may join two numbers with a space («305-555-0100 786-555-0199»,
+ * «305 555 0100 786 555 0199») or put a year or a street number before one («Desde 1998 305-555-0100»). Short groups («+1»,
+ * «(305)», «555») join the ones after them until the number is as long as `rule` allows (`longestFor`); a group that would make
+ * it longer, or one of 7 digits or more after a number of 7 or more, starts a new number.
+ */
+function numbersOf(run: string, rule: PhoneRule): { shown: string; plus: boolean }[] {
+  const numbers: { shown: string; plus: boolean }[] = [];
+  let groups: string[] = [];
+  let digits = "";
+  let plus = false;
+  const end = () => {
+    if (groups.length) numbers.push({ shown: groups.join(" "), plus });
+    groups = [];
+    digits = "";
+    plus = false;
+  };
+  for (const group of run.split(" ").filter(Boolean)) {
+    const own = group.replace(/\D/g, "");
+    if (digits && (digits.length + own.length > longestFor(rule, digits, plus) || (digits.length >= 7 && own.length >= 7))) end();
+    if (!groups.length) plus = group.startsWith("+");
+    groups.push(group);
+    digits += own;
+    if (digits.length >= longestFor(rule, digits, plus)) end();
+  }
+  end();
+  return numbers;
+}
+
+/** The phone numbers in a text under `rule`, as written (with plain separators) and as digits. */
+function phonesIn(text: string, rule: PhoneRule): Phone[] {
+  const found: Phone[] = [];
+  for (const [raw] of plainSeparators(text).matchAll(PHONE))
+    for (const { shown, plus } of numbersOf(raw.replace(/\s+/g, " ").trim(), rule)) {
+      const digits = shown.replace(/\D/g, "");
+      if (!isPhone(rule, digits, plus) || NOT_A_PHONE.some((re) => re.test(shown))) continue;
+      found.push({ shown, digits });
+    }
+  return found;
+}
+
+/** The text's number is the known one: it holds it (a country code before it) or is its last digits (up to 3 less). */
+const samePhone = (known: string, text: string) =>
+  text.includes(known) || (known.endsWith(text) && known.length - text.length <= 3);
+
+// ---------- Websites ----------
+
+const TLDS =
+  "com|net|org|io|co|us|info|biz|app|dev|ai|me|tv|ni|es|mx|shop|store|online|site|xyz|pro";
+// A bare domain needs a known ending written all in lower or all in upper case, so a sentence missing its space ("techo.Es hora")
+// is not taken for a site; nor are the words of a link's path or of an email address.
+const URLS = [
+  /\bhttps?:\/\/([^\s/?#<>"')\]]+)/gi,
+  /(?<![@\w./=?#&%-])www\.([a-z0-9-]+(?:\.[a-z0-9-]+)+)/gi,
+  new RegExp(
+    `(?<![@\\w./=?#&%-])((?:[a-zA-Z0-9-]+\\.)+(?:${TLDS}|${TLDS.toUpperCase()}))(?![\\w-]|\\.[a-zA-Z0-9])`,
+    "g",
+  ),
+];
+
+/** A host as it is compared: lower case, without port, `www.` or the dot that ends a sentence. */
+const cleanHost = (host: string): string =>
+  host
+    .toLowerCase()
+    .replace(/:\d*$/, "")
+    .replace(/[.,;:!?]+$/, "")
+    .replace(/^www\./, "");
+
+/** The hosts a text links to (full links, `www.` and bare domains; an email address is not one). */
+function hostsIn(text: string): string[] {
+  const hosts = new Set<string>();
+  for (const re of URLS)
+    for (const m of text.matchAll(re)) hosts.add(cleanHost(m[1]));
+  hosts.delete("");
+  return [...hosts];
+}
+
+/** The host of the business's website, however it was saved ("mio.com", "https://www.mio.com/es"), or null. */
+function siteHost(website: string): string | null {
+  const m = /^\s*(?:[a-z][a-z0-9+.-]*:\/\/)?(?:[^/@\s]*@)?([^/?#\s]+)/i.exec(website);
+  const host = m ? cleanHost(m[1]) : "";
+  return host || null;
+}
+
+/** The same site or one of its subdomains. */
+const sameSite = (a: string, b: string) =>
+  a === b || a.endsWith(`.${b}`) || b.endsWith(`.${a}`);
+
+// ---------- Invented claims ----------
+
+/** A figure with a percent sign, a discount, something free or a guarantee. */
+const CLAIM = /\d+(?:[.,]\d+)?\s?%|descuento|gratis|garantiz/gi;
+
+const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** A known fact says it: the same word, or the same figure (a 120% does not say 20%). */
+function isKnown(claim: string, facts: string[]): boolean {
+  const token = fold(claim);
+  const figure = /^\d/.test(token) ? new RegExp(`(?<![\\d.,])${escape(token)}`) : null;
+  return facts.some((fact) => {
+    const text = fold(fact);
+    return figure ? figure.test(text) : text.includes(token);
+  });
+}
+
+/**
+ * The text each channel would publish: its own variant, or for a channel with no text of its own (TikTok...) the piece's base
+ * text: the Facebook one, or the first that was written for the piece's channels.
+ */
+export function channelTexts(copy: Copy, channels: string[]): Record<string, string> {
+  const variants = copy.variants as Record<string, string | undefined>;
+  const variant = (channel: string) => String(variants[channel] ?? "");
+  const own = (channel: string) => VARIANT_CHANNELS.includes(channel);
+  const base =
+    [variant("facebook"), ...channels.filter(own).map(variant)].find((t) => t.trim()) ?? "";
+  return Object.fromEntries(channels.map((c) => [c, own(c) ? variant(c) : base]));
+}
+
+/**
+ * What the editorial review checks without an AI call. Each kind of problem comes at most once (the channel ones once per
+ * channel); the text is checked only for the piece's own channels. An empty list means the rules found nothing.
+ * - `canal` (to the writer): a channel's text is empty or too long (the blocking notes of `notesFor`).
+ * - `falta-imagen` (to the designer): a channel needs a photo or a video and the piece has none.
+ * - `telefono`, `web` (to the writer): a phone number or a site that is not the business's or a known fact's.
+ *   An article (`seo`) may link to its sources, so it is not checked for links.
+ * - `dato-inventado` (to the writer): a percent, a discount, something free or a guarantee that no known fact says.
+ * - `repetido` (to the writer): the topic was already used.
+ * A channel with no text of its own (TikTok...) uses the piece's base text, the Facebook one or the first that was written.
+ */
+export function reviewRules(input: ReviewRulesInput): ReviewProblem[] {
+  const { channels, copy, mediaType, business, knownFacts, recentTopics, topic } = input;
+  const problems: ReviewProblem[] = [];
+  const add = (p: ReviewProblem) => {
+    if (!problems.some((q) => q.kind === p.kind && q.detail === p.detail)) problems.push(p);
+  };
+
+  const texts = channelTexts(copy, channels);
+  const textOf = (channel: string) => texts[channel] ?? "";
+
+  // The channels' own rules (empty, too long, photo or video missing).
+  for (const channel of channels) {
+    if (!channelDef(channel)) continue;
+    const blocking = notesFor(channel as ChannelId, {
+      text: textOf(channel),
+      subject: copy.title,
+      seoTitle: copy.title,
+      mediaType,
+    }).filter((n) => n.blocking);
+    for (const note of blocking)
+      add(
+        note.id === "needsMedia" || note.id === "needsVideo"
+          ? problem("falta-imagen", note.text, "design")
+          : problem(
+              "canal",
+              note.id === "empty" ? `Falta el texto de ${channelName(channel)}.` : note.text,
+              "copy",
+            ),
+      );
+  }
+
+  // What would be published: the headline on the image, the video script and the text of each channel.
+  const unique = (texts: string[]) => [...new Set(texts.filter((t) => t.trim()))];
+  const published = unique([copy.headline, copy.script, ...channels.map(textOf)]);
+  const linked = unique([copy.headline, copy.script, ...channels.filter((c) => c !== "seo").map(textOf)]);
+
+  const knownPhones = [business.phone, ...knownFacts].flatMap((t) => phonesIn(t, { lenient: true }));
+  const checked: PhoneRule = { own: ownLengths(business.phone) };
+  const wrongPhones = new Map<string, string>();
+  for (const phone of published.flatMap((t) => phonesIn(t, checked)))
+    if (!knownPhones.some((k) => samePhone(k.digits, phone.digits))) wrongPhones.set(phone.digits, phone.shown);
+  if (wrongPhones.size) {
+    const mine = business.phone.trim();
+    add(
+      problem(
+        "telefono",
+        `El teléfono ${list([...wrongPhones.values()])} no es el del negocio${
+          mine ? ` (${oneLine(mine, 40)})` : ", que no tiene uno guardado"
+        }. Usa solo el teléfono del negocio.`,
+        "copy",
+      ),
+    );
+  }
+
+  const own = siteHost(business.website);
+  const knownHosts = [...(own ? [own] : []), ...knownFacts.flatMap(hostsIn)];
+  const wrongHosts = [...new Set(linked.flatMap(hostsIn))].filter(
+    (host) => !knownHosts.some((k) => sameSite(k, host)),
+  );
+  if (wrongHosts.length)
+    add(
+      problem(
+        "web",
+        `El texto menciona ${list(wrongHosts)}, que no es la web del negocio${
+          own ? ` (${own})` : ", que no tiene una guardada"
+        }. Usa solo la web del negocio.`,
+        "copy",
+      ),
+    );
+
+  const claims = new Map<string, string>();
+  for (const [claim] of published.join("\n").matchAll(CLAIM))
+    if (!isKnown(claim, knownFacts)) claims.set(fold(claim), oneLine(claim, 20));
+  if (claims.size)
+    add(
+      problem(
+        "dato-inventado",
+        `Menciona ${list([...claims.values()], 4)} sin un dato confirmado por el negocio. Quita la cifra, el descuento o la garantía, o usa solo lo que el negocio confirmó.`,
+        "copy",
+      ),
+    );
+
+  const seen = new Set(recentTopics.filter((t) => typeof t === "string").map(normalizeTopic));
+  if (seen.has(normalizeTopic(topic)))
+    add(
+      problem(
+        "repetido",
+        `El tema «${oneLine(topic, 120)}» ya se usó en los últimos 30 días. Cambia el enfoque o el tema.`,
+        "copy",
+      ),
+    );
+  return problems;
+}

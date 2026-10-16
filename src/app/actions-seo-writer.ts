@@ -2,118 +2,51 @@
 
 import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
-import { aiEnabled, improveSeoArticle, pickText, writeSeoArticle } from "@/lib/ai";
+import { aiEnabled, improveSeoArticle, pickText } from "@/lib/ai";
 import { deniedText, hasBusiness } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
 import { getT } from "@/lib/i18n-server";
-import { dataForSeoEnabled, readZones } from "@/lib/seo/dataforseo";
-import { cleanKeyword, costText } from "@/lib/seo/keywords";
+import { costText } from "@/lib/seo/keywords";
 import {
   type ArticleReport,
   briefFor,
   cleanDraft,
-  contentTargets,
   failingForAi,
-  MAX_ARTICLES,
   readArticleReport,
-  researchKeyword,
   scoreDraft,
   type WriterLang,
 } from "@/lib/seo/writer";
+import { ARTICLE_KIND as KIND, BUSINESS_FIELDS, createArticleReport } from "@/lib/seo/writer-run";
 
 export type WriterResult = { ok: boolean; message: string; id?: string } | null;
-
-/** Tipo de reporte en la tabla SeoReport para los artículos. */
-const KIND = "article";
-
-const BUSINESS_FIELDS = {
-  name: true,
-  website: true,
-  phone: true,
-  aiProfile: true,
-  aiText: true,
-  brandVoice: true,
-  study: true,
-  seoLocations: true,
-  seoLocationCode: true,
-  seoLocationName: true,
-} as const;
 
 const paths = (businessId: string) => {
   revalidatePath(`/b/${businessId}/seo/escribir`);
   revalidatePath(`/b/${businessId}/seo`);
 };
 
-/** Deja solo los últimos MAX_ARTICLES artículos del negocio. */
-async function prune(businessId: string) {
-  const old = await db.seoReport.findMany({
-    where: { businessId, kind: KIND },
-    orderBy: { createdAt: "desc" },
-    skip: MAX_ARTICLES,
-    select: { id: true },
-  });
-  if (old.length) await db.seoReport.deleteMany({ where: { id: { in: old.map((o) => o.id) } } });
-}
-
 /**
  * Escribe un artículo para Google: mira los 10 primeros (DataForSEO), lee las páginas que ganan,
  * arma las metas, la IA escribe y se revisa con un puntaje. Se guarda como reporte "article".
+ * El trabajo está en `createArticleReport` (lo usa también el equipo de agentes); aquí van el permiso y los mensajes.
  */
 export async function writeArticle(businessId: string, _prev: WriterResult, f: FormData): Promise<WriterResult> {
   ensure.text(businessId);
   void _prev;
   const { lang, t } = await getT();
   if (!(await hasBusiness(businessId, "publish"))) return { ok: false, message: await deniedText(businessId, "publish") };
-  const keyword = cleanKeyword(String(f.get("keyword") ?? ""));
   const language: WriterLang = f.get("language") === "en" ? "en" : "es";
-  if (keyword.length < 2) return { ok: false, message: t("Escribe la búsqueda para la que quieres salir en Google.", "Enter the search you want to show up for on Google.") };
-  if (!dataForSeoEnabled())
-    return { ok: false, message: t("Falta conectar DataForSEO (DATAFORSEO_LOGIN y DATAFORSEO_PASSWORD en Vercel).", "DataForSEO isn't connected yet (DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD in Vercel).") };
-  if (!aiEnabled())
-    return { ok: false, message: t("Falta la clave de la IA (GEMINI_API_KEY, ANTHROPIC_API_KEY u OPENAI_API_KEY) en Vercel.", "The AI key (GEMINI_API_KEY, ANTHROPIC_API_KEY or OPENAI_API_KEY) is missing in Vercel.") };
-  const b = await db.business.findUnique({ where: { id: businessId }, select: BUSINESS_FIELDS });
-  if (!b) return { ok: false, message: t("Negocio no encontrado.", "Business not found.") };
-  const zone = readZones(b.seoLocations, b.seoLocationCode, b.seoLocationName)[0];
-  if (!zone)
-    return {
-      ok: false,
-      message: t("Primero elige tu zona de Google en SEO y visibilidad, pestaña «⚙ Ajustes», y guarda.", "First pick your Google area in SEO and visibility, “⚙ Settings” tab, and save."),
-    };
-
   try {
-    const research = await researchKeyword(keyword, zone, language);
-    if (!research.organic.length)
-      return { ok: false, message: t("Google no devolvió resultados para esa búsqueda en tu zona. Prueba con otras palabras.", "Google returned no results for that search in your area. Try other words.") };
-    const targets = contentTargets(research);
-    const brief = briefFor(research, targets, zone.name);
-    const draft = cleanDraft(await writeSeoArticle({ business: b, keyword, language, brief }));
-    const { score, checklist } = scoreDraft(draft, keyword, targets, { phone: b.phone, website: b.website });
-    const report: ArticleReport = {
-      version: 1,
-      keyword,
-      language,
-      zone: { code: zone.code, name: zone.name },
-      research,
-      targets,
-      draft,
-      score,
-      checklist,
-      cost: research.cost,
-      provider: pickText(b.aiText) ?? "",
-      createdAt: new Date().toISOString(),
-    };
-    const saved = await db.seoReport.create({ data: { businessId, kind: KIND, data: report as unknown as Prisma.InputJsonValue } });
-    await prune(businessId);
+    const made = await createArticleReport(businessId, String(f.get("keyword") ?? ""), language);
     paths(businessId);
-    const read = research.pages.filter((p) => !p.error).length;
     return {
       ok: true,
-      id: saved.id,
+      id: made.id,
       message: t(
-        `Listo: tu artículo sacó ${score}/100. Leímos ${read} ${read === 1 ? "página" : "páginas"} de los que ganan. Costo de DataForSEO: ${costText(research.cost)}.`,
-        `Done: your article scored ${score}/100. We read ${read} winning ${read === 1 ? "page" : "pages"}. DataForSEO cost: ${costText(research.cost)}.`,
+        `Listo: tu artículo sacó ${made.score}/100. Leímos ${made.pagesRead} ${made.pagesRead === 1 ? "página" : "páginas"} de los que ganan. Costo de DataForSEO: ${costText(made.cost)}.`,
+        `Done: your article scored ${made.score}/100. We read ${made.pagesRead} winning ${made.pagesRead === 1 ? "page" : "pages"}. DataForSEO cost: ${costText(made.cost)}.`,
       ),
     };
   } catch (e) {

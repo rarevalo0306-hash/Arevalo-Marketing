@@ -10,6 +10,7 @@ import { FONTS, TemplateSpec } from "@/lib/design-shapes";
 import { bi, errorText, type UiLang } from "@/lib/i18n";
 import { finishReply, firstName, type GbpReview, replyLanguage, replySignature } from "@/lib/seo/gbp-shared";
 import { customersText, GOALS, type Interview, InterviewSchema, jsonSafe, type SavedStudy, type StudyInput, StudySchema, type StudySource, studyContext, type WebProfile, WebProfileSchema } from "@/lib/study-shape";
+import { SEO_ARTICLE_MAX_TOKENS } from "@/lib/seo/writer-limits";
 import { readWebsite, type SiteRead, siteDigest } from "@/lib/study-web";
 
 export const TEXT_PROVIDERS = [
@@ -849,7 +850,7 @@ ${brief.aiOverview ? "\nGoogle shows an AI overview for this search: give clear,
 /** Escribe un artículo para el sitio pensado para salir en Google con esa búsqueda. Puede tardar 1 a 2 minutos. */
 export async function writeSeoArticle(input: { business: SeoBusiness; keyword: string; language: "es" | "en"; brief: SeoBrief }): Promise<SeoArticle> {
   const { business, keyword, language, brief } = input;
-  return ask(business.aiText ?? "", SeoArticleSchema, seoWriterRules(business, keyword, language, brief), `${seoBriefText(keyword, brief)}\n\nWrite the article.`, 24000);
+  return ask(business.aiText ?? "", SeoArticleSchema, seoWriterRules(business, keyword, language, brief), `${seoBriefText(keyword, brief)}\n\nWrite the article.`, SEO_ARTICLE_MAX_TOKENS);
 }
 
 /** Reescribe el artículo para arreglar lo que falta en la revisión, sin cambiar lo que ya está bien. */
@@ -882,7 +883,7 @@ An SEO check found these problems:
 ${failing.map((f) => `- ${f}`).join("\n") || "- (none: just polish it)"}
 
 Rewrite the article to fix every problem above. Keep what already works, the same facts and the same language. Return all fields.`;
-  return ask(business.aiText ?? "", SeoArticleSchema, seoWriterRules(business, keyword, language, brief), user, 24000);
+  return ask(business.aiText ?? "", SeoArticleSchema, seoWriterRules(business, keyword, language, brief), user, SEO_ARTICLE_MAX_TOKENS);
 }
 
 // ---------- Revisión de páginas: título, descripción y subtítulos para una página que ya existe ----------

@@ -3,7 +3,8 @@ import { localDay } from "@/lib/business-tz";
 import { publishPost } from "@/lib/publish";
 import { AgentError } from "./access";
 import { modelConfig } from "./metered";
-import { enqueue, json } from "./queue";
+import { enqueue, json, stepsOf } from "./queue";
+import { enqueueDailyPlans } from "./daily";
 import { drain } from "./execution";
 import { loadContext } from "./context";
 import { industryFor, toolCatalog } from "./industry";
@@ -157,11 +158,19 @@ export async function verifyNews(
     },
   });
 }
+/** The cap or rate limit (429) and a pause that landed mid-tick (409): not an error of the cycle, only of that business now. */
+const notNow = (error: unknown) =>
+  error instanceof AgentError && (error.status === 429 || error.status === 409);
 export async function runAgentCycle(businessId?: string) {
   if (process.env.MATYA_AGENT_ENABLED !== "true")
     return { steps: 0, published: 0 };
   const workspaces = await db.agentWorkspace.findMany({
-    where: { ...(businessId ? { businessId } : {}), enabled: true },
+    // A paused workspace asks for nothing (`enqueue` refuses): no radar, no news checks.
+    where: {
+      ...(businessId ? { businessId } : {}),
+      enabled: true,
+      pausedAt: null,
+    },
     take: 20,
   });
   for (const w of workspaces) {
@@ -170,15 +179,20 @@ export async function runAgentCycle(businessId?: string) {
       (!w.radarAt || Date.now() - w.radarAt.getTime() >= w.radarHours * 3600000)
     ) {
       const period = Math.floor(Date.now() / (w.radarHours * 3600000));
-      await enqueue(w.businessId, {
-        text: "Revisa las noticias de mi industria",
-        kind: "radar",
-        requestKey: `radar-${w.businessId}-${period}`,
-      });
-      await db.agentWorkspace.update({
-        where: { businessId: w.businessId },
-        data: { radarAt: new Date() },
-      });
+      try {
+        await enqueue(w.businessId, {
+          text: "Revisa las noticias de mi industria",
+          kind: "radar",
+          requestKey: `radar-${w.businessId}-${period}`,
+        });
+        await db.agentWorkspace.update({
+          where: { businessId: w.businessId },
+          data: { radarAt: new Date() },
+        });
+      } catch (error) {
+        // This business is skipped (its radar is tried again on the next tick); the others and the drain go on.
+        if (!notNow(error)) throw error;
+      }
     }
   }
   for (const w of workspaces.filter((w) => w.radarEnabled)) {
@@ -197,9 +211,15 @@ export async function runAgentCycle(businessId?: string) {
           requestKey: `verify-${n.id}-${n.revision}`,
         });
       } catch (error) {
-        if (!(error instanceof AgentError && error.status === 429)) throw error;
+        if (!notNow(error)) throw error;
       }
     }
+  }
+  // The morning plan goes in the queue before the cycle drains it. If it cannot be made, the queue is still worked.
+  try {
+    await enqueueDailyPlans(new Date(), businessId);
+  } catch {
+    console.error("MATYA daily plans did not complete");
   }
   const steps = await drain(businessId, 80000);
   // Only agent-owned posts; the legacy scheduler continues to own every other post.
@@ -250,7 +270,8 @@ export async function runAgentCycle(businessId?: string) {
       where: { id: `agent-${run.id}`, businessId: run.businessId },
       select: { status: true },
     });
-    if (run.kind === "video" && run.stage === 4) {
+    // A render in progress (a campaign's video or a video piece's, whose wait is at another stage) is checked again every cycle.
+    if (stepsOf(run)[run.stage] === "video_wait") {
       await db.agentRun.updateMany({
         where: { id: run.id, status: "waiting_provider" },
         data: { status: "queued" },

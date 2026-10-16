@@ -453,6 +453,13 @@ model AgentWorkspace {
   radarEnabled Boolean @default(false)
   radarHours Int @default(24)
   radarAt DateTime?
+  teamMode Boolean @default(false)
+  dailyHour Int @default(7)
+  agentModels Json @default("{}")
+  modelPrices Json @default("{}")
+  allowSocial Boolean @default(true)
+  allowWebArticles Boolean @default(true)
+  pausedAt DateTime?
   revision Int @default(1)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -476,12 +483,16 @@ model AgentRun {
   leaseUntil DateTime?
   cancelRequested Boolean @default(false)
   approvedAt DateTime?
+  plan Json?
+  parentRunId String?
+  origin String @default("owner")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   steps AgentStep[]
   @@unique([businessId, requestKey])
   @@index([status, createdAt])
   @@index([businessId, createdAt])
+  @@index([parentRunId])
 }
 
 model AgentStep {
@@ -496,6 +507,9 @@ model AgentStep {
   chargedCents Int @default(0)
   budgetDay String
   error String @default("")
+  agent String @default("")
+  model String @default("")
+  attempt Int @default(0)
   createdAt DateTime @default(now())
   finishedAt DateTime?
   @@unique([runId, name])
@@ -522,6 +536,7 @@ model AgentBudget {
   chargedCents Int @default(0)
   posts Int @default(0)
   deliveries Int @default(0)
+  alerts Int @default(0)
   @@unique([businessId, day])
 }
 

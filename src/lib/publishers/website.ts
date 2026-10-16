@@ -4,6 +4,7 @@ import sharp from "sharp";
 import { z } from "zod";
 import { aiEnabled, ask } from "@/lib/ai";
 import { fetchMedia } from "@/lib/media";
+import { SITE_TRANSLATION_MAX_TOKENS } from "@/lib/seo/writer-limits";
 import { BUSINESS_TZ } from "@/lib/time";
 import { fetchJson, PublishError, required } from "./http";
 import type { Creds, Publisher, PublishInput } from "./types";
@@ -403,7 +404,7 @@ export async function translateForSite(input: { pref: string; businessName: stri
 Original language: ${input.from === "es" ? "Spanish" : "English"}. Translate into ${to === "es" ? "Spanish" : "English"}.
 Original article (JSON):
 ${JSON.stringify(original)}`;
-  return ask(input.pref, siteTranslation(to), SITE_SYSTEM, user, 16000);
+  return ask(input.pref, siteTranslation(to), SITE_SYSTEM, user, SITE_TRANSLATION_MAX_TOKENS);
 }
 
 /** El slug libre más parecido (agrega -2, -3… si ya existe). */
