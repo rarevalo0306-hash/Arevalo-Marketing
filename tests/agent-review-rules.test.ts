@@ -251,6 +251,54 @@ describe("reglas de la revisión editorial", () => {
         expect(detail).not.toContain("1234567");
       });
 
+      describe("números de otros países y del largo del teléfono del negocio (R44)", () => {
+        /** The phone problems of `text` for a business whose phone is `phone` (Fameseg-like: Nicaragua). */
+        const phoneKinds = (phone: string, text: string) =>
+          kinds(base({ business: { phone, website: "https://mio.com" }, variants: { facebook: text } }));
+        const NI = "+505 2222 3333";
+
+        it("con el teléfono del negocio guardado con su código de país, los números del mismo largo se revisan", () => {
+          expect(phoneKinds(NI, "Llama al 2222-4444")).toEqual(["telefono"]);
+          expect(phoneKinds(NI, "Llama al +505 2222 4444")).toEqual(["telefono"]);
+          expect(phoneKinds(NI, "Llama al +505 2222 3333")).toEqual([]);
+          expect(phoneKinds(NI, "Llama al 2222-3333")).toEqual([]);
+          expect(phoneKinds(NI, "Llama al 2222 3333 o al +505 2222-3333")).toEqual([]);
+          // A year before the local number is not part of it.
+          expect(phoneKinds(NI, "Desde 1998 2222-4444")).toEqual(["telefono"]);
+        });
+
+        it("también con el teléfono guardado sin código de país, o sin separadores", () => {
+          for (const phone of ["2222 3333", "2222-3333", "+50522223333", "505 2222 3333"]) {
+            expect(phoneKinds(phone, "Llama al 2222-4444")).toEqual(["telefono"]);
+            expect(phoneKinds(phone, "Llama al +505 2222 4444")).toEqual(["telefono"]);
+            expect(phoneKinds(phone, "Llama al +505 2222 3333")).toEqual([]);
+            expect(phoneKinds(phone, "Llama al 2222-3333")).toEqual([]);
+          }
+        });
+
+        it("un número con + y de 7 a 15 cifras siempre es un teléfono, también para un negocio de EE. UU.", () => {
+          expect(kinds(base({ variants: { facebook: "Llama al +505 2222 4444" } }))).toEqual(["telefono"]);
+          expect(kinds(base({ variants: { facebook: "Call +44 20 7946 0958" } }))).toEqual(["telefono"]);
+          expect(kinds(base({ variants: { facebook: "Llama al +52 55 1234 5678" } }))).toEqual(["telefono"]);
+          // Too short or too long with a + is still no phone.
+          expect(kinds(base({ variants: { facebook: "Código +12 345" } }))).toEqual([]);
+          // The business's own number with its country code is known.
+          expect(kinds(base({ variants: { facebook: "Llama al +1 305 555 0100" } }))).toEqual([]);
+        });
+
+        it("las licencias, los números cortos de otro largo y los ZIP+4 siguen sin ser teléfonos", () => {
+          expect(phoneKinds(NI, "Licencia W-22224444")).toEqual([]);
+          expect(phoneKinds(NI, "Lic.W-22224444")).toEqual([]);
+          expect(phoneKinds(NI, "License #W22224444")).toEqual([]);
+          expect(phoneKinds(NI, "Llama al 555-0199")).toEqual([]);
+          // A business whose phone has 9 digits without its code (Chile): a ZIP+4 has 9 too and is still not a phone.
+          expect(phoneKinds("+56 9 1234 5678", "Visítanos en Miami, FL 33101-1234.")).toEqual([]);
+          expect(phoneKinds("+56 9 1234 5678", "Llama al 9 8765 4321")).toEqual(["telefono"]);
+          // US numbers keep their rule for a business of another country.
+          expect(phoneKinds(NI, "Llama al 305-000-0000")).toEqual(["telefono"]);
+        });
+      });
+
       it("un código postal con sus cuatro cifras (ZIP+4) no es un teléfono", () => {
         expect(kinds(base({ variants: { facebook: "Visítanos en Miami, FL 33101-1234." } }))).toEqual([]);
         expect(kinds(base({ variants: { facebook: "Miami, FL 33101-1234 305-555-0100" } }))).toEqual([]);
