@@ -13,14 +13,7 @@ import { storeDesign, photoMetaFor } from "@/lib/media-formats";
 import { MIN_RELEVANCE } from "@/lib/library-match";
 import { ensureStoredCopy } from "@/lib/library-files";
 import { AgentError } from "./access";
-import {
-  Copy,
-  Research,
-  Reply,
-  type Context,
-  type RunKind,
-  stepsFor,
-} from "./schema";
+import { Copy, Research, Reply, type Context } from "./schema";
 import { briefing } from "./context";
 import { callCeiling, meteredAsk, modelConfig } from "./metered";
 import {
@@ -30,7 +23,9 @@ import {
   finishStep,
   json,
   locked,
+  planStepMeta,
   recoverExpired,
+  stepsOf,
   type StepResult,
 } from "./queue";
 import { collectNews, plain } from "./news";
@@ -111,7 +106,9 @@ async function output(runId: string, name: string) {
     throw new AgentError("Falta completar el paso anterior.");
   return step.output;
 }
-export function stepCost(name: string) {
+/** `run` is for the per-run costs of later steps (team agents, quoted renders); unused for now. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function stepCost(name: string, run?: AgentRun) {
   if (name === "video" && videoBlocker())
     throw new AgentError(
       "Falta configurar el render de video y su almacenamiento. Los diseños y el guion están guardados.",
@@ -733,12 +730,12 @@ export type Executor = (run: AgentRun, name: string) => Promise<StepResult>;
 export async function workOne(
   businessId?: string,
   execute: Executor = executeStep,
-  costOf: (name: string) => number = stepCost,
+  costOf: (name: string, run: AgentRun) => number = stepCost,
 ) {
   const run = await claimRun(businessId);
   if (!run) return false;
   try {
-    let name = stepsFor(run.kind as RunKind)[run.stage];
+    let name = stepsOf(run)[run.stage];
     if (!name)
       throw new AgentError("El trabajo no tiene un siguiente paso válido.");
     if (name === "schedule") {
@@ -774,7 +771,7 @@ export async function workOne(
         return true;
       }
     }
-    const cost = costOf(name);
+    const cost = costOf(name, run);
     if (name === "video_wait") {
       const attempts = await db.agentStep.count({
         where: { runId: run.id, name: { startsWith: "video_wait:" } },
@@ -785,7 +782,7 @@ export async function workOne(
         );
       name = `video_wait:${attempts}`;
     }
-    await beginStep(run.id, run.leaseToken, name, cost);
+    await beginStep(run.id, run.leaseToken, name, cost, planStepMeta(run));
     const result = await execute(run, name);
     await finishStep(run.id, run.leaseToken, name, result);
   } catch (error) {

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { Prisma } from "@prisma/client";
+import { Prisma, type AgentRun } from "@prisma/client";
+import { z } from "zod";
 import { db } from "@/lib/db";
 import { businessTz, localDay } from "@/lib/business-tz";
 import { AgentError } from "./access";
@@ -15,11 +16,48 @@ import {
 } from "./schema";
 import { sourceUrl } from "./network";
 import { newsFresh } from "./freshness";
+import {
+  Piece,
+  PieceFormat,
+  reworkSteps,
+  stepsForPiece,
+  stepsOfPlan,
+  type AgentKey,
+  type PlanStep,
+  type ReviewProblem,
+} from "./plan";
 
 export const json = (value: unknown) =>
   JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 export const LEASE_MS = 4 * 60000;
 const terminal = ["completed", "blocked", "uncertain", "cancelled"];
+/** The step ids of a run: its stored plan (team, piece) or the fixed recipe of its kind. */
+export function stepsOf(run: Pick<AgentRun, "kind" | "plan">): string[] {
+  return stepsOfPlan(run.plan) ?? stepsFor(run.kind as RunKind) ?? [];
+}
+/** A piece's stored plan with its steps, or null for any other run or an unreadable plan. */
+function piecePlan(
+  run: Pick<AgentRun, "kind" | "plan">,
+): { plan: Record<string, unknown>; steps: PlanStep[] } | null {
+  if (run.kind !== "piece" || !stepsOfPlan(run.plan)) return null;
+  const plan = run.plan as Record<string, unknown>;
+  const steps = (plan.steps as Record<string, unknown>[]).map((s) => ({
+    id: s.id as string,
+    agent: (typeof s.agent === "string" ? s.agent : "matya") as AgentKey,
+    attempt:
+      Number.isSafeInteger(s.attempt) && (s.attempt as number) >= 0
+        ? (s.attempt as number)
+        : 0,
+  }));
+  return { plan, steps };
+}
+/** Who does the piece step at the run's stage, and in which round; undefined outside pieces. */
+export function planStepMeta(
+  run: Pick<AgentRun, "kind" | "plan" | "stage">,
+): { agent: string; attempt: number } | undefined {
+  const s = piecePlan(run)?.steps[run.stage];
+  return s ? { agent: s.agent, attempt: s.attempt } : undefined;
+}
 /** A business row is the lock root, even before its workspace/budget row exists. */
 export async function locked<T>(
   businessId: string,
@@ -62,10 +100,26 @@ export async function saveSettings(businessId: string, raw: unknown) {
     }),
   );
 }
-export async function enqueue(businessId: string, raw: unknown) {
+export async function enqueue(
+  businessId: string,
+  raw: unknown,
+  opts: {
+    origin?: "owner" | "daily";
+    extraContext?: Record<string, unknown>;
+  } = {},
+) {
   const input = MessageInput.parse(raw);
   const kind = input.kind ?? inferKind(input.text);
-  const context = await loadContext(businessId);
+  // Pieces only come from their team run (`spawnPieces`): a planless piece has no steps.
+  if (kind === "piece")
+    throw new AgentError("Ese tipo de encargo no se puede pedir directamente.");
+  // Never read from `raw`: the owner's HTTP body must not pass as the daily cycle.
+  const origin = opts.origin === "daily" ? "daily" : "owner";
+  // Extra keys are added; they never replace what was loaded for this business.
+  const context: Context = {
+    ...opts.extraContext,
+    ...(await loadContext(businessId)),
+  };
   if (input.campaignId) {
     const c = await db.campaign.findFirst({
       where: { id: input.campaignId, businessId },
@@ -99,9 +153,18 @@ export async function enqueue(businessId: string, raw: unknown) {
       },
     });
     if (prior) return prior;
+    if (kind === "team") {
+      const ws = await tx.agentWorkspace.findUnique({ where: { businessId } });
+      if (!ws?.teamMode)
+        throw new AgentError(
+          "Activa el modo equipo para pedir trabajo al equipo.",
+        );
+    }
+    // A team's pieces are bounded by the daily post cap, not by this one.
     const pending = await tx.agentRun.count({
       where: {
         businessId,
+        kind: { not: "piece" },
         status: {
           in: ["queued", "running", "waiting_approval", "waiting_provider"],
         },
@@ -132,6 +195,8 @@ export async function enqueue(businessId: string, raw: unknown) {
         kind,
         prompt: input.text,
         context: json(context),
+        origin,
+        ...(kind === "team" ? { plan: json({ kind: "team" }) } : {}),
       },
     });
     await tx.agentMessage.create({
@@ -147,7 +212,8 @@ export async function claimRun(businessId?: string) {
       status: "queued",
       cancelRequested: false,
     },
-    orderBy: { createdAt: "asc" },
+    // "owner" sorts after "daily": the owner's requests go first, oldest first.
+    orderBy: [{ origin: "desc" }, { createdAt: "asc" }],
   });
   if (!run) return null;
   const leaseToken = randomUUID();
@@ -166,9 +232,13 @@ export async function beginStep(
   leaseToken: string,
   name: string,
   cost: number,
+  meta?: { agent?: string; model?: string; attempt?: number },
 ) {
   if (!Number.isSafeInteger(cost) || cost < 0)
     throw new AgentError("Reserva no válida.");
+  const attempt = meta?.attempt ?? 0;
+  if (!Number.isInteger(attempt) || attempt < 0 || attempt > 1000)
+    throw new AgentError("Paso no válido.");
   const run = await db.agentRun.findUniqueOrThrow({ where: { id: runId } });
   return locked(run.businessId, async (tx) => {
     const current = await tx.agentRun.findUniqueOrThrow({
@@ -234,7 +304,10 @@ export async function beginStep(
       data: {
         runId,
         name,
-        specialist: roleFor(name),
+        specialist: meta?.agent ?? roleFor(name),
+        agent: meta?.agent ?? "",
+        model: meta?.model ?? "",
+        attempt,
         reservedCents: cost,
         budgetDay: day,
       },
@@ -247,6 +320,8 @@ export type StepResult = {
   text?: string;
   state?: "waiting_approval" | "waiting_provider" | "completed";
   advance?: boolean;
+  /** Pieces only: steps to run right after this one (a rework round). Ignored elsewhere. */
+  insertSteps?: PlanStep[];
 };
 export async function finishStep(
   runId: string,
@@ -288,7 +363,38 @@ export async function finishStep(
         finishedAt: new Date(),
       },
     });
-    const end = run.stage + 1 >= stepsFor(run.kind as RunKind).length;
+    // A rework round goes right after this step. Known ids are dropped (`@@unique([runId, name])`);
+    // outside pieces it is ignored, because the paid step already ran.
+    let plan: unknown = run.plan;
+    const piece = result.insertSteps?.length ? piecePlan(run) : null;
+    if (piece) {
+      const have = new Set(piece.steps.map((s) => s.id));
+      const add: PlanStep[] = [];
+      for (const s of result.insertSteps ?? []) {
+        if (typeof s?.id !== "string" || !s.id || have.has(s.id)) continue;
+        have.add(s.id);
+        add.push({
+          id: s.id,
+          agent: s.agent,
+          attempt:
+            Number.isSafeInteger(s.attempt) && s.attempt >= 0 ? s.attempt : 0,
+        });
+      }
+      if (add.length) {
+        const at = Math.min(run.stage + 1, piece.steps.length);
+        plan = {
+          ...piece.plan,
+          steps: [
+            ...piece.steps.slice(0, at),
+            ...add,
+            ...piece.steps.slice(at),
+          ],
+        };
+      }
+    }
+    const end =
+      run.stage + 1 >=
+      stepsOf({ kind: run.kind, plan: plan as Prisma.JsonValue }).length;
     const status = over
       ? "blocked"
       : run.cancelRequested
@@ -299,6 +405,7 @@ export async function finishStep(
       data: {
         status,
         stage: { increment: result.advance === false ? 0 : 1 },
+        ...(plan !== run.plan ? { plan: json(plan) } : {}),
         result: json(result.data),
         leaseToken: "",
         leaseUntil: null,
@@ -402,7 +509,7 @@ export async function recoverExpired() {
 export async function changeRun(
   businessId: string,
   runId: string,
-  action: "cancel" | "approve" | "refresh",
+  action: "cancel" | "approve" | "refresh" | "redo",
 ) {
   return locked(businessId, async (tx) => {
     const run = await tx.agentRun.findFirst({
@@ -444,11 +551,158 @@ export async function changeRun(
         data: { status: "queued", approvedAt: new Date() },
       });
     }
+    if (action === "redo") return redo(tx, run, settings.enabled);
     if (run.status !== "waiting_provider")
       throw new AgentError("El trabajo no está esperando una publicación.");
     return tx.agentRun.update({
       where: { id: runId },
       data: { status: "queued" },
     });
+  });
+}
+
+const Problem = z.object({
+  kind: z.string(),
+  detail: z.string(),
+  sendBackTo: z.enum(["copy", "design"]),
+});
+/** The problems a stored review output lists; anything unreadable is skipped. */
+function problemsOf(output: unknown): ReviewProblem[] {
+  const list =
+    output && typeof output === "object" && !Array.isArray(output)
+      ? (output as { problems?: unknown }).problems
+      : undefined;
+  if (!Array.isArray(list)) return [];
+  return list.flatMap((p) => {
+    const r = Problem.safeParse(p);
+    return r.success ? [r.data] : [];
+  });
+}
+/**
+ * The owner's "Rehacer": a new round before the step that was waiting, even when the
+ * automatic round was already used. Only a piece waiting right after a review qualifies.
+ * Runs inside the caller's business lock.
+ */
+async function redo(
+  tx: Prisma.TransactionClient,
+  run: AgentRun,
+  enabled: boolean,
+) {
+  const piece = piecePlan(run);
+  const previous = piece?.steps[run.stage - 1];
+  if (
+    !piece ||
+    run.status !== "waiting_approval" ||
+    run.cancelRequested ||
+    !previous ||
+    !/^review(-r\d+)?$/.test(previous.id)
+  )
+    throw new AgentError(
+      "Solo se puede rehacer una pieza que espera tu aprobación después de su revisión.",
+    );
+  if (!enabled) throw new AgentError("Activa MATYA para rehacer la pieza.");
+  const format = PieceFormat.safeParse(
+    (piece.plan.piece as { format?: unknown } | undefined)?.format,
+  );
+  if (!format.success)
+    throw new AgentError("La pieza no tiene un plan válido.");
+  const review = await tx.agentStep.findUnique({
+    where: { runId_name: { runId: run.id, name: previous.id } },
+  });
+  const problems =
+    review?.status === "succeeded" ? problemsOf(review.output) : [];
+  // An approved review still gets a round: the owner asked for it.
+  const round = reworkSteps(
+    problems.length
+      ? problems
+      : [
+          {
+            kind: "dueño",
+            detail: "El dueño pidió rehacer la pieza.",
+            sendBackTo: "copy",
+          },
+        ],
+    0,
+    format.data,
+  );
+  // The next round number, so the new ids never clash with a step already run.
+  const n =
+    1 +
+    Math.max(
+      0,
+      ...piece.steps.map((s) =>
+        Math.max(s.attempt, Number(/-r(\d+)$/.exec(s.id)?.[1] ?? 0)),
+      ),
+    );
+  const added = round.map((s) => ({
+    ...s,
+    id: s.id.replace(/-r1$/, `-r${n}`),
+    attempt: n,
+  }));
+  if (!added.length) throw new AgentError("No hay nada que rehacer.");
+  // Inserted at the waiting step's place: the stage now points at the first new step.
+  return tx.agentRun.update({
+    where: { id: run.id },
+    data: {
+      status: "queued",
+      approvedAt: null,
+      plan: json({
+        ...piece.plan,
+        steps: [
+          ...piece.steps.slice(0, run.stage),
+          ...added,
+          ...piece.steps.slice(run.stage),
+        ],
+      }),
+    },
+  });
+}
+/**
+ * Creates the parent's pieces as child runs, once each (`requestKey = parent:pieceId`).
+ * Returns them in piece order, the existing ones included. A cancelled parent creates
+ * nothing. Pieces do not count toward the open-work cap: the daily post cap bounds them.
+ */
+export async function spawnPieces(
+  parent: AgentRun,
+  pieces: Piece[],
+): Promise<AgentRun[]> {
+  const valid = pieces.map((p) => Piece.parse(p));
+  return locked(parent.businessId, async (tx) => {
+    const current = await tx.agentRun.findUniqueOrThrow({
+      where: { id: parent.id },
+    });
+    if (current.cancelRequested) return [];
+    const children: AgentRun[] = [];
+    for (const piece of valid) {
+      const requestKey = `${current.requestKey}:${piece.id}`;
+      const prior = await tx.agentRun.findUnique({
+        where: {
+          businessId_requestKey: { businessId: current.businessId, requestKey },
+        },
+      });
+      children.push(
+        prior ??
+          (await tx.agentRun.create({
+            data: {
+              businessId: current.businessId,
+              requestKey,
+              kind: "piece",
+              prompt: current.prompt,
+              parentRunId: current.id,
+              origin: current.origin,
+              context: json({
+                ...(current.context as Record<string, unknown>),
+                piece,
+              }),
+              plan: json({
+                kind: "piece",
+                piece,
+                steps: stepsForPiece(piece.format),
+              }),
+            },
+          })),
+      );
+    }
+    return children;
   });
 }

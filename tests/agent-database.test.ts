@@ -9,7 +9,12 @@ import {
   finishStep,
   recoverExpired,
   changeRun,
+  spawnPieces,
+  stepsOf,
+  type StepResult,
 } from "@/lib/agent/queue";
+import { reworkSteps, stepsForPiece } from "@/lib/agent/plan";
+import type { AgentRun } from "@prisma/client";
 import { workOne, executeStep, analyzeResults } from "@/lib/agent/execution";
 import { claimAgentPost } from "@/lib/agent/publication";
 import { loadContext } from "@/lib/agent/context";
@@ -753,5 +758,314 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     expect(tables).toHaveLength(6);
     for (const t of tables)
       expect(t).toMatchObject({ rls: true, anon: false, authed: false });
+  });
+  // Team mode: runs whose steps come from a stored plan.
+  const roof = {
+    id: "p1",
+    topic: "Techos",
+    channels: ["facebook"],
+    format: "post" as const,
+    objective: "",
+    keyword: "",
+  };
+  const POST = ["copy", "design", "review", "prepare", "schedule", "verify"];
+  async function teamParent() {
+    await saveSettings(A, { ...settings, teamMode: true });
+    const parent = await enqueue(A, {
+      text: "x",
+      kind: "team",
+      requestKey: key(crypto.randomUUID()),
+    });
+    // Pieces are spawned by the parent's own `dispatch` step: it holds the lease meanwhile.
+    expect((await claimRun(A))?.id).toBe(parent.id);
+    return parent;
+  }
+  async function pieceRun() {
+    const [child] = await spawnPieces(await teamParent(), [roof]);
+    return child;
+  }
+  const runner =
+    (byName: Record<string, StepResult> = {}, ran: string[] = []) =>
+    async (_run: AgentRun, name: string): Promise<StepResult> => {
+      ran.push(name);
+      return byName[name] ?? { data: {} };
+    };
+  const row = (id: string) => db.agentRun.findUniqueOrThrow({ where: { id } });
+  it("refuses direct piece requests, team requests without team mode and a spoofed origin", async () => {
+    await expect(ask("x", { kind: "piece" })).rejects.toThrow("directamente");
+    await expect(ask("x", { kind: "team" })).rejects.toThrow("modo equipo");
+    expect(await db.agentRun.count({ where: { businessId: A } })).toBe(0);
+    const r = await ask("Ponme al día", { origin: "daily" });
+    expect(r).toMatchObject({ kind: "briefing", origin: "owner", plan: null });
+    await saveSettings(A, { ...settings, teamMode: true });
+    await expect(ask("x", { kind: "piece" })).rejects.toThrow("directamente");
+    const team = await ask("x", { kind: "team" });
+    expect(team).toMatchObject({ kind: "team", plan: { kind: "team" } });
+    expect(stepsOf(team)).toEqual(["plan", "research", "strategy", "dispatch"]);
+  });
+  it("a piece follows its plan and completes at the end of its template", async () => {
+    const parent = await teamParent();
+    expect(parent.origin).toBe("owner");
+    const [child] = await spawnPieces(parent, [roof]);
+    expect(child).toMatchObject({
+      kind: "piece",
+      status: "queued",
+      parentRunId: parent.id,
+      requestKey: `${parent.requestKey}:p1`,
+      origin: parent.origin,
+      plan: { kind: "piece", piece: roof, steps: stepsForPiece("post") },
+      context: { piece: roof, revision: (parent.context as { revision: number }).revision },
+    });
+    expect(stepsOf(child)).toEqual(stepsForPiece("post").map((s) => s.id));
+    const ran: string[] = [];
+    for (let i = 0; i < 6; i++) await workOne(A, runner({}, ran), () => 0);
+    expect(ran).toEqual(POST);
+    expect(await row(child.id)).toMatchObject({ status: "completed", stage: 6 });
+    // The parent keeps its own lease; it is not run by the piece's ticks.
+    expect(await row(parent.id)).toMatchObject({ status: "running", stage: 0 });
+    const steps = await db.agentStep.findMany({
+      where: { runId: child.id },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(steps.map((s) => [s.name, s.agent, s.specialist, s.attempt])).toEqual([
+      ["copy", "copy", "copy", 0],
+      ["design", "design", "design", 0],
+      ["review", "review", "review", 0],
+      ["prepare", "matya", "matya", 0],
+      ["schedule", "matya", "matya", 0],
+      ["verify", "matya", "matya", 0],
+    ]);
+  });
+  it("records each step's agent, model and attempt; old callers keep their specialist", async () => {
+    const r = await ask();
+    const c = await claimRun(A);
+    expect(
+      await beginStep(r.id, c!.leaseToken, "research", 0, {
+        agent: "seo",
+        model: "gemini:gemini-2.5-flash",
+        attempt: 2,
+      }),
+    ).toMatchObject({ specialist: "seo", agent: "seo", model: "gemini:gemini-2.5-flash", attempt: 2 });
+    await finishStep(r.id, c!.leaseToken, "research", { data: research });
+    const next = await claimRun(A);
+    expect(await beginStep(r.id, next!.leaseToken, "copy", 0)).toMatchObject({
+      specialist: "redaccion",
+      agent: "",
+      model: "",
+      attempt: 0,
+    });
+  });
+  it("insertSteps adds the round right after the current step", async () => {
+    const child = await pieceRun();
+    const ran: string[] = [];
+    const exec = runner(
+      {
+        review: {
+          data: { approved: false, problems: [] },
+          insertSteps: reworkSteps(
+            [{ kind: "canal", detail: "Falta el texto", sendBackTo: "copy" }],
+            0,
+          ),
+        },
+      },
+      ran,
+    );
+    for (let i = 0; i < 3; i++) await workOne(A, exec, () => 0);
+    const after = await row(child.id);
+    expect(after).toMatchObject({ status: "queued", stage: 3 });
+    expect(stepsOf(after)).toEqual([
+      "copy",
+      "design",
+      "review",
+      "copy-r1",
+      "design-r1",
+      "review-r1",
+      "prepare",
+      "schedule",
+      "verify",
+    ]);
+    await workOne(A, exec, () => 0);
+    expect(ran).toEqual(["copy", "design", "review", "copy-r1"]);
+    expect(
+      await db.agentStep.findUniqueOrThrow({
+        where: { runId_name: { runId: child.id, name: "copy-r1" } },
+      }),
+    ).toMatchObject({ agent: "copy", attempt: 1, status: "succeeded" });
+    // The run ends at the end of the longer plan, not the template's six steps.
+    for (let i = 0; i < 5; i++) await workOne(A, exec, () => 0);
+    expect(ran.slice(4)).toEqual(["design-r1", "review-r1", "prepare", "schedule", "verify"]);
+    expect(await row(child.id)).toMatchObject({ status: "completed", stage: 9 });
+  });
+  it("ignores insertSteps outside pieces and never repeats a step id", async () => {
+    const r = await ask();
+    await workOne(
+      A,
+      async () => ({
+        data: research,
+        insertSteps: [{ id: "copy-r1", agent: "copy", attempt: 1 }],
+      }),
+      () => 0,
+    );
+    expect(await row(r.id)).toMatchObject({ status: "queued", stage: 1, plan: null });
+    expect(stepsOf(await row(r.id))).toHaveLength(6);
+    await changeRun(A, r.id, "cancel");
+    const child = await pieceRun();
+    await workOne(
+      A,
+      runner({
+        copy: {
+          data: {},
+          insertSteps: [
+            { id: "review", agent: "review", attempt: 0 },
+            { id: "design-r1", agent: "design", attempt: 1 },
+            { id: "design-r1", agent: "design", attempt: 1 },
+          ],
+        },
+      }),
+      () => 0,
+    );
+    expect(stepsOf(await row(child.id))).toEqual([
+      "copy",
+      "design-r1",
+      "design",
+      "review",
+      "prepare",
+      "schedule",
+      "verify",
+    ]);
+  });
+  it("redo on waiting_approval inserts a round before the waiting step", async () => {
+    const child = await pieceRun();
+    const ran: string[] = [];
+    // e.g. approval mode: the review passed and the piece waits for the owner.
+    const passed: StepResult = {
+      data: { approved: true, problems: [] },
+      state: "waiting_approval",
+    };
+    for (let i = 0; i < 3; i++) await workOne(A, runner({ review: passed }, ran), () => 0);
+    expect(await row(child.id)).toMatchObject({ status: "waiting_approval", stage: 3 });
+    expect(stepsOf(child)[3]).toBe("prepare");
+    await db.agentRun.update({ where: { id: child.id }, data: { approvedAt: new Date() } });
+    await changeRun(A, child.id, "redo");
+    let now = await row(child.id);
+    // The redone piece needs a new approval.
+    expect(now).toMatchObject({ status: "queued", stage: 3, approvedAt: null });
+    expect(stepsOf(now)).toEqual([
+      "copy",
+      "design",
+      "review",
+      "copy-r1",
+      "design-r1",
+      "review-r1",
+      "prepare",
+      "schedule",
+      "verify",
+    ]);
+    // The re-review only finds an image problem: the second redo only redoes the design.
+    const failed: StepResult = {
+      data: {
+        approved: false,
+        problems: [{ kind: "falta-imagen", detail: "Sin imagen", sendBackTo: "design" }],
+      },
+      state: "waiting_approval",
+    };
+    for (let i = 0; i < 3; i++)
+      await workOne(A, runner({ "review-r1": failed }, ran), () => 0);
+    expect(ran).toEqual(["copy", "design", "review", "copy-r1", "design-r1", "review-r1"]);
+    expect(await row(child.id)).toMatchObject({ status: "waiting_approval", stage: 6 });
+    await changeRun(A, child.id, "redo");
+    now = await row(child.id);
+    expect(stepsOf(now)).toEqual([
+      "copy",
+      "design",
+      "review",
+      "copy-r1",
+      "design-r1",
+      "review-r1",
+      "design-r2",
+      "review-r2",
+      "prepare",
+      "schedule",
+      "verify",
+    ]);
+    expect((now.plan as { steps: unknown[] }).steps.slice(6, 8)).toEqual([
+      { id: "design-r2", agent: "design", attempt: 2 },
+      { id: "review-r2", agent: "review", attempt: 2 },
+    ]);
+    await workOne(A, runner({}, ran), () => 0);
+    expect(ran.at(-1)).toBe("design-r2");
+    expect(
+      await db.agentStep.findUniqueOrThrow({
+        where: { runId_name: { runId: child.id, name: "design-r2" } },
+      }),
+    ).toMatchObject({ agent: "design", attempt: 2 });
+  });
+  it("refuses redo unless a piece waits right after its review, and two clicks add one round", async () => {
+    const r = await prepared("approval");
+    await workOne(A, executeStep, () => 0);
+    expect(await row(r.id)).toMatchObject({ status: "waiting_approval", stage: 4 });
+    await expect(changeRun(A, r.id, "redo")).rejects.toThrow("rehacer");
+    expect(await row(r.id)).toMatchObject({ status: "waiting_approval", plan: null });
+    await changeRun(A, r.id, "cancel");
+    const child = await pieceRun();
+    await expect(changeRun(A, child.id, "redo")).rejects.toThrow("rehacer");
+    // Waiting at `schedule`: the previous step is `prepare`, not a review.
+    await db.agentRun.update({
+      where: { id: child.id },
+      data: { status: "waiting_approval", stage: 4 },
+    });
+    await expect(changeRun(A, child.id, "redo")).rejects.toThrow("rehacer");
+    expect(await row(child.id)).toMatchObject({ status: "waiting_approval", stage: 4 });
+    expect(stepsOf(await row(child.id))).toEqual(POST);
+    await db.agentRun.update({ where: { id: child.id }, data: { stage: 3 } });
+    const both = await Promise.allSettled([
+      changeRun(A, child.id, "redo"),
+      changeRun(A, child.id, "redo"),
+    ]);
+    expect(both.filter((x) => x.status === "fulfilled")).toHaveLength(1);
+    expect(stepsOf(await row(child.id))).toHaveLength(9);
+  });
+  it("claims the owner's requests before the daily ones", async () => {
+    const daily = await enqueue(
+      A,
+      { text: "Plan del día", requestKey: key("daily-plan") },
+      { origin: "daily", extraContext: { signals: { emptyDays: 2 }, business: { id: B } } },
+    );
+    const owner = await ask("Ponme al día");
+    expect(daily).toMatchObject({ origin: "daily" });
+    expect(owner).toMatchObject({ origin: "owner" });
+    // Extra context is added, but never replaces the business it was loaded for.
+    expect(daily.context).toMatchObject({ signals: { emptyDays: 2 }, business: { id: A } });
+    expect((await claimRun(A))?.id).toBe(owner.id);
+    expect((await claimRun(A))?.id).toBe(daily.id);
+  });
+  it("spawnPieces never repeats a piece, even at the same time", async () => {
+    const parent = await teamParent();
+    const [first] = await spawnPieces(parent, [roof]);
+    const again = await Promise.all([
+      spawnPieces(parent, [roof]),
+      spawnPieces(parent, [roof]),
+    ]);
+    expect(again.map(([c]) => c.id)).toEqual([first.id, first.id]);
+    expect(await db.agentRun.count({ where: { parentRunId: parent.id } })).toBe(1);
+  });
+  it("pieces skip the open-work cap but never outlive a cancelled parent", async () => {
+    const parent = await teamParent();
+    const pieces = Array.from({ length: 8 }, (_, i) => ({
+      ...roof,
+      id: `p${i + 1}`,
+      topic: `Tema ${i + 1}`,
+    }));
+    const kids = await spawnPieces(parent, pieces);
+    expect(kids.map((k) => k.requestKey)).toEqual(
+      pieces.map((p) => `${parent.requestKey}:${p.id}`),
+    );
+    await expect(ask("Ponme al día")).resolves.toMatchObject({ kind: "briefing" });
+    // Cancelling while `dispatch` runs only flags the parent; no new piece is created.
+    await changeRun(A, parent.id, "cancel");
+    expect(
+      await spawnPieces(parent, [{ ...roof, id: "p9", topic: "Otro tema" }]),
+    ).toEqual([]);
+    expect(await db.agentRun.count({ where: { parentRunId: parent.id } })).toBe(8);
   });
 });
