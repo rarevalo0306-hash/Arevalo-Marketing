@@ -16,8 +16,16 @@ type Lang = "es" | "en";
 export type MatyaDaily = {
   /** What the team published on the reported day (its own posts, by channel), the latest results of those posts and what it spent. */
   yesterday: { byChannel: { channel: string; posts: number }[]; reach: number; likes: number; comments: number; cents: number };
-  /** Today's morning plan: its goal and its pieces. Null while there is no plan request yet. */
-  today: { goal: string; pieces: { topic: string; format: string; channels: string[]; objective: string }[] } | null;
+  /**
+   * Today's morning plan: its goal and its pieces, the status of the plan request and what the director replied (its explanation
+   * when nothing is worth making, "" otherwise). Null while there is no plan request yet.
+   */
+  today: {
+    goal: string;
+    pieces: { topic: string; format: string; channels: string[]; objective: string }[];
+    status: string;
+    reply: string;
+  } | null;
   /** What waits for the owner, oldest first. */
   needs: { topic: string; kind: string }[];
 };
@@ -61,8 +69,9 @@ const TARGETS_MAX = 500;
 /**
  * The section's data for the report of `reportDay` (a local day of the business, `tz`), or null when the business does not have
  * team mode on. Yesterday: the team's own posts (ids that start with `agent-`) delivered that day, by channel; the results are the
- * latest `PostMetric` of each delivery; the money is what the team's agents' steps charged on that day. Today: the goal and the pieces
- * the director's morning plan wrote (the `plan` and `dispatch` steps that finished), or null while that request does not exist.
+ * latest `PostMetric` of each delivery; the money is what the team's agents' steps charged on that day. Today: the goal, the reply and
+ * the pieces the director's morning plan wrote (the `plan` and `dispatch` steps that finished) and the request's status, or null while
+ * that request does not exist.
  * What waits for the owner is `needsYou` over the team's open requests.
  */
 export async function loadMatyaDaily(businessId: string, reportDay: string, tz: string, now = new Date()): Promise<MatyaDaily | null> {
@@ -83,7 +92,7 @@ export async function loadMatyaDaily(businessId: string, reportDay: string, tz: 
     }),
     db.agentRun.findUnique({
       where: { businessId_requestKey: { businessId, requestKey: dailyPlanKey(businessId, team.today) } },
-      select: { steps: { where: { name: { in: ["plan", "dispatch"] }, status: "succeeded" }, select: { name: true, output: true } } },
+      select: { status: true, steps: { where: { name: { in: ["plan", "dispatch"] }, status: "succeeded" }, select: { name: true, output: true } } },
     }),
   ]);
 
@@ -118,6 +127,8 @@ export async function loadMatyaDaily(businessId: string, reportDay: string, tz: 
           },
         ];
       }),
+      status: plan.status,
+      reply: text(outputOf("plan")?.reply).trim(),
     };
   }
 
@@ -184,8 +195,16 @@ function partsOf(m: MatyaDaily, lang: Lang): Part[] {
 
   const plan: Line[] = [];
   const day = m.today;
-  if (!day || (!day.goal && !day.pieces.length)) plan.push({ text: t("El plan de hoy todavía no está listo.", "Today's plan is not ready yet.") });
-  else {
+  if (!day || (!day.goal && !day.pieces.length)) {
+    // Nothing to tell yet: no plan request, or one still at work. One that completed found nothing worth making (the director says
+    // why, when it did); one that stopped otherwise will not bring a plan today.
+    if (!day || !PLAN_ENDED.has(day.status)) plan.push({ text: t("El plan de hoy todavía no está listo.", "Today's plan is not ready yet.") });
+    else if (day.status === "completed") {
+      const reply = day.reply.trim();
+      plan.push({ text: reply ? clip(reply, 600) : t("Hoy no hace falta contenido nuevo.", "No new content is needed today.") });
+    }
+    else plan.push({ text: t("El plan de hoy no se pudo completar.", "Today's plan could not be completed.") });
+  } else {
     if (day.goal) plan.push({ text: `${t("Meta del día", "Goal of the day")}: ${clip(day.goal, 300)}` });
     for (const piece of day.pieces.slice(0, LIST_MAX)) {
       const format = FORMATS[piece.format]?.[lang] ?? piece.format;
@@ -214,7 +233,8 @@ function partsOf(m: MatyaDaily, lang: Lang): Part[] {
   ];
 }
 
-const centerUrl = (base: string, businessId: string) => `${base.replace(/\/+$/, "")}/b/${encodeURIComponent(businessId)}/matya`;
+/** The business's Centro MATYA, open on Hoy (the team's day). */
+const centerUrl = (base: string, businessId: string) => `${base.replace(/\/+$/, "")}/b/${encodeURIComponent(businessId)}/matya?tab=today`;
 const sectionTitle = (lang: Lang) => (lang === "en" ? "Your MATYA team" : "Tu equipo MATYA");
 const buttonText = (lang: Lang) => (lang === "en" ? "Open the MATYA Center" : "Abrir el Centro MATYA");
 

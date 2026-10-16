@@ -6269,7 +6269,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       expect(mail().html).toContain("Conseguir llamadas de dueños con goteras");
       expect(mail().html).toContain("Techos &lt;b&gt;seguros&lt;/b&gt;");
       expect(mail().html).not.toContain("<b>seguros</b>");
-      expect(mail().html).toContain(`/b/${A}/matya`);
+      expect(mail().html).toContain(`/b/${A}/matya?tab=today`);
       expect(mail().text).toContain("HOY");
       const [record] = await dailyRows();
       expect(record.data).toMatchObject({ day: YESTERDAY, trigger: "cron", state: "sent" });
@@ -6326,8 +6326,21 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
     it.each(["blocked", "uncertain", "cancelled"])("goes out when the morning plan ended as %s", async (status) => {
       await morningPlan(status);
       expect(await runDailyReports(new Date(), { teamOnly: true })).toMatchObject({ sent: 1, waiting: 0 });
-      // It stopped before the director's plan: there is no plan to tell.
-      expect(mail().html).toContain("El plan de hoy todavía no está listo.");
+      // It stopped before the director's plan: there is no plan to tell, and none is coming.
+      expect(mail().html).toContain("El plan de hoy no se pudo completar.");
+      expect(mail().html).not.toContain("todavía no está listo");
+    });
+
+    it("a morning plan that found nothing worth making tells the director's reason, or that nothing new is needed", async () => {
+      const plan = await morningPlan("completed");
+      await stepOf(plan.id, "plan", { reply: "La agenda de inspecciones ya está llena esta semana.", goal: "", maxPieces: 0 });
+      expect(await runDailyReports(new Date(), { teamOnly: true })).toMatchObject({ sent: 1, waiting: 0 });
+      expect(mail().html).toContain("La agenda de inspecciones ya está llena esta semana.");
+      expect(mail().html).not.toContain("todavía no está listo");
+      // Without the director's words: the plain line.
+      await db.agentStep.updateMany({ where: { runId: plan.id, name: "plan" }, data: { output: { reply: "", goal: "", maxPieces: 0 } } });
+      expect((await sendDailyReport(A, YESTERDAY, { trigger: "manual", now: new Date() })).state).toBe("sent");
+      expect(mail(1).html).toContain("Hoy no hace falta contenido nuevo.");
     });
 
     it("teamMode off: the report is unchanged and has no MATYA section", async () => {
@@ -6494,6 +6507,8 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
             { topic: "Techos <b>seguros</b>", format: "video", channels: ["facebook", "instagram"], objective: "Que llamen hoy" },
             { topic: "Goteras", format: "post", channels: ["facebook"], objective: "" },
           ],
+          status: "completed",
+          reply: "",
         });
       });
 
@@ -6501,12 +6516,12 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
         const plan = await morningPlan("running");
         await stepOf(plan.id, "plan", { goal: "Meta parcial" });
         await stepOf(plan.id, "dispatch", { pieces: [{ id: "p9", topic: "No terminó", objective: "", channels: ["facebook"], format: "post", keyword: "" }], dropped: [] }, { status: "running" });
-        expect((await loadMatyaDaily(A, YESTERDAY, "America/New_York", NOW))?.today).toEqual({ goal: "Meta parcial", pieces: [] });
+        expect((await loadMatyaDaily(A, YESTERDAY, "America/New_York", NOW))?.today).toEqual({ goal: "Meta parcial", pieces: [], status: "running", reply: "" });
       });
 
       it("a damaged step output is ignored, not an error", async () => {
         const plan = await morningPlan("completed");
-        await stepOf(plan.id, "plan", { goal: 7 });
+        await stepOf(plan.id, "plan", { goal: 7, reply: ["no"] });
         await stepOf(plan.id, "dispatch", { pieces: [{ topic: "Sin canales" }, "x", null, { topic: "Bien", format: "post", channels: ["facebook", 3], objective: "o" }] });
         expect((await loadMatyaDaily(A, YESTERDAY, "America/New_York", NOW))?.today).toEqual({
           goal: "",
@@ -6514,6 +6529,8 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
             { topic: "Sin canales", format: "", channels: [], objective: "" },
             { topic: "Bien", format: "post", channels: ["facebook"], objective: "o" },
           ],
+          status: "completed",
+          reply: "",
         });
       });
 

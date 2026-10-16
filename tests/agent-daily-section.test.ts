@@ -121,6 +121,8 @@ const full: MatyaDaily = {
       { topic: "Techos <script>alert(1)</script>", format: "video", channels: ["facebook", "instagram"], objective: "Que llamen \"hoy\"" },
       { topic: "Goteras", format: "post", channels: ["facebook"], objective: "" },
     ],
+    status: "completed",
+    reply: "",
   },
   needs: [
     { topic: "Techos <b>nuevos</b>", kind: "video" },
@@ -134,7 +136,8 @@ describe("the MATYA section of the daily report", () => {
     const html = matyaSectionHtml(full, "es", BASE, "biz 1", "#126BBC");
     for (const title of ["Ayer", "Hoy", "Te necesita"]) expect(html).toContain(`>${title}</td>`);
     expect(html).toContain("Abrir el Centro MATYA");
-    expect(html).toContain(`href="${BASE}/b/biz%201/matya"`);
+    // The button opens the center on Hoy.
+    expect(html).toContain(`href="${BASE}/b/biz%201/matya?tab=today"`);
     // Whatever the owner or the AI wrote is escaped.
     expect(html).not.toContain("<script>");
     expect(html).not.toContain("<inspecciones>");
@@ -165,18 +168,43 @@ describe("the MATYA section of the daily report", () => {
     const text = matyaSectionText(full, "en", BASE, "biz1");
     expect(text).toContain("YESTERDAY");
     expect(text).toContain("NEEDS YOU");
-    expect(text).toContain(`Open the MATYA Center: ${BASE}/b/biz1/matya`);
+    expect(text).toContain(`Open the MATYA Center: ${BASE}/b/biz1/matya?tab=today`);
   });
 
   it("no plan yet says 'El plan de hoy todavía no está listo.'", () => {
     expect(matyaSectionHtml(empty, "es", BASE, "biz1", "#126BBC")).toContain("El plan de hoy todavía no está listo.");
     expect(matyaSectionText(empty, "es", BASE, "biz1")).toContain("El plan de hoy todavía no está listo.");
     expect(matyaSectionHtml(empty, "en", BASE, "biz1", "#126BBC")).toContain(escapeHtml("Today's plan is not ready yet."));
-    // A plan the director left with no goal and no pieces is no plan to tell.
-    const blank: MatyaDaily = { ...empty, today: { goal: "", pieces: [] } };
-    expect(matyaSectionText(blank, "es", BASE, "biz1")).toContain("El plan de hoy todavía no está listo.");
+    // A plan request still at work, with nothing written yet, is not ready either.
+    for (const status of ["queued", "running", "waiting_provider", "waiting_approval"]) {
+      const working: MatyaDaily = { ...empty, today: { goal: "", pieces: [], status, reply: "" } };
+      expect(matyaSectionText(working, "es", BASE, "biz1")).toContain("El plan de hoy todavía no está listo.");
+    }
     // With a plan, the line is gone.
     expect(matyaSectionText(full, "es", BASE, "biz1")).not.toContain("todavía no está listo");
+  });
+
+  it("a plan that ended with nothing to make tells the director's reason, or that nothing new is needed today", () => {
+    const ended = (reply: string, status = "completed"): MatyaDaily => ({ ...empty, today: { goal: "", pieces: [], status, reply } });
+    const why = "La agenda ya está llena esta semana <b>y</b> no hace falta publicar.";
+    const html = matyaSectionHtml(ended(why), "es", BASE, "biz1", "#126BBC");
+    expect(html).toContain(escapeHtml(why));
+    expect(html).not.toContain("<b>y</b>");
+    expect(html).not.toContain("todavía no está listo");
+    expect(matyaSectionText(ended(`  ${why}  `), "es", BASE, "biz1")).toContain(`- ${why}`);
+    // No reason given (or only spaces): it says so plainly, in the business's language.
+    for (const reply of ["", "   "]) {
+      expect(matyaSectionText(ended(reply), "es", BASE, "biz1")).toContain("Hoy no hace falta contenido nuevo.");
+      expect(matyaSectionText(ended(reply), "en", BASE, "biz1")).toContain("No new content is needed today.");
+    }
+    // A plan that stopped before it wrote anything is neither "not ready yet" nor "nothing needed".
+    for (const status of ["blocked", "uncertain", "cancelled"]) {
+      const text = matyaSectionText(ended("", status), "es", BASE, "biz1");
+      expect(text).toContain("El plan de hoy no se pudo completar.");
+      expect(text).not.toContain("todavía no está listo");
+      expect(text).not.toContain("no hace falta");
+      expect(matyaSectionText(ended("", status), "en", BASE, "biz1")).toContain("Today's plan could not be completed.");
+    }
   });
 
   it("says plainly when there was nothing yesterday and nothing waits for the owner", () => {
@@ -198,13 +226,13 @@ describe("the MATYA section of the daily report", () => {
     expect(text).toContain("Instagram: 1");
     expect(text).toContain("Conseguir llamadas para <inspecciones> & más");
     expect(text).toContain("Goteras");
-    expect(text).toContain("Abrir el Centro MATYA: https://matya.app/b/biz%201/matya");
+    expect(text).toContain("Abrir el Centro MATYA: https://matya.app/b/biz%201/matya?tab=today");
   });
 
   it("caps a long plan and a long list of waiting items", () => {
     const many: MatyaDaily = {
       ...full,
-      today: { goal: "Meta", pieces: Array.from({ length: 12 }, (_, i) => ({ topic: `Tema ${i}`, format: "post", channels: ["facebook"], objective: "" })) },
+      today: { goal: "Meta", pieces: Array.from({ length: 12 }, (_, i) => ({ topic: `Tema ${i}`, format: "post", channels: ["facebook"], objective: "" })), status: "completed", reply: "" },
       needs: Array.from({ length: 12 }, (_, i) => ({ topic: `Pieza ${i}`, kind: "publicar" })),
     };
     const text = matyaSectionText(many, "es", BASE, "biz1");

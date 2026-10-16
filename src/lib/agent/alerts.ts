@@ -153,7 +153,8 @@ export function buildAlertEmail(
   const subject =
     (types.length ? `${head}: ${LABEL[types[0]][lang]}` : head) +
     (more > 0 ? t(` y ${more} ${more === 1 ? "aviso" : "avisos"} más`, ` and ${more} more ${more === 1 ? "alert" : "alerts"}`) : "");
-  const url = `${base.replace(/\/+$/, "")}/b/${encodeURIComponent(business.id)}/matya`;
+  // The center opens on Hoy, where what needs the owner is.
+  const url = `${base.replace(/\/+$/, "")}/b/${encodeURIComponent(business.id)}/matya?tab=today`;
   const button = t("Abrir el Centro MATYA", "Open the MATYA Center");
   const footer = t(
     `Este email lo manda Matya para ${business.name}. Son como máximo ${ALERTS_PER_DAY} avisos del equipo al día.`,

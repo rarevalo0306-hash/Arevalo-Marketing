@@ -204,18 +204,18 @@ describe("buildAlertEmail", () => {
     expect(at("Un video espera tu aprobación")).toBeLessThan(at("Video uno."));
   });
 
-  it("opens the Centro MATYA of the business, with the button in the language of the email", () => {
+  it("opens the Centro MATYA of the business on Hoy, with the button in the language of the email", () => {
     const facts = [fact("plan", "plan:2026-10-16")];
     const es = buildAlertEmail(business, facts, "es", "https://app.example.com");
-    expect(es.html).toContain('href="https://app.example.com/b/biz-1/matya"');
+    expect(es.html).toContain('href="https://app.example.com/b/biz-1/matya?tab=today"');
     expect(es.html).toContain("Abrir el Centro MATYA");
-    expect(es.text).toContain("Abrir el Centro MATYA: https://app.example.com/b/biz-1/matya");
+    expect(es.text).toContain("Abrir el Centro MATYA: https://app.example.com/b/biz-1/matya?tab=today");
     expect(es.html).toContain('<html lang="es">');
     const en = buildAlertEmail(business, facts, "en", "https://app.example.com/");
-    expect(en.html).toContain('href="https://app.example.com/b/biz-1/matya"');
+    expect(en.html).toContain('href="https://app.example.com/b/biz-1/matya?tab=today"');
     expect(en.html).toContain("Open the MATYA Center");
     expect(en.html).toContain('<html lang="en">');
-    expect(en.text).toContain("Open the MATYA Center: https://app.example.com/b/biz-1/matya");
+    expect(en.text).toContain("Open the MATYA Center: https://app.example.com/b/biz-1/matya?tab=today");
   });
 
   it("writes each fact in the language of the email", () => {
