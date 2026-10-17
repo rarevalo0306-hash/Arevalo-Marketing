@@ -3,17 +3,21 @@
 // «Organizaciones»: las organizaciones de cliente de una cuenta y sus negocios. Cada una se puede renombrar, darle un
 // negocio nuevo o (si está vacía) borrar; cada negocio se puede pasar a otra organización. Abajo, «Nueva organización».
 // Los formularios se mandan a mano (no con action={…}) para que un error no borre lo que la persona escribió.
+// El reporte semanal de cada organización (a quién le llega, cuándo, y cómo le fue al último) está en ReportPanel.tsx.
 import Link from "next/link";
 import { startTransition, useActionState, useEffect, useId, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { createClientOrgAction, deleteClientOrgAction, moveBusinessAction, renameClientOrgAction, type OrgResult } from "@/app/actions-client-orgs";
 import { failed, focusLost } from "@/components/action-result";
 import { useT } from "@/components/I18n";
+import type { ReportSettings } from "@/lib/client-org-report";
 import { ORG_NAME_MAX } from "@/lib/client-orgs";
+import type { LastSend } from "@/lib/client-orgs-store";
 import type { T } from "@/lib/i18n";
 import s from "./Orgs.module.css";
+import { ReportPanel } from "./ReportPanel";
 
 type Biz = { id: string; name: string; color: string };
-type Org = { id: string; name: string; businesses: Biz[] };
+export type Org = { id: string; name: string; businesses: Biz[]; report: ReportSettings; last: LastSend | null };
 type Target = { id: string; name: string };
 
 /** La pregunta antes de borrar una organización (se hace con window.confirm). */
@@ -81,7 +85,7 @@ function MoveForm({ accountId, business, others, onMoved }: { accountId: string;
   );
 }
 
-function OrgCard({ accountId, org, others, onNotice }: { accountId: string; org: Org; others: Target[]; onNotice: (text: string) => void }) {
+function OrgCard({ accountId, org, others, appTz, onNotice }: { accountId: string; org: Org; others: Target[]; appTz: string; onNotice: (text: string) => void }) {
   const { t } = useT();
   const titleId = useId();
   const nameId = useId();
@@ -210,6 +214,8 @@ function OrgCard({ accountId, org, others, onNotice }: { accountId: string; org:
           ))}
         </ul>
       )}
+
+      <ReportPanel accountId={accountId} org={org} appTz={appTz} />
     </section>
   );
 }
@@ -268,11 +274,13 @@ type Props = {
   accountId: string;
   accountName: string;
   orgs: Org[];
+  /** La zona de la app: la hora de los reportes de una organización sin zona propia se cuenta en ella. */
+  appTz: string;
   /** Arriba del título: las pestañas de las cuentas que administra la persona, si son varias. */
   children?: ReactNode;
 };
 
-export function ClientOrgs({ accountId, accountName, orgs, children }: Props) {
+export function ClientOrgs({ accountId, accountName, orgs, appTz, children }: Props) {
   const { t } = useT();
   // Aviso de lo que ya no está donde estaba (un negocio que cambió de tarjeta, una organización borrada). Como su fila
   // desaparece, el foco pasa al título para no perder el lugar.
@@ -306,7 +314,7 @@ export function ClientOrgs({ accountId, accountName, orgs, children }: Props) {
               </div>
             )}
             {orgs.map((o) => (
-              <OrgCard key={o.id} accountId={accountId} org={o} others={orgs.filter((x) => x.id !== o.id).map(({ id, name }) => ({ id, name }))} onNotice={onNotice} />
+              <OrgCard key={o.id} accountId={accountId} org={o} others={orgs.filter((x) => x.id !== o.id).map(({ id, name }) => ({ id, name }))} appTz={appTz} onNotice={onNotice} />
             ))}
           </div>
           <NewOrg accountId={accountId} />

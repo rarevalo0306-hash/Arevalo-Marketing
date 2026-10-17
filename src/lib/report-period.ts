@@ -76,6 +76,9 @@ export function presetPeriod(preset: Exclude<RangePreset, "custom">, tz: string,
 /** El periodo de un día (el del reporte diario). */
 export const dayPeriod = (day: string, tz: string): RangePeriod => makePeriod("custom", day, day, tz);
 
+/** El periodo de un rango de días cualquiera (el del reporte semanal): se compara con los mismos días justo antes. */
+export const rangePeriod = (fromDay: string, toDay: string, tz: string): RangePeriod => makePeriod("custom", fromDay, toDay, tz);
+
 /**
  * Lee el rango de la dirección (?desde=AAAA-MM-DD&hasta=AAAA-MM-DD, o ?p=7-dias). Sin nada: «Ayer».
  * Fechas al revés se dan vuelta; nunca después de hoy; como mucho 366 días. Si coincide con un atajo, lleva su nombre.

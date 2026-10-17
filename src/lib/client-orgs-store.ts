@@ -2,12 +2,14 @@
 // organizaciones de cliente. Todas las funciones reciben primero el id de la cuenta y solo tocan lo de esa cuenta:
 // un id de otra cuenta (por ejemplo, forjado en un formulario) se rechaza igual que uno que no existe.
 // Quién puede llamarlas (el Administrador de la cuenta) lo decide quien las llama, no este archivo.
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { dueWeek, MAX_ATTEMPTS, orgTz, readReportSettings, type ReportSettings } from "@/lib/client-org-report";
 import { DEFAULT_CLIENT_ORG, readOrgName } from "@/lib/client-orgs";
 import { bi } from "@/lib/i18n";
 
 const badName = () => bi("Escribe un nombre de 1 a 120 caracteres.", "Enter a name of 1 to 120 characters.");
-const notInAccount = () => bi("Esa organización no es de esta cuenta.", "That organization isn't in this account.");
+export const notInAccount = () => bi("Esa organización no es de esta cuenta.", "That organization isn't in this account.");
 const stillHasBusinesses = () =>
   bi("Esta organización todavía tiene negocios: muévelos antes de borrarla.", "This organization still has businesses: move them before deleting it.");
 
@@ -15,6 +17,9 @@ const nameTaken = () => bi("Ya hay una organización con ese nombre en esta cuen
 
 /** La base de datos rechazó por una llave foránea (Prisma P2003). */
 const isForeignKeyRefusal = (e: unknown) => typeof e === "object" && e !== null && (e as { code?: unknown }).code === "P2003";
+
+/** La base de datos rechazó por un índice único (Prisma P2002): lo que se quería escribir ya estaba. */
+export const isUniqueRefusal = (e: unknown) => e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
 
 /**
  * El id de la organización más antigua de la cuenta; si la cuenta no tiene ninguna, crea «Mis compañías».
@@ -31,19 +36,89 @@ export async function ensureDefaultClientOrg(organizationId: string): Promise<st
   });
 }
 
-/** Las organizaciones de la cuenta y sus negocios, en el orden en que se crearon; las organizaciones vacías también salen. */
-export async function listClientOrgs(
-  organizationId: string,
-): Promise<{ id: string; name: string; businesses: { id: string; name: string; color: string }[] }[]> {
-  return db.clientOrg.findMany({
+/** El último movimiento del reporte semanal de una organización: cuándo, cómo se disparó, cómo quedó y a quién iba. Una semana saltada al encenderlo (`skipped`) no es un envío y no cuenta. */
+export type LastSend = { at: string; trigger: string; state: string; to: string[]; error: string };
+
+export type ClientOrgListItem = {
+  id: string;
+  name: string;
+  businesses: { id: string; name: string; color: string }[];
+  /** Los ajustes del reporte semanal. */
+  report: ReportSettings;
+  /** El envío más reciente (por fecha de creación; `at` es cuando cambió por última vez, o sea cuando salió o falló), o null si nunca se intentó. Las filas `skipped` no cuentan. */
+  last: LastSend | null;
+};
+
+/** Las organizaciones de la cuenta con sus negocios, sus ajustes de reporte y su último envío, en el orden en que se crearon; las organizaciones vacías también salen. */
+export async function listClientOrgs(organizationId: string): Promise<ClientOrgListItem[]> {
+  const rows = await db.clientOrg.findMany({
     where: { organizationId },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     select: {
       id: true,
       name: true,
+      contactName: true,
+      reportEmail: true,
+      phone: true,
+      reportLang: true,
+      reportOn: true,
+      reportDay: true,
+      reportHour: true,
+      timezone: true,
       businesses: { orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, name: true, color: true } },
+      reports: { where: { state: { not: "skipped" } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 1, select: { updatedAt: true, trigger: true, state: true, to: true, error: true } },
     },
   });
+  return rows.map((o) => {
+    const last = o.reports[0];
+    return {
+      id: o.id,
+      name: o.name,
+      businesses: o.businesses,
+      report: {
+        contactName: o.contactName,
+        reportEmail: o.reportEmail,
+        phone: o.phone,
+        reportLang: o.reportLang === "en" ? "en" : "es",
+        reportOn: o.reportOn,
+        reportDay: o.reportDay,
+        reportHour: o.reportHour,
+        timezone: o.timezone,
+      },
+      last: last ? { at: last.updatedAt.toISOString(), trigger: last.trigger, state: last.state, to: last.to, error: last.error } : null,
+    };
+  });
+}
+
+/**
+ * Guarda los ajustes del reporte semanal de una organización de la cuenta (contacto, emails, idioma, día, hora y zona).
+ * Primero se validan (un campo que no sirve lanza un BiError que lo nombra) y después se escribe solo si la organización
+ * es de la cuenta: con el id de otra cuenta no cambia nada.
+ *
+ * Si el reporte pasa de apagado a encendido y la hora de envío de esta semana (la que se guarda, en su zona) ya pasó, el
+ * primer reporte no sale de inmediato con la semana pasada: se anota esa semana como `skipped` (con los 3 intentos gastados)
+ * y el primero sale la semana siguiente. La fila se escribe ANTES de encender, para que el corredor automático no pueda
+ * ver la organización encendida sin ella. Si la semana ya tenía fila (salió, falló…) se deja como está. `skippedWeek` dice
+ * si se escribió esa fila, para avisárselo a quien guarda.
+ */
+export async function saveClientOrgReport(organizationId: string, clientOrgId: string, raw: Record<string, string>, now = new Date()): Promise<{ skippedWeek: boolean }> {
+  const settings = readReportSettings(raw);
+  const before = await db.clientOrg.findFirst({ where: { id: clientOrgId, organizationId }, select: { reportOn: true } });
+  if (!before) throw notInAccount();
+
+  let skippedWeek = false;
+  const week = settings.reportOn && !before.reportOn ? dueWeek(settings, now, orgTz(settings.timezone)) : null;
+  if (week) {
+    try {
+      await db.clientOrgReport.create({ data: { clientOrgId, week: week.week, trigger: "cron", state: "skipped", attempts: MAX_ATTEMPTS, to: [], createdAt: now, updatedAt: now } });
+      skippedWeek = true;
+    } catch (e) {
+      if (!isUniqueRefusal(e)) throw e; // la semana ya tiene su fila: ya está decidida
+    }
+  }
+  const { count } = await db.clientOrg.updateMany({ where: { id: clientOrgId, organizationId }, data: settings });
+  if (count === 0) throw notInAccount();
+  return { skippedWeek };
 }
 
 /** ¿Otra organización de la cuenta ya se llama así? Sin distinguir mayúsculas; `exceptId` deja fuera a la que se renombra. */

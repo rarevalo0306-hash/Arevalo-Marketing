@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "fs";
 import path from "path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   aiAlerts,
   buildAlertEmail,
@@ -11,6 +11,9 @@ import {
   parseAlertEmails,
   rankAlerts,
   readGapRecommendations,
+  sendSeoEmail,
+  senderLabel,
+  senderWithName,
   shareDrop,
   weeklyCannibal,
   weeklyGbp,
@@ -18,6 +21,7 @@ import {
   weeklyMarket,
   weeklyMovers,
   weeklyTraffic,
+  type Sender,
   type WeeklyData,
 } from "@/lib/seo/alerts";
 import { readBacklinksReport } from "@/lib/seo/backlinks";
@@ -30,6 +34,11 @@ import { readTrafficReport } from "@/lib/seo/traffic";
 import { readVisibilityReport, type VisibilityReport, type VisibilityResult } from "@/lib/seo/visibility";
 import fameseg from "./fixtures/fameseg.json";
 import { backlinksSaved, backlinksSavedBefore, cannibalPageQueries, cannibalRange, famesegAiWithTone, mapBefore, mapNow, trafficSaved } from "./fixtures/seo-tools";
+
+// sendSeoEmail resuelve el remitente en la base de datos: aquí se simula (solo se prueba de dónde sale el nombre del From).
+vi.mock("@/lib/db", () => ({
+  db: { business: { findUniqueOrThrow: vi.fn(async () => ({ name: "Techos" })) }, connection: { findUnique: vi.fn(async () => null) } },
+}));
 
 const row = (keyword: string, position: number | null, extra: Partial<RankRow> = {}): RankRow => ({
   keyword,
@@ -474,5 +483,52 @@ describe("rank alert: share of Google drop", () => {
     const en = buildAlertEmail(biz, [], "en", opts, { share });
     expect(en.html).toContain("Your share of the clicks on your Google searches dropped from 11% to 1%");
     expect(buildAlertEmail(biz, [], "es", opts).html).not.toContain("Tu parte de Google");
+  });
+});
+
+describe("senderWithName", () => {
+  const techos: Sender = { name: "Techos", email: "seo@techos.com", apiKey: "xkeysib-test", via: "app" };
+  it("puts the account name as the visible From name and keeps the rest of the sender", () => {
+    expect(senderWithName(techos, "Ricardo Arevalo")).toEqual({ ...techos, name: "Ricardo Arevalo" });
+    expect(senderWithName(techos, "  Ricardo Arevalo  ").name).toBe("Ricardo Arevalo");
+  });
+  it("keeps the sender's own name when the name is blank or missing", () => {
+    expect(senderWithName(techos, "  ").name).toBe("Techos");
+    expect(senderWithName(techos, "").name).toBe("Techos");
+    expect(senderWithName(techos, undefined).name).toBe("Techos");
+  });
+  it("cuts a very long name to 80 characters", () => {
+    expect(senderWithName(techos, "x".repeat(200)).name).toBe("x".repeat(80));
+  });
+  it("never lets a name break out of the From header", () => {
+    const name = senderWithName(techos, 'Evil" <boss@bank.com>\r\nBcc: x@y.com').name;
+    expect(name).not.toMatch(/[<>"\r\n]/);
+    expect(senderLabel({ name, email: techos.email })).toBe(`${name} <seo@techos.com>`);
+    expect(senderWithName(techos, '<>"').name).toBe("Techos");
+  });
+});
+
+describe("sendSeoEmail fromName", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+  const send = async (fromName?: string) => {
+    vi.stubEnv("BREVO_API_KEY", "xkeysib-test");
+    vi.stubEnv("ALERTS_FROM", "seo@techos.com");
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 201 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const sender = await sendSeoEmail({ businessId: "b1", to: ["cliente@example.com"], subject: "s", html: "<p>h</p>", text: "t", fromName });
+    const body = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
+    return { sender, body };
+  };
+  it("sends with the given From name and returns that sender", async () => {
+    const { sender, body } = await send("Ricardo Arevalo");
+    expect(body.sender).toEqual({ name: "Ricardo Arevalo", email: "seo@techos.com" });
+    expect(sender.name).toBe("Ricardo Arevalo");
+  });
+  it("without fromName, sends with the business name as always", async () => {
+    const { body } = await send();
+    expect(body.sender).toEqual({ name: "Techos", email: "seo@techos.com" });
   });
 });

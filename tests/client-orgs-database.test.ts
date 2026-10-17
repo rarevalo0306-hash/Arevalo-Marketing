@@ -96,7 +96,9 @@ describe.skipIf(!safe)("client organizations on an isolated PostgreSQL", () => {
     await db.business.create({ data: { id: "corg-it-b2", name: "Segundo", color: "#222222", organizationId: A, clientOrgId: juan, createdAt: new Date("2026-03-02T00:00:00Z") } });
     await db.business.create({ data: { id: "corg-it-b1", name: "Primero", color: "#111111", organizationId: A, clientOrgId: juan, createdAt: new Date("2026-03-01T00:00:00Z") } });
 
-    expect(await listClientOrgs(A)).toEqual([
+    // La lista también trae los ajustes del reporte y el último envío (tests/client-org-report-database.test.ts): aquí, nombre y negocios.
+    const nameAndBusinesses = (list: Awaited<ReturnType<typeof listClientOrgs>>) => list.map(({ id, name, businesses }) => ({ id, name, businesses }));
+    expect(nameAndBusinesses(await listClientOrgs(A))).toEqual([
       { id: old.id, name: "Antigua", businesses: [] },
       {
         id: juan,
@@ -108,7 +110,7 @@ describe.skipIf(!safe)("client organizations on an isolated PostgreSQL", () => {
       },
       { id: maria, name: "María López", businesses: [] },
     ]);
-    expect(await listClientOrgs(B)).toEqual([{ id: foreign.id, name: "De la otra cuenta", businesses: [{ id: "corg-it-foreign", name: "Ajeno", color: "#126BBC" }] }]);
+    expect(nameAndBusinesses(await listClientOrgs(B))).toEqual([{ id: foreign.id, name: "De la otra cuenta", businesses: [{ id: "corg-it-foreign", name: "Ajeno", color: "#126BBC" }] }]);
     expect(await listClientOrgs("corg-it-nobody")).toEqual([]);
   });
 

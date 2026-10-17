@@ -994,6 +994,16 @@ export async function resolveSender(businessId: string): Promise<Sender> {
   return { name: b.name.replace(/[<>"]/g, "").slice(0, 80), email: address, apiKey: appKey, via: "app" };
 }
 
+/**
+ * El mismo remitente con otro nombre visible (el From): `name` sin espacios de más y de hasta 80 caracteres reemplaza
+ * al del remitente; en blanco o ausente se queda el de siempre. Sin `<`, `>`, comillas ni saltos de línea, para que
+ * ningún nombre pueda salirse del encabezado From ("Nombre <correo>").
+ */
+export function senderWithName(sender: Sender, name?: string): Sender {
+  const clean = (name ?? "").replace(/[<>"]/g, "").replace(/\s+/g, " ").trim().slice(0, 80);
+  return clean ? { ...sender, name: clean } : sender;
+}
+
 /** "Nombre <correo>" para mostrar en la pantalla (nunca la clave). */
 export const senderLabel = (s: Pick<Sender, "name" | "email">) => (s.name ? `${s.name} <${s.email}>` : s.email);
 
@@ -1017,10 +1027,12 @@ export async function sendSeoEmail(opts: {
   html: string;
   text: string;
   attachments?: EmailAttachment[];
+  /** Otro nombre visible para el From (por ejemplo el de la cuenta): ver senderWithName. */
+  fromName?: string;
 }): Promise<Sender> {
   const to = opts.to.filter((e) => EMAIL_RE.test(e)).slice(0, MAX_ALERT_EMAILS);
   if (!to.length) throw new SenderConfigError("Falta un email válido para recibir los avisos.", "A valid email to receive the alerts is missing.");
-  const sender = await resolveSender(opts.businessId);
+  const sender = senderWithName(await resolveSender(opts.businessId), opts.fromName);
   try {
     if (isBrevo(sender.apiKey)) {
       await fetchJson("https://api.brevo.com/v3/smtp/email", {

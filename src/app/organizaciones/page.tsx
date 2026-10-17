@@ -3,6 +3,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { ClientOrgs } from "@/components/orgs/ClientOrgs";
 import s from "@/components/orgs/Orgs.module.css";
 import { requireUser } from "@/lib/auth";
+import { appTz } from "@/lib/business-tz";
 import { listClientOrgs } from "@/lib/client-orgs-store";
 import { getT } from "@/lib/i18n-server";
 
@@ -36,13 +37,14 @@ export default async function OrganizacionesPage({ searchParams }: { searchParam
       </div>
     );
 
-  const orgs = await listClientOrgs(account.id);
+  // Al navegador llega solo lo que la pantalla muestra (nada más que el almacén agregue después).
+  const orgs = (await listClientOrgs(account.id)).map(({ id, name, businesses, report, last }) => ({ id, name, businesses, report, last }));
 
   return (
     <div className="shell">
       <Sidebar />
       <main className="content">
-        <ClientOrgs key={account.id} accountId={account.id} accountName={account.name} orgs={orgs}>
+        <ClientOrgs key={account.id} accountId={account.id} accountName={account.name} orgs={orgs} appTz={appTz()}>
           {accounts.length > 1 && (
             <nav className={`tabs ${s.tabs}`} aria-label={t("Cuentas que administras", "Accounts you manage")}>
               {accounts.map((a) => (
