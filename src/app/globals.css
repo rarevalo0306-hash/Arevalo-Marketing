@@ -809,7 +809,10 @@ textarea.field.gbp-reply { min-height: 120px; width: 100%; }
   }
   .mbiz-trigger .dot { width: 22px; height: 22px; border-radius: 11px; }
   .mbiz-trigger svg { color: var(--nav-muted); flex-shrink: 0; }
-  .mbiz-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mbiz-name { min-width: 0; display: flex; flex-direction: column; text-align: left; line-height: 1.15; }
+  .mbiz-name > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* La organización del negocio activo: letra chica arriba del nombre */
+  .mbiz-name > .mbiz-org { font-size: 11px; font-weight: 500; color: var(--nav-muted); }
   .mbiz-backdrop { position: fixed; inset: 0; z-index: 40; background: var(--nav-backdrop); }
   .mbiz-menu {
     position: fixed; z-index: 41; top: calc(62px + env(safe-area-inset-top)); left: 10px; right: 10px;
@@ -822,6 +825,10 @@ textarea.field.gbp-reply { min-height: 120px; width: 100%; }
   .mbiz-menu .theme-pick { flex: none; }
   .mbiz-menu .theme-pick button { padding: 9px 8px; font-size: 13px; }
   .mbiz-label { font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--nav-muted); padding: 8px 8px 2px; }
+  /* Un grupo por organización de cliente: su nombre como encabezado y sus negocios debajo */
+  .mbiz-group { display: flex; flex-direction: column; gap: 4px; }
+  .mbiz-group + .mbiz-group { margin-top: 4px; }
+  .mbiz-org-head { font-size: 12px; font-weight: 600; letter-spacing: 0; color: var(--nav-muted); padding: 6px 8px 0; overflow-wrap: anywhere; }
   .mbiz-sep { height: 1px; background: var(--line); margin: 6px 0; }
 }
 

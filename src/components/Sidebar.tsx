@@ -3,6 +3,7 @@ import { logout } from "@/app/actions";
 import { loadApprovals } from "@/lib/approvals";
 import { businessAccess, myBusinessesWhere, requireUser } from "@/lib/auth";
 import { approvalTotal } from "@/lib/approvals-shape";
+import { groupByClientOrg } from "@/lib/client-orgs";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
 import { AppPreferences } from "./AppPreferences";
@@ -15,12 +16,21 @@ export async function Sidebar({ activeId }: { activeId?: string }) {
   // Solo los negocios de las organizaciones de esta persona (src/lib/auth.ts).
   const user = await requireUser();
   const [businesses, approvals, access] = await Promise.all([
-    db.business.findMany({ where: await myBusinessesWhere(), orderBy: { createdAt: "asc" }, select: { id: true, name: true, color: true } }),
+    db.business.findMany({
+      where: await myBusinessesWhere(),
+      orderBy: [{ clientOrg: { createdAt: "asc" } }, { createdAt: "asc" }],
+      select: { id: true, name: true, color: true, clientOrg: { select: { id: true, name: true } } },
+    }),
     activeId ? loadApprovals(activeId).catch(() => []) : Promise.resolve([]),
     activeId ? businessAccess(activeId) : Promise.resolve(null),
   ]);
   const { t } = await getT();
-  const list = businesses.map((b) => ({ id: b.id, name: b.name, color: b.color }));
+  // Agrupados por organización de cliente; a los componentes solo llega lo que pintan.
+  const groups = groupByClientOrg(businesses).map((g) => ({
+    id: g.id,
+    name: g.name,
+    businesses: g.businesses.map((b) => ({ id: b.id, name: b.name, color: b.color })),
+  }));
   // Lo que espera la aprobación del dueño: numerito turquesa en «Inicio».
   const waiting = approvalTotal(approvals);
   const orgs = user.memberships.map((m) => m.organization.name).join(" · ");
@@ -45,7 +55,7 @@ export async function Sidebar({ activeId }: { activeId?: string }) {
       <nav className="sidebar" aria-label={t("Menú principal", "Main menu")}>
         <Link href="/" className="brandmark">Matya</Link>
 
-        <MobileBizMenu businesses={list} activeId={activeId} canAdd={managesTeam}>
+        <MobileBizMenu groups={groups} activeId={activeId} canAdd={managesTeam}>
           {managesTeam && teamLink("biz")}
           {managesTeam && orgsLink("biz")}
           <form action={logout}>
@@ -55,7 +65,7 @@ export async function Sidebar({ activeId }: { activeId?: string }) {
           </form>
         </MobileBizMenu>
 
-        <BizSwitcher businesses={list} activeId={activeId} canAdd={managesTeam} />
+        <BizSwitcher groups={groups} activeId={activeId} canAdd={managesTeam} />
 
         {activeId && <NavLinks businessId={activeId} badges={waiting ? { inicio: waiting } : undefined} hide={hide} />}
 

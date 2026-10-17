@@ -53,7 +53,10 @@
   font: inherit; font-size: 14px; font-weight: 600; letter-spacing: -0.01em; text-align: left; cursor: pointer; transition: border-color 0.15s;
 }
 .switch:hover { border-color: var(--line-strong); }
-.switchName { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.switchName { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; line-height: 1.2; }
+.switchName > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* La organización del negocio activo: letra chica arriba del nombre */
+.switchName > .switchOrg { font-size: 11px; font-weight: 500; letter-spacing: 0; color: var(--nav-muted); }
 .switchChev { flex-shrink: 0; color: var(--nav-muted); transition: transform 0.15s; }
 .switchDot {
   width: 26px; height: 26px; border-radius: 8px; flex-shrink: 0; display: grid; place-items: center;
@@ -62,6 +65,10 @@
 .switchList { display: flex; flex-direction: column; gap: 2px; padding: 4px 0 2px; }
 .switchList[hidden] { display: none; }
 .switchList .row .switchDot { width: 22px; height: 22px; border-radius: 7px; font-size: 11px; }
+/* Un grupo por organización de cliente: su nombre como encabezado y sus negocios debajo */
+.switchGroup { display: flex; flex-direction: column; gap: 2px; }
+.switchGroup + .switchGroup { margin-top: 6px; }
+.switchOrgHead { padding: 4px 12px 2px; font-size: 12px; font-weight: 600; letter-spacing: 0; color: var(--nav-muted); overflow-wrap: anywhere; }
 
 /* ---------- Celular: barra de abajo translúcida y hoja «Más» ---------- */
 .bar, .backdrop, .sheet { display: none; }
