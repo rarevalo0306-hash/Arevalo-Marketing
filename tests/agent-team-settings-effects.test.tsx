@@ -79,4 +79,14 @@ describe("Modo equipo: lo que bloquea «Guardar»", () => {
     ).toEqual({ ...NO_MODEL_MARKS, "price:claude:sonnet:input": false, "price:claude:sonnet:output": false });
     expect(marks({})).toEqual(NO_MODEL_MARKS);
   });
+
+  it("a model of the list blocks nothing: its price is the official one", () => {
+    expect(
+      marks({ agentModels: { director: { provider: "openai", model: "gpt-4.1-mini" }, seo: { provider: "gemini", model: "gemini-2.5-flash-lite" } } }),
+    ).toEqual(NO_MODEL_MARKS);
+  });
+
+  it("Otro modelo with a name that does not read blocks Save", () => {
+    expect(marks({ agentModels: { copy: { provider: "openai", model: "no vale" } } }, "model:copy")).toEqual({ "model:copy": true });
+  });
 });

@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import { AgentError } from "./access";
 import { callCeiling, keyFor, modelConfig, type ModelConfig } from "./metered";
+import { MODEL_CATALOG, MODEL_PRICES_VERIFIED_AT, catalogId } from "./model-catalog";
 import { AgentKeyEnum, ModelChoice, ModelPrice } from "./schema";
 
 type Agent = z.infer<typeof AgentKeyEnum>;
@@ -9,13 +10,18 @@ type Rates = { input: number; output: number };
 
 /**
  * Prices verified on the provider's official page, per million tokens in US dollars.
- * Key: "provider:model". Only prices checked that day belong here (`verifiedAt`, ISO date);
- * when they cannot be verified the table stays empty and the owner sets them in the settings.
+ * Key: "provider:model". Only prices checked that day belong here (`verifiedAt`, ISO date): the
+ * models of the settings list (model-catalog.ts). Any other model gets its price from the owner.
  */
 export const PRICE_TABLE: Record<
   string,
   { input: number; output: number; verifiedAt: string }
-> = {};
+> = Object.fromEntries(
+  MODEL_CATALOG.map((m) => [
+    catalogId(m),
+    { input: m.input, output: m.output, verifiedAt: MODEL_PRICES_VERIFIED_AT },
+  ]),
+);
 
 function entry(raw: unknown, key: string): unknown {
   return typeof raw === "object" && raw !== null && !Array.isArray(raw)

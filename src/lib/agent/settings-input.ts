@@ -1,6 +1,7 @@
 // Leer los números que escribe el dueño en la configuración del Centro MATYA (límites en dólares, publicaciones al día,
 // horas). Vacío o con letras devuelve null: nunca se convierte en cero sin que el dueño lo escriba.
 import { parseMoney } from "@/lib/ads-shape";
+import { catalogEntry } from "@/lib/agent/model-catalog";
 import type { Settings } from "@/lib/agent/schema";
 import type { TeamAgentView } from "@/lib/agent/team-view";
 
@@ -66,7 +67,8 @@ export function setAgentModel(
 /**
  * Los precios de los modelos que algún agente usa: los elegidos en `models` y el modelo por defecto (`defaults`, el que usan los agentes
  * sin modelo propio, ver `defaultModelIds`), cuyo precio guardado manda sobre el de las variables MATYA_AGENT_*. Los de modelos que
- * ya nadie usa se van al guardar.
+ * ya nadie usa se van al guardar, y también los de los modelos de la lista (model-catalog.ts): esos usan el precio oficial, que la
+ * pantalla no deja escribir, y uno guardado de antes no debe quedar mandando sin verse.
  */
 export function pruneModelPrices(
   prices: Settings["modelPrices"],
@@ -74,7 +76,7 @@ export function pruneModelPrices(
   defaults: readonly string[] = [],
 ): Settings["modelPrices"] {
   const used = new Set([...Object.values(models).map((m) => `${m.provider}:${m.model}`), ...defaults]);
-  return Object.fromEntries(Object.entries(prices).filter(([id]) => used.has(id)));
+  return Object.fromEntries(Object.entries(prices).filter(([id]) => used.has(id) && !catalogEntry(id)));
 }
 
 /** The default model (`provider:model`) as the team's view shows it: the model of each agent that calls an AI with no model of its own. */
