@@ -143,6 +143,20 @@ describe("el modelo de cada agente", () => {
     expect(pruneModelPrices({}, models)).toEqual({});
   });
 
+  it("pruneModelPrices quita el precio escrito de un modelo de la lista: vale el oficial", () => {
+    const prices: Settings["modelPrices"] = {
+      "openai:gpt-4.1-mini": { input: 9, output: 9 },
+      "claude:sonnet": { input: 3, output: 15 },
+    };
+    const models: Settings["agentModels"] = {
+      director: { provider: "openai", model: "gpt-4.1-mini" },
+      copy: { provider: "claude", model: "sonnet" },
+    };
+    expect(pruneModelPrices(prices, models)).toEqual({ "claude:sonnet": prices["claude:sonnet"] });
+    // También cuando es el modelo por defecto.
+    expect(pruneModelPrices(prices, {}, ["openai:gpt-4.1-mini"])).toEqual({});
+  });
+
   it("pruneModelPrices también deja el precio del modelo por defecto, que usan los agentes sin modelo propio", () => {
     const prices: Settings["modelPrices"] = {
       "claude:sonnet": { input: 3, output: 15 },

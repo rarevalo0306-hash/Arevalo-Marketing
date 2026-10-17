@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentSettings, SaveButton, focusFirstInvalid, nextFormKey, submitSettings } from "@/components/agent/AgentSettings";
 import { I18nProvider } from "@/components/I18n";
-import { AI_AGENTS, PauseBlock, TeamSettings, pauseAll, resumeAll } from "@/components/agent/TeamSettings";
+import { AI_AGENTS, OTHER_MODEL, PauseBlock, TeamSettings, choiceFor, pauseAll, pickFor, resumeAll } from "@/components/agent/TeamSettings";
 import { DEFAULT_SETTINGS, type Snapshot } from "@/components/agent/types";
 import type { Settings } from "@/lib/agent/schema";
 import { isTickStale, type TeamAgentView } from "@/lib/agent/team-view";
@@ -149,29 +149,96 @@ describe("Modo equipo: la sección", () => {
 });
 
 describe("Modo equipo: la IA de cada agente", () => {
-  it("each row has a provider select with the default model, OpenAI, Claude and Gemini", () => {
+  const options = (select = "") => [...select.matchAll(/<option value="([^"]*)"[^>]*>([^<]*)<\/option>/g)].map((m) => [m[1], m[2]]);
+  const selects = (html: string) => html.match(/<select[\s\S]*?<\/select>/g) ?? [];
+
+  it("each row has one AI list: the default model, the models by provider with their two prices, and Otro modelo", () => {
     for (const row of modelRows(render())) {
-      const select = row.html.match(/<select[\s\S]*?<\/select>/)?.[0] ?? "";
-      expect([...select.matchAll(/<option value="([^"]*)"[^>]*>([^<]*)<\/option>/g)].map((m) => [m[1], m[2]])).toEqual([
+      const [select = "", ...more] = selects(row.html);
+      expect(more).toHaveLength(0);
+      expect(options(select)).toEqual([
         ["", "Modelo por defecto"],
-        ["openai", "OpenAI"],
-        ["claude", "Claude"],
-        ["gemini", "Gemini"],
+        ["openai:gpt-4.1-mini", "GPT-4.1 mini · $0.40 / $1.60 · recomendado"],
+        ["openai:gpt-4.1", "GPT-4.1 · $2.00 / $8.00"],
+        ["openai:gpt-4.1-nano", "GPT-4.1 nano · $0.10 / $0.40"],
+        ["gemini:gemini-2.5-flash-lite", "Gemini 2.5 Flash-Lite · $0.10 / $0.40"],
+        ["other", "Otro modelo (escribir el nombre)"],
       ]);
-      // With the default model there is no model to type and no price to set.
+      // Grouped by provider; Claude has no model on the list, so no group.
+      expect([...select.matchAll(/<optgroup label="([^"]+)"/g)].map((m) => m[1])).toEqual(["OpenAI", "Gemini"]);
+      // With the default model there is no model to type, no price to set and nothing to describe.
       expect(row.html).toMatch(/<option value="" selected="">Modelo por defecto<\/option>/);
       expect(row.html).not.toContain("<input");
+      expect(row.html).not.toContain("Precio oficial");
     }
   });
 
-  it("a row with a model shows its provider selected and the model in a text field", () => {
+  it("a model of the list is selected, says what it is for and its official price, and has nothing to type", () => {
+    const html = render({ settings: { agentModels: { copy: { provider: "openai", model: "gpt-4.1" } } } });
+    const rows = modelRows(html);
+    const copy = rows.find((r) => r.key === "copy")!.html;
+    expect(copy).toMatch(/<option value="openai:gpt-4\.1" selected="">GPT-4\.1 · \$2\.00 \/ \$8\.00<\/option>/);
+    expect(copy).toContain("El que mejor escribe y decide de la lista");
+    expect(copy).toContain("Precio oficial por millón de tokens: entrada $2.00, salida $8.00.");
+    // The description is tied to the list, and there is no provider list or name field.
+    const use = /<p id="([^"]+)" class="note">El que mejor/.exec(copy)?.[1];
+    expect(use).toBeTruthy();
+    expect(copy).toContain(`aria-describedby="${use}"`);
+    expect(selects(copy)).toHaveLength(1);
+    expect(copy).not.toContain("<input");
+    // Its price is the official one: no price row to fill.
+    expect(priceRows(html)).toHaveLength(0);
+    for (const other of rows.filter((r) => r.key !== "copy")) expect(other.html).not.toContain("Precio oficial");
+  });
+
+  it("a model not on the list opens Otro modelo: its provider selected and the model in a text field", () => {
     const html = render({ settings: { agentModels: { copy: { provider: "claude", model: "claude-sonnet-4.5" } } } });
     const rows = modelRows(html);
     const copy = rows.find((r) => r.key === "copy")!.html;
-    expect(copy).toMatch(/<option value="claude" selected="">Claude<\/option>/);
+    const [list, provider] = selects(copy);
+    expect(list).toMatch(/<option value="other" selected="">Otro modelo \(escribir el nombre\)<\/option>/);
+    expect(options(provider)).toEqual([
+      ["openai", "OpenAI"],
+      ["claude", "Claude"],
+      ["gemini", "Gemini"],
+    ]);
+    expect(provider).toMatch(/<option value="claude" selected="">Claude<\/option>/);
+    expect(copy).toContain("Proveedor de IA");
     expect(copy).toMatch(/<input[^>]*type="text"[^>]*value="claude-sonnet-4\.5"/);
     expect(copy).toContain("Redacción");
+    expect(copy).not.toContain("Precio oficial");
     for (const other of rows.filter((r) => r.key !== "copy")) expect(other.html).not.toContain("<input");
+  });
+
+  it("pickFor: the default, a model of the list by its id, anything else Otro modelo", () => {
+    expect(pickFor(undefined)).toBe("");
+    expect(pickFor({ provider: "openai", model: "gpt-4.1-mini" })).toBe("openai:gpt-4.1-mini");
+    expect(pickFor({ provider: "gemini", model: "gemini-2.5-flash-lite" })).toBe("gemini:gemini-2.5-flash-lite");
+    // Same name under another provider is not the listed model.
+    expect(pickFor({ provider: "gemini", model: "gpt-4.1-mini" })).toBe(OTHER_MODEL);
+    expect(pickFor({ provider: "claude", model: "claude-sonnet-4.5" })).toBe(OTHER_MODEL);
+  });
+
+  it("choiceFor: what the settings get for each pick", () => {
+    expect(choiceFor("", "openai", "")).toBeNull();
+    expect(choiceFor("openai:gpt-4.1-mini", "claude", "ignored")).toEqual({ provider: "openai", model: "gpt-4.1-mini" });
+    expect(choiceFor("gemini:gemini-2.5-flash-lite", "openai", "")).toEqual({ provider: "gemini", model: "gemini-2.5-flash-lite" });
+    // Otro modelo: the provider and the name typed, trimmed; nothing while the name does not read.
+    expect(choiceFor(OTHER_MODEL, "claude", "  claude-sonnet-4.5 ")).toEqual({ provider: "claude", model: "claude-sonnet-4.5" });
+    expect(choiceFor(OTHER_MODEL, "claude", "")).toBeNull();
+    expect(choiceFor(OTHER_MODEL, "openai", "no vale")).toBeNull();
+    // A value that is not on the list (an old page, a tampered option) is the default model, never a made-up choice.
+    expect(choiceFor("openai:gpt-9", "openai", "")).toBeNull();
+  });
+
+  it("shows the list, its description and the price in English too", () => {
+    const html = render({ settings: { agentModels: { seo: { provider: "gemini", model: "gemini-2.5-flash-lite" } } } }, { lang: "en" });
+    const seo = modelRows(html).find((r) => r.key === "seo")!.html;
+    expect(options(selects(seo)[0])).toContainEqual(["openai:gpt-4.1-mini", "GPT-4.1 mini · $0.40 / $1.60 · recommended"]);
+    expect(options(selects(seo)[0])).toContainEqual(["other", "Other model (type its name)"]);
+    expect(seo).toContain("Very cheap and fast, from Google.");
+    expect(seo).toContain("Official price per million tokens: input $0.10, output $0.40.");
+    expect(html).toContain("what the agent reads and what it writes");
   });
 
   it("names each agent with its label from the server, or its own name when the team has no data yet", () => {
@@ -348,6 +415,17 @@ describe("Modo equipo: los precios", () => {
     );
     // In the order of the first agent that uses each.
     expect(different.map((r) => r.id)).toEqual(["claude:sonnet", "openai:gpt-5-mini"]);
+  });
+
+  it("a model of the list gets no price row, next to one that needs it", () => {
+    const html = render({
+      settings: {
+        agentModels: { director: { provider: "openai", model: "gpt-4.1-mini" }, copy: { provider: "claude", model: "sonnet" } },
+      },
+    });
+    expect(priceRows(html).map((r) => r.id)).toEqual(["claude:sonnet"]);
+    expect(priceRows(html)[0].html).toContain("Redacción");
+    expect(priceRows(html)[0].html).not.toContain("Director");
   });
 
   it("a price kept for a model nobody uses is not shown", () => {

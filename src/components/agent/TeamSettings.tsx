@@ -5,6 +5,7 @@
 // salvo la pausa, que se aplica al momento y por eso sus botones nunca envían el formulario.
 import { useEffect, useId, useState } from "react";
 import { useT } from "@/components/I18n";
+import { MODEL_CATALOG, catalogEntry, catalogId, catalogUsd } from "@/lib/agent/model-catalog";
 import type { Settings } from "@/lib/agent/schema";
 import { RATE_MAX, formatRate, readModelName, readPrice, setAgentModel } from "@/lib/agent/settings-input";
 import { isTickStale, type TeamAgentView } from "@/lib/agent/team-view";
@@ -166,9 +167,38 @@ function PriceRow({
   );
 }
 
+/** The value of the AI select for «Otro modelo», where the owner picks the provider and types the model. */
+export const OTHER_MODEL = "other";
+
+/** What the AI select shows for a saved choice: the default model (""), a model of the list (its "provider:model") or «Otro modelo». */
+export function pickFor(choice: { provider: string; model: string } | undefined): string {
+  if (!choice) return "";
+  const id = catalogId(choice);
+  return catalogEntry(id) ? id : OTHER_MODEL;
+}
+
 /**
- * The AI of one agent: "Modelo por defecto" or a provider and a model. The provider and the model text stay as chosen here; the
- * settings get the choice only while it is complete, and «Guardar» waits while a provider has no readable model.
+ * What the settings get when the owner picks `pick` in the list: a model of the list, «Otro modelo» with the provider and the name
+ * typed (while the name reads), or null, which is the default model.
+ */
+export function choiceFor(pick: string, provider: Provider, text: string): { provider: Provider; model: string } | null {
+  if (pick === OTHER_MODEL) {
+    const model = readModelName(text);
+    return model ? { provider, model } : null;
+  }
+  const entry = catalogEntry(pick);
+  return entry ? { provider: entry.provider, model: entry.model } : null;
+}
+
+/** The list grouped by provider, in the order of PROVIDERS; a provider with no model on the list has no group. */
+const CATALOG_GROUPS = PROVIDERS.map((p) => ({ ...p, models: MODEL_CATALOG.filter((m) => m.provider === p.id) })).filter(
+  (g) => g.models.length > 0,
+);
+
+/**
+ * The AI of one agent, picked from one list: "Modelo por defecto", a model of the list (with its price and what it is for, and no
+ * price to type) or «Otro modelo», which shows the provider and a field for the model's name. The settings get the choice only while
+ * it is complete, and «Guardar» waits while «Otro modelo» has no readable name.
  */
 function ModelRow({
   agentKey,
@@ -187,16 +217,23 @@ function ModelRow({
 }) {
   const { t } = useT();
   const id = useId();
-  const [provider, setProvider] = useState<Provider | "">(choice?.provider ?? "");
-  const [text, setText] = useState(choice?.model ?? "");
-  const bad = provider !== "" && readModelName(text) === null;
+  const [pick, setPick] = useState(pickFor(choice));
+  // What «Otro modelo» starts with: the saved choice when it is not on the list, else OpenAI and an empty name.
+  const typed = choice && pickFor(choice) === OTHER_MODEL ? choice : undefined;
+  const [provider, setProvider] = useState<Provider>(typed?.provider ?? "openai");
+  const [text, setText] = useState(typed?.model ?? "");
+  const bad = pick === OTHER_MODEL && readModelName(text) === null;
   useReportInvalid(`model:${agentKey}`, bad, onInvalid);
-  const commit = (nextProvider: Provider | "", nextText: string) => {
+  const commitOther = (nextProvider: Provider, nextText: string) => {
     setProvider(nextProvider);
     setText(nextText);
-    const model = readModelName(nextText);
-    onChoice(nextProvider && model ? { provider: nextProvider, model } : null);
+    onChoice(choiceFor(OTHER_MODEL, nextProvider, nextText));
   };
+  const choose = (next: string) => {
+    setPick(next);
+    onChoice(choiceFor(next, provider, text));
+  };
+  const listed = catalogEntry(pick);
   const ready = view ? view.ready && !view.problem : false;
   return (
     <li className={tm.aiRow} data-agent={agentKey}>
@@ -205,17 +242,43 @@ function ModelRow({
       </strong>
       <div className={tm.aiFields} role="group" aria-labelledby={`${id}-name`}>
         <label>
-          {t("Proveedor de IA", "AI provider")}
-          <select value={provider} onChange={(e) => commit(e.target.value as Provider | "", text)}>
+          {t("IA", "AI")}
+          <select value={pick} aria-describedby={listed ? `${id}-use` : undefined} onChange={(e) => choose(e.target.value)}>
             <option value="">{t("Modelo por defecto", "Default model")}</option>
-            {PROVIDERS.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
+            {CATALOG_GROUPS.map((g) => (
+              <optgroup key={g.id} label={g.name}>
+                {g.models.map((m) => (
+                  <option key={m.model} value={catalogId(m)}>
+                    {`${m.name} · ${catalogUsd(m.input)} / ${catalogUsd(m.output)}${m.recommended ? ` · ${t("recomendado", "recommended")}` : ""}`}
+                  </option>
+                ))}
+              </optgroup>
             ))}
+            <option value={OTHER_MODEL}>{t("Otro modelo (escribir el nombre)", "Other model (type its name)")}</option>
           </select>
         </label>
-        {provider !== "" && (
+        {listed && (
+          <p id={`${id}-use`} className={tm.note}>
+            {t(listed.use.es, listed.use.en)}{" "}
+            {t(
+              `Precio oficial por millón de tokens: entrada ${catalogUsd(listed.input)}, salida ${catalogUsd(listed.output)}.`,
+              `Official price per million tokens: input ${catalogUsd(listed.input)}, output ${catalogUsd(listed.output)}.`,
+            )}
+          </p>
+        )}
+        {pick === OTHER_MODEL && (
+          <label>
+            {t("Proveedor de IA", "AI provider")}
+            <select value={provider} onChange={(e) => commitOther(e.target.value as Provider, text)}>
+              {PROVIDERS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {pick === OTHER_MODEL && (
           <div className={s.numberField}>
             <label htmlFor={`${id}-model`}>{t("Modelo", "Model")}</label>
             <input
@@ -227,7 +290,7 @@ function ModelRow({
               value={text}
               aria-invalid={bad}
               aria-describedby={bad ? `${id}-error` : undefined}
-              onChange={(e) => commit(provider, e.target.value)}
+              onChange={(e) => commitOther(provider, e.target.value)}
               onBlur={() => {
                 const model = readModelName(text);
                 if (model !== null && model !== text) setText(model);
@@ -382,11 +445,13 @@ export function TeamSettings({
     const view = views.find((v) => v.key === a.key);
     return { key: a.key, name: view ? t(view.label.es, view.label.en) : t(a.es, a.en), view, choice: value.agentModels[a.key] };
   });
-  // One pair of price fields per model chosen, in the order of the first agent that uses it.
+  // One pair of price fields per model chosen, in the order of the first agent that uses it. A model of the list has its official
+  // price already: nothing to type.
   const models = new Map<string, string[]>();
   for (const a of agents) {
     if (!a.choice) continue;
-    const model = `${a.choice.provider}:${a.choice.model}`;
+    const model = catalogId(a.choice);
+    if (catalogEntry(model)) continue;
     models.set(model, [...(models.get(model) ?? []), a.name]);
   }
   const setPrice = (model: string, price: { input: number; output: number }) =>
@@ -488,8 +553,8 @@ export function TeamSettings({
         <h3>{t("IA de cada agente", "Each agent's AI")}</h3>
         <p className={tm.note}>
           {t(
-            "Sin elegir, el agente usa el modelo por defecto. El estado es el de lo último que guardaste: cambia después de guardar.",
-            "If you pick none, the agent uses the default model. The state is that of what you last saved: it changes after you save.",
+            "Elige la IA de cada agente en la lista. Los dos precios de cada modelo son en dólares por millón de tokens: lo que el agente lee y lo que escribe. Sin elegir, el agente usa el modelo por defecto. El estado es el de lo último que guardaste: cambia después de guardar.",
+            "Pick each agent's AI from the list. Each model's two prices are in dollars per million tokens: what the agent reads and what it writes. If you pick none, the agent uses the default model. The state is that of what you last saved: it changes after you save.",
           )}
         </p>
         <ul className={tm.aiList}>

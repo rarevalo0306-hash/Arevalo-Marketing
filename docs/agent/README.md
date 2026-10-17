@@ -75,7 +75,7 @@ Con el modo encendido, el Centro MATYA suma dos pestañas, **Hoy** y **Equipo**,
 - **Configuración › Modo equipo.**
   - El interruptor «Modo equipo» y la hora del plan de la mañana, en la hora del negocio.
   - Los permisos: publicar en redes sociales y publicar artículos en la web.
-  - «IA de cada agente»: proveedor y modelo de Director, SEO e investigación, Estrategia, Redacción y Revisión; y «Precios de los modelos», los dólares por millón de tokens de cada modelo elegido. Tras guardar, la pantalla dice si cada agente quedó listo.
+  - «IA de cada agente»: la IA de Director, SEO e investigación, Estrategia, Redacción y Revisión, elegida en una lista (`src/lib/agent/model-catalog.ts`). Cada modelo de la lista muestra sus dos precios oficiales (entrada y salida, en dólares por millón de tokens, verificados en la página del proveedor el día que indica `MODEL_PRICES_VERIFIED_AT`) y, al elegirlo, para qué sirve. Esos modelos no piden precio: usan el oficial, y al guardar se borra cualquier precio escrito antes para ellos. La lista solo trae modelos que responden sin un paso de razonamiento, porque lo que un modelo piensa cuenta dentro del límite de cada respuesta y podría cortarla. «Otro modelo» deja elegir el proveedor y escribir el nombre; para esos, «Precios de los modelos» pide los dólares por millón de tokens. Tras guardar, la pantalla dice si cada agente quedó listo.
   - La misma advertencia del llamado de cada minuto.
   - «Pausar todo» y «Reanudar» (ver la sección siguiente). A diferencia del resto, se aplican al momento: no esperan a «Guardar configuración».
 
