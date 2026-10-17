@@ -13,7 +13,7 @@ import { BizSwitcher } from "./nav/BizSwitcher";
 import navStyles from "./nav/Nav.module.css";
 
 export async function Sidebar({ activeId }: { activeId?: string }) {
-  // Solo los negocios de las organizaciones de esta persona (src/lib/auth.ts).
+  // Solo los negocios de las cuentas de esta persona (src/lib/auth.ts).
   const user = await requireUser();
   const [businesses, approvals, access] = await Promise.all([
     db.business.findMany({
@@ -33,8 +33,7 @@ export async function Sidebar({ activeId }: { activeId?: string }) {
   }));
   // Lo que espera la aprobación del dueño: numerito turquesa en «Inicio».
   const waiting = approvalTotal(approvals);
-  const orgs = user.memberships.map((m) => m.organization.name).join(" · ");
-  // El centro de MATYA es solo del Administrador; «Equipo y permisos» y «Agregar negocio» aparecen si administra alguna organización.
+  // El centro de MATYA es solo del Administrador; «Equipo y permisos» y «Agregar negocio» aparecen si administra alguna cuenta.
   const role = access?.ok ? access.role : null;
   const hide = role && role !== "admin" ? ["matya"] : undefined;
   const managesTeam = user.memberships.some((m) => m.role === "admin");
@@ -71,7 +70,11 @@ export async function Sidebar({ activeId }: { activeId?: string }) {
 
         {managesTeam && <div className={`desk-only ${navStyles.side}`} style={{ marginTop: "auto" }}>{teamLink(navStyles.row)}{orgsLink(navStyles.row)}</div>}
         <p className={`desk-only small muted ${navStyles.side}`} style={{ marginTop: managesTeam ? 0 : "auto", padding: "0 12px", overflowWrap: "anywhere" }}>
-          {orgs && <span style={{ display: "block", fontWeight: 600 }}>{orgs}</span>}
+          {user.memberships.map((m) => (
+            <span key={m.organizationId} style={{ display: "block", fontWeight: 600 }}>
+              {t(`Cuenta: ${m.organization.name}`, `Account: ${m.organization.name}`)}
+            </span>
+          ))}
           {user.email}
         </p>
         <form action={logout} className={`desk-only ${navStyles.side}`}>

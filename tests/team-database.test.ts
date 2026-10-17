@@ -368,7 +368,7 @@ describe.skipIf(!safe)("team: invitations, roles and passwords on an isolated Po
     expect(await readReset(tokenOf(second))).toBeNull();
     expect(await completeReset(tokenOf(second), "clave-del-admin-x")).toBeNull();
     expect((await db.user.findUniqueOrThrow({ where: { id: both.id } })).passwordHash).toBe("");
-    await expect(adminResetLink(ORG, inOrg.id)).rejects.toThrow(/otra organización/);
+    await expect(adminResetLink(ORG, inOrg.id)).rejects.toThrow(/otra cuenta/);
     // Solo en ORG otra vez: la contraseña que elige queda atada a ORG.
     await db.membership.delete({ where: { id: elsewhere.id } });
     const third = await adminResetLink(ORG, inOrg.id);
@@ -383,5 +383,24 @@ describe.skipIf(!safe)("team: invitations, roles and passwords on an isolated Po
     expect(team.members.map((m) => [m.email, m.role, m.allBusinesses])).toEqual([["boss@gmail.com", "admin", true]]);
     expect(team.invitations.map((i) => [i.email, i.role, i.businessIds])).toEqual([["ana@ejemplo.com", "viewer", [B1]]]);
     expect(team.businesses.map((b) => b.id)).toEqual([B1, B2]);
+  });
+
+  it("the team view lists each business with its client organization, the older organization first whatever the business dates", async () => {
+    const CORG_LATER = `${ORG}-corg-later`;
+    const B3 = "team-it-b3";
+    try {
+      // La organización nueva es más reciente; su negocio, en cambio, es el más antiguo de todos.
+      await db.clientOrg.create({ data: { id: CORG_LATER, organizationId: ORG, name: "Grupo Rivera", createdAt: new Date(Date.now() + 60_000) } });
+      await db.business.create({ data: { id: B3, name: "Tres", organizationId: ORG, clientOrgId: CORG_LATER, createdAt: new Date("2020-01-01T00:00:00Z") } });
+      const team = await teamOf(ORG);
+      expect(team.businesses.map((b) => [b.id, b.clientOrg])).toEqual([
+        [B1, { id: CORG, name: "Mis compañías" }],
+        [B2, { id: CORG, name: "Mis compañías" }],
+        [B3, { id: CORG_LATER, name: "Grupo Rivera" }],
+      ]);
+    } finally {
+      await db.business.deleteMany({ where: { id: B3 } });
+      await db.clientOrg.deleteMany({ where: { id: CORG_LATER } });
+    }
   });
 });

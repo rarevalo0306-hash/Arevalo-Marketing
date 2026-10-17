@@ -2,8 +2,10 @@
 
 // Papel y empresas de una persona: los usa «Invitar a alguien» y «Cambiar» en la lista. Los nombres de los campos son
 // los que lee src/app/actions-team.ts: role (admin | manager | publisher | viewer), scope (all | some) y businessIds (varios).
+// Las empresas se agrupan por su organización de cliente, con el nombre de la organización como encabezado de cada grupo.
 import { useState } from "react";
 import { useT } from "@/components/I18n";
+import { groupByClientOrg } from "@/lib/client-orgs";
 import { roleLabel, type Role } from "@/lib/roles";
 import type { TeamBusiness } from "./types";
 import s from "./Team.module.css";
@@ -69,17 +71,22 @@ export function AccessFields({ businesses, role: startRole = "publisher", allBus
             <input type="radio" name="scope" value="some" checked={scope === "some"} onChange={() => setScope("some")} disabled={!businesses.length} />
             <span className={s.optionText}>
               <strong>{t("Solo estas:", "Only these:")}</strong>
-              {!businesses.length && <span className="small muted">{t("Todavía no hay empresas en esta organización.", "There are no businesses in this organization yet.")}</span>}
+              {!businesses.length && <span className="small muted">{t("Todavía no hay empresas en esta cuenta.", "There are no businesses in this account yet.")}</span>}
             </span>
           </label>
           {scope === "some" && (
             <div className={s.bizList} role="group" aria-label={t("Empresas a las que entra", "Businesses they can get into")}>
-              {businesses.map((b) => (
-                <label key={b.id} className={s.biz}>
-                  <input type="checkbox" name="businessIds" value={b.id} checked={picked.includes(b.id)} onChange={(e) => toggle(b.id, e.target.checked)} />
-                  <i className={s.dot} style={{ background: b.color }} aria-hidden="true" />
-                  <span>{b.name}</span>
-                </label>
+              {groupByClientOrg(businesses).map((g) => (
+                <div key={g.id} role="group" aria-label={g.name} className={s.bizGroup}>
+                  <div className={s.bizOrgHead}>{g.name}</div>
+                  {g.businesses.map((b) => (
+                    <label key={b.id} className={s.biz}>
+                      <input type="checkbox" name="businessIds" value={b.id} checked={picked.includes(b.id)} onChange={(e) => toggle(b.id, e.target.checked)} />
+                      <i className={s.dot} style={{ background: b.color }} aria-hidden="true" />
+                      <span>{b.name}</span>
+                    </label>
+                  ))}
+                </div>
               ))}
             </div>
           )}

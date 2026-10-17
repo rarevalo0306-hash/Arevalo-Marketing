@@ -91,6 +91,9 @@
 .optionText { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .optionText strong { font-size: 15px; font-weight: 600; }
 .bizList { display: flex; flex-direction: column; gap: 2px; margin-left: 28px; }
+.bizGroup { display: flex; flex-direction: column; gap: 2px; }
+.bizGroup + .bizGroup { margin-top: 8px; }
+.bizOrgHead { padding: 4px 10px 2px; font-size: 12px; font-weight: 600; color: var(--muted); overflow-wrap: anywhere; }
 .biz { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 4px 10px; border-radius: var(--r); cursor: pointer; overflow-wrap: anywhere; }
 .biz:hover { background: var(--surface-hover); }
 .biz input { width: 18px; height: 18px; margin: 0; flex-shrink: 0; }

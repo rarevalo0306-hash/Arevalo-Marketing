@@ -86,7 +86,7 @@ export async function saveDriveFolder(businessId: string, link: string): Promise
     if (taken) {
       return {
         ok: false,
-        message: t("Esa carpeta ya está conectada a un negocio de otra organización.", "That folder is already connected to a business in another organization."),
+        message: t("Esa carpeta ya está conectada a un negocio de otra cuenta.", "That folder is already connected to a business in another account."),
       };
     }
     await db.business.update({

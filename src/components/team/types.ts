@@ -2,7 +2,7 @@
 import type { T } from "@/lib/i18n";
 import type { Role } from "@/lib/roles";
 
-export type TeamBusiness = { id: string; name: string; color: string };
+export type TeamBusiness = { id: string; name: string; color: string; clientOrg: { id: string; name: string } };
 
 export type TeamMember = {
   membershipId: string;
