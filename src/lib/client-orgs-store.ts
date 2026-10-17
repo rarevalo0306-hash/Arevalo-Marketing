@@ -1,9 +1,18 @@
 // Organizaciones de cliente (ClientOrg) en la base de datos. Cada cuenta (Organization) agrupa sus negocios en
-// organizaciones de cliente; esta parte solo asegura que siempre haya una donde poner un negocio nuevo.
+// organizaciones de cliente. Todas las funciones reciben primero el id de la cuenta y solo tocan lo de esa cuenta:
+// un id de otra cuenta (por ejemplo, forjado en un formulario) se rechaza igual que uno que no existe.
+// Quién puede llamarlas (el Administrador de la cuenta) lo decide quien las llama, no este archivo.
 import { db } from "@/lib/db";
+import { DEFAULT_CLIENT_ORG, readOrgName } from "@/lib/client-orgs";
+import { bi } from "@/lib/i18n";
 
-/** El nombre de la organización que se crea sola. Es dato guardado: igual en español y en inglés. */
-export const DEFAULT_CLIENT_ORG_NAME = "Mis compañías";
+const badName = () => bi("Escribe un nombre de 1 a 120 caracteres.", "Enter a name of 1 to 120 characters.");
+const notInAccount = () => bi("Esa organización no es de esta cuenta.", "That organization isn't in this account.");
+const stillHasBusinesses = () =>
+  bi("Esta organización todavía tiene negocios: muévelos antes de borrarla.", "This organization still has businesses: move them before deleting it.");
+
+/** La base de datos rechazó por una llave foránea (Prisma P2003). */
+const isForeignKeyRefusal = (e: unknown) => typeof e === "object" && e !== null && (e as { code?: unknown }).code === "P2003";
 
 /**
  * El id de la organización más antigua de la cuenta; si la cuenta no tiene ninguna, crea «Mis compañías».
@@ -15,7 +24,80 @@ export async function ensureDefaultClientOrg(organizationId: string): Promise<st
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('client-org:' || ${organizationId}::text))`;
     const oldest = await tx.clientOrg.findFirst({ where: { organizationId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true } });
     if (oldest) return oldest.id;
-    const made = await tx.clientOrg.create({ data: { organizationId, name: DEFAULT_CLIENT_ORG_NAME }, select: { id: true } });
+    const made = await tx.clientOrg.create({ data: { organizationId, name: DEFAULT_CLIENT_ORG }, select: { id: true } });
     return made.id;
   });
+}
+
+/** Las organizaciones de la cuenta y sus negocios, en el orden en que se crearon; las organizaciones vacías también salen. */
+export async function listClientOrgs(
+  organizationId: string,
+): Promise<{ id: string; name: string; businesses: { id: string; name: string; color: string }[] }[]> {
+  return db.clientOrg.findMany({
+    where: { organizationId },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: {
+      id: true,
+      name: true,
+      businesses: { orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, name: true, color: true } },
+    },
+  });
+}
+
+/** Crea una organización en la cuenta y devuelve su id. El nombre se recorta y debe tener de 1 a 120 caracteres. */
+export async function createClientOrg(organizationId: string, name: string): Promise<string> {
+  const clean = readOrgName(name);
+  if (clean === null) throw badName();
+  const made = await db.clientOrg.create({ data: { organizationId, name: clean }, select: { id: true } });
+  return made.id;
+}
+
+/** Cambia el nombre de una organización de la cuenta (mismas reglas de nombre que al crearla). */
+export async function renameClientOrg(organizationId: string, clientOrgId: string, name: string): Promise<void> {
+  const clean = readOrgName(name);
+  if (clean === null) throw badName();
+  const { count } = await db.clientOrg.updateMany({ where: { id: clientOrgId, organizationId }, data: { name: clean } });
+  if (count === 0) throw notInAccount();
+}
+
+/**
+ * Borra una organización vacía de la cuenta. Con negocios dentro no se borra: primero se revisa, y si un negocio llega
+ * justo después, la base de datos lo rechaza (P2003) y se avisa con el mismo texto.
+ */
+export async function deleteClientOrg(organizationId: string, clientOrgId: string): Promise<void> {
+  if ((await db.business.count({ where: { clientOrgId, organizationId } })) > 0) throw stillHasBusinesses();
+  let count: number;
+  try {
+    ({ count } = await db.clientOrg.deleteMany({ where: { id: clientOrgId, organizationId } }));
+  } catch (e) {
+    if (isForeignKeyRefusal(e)) throw stillHasBusinesses();
+    throw e;
+  }
+  if (count === 0) throw notInAccount();
+}
+
+/** Pasa un negocio de la cuenta a otra organización de la cuenta. Solo cambia `clientOrgId`. */
+export async function moveBusiness(organizationId: string, businessId: string, clientOrgId: string): Promise<void> {
+  const target = await db.clientOrg.findFirst({ where: { id: clientOrgId, organizationId }, select: { id: true } });
+  if (!target) throw notInAccount();
+  let count: number;
+  try {
+    ({ count } = await db.business.updateMany({ where: { id: businessId, organizationId }, data: { clientOrgId } }));
+  } catch (e) {
+    // La organización de destino se borró entre la revisión y el cambio: la llave foránea compuesta lo rechaza.
+    if (isForeignKeyRefusal(e)) throw notInAccount();
+    throw e;
+  }
+  if (count === 0) throw notInAccount();
+}
+
+/**
+ * La organización donde va un negocio nuevo: la pedida, si es de la cuenta; la de por defecto (la más antigua, o
+ * «Mis compañías» recién creada) cuando no se pidió ninguna (""); si no, error.
+ */
+export async function clientOrgForNewBusiness(organizationId: string, requested: string): Promise<string> {
+  if (requested === "") return ensureDefaultClientOrg(organizationId);
+  const found = await db.clientOrg.findFirst({ where: { id: requested, organizationId }, select: { id: true } });
+  if (!found) throw notInAccount();
+  return found.id;
 }
