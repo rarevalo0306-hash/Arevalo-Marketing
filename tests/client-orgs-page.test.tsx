@@ -138,6 +138,7 @@ describe("la pantalla Organizaciones", () => {
     expect(html).toContain("2 businesses");
     expect(html).not.toContain("Organizaciones");
     expect(html).not.toContain("Borrar organización");
+    expect(html).not.toContain("«"); // screen-reader suffixes included
     expect(render([], "en")).toContain("There are no organizations yet.");
   });
 });

@@ -18,7 +18,7 @@ export async function Sidebar({ activeId }: { activeId?: string }) {
   const [businesses, approvals, access] = await Promise.all([
     db.business.findMany({
       where: await myBusinessesWhere(),
-      orderBy: [{ clientOrg: { createdAt: "asc" } }, { createdAt: "asc" }],
+      orderBy: [{ clientOrg: { createdAt: "asc" } }, { clientOrgId: "asc" }, { createdAt: "asc" }],
       select: { id: true, name: true, color: true, clientOrg: { select: { id: true, name: true } } },
     }),
     activeId ? loadApprovals(activeId).catch(() => []) : Promise.resolve([]),

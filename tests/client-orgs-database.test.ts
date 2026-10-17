@@ -19,6 +19,7 @@ const B = "corg-it-b";
 
 const BAD_NAME = { message: "Escribe un nombre de 1 a 120 caracteres.", en: "Enter a name of 1 to 120 characters." };
 const NOT_IN_ACCOUNT = { message: "Esa organización no es de esta cuenta.", en: "That organization isn't in this account." };
+const DUPLICATE = { message: "Ya hay una organización con ese nombre en esta cuenta.", en: "This account already has an organization with that name." };
 const HAS_BUSINESSES = {
   message: "Esta organización todavía tiene negocios: muévelos antes de borrarla.",
   en: "This organization still has businesses: move them before deleting it.",
@@ -120,13 +121,53 @@ describe.skipIf(!safe)("client organizations on an isolated PostgreSQL", () => {
     expect(await db.clientOrg.findMany({ where: { organizationId: A } })).toEqual([expect.objectContaining({ id, name: "x".repeat(120) })]);
   });
 
+  it("refuses a name another organization of the account already has (trimmed, any case) and creates nothing", async () => {
+    const juan = await createClientOrg(A, "Juan Pérez");
+    await expect(createClientOrg(A, "  juan PÉREZ  ")).rejects.toMatchObject(DUPLICATE);
+    await expect(createClientOrg(A, "Juan Pérez")).rejects.toMatchObject(DUPLICATE);
+    expect((await db.clientOrg.findMany({ where: { organizationId: A } })).map((o) => [o.id, o.name])).toEqual([[juan, "Juan Pérez"]]);
+  });
+
+  it("refuses to rename an organization to another one's name, and leaves its name unchanged", async () => {
+    const juan = await createClientOrg(A, "Juan Pérez");
+    const maria = await createClientOrg(A, "María López");
+    await expect(renameClientOrg(A, maria, " JUAN pérez ")).rejects.toMatchObject(DUPLICATE);
+    await expect(renameClientOrg(A, juan, "María López")).rejects.toMatchObject(DUPLICATE);
+    expect((await db.clientOrg.findMany({ where: { organizationId: A }, orderBy: { createdAt: "asc" } })).map((o) => o.name)).toEqual(["Juan Pérez", "María López"]);
+  });
+
+  it("allows renaming an organization to its own name with another case, or the same name with spaces", async () => {
+    const juan = await createClientOrg(A, "juan pérez");
+    await renameClientOrg(A, juan, "Juan Pérez");
+    expect((await db.clientOrg.findUniqueOrThrow({ where: { id: juan } })).name).toBe("Juan Pérez");
+    await renameClientOrg(A, juan, "  Juan Pérez ");
+    expect((await db.clientOrg.findUniqueOrThrow({ where: { id: juan } })).name).toBe("Juan Pérez");
+  });
+
+  it("allows the same name in another account", async () => {
+    await createClientOrg(A, "Juan Pérez");
+    const other = await createClientOrg(B, "juan pérez");
+    expect(await db.clientOrg.findMany({ where: { organizationId: B } })).toEqual([expect.objectContaining({ id: other, name: "juan pérez" })]);
+    await renameClientOrg(B, other, "JUAN PÉREZ");
+    expect((await db.clientOrg.findUniqueOrThrow({ where: { id: other } })).name).toBe("JUAN PÉREZ");
+    expect(await db.clientOrg.count({ where: { organizationId: A } })).toBe(1);
+  });
+
+  it("compares names as plain text: «%» and «_» are not wildcards", async () => {
+    await createClientOrg(A, "Taller_1");
+    await createClientOrg(A, "Taller 1");
+    await createClientOrg(A, "100%");
+    await createClientOrg(A, "100 por ciento");
+    await expect(createClientOrg(A, "taller_1")).rejects.toMatchObject(DUPLICATE);
+  });
+
   it("rejects an organization or business of another account, even with forged ids, and changes nothing", async () => {
     const mine = await createClientOrg(A, "Mía");
     const theirs = await db.clientOrg.create({ data: { organizationId: B, name: "Suya" } });
     const theirBusiness = await db.business.create({ data: { id: "corg-it-theirs", name: "Del otro", organizationId: B, clientOrgId: theirs.id } });
     const myBusiness = await db.business.create({ data: { id: "corg-it-mine", name: "Mío", organizationId: A, clientOrgId: mine } });
     const before = {
-      orgs: await db.clientOrg.findMany({ orderBy: { id: "asc" } }),
+      orgs: await db.clientOrg.findMany({ where: { organizationId: { in: [A, B] } }, orderBy: { id: "asc" } }),
       businesses: await db.business.findMany({ where: { organizationId: { in: [A, B] } }, orderBy: { id: "asc" } }),
     };
 
@@ -139,7 +180,7 @@ describe.skipIf(!safe)("client organizations on an isolated PostgreSQL", () => {
     await expect(moveBusiness(A, "corg-no-existe", mine)).rejects.toMatchObject(NOT_IN_ACCOUNT);
 
     expect({
-      orgs: await db.clientOrg.findMany({ orderBy: { id: "asc" } }),
+      orgs: await db.clientOrg.findMany({ where: { organizationId: { in: [A, B] } }, orderBy: { id: "asc" } }),
       businesses: await db.business.findMany({ where: { organizationId: { in: [A, B] } }, orderBy: { id: "asc" } }),
     }).toEqual(before);
   });

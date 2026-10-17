@@ -11,6 +11,8 @@ const notInAccount = () => bi("Esa organización no es de esta cuenta.", "That o
 const stillHasBusinesses = () =>
   bi("Esta organización todavía tiene negocios: muévelos antes de borrarla.", "This organization still has businesses: move them before deleting it.");
 
+const nameTaken = () => bi("Ya hay una organización con ese nombre en esta cuenta.", "This account already has an organization with that name.");
+
 /** La base de datos rechazó por una llave foránea (Prisma P2003). */
 const isForeignKeyRefusal = (e: unknown) => typeof e === "object" && e !== null && (e as { code?: unknown }).code === "P2003";
 
@@ -44,18 +46,32 @@ export async function listClientOrgs(
   });
 }
 
-/** Crea una organización en la cuenta y devuelve su id. El nombre se recorta y debe tener de 1 a 120 caracteres. */
+/** ¿Otra organización de la cuenta ya se llama así? Sin distinguir mayúsculas; `exceptId` deja fuera a la que se renombra. */
+async function nameInUse(organizationId: string, name: string, exceptId?: string): Promise<boolean> {
+  const same = await db.clientOrg.findFirst({
+    where: { organizationId, name: { equals: name, mode: "insensitive" }, ...(exceptId === undefined ? {} : { id: { not: exceptId } }) },
+    select: { id: true },
+  });
+  return same !== null;
+}
+
+/**
+ * Crea una organización en la cuenta y devuelve su id. El nombre se recorta, debe tener de 1 a 120 caracteres y no puede
+ * ser el de otra organización de la cuenta (sin distinguir mayúsculas).
+ */
 export async function createClientOrg(organizationId: string, name: string): Promise<string> {
   const clean = readOrgName(name);
   if (clean === null) throw badName();
+  if (await nameInUse(organizationId, clean)) throw nameTaken();
   const made = await db.clientOrg.create({ data: { organizationId, name: clean }, select: { id: true } });
   return made.id;
 }
 
-/** Cambia el nombre de una organización de la cuenta (mismas reglas de nombre que al crearla). */
+/** Cambia el nombre de una organización de la cuenta (mismas reglas de nombre que al crearla; el suyo, con otras mayúsculas, sí vale). */
 export async function renameClientOrg(organizationId: string, clientOrgId: string, name: string): Promise<void> {
   const clean = readOrgName(name);
   if (clean === null) throw badName();
+  if (await nameInUse(organizationId, clean, clientOrgId)) throw nameTaken();
   const { count } = await db.clientOrg.updateMany({ where: { id: clientOrgId, organizationId }, data: { name: clean } });
   if (count === 0) throw notInAccount();
 }

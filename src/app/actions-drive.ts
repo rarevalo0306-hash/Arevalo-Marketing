@@ -78,7 +78,7 @@ export async function saveDriveFolder(businessId: string, link: string): Promise
       where: { id: businessId },
       select: { driveFolderId: true, organizationId: true },
     });
-    // La cuenta de servicio es la misma para todos: la carpeta de un negocio de otra organización no se puede tomar.
+    // La cuenta de servicio es la misma para todos: la carpeta de un negocio de otra cuenta no se puede tomar.
     const taken = await db.business.findFirst({
       where: { driveFolderId: folder.id, organizationId: { not: prev.organizationId } },
       select: { id: true },

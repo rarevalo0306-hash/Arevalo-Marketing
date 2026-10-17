@@ -84,6 +84,7 @@ Además, en **Conexiones** se conectan tres servicios que no publican, pero dan 
 2. **Vercel.** Importa este repositorio y pon las variables (ver [Variables](#variables)). `PUBLIC_BASE_URL` es la dirección de la app, por ejemplo `https://app.matya.app`.
 3. **Crear las tablas** (una sola vez, en una base vacía):
    - Desde tu computadora, con `DATABASE_URL` y `DIRECT_URL` de Supabase en `.env`, corre `npm run db:push`. Crea todas las tablas.
+   - Después aplica también `supabase/migrations/20261017180000_client_orgs.sql` en el SQL Editor: en una base nueva solo agrega el índice único parcial de `ClientOrgReport` que Prisma no expresa (es segura de correr ahí).
    - Después pega esto en el *SQL Editor* de Supabase. Activa RLS y le quita los permisos a `anon` y `authenticated`: la app entra con su propia conexión, y así la API pública de Supabase no puede leer los contactos ni las credenciales.
 
    ```sql
@@ -99,7 +100,7 @@ Además, en **Conexiones** se conectan tres servicios que no publican, pero dan 
 
    `supabase/schema.sql` es la primera versión de las tablas y ya no alcanza para una base nueva. `supabase/migrations/` guarda los cambios que se le aplicaron a la base que ya existía.
 
-   En una base que ya existe, aplica `supabase/migrations/20261017180000_client_orgs.sql` (SQL Editor de Supabase) **antes** de desplegar este código: crea las organizaciones de cliente, le da a cada cuenta que ya tenía negocios una organización «Mis compañías» con todos sus negocios y deja `Business.clientOrgId` como obligatorio. Es aditiva y se puede volver a correr; sin ella la app no puede leer los negocios.
+   En la base que ya existe (producción), aplica `supabase/migrations/20261017180000_client_orgs.sql` (SQL Editor de Supabase) **antes** de fusionar y desplegar este código: crea las organizaciones de cliente, le da a cada cuenta que ya tenía negocios una organización «Mis compañías» con todos sus negocios y deja `Business.clientOrgId` como obligatorio. Es aditiva y se puede volver a correr; sin ella la app no puede leer los negocios (el código nuevo lee `Business.clientOrg`, así que todas las páginas fallan). Entre aplicarla y el despliegue no uses «Agregar negocio»: el código viejo falla con una página de error, aunque no se daña nada.
 4. **Primer acceso.** Entra con un correo de `LOGIN_EMAILS` y `APP_PASSWORD` (o con Google). El primer dueño que entra crea la cuenta principal y queda como Administrador. Desde **Equipo** invita a las demás personas.
 5. **Google Cloud** (para «Conectar con Google» y «Entrar con Google»):
    - Crea un ID de cliente OAuth de tipo *Aplicación web*, con estas direcciones de regreso: `<PUBLIC_BASE_URL>/api/google/callback` y `<PUBLIC_BASE_URL>/api/auth/google/callback`.

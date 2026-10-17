@@ -73,7 +73,7 @@ function MoveForm({ accountId, business, others, onMoved }: { accountId: string;
         </select>
         <button ref={button} type="submit" className={`btn ${s.act}`} disabled={sending}>
           {sending ? t("Moviendo…", "Moving…") : t("Mover", "Move")}
-          <span className="sr-only">{` «${business.name}»`}</span>
+          <span className="sr-only">{t(` «${business.name}»`, ` "${business.name}"`)}</span>
         </button>
       </form>
       <Status result={result} busy={sending} />
@@ -172,7 +172,7 @@ function OrgCard({ accountId, org, others, onNotice }: { accountId: string; org:
         {empty && (
           <button type="button" className={`btn danger ${s.act}`} onClick={remove} disabled={deleting}>
             {deleting ? t("Borrando…", "Deleting…") : t("Borrar organización", "Delete organization")}
-            <span className="sr-only">{` «${org.name}»`}</span>
+            <span className="sr-only">{t(` «${org.name}»`, ` "${org.name}"`)}</span>
           </button>
         )}
       </div>
