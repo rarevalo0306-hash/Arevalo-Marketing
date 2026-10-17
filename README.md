@@ -41,8 +41,10 @@ El menú de cada negocio está ordenado por fases de trabajo:
   - **Publicar:** un solo texto con vista previa por canal, y se puede programar.
 - **Resultados.** Métricas de cada publicación, reporte diario y por fechas, propuestas de la IA, registro de lo que hizo la IA, enlaces dañinos, y reporte SEO mensual con avisos por email.
 - **Equipo y seguridad.**
-  - Cada persona entra con su correo, con contraseña propia o con Google, y solo ve las empresas de su organización.
+  - Cada persona entra con su correo, con contraseña propia o con Google, y solo ve las empresas de su cuenta.
   - Papeles: **Administrador**, **Puede conectar**, **Puede publicar** y **Solo ver**. Los Administradores invitan a las personas y eligen a qué empresas entran.
+  - **Cuenta → Organizaciones → Negocios.** La **cuenta** es la agencia o el dueño que entra a la app. Dentro de ella, cada cliente es una **organización** (por ejemplo «Ricardo PA (cliente)») y cada organización junta los **negocios** de ese cliente. Todo negocio pertenece a una organización de su cuenta. Los clientes no entran a la app. Si una cuenta todavía no tiene ninguna, el primer negocio crea «Mis compañías».
+  - Solo el **Administrador** de la cuenta crea, renombra y borra organizaciones y pasa un negocio de una a otra, desde **Organizaciones** en el menú (`/organizaciones`; si administra varias cuentas, una pestaña por cuenta). Una organización solo se borra cuando no tiene negocios. Al crear un negocio se elige su organización. El selector de negocios los agrupa por organización, y cada persona ve solo las organizaciones que tienen un negocio al que puede entrar.
   - Límite de 5 intentos de entrada cada 15 minutos.
   - Los tokens de las cuentas se guardan cifrados (AES-256-GCM).
   - Desconectar un servicio de Google borra sus datos.
@@ -96,7 +98,9 @@ Además, en **Conexiones** se conectan tres servicios que no publican, pero dan 
    ```
 
    `supabase/schema.sql` es la primera versión de las tablas y ya no alcanza para una base nueva. `supabase/migrations/` guarda los cambios que se le aplicaron a la base que ya existía.
-4. **Primer acceso.** Entra con un correo de `LOGIN_EMAILS` y `APP_PASSWORD` (o con Google). El primer dueño que entra crea la organización principal y queda como Administrador. Desde **Equipo** invita a las demás personas.
+
+   En una base que ya existe, aplica `supabase/migrations/20261017180000_client_orgs.sql` (SQL Editor de Supabase) **antes** de desplegar este código: crea las organizaciones de cliente, le da a cada cuenta que ya tenía negocios una organización «Mis compañías» con todos sus negocios y deja `Business.clientOrgId` como obligatorio. Es aditiva y se puede volver a correr; sin ella la app no puede leer los negocios.
+4. **Primer acceso.** Entra con un correo de `LOGIN_EMAILS` y `APP_PASSWORD` (o con Google). El primer dueño que entra crea la cuenta principal y queda como Administrador. Desde **Equipo** invita a las demás personas.
 5. **Google Cloud** (para «Conectar con Google» y «Entrar con Google»):
    - Crea un ID de cliente OAuth de tipo *Aplicación web*, con estas direcciones de regreso: `<PUBLIC_BASE_URL>/api/google/callback` y `<PUBLIC_BASE_URL>/api/auth/google/callback`.
    - Activa en ese proyecto estas APIs: las de Business Profile (My Business Account Management, Business Information y My Business), Search Console, Google Analytics Admin y Data, y YouTube Data API v3.
