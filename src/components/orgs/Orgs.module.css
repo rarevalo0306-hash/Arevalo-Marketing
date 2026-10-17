@@ -50,3 +50,28 @@
 /* ---------- Nueva organización ---------- */
 .newForm { display: flex; flex-direction: column; gap: 16px; }
 .submit { width: 100%; }
+
+/* ---------- Reporte semanal (ReportPanel.tsx) ---------- */
+/* Debajo de los negocios: el botón, lo programado y el último envío en columna (cabe en 390 px); el formulario va aparte. */
+.report { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; padding-top: 16px; border-top: 1px solid var(--line); }
+.reportLine, .lastLine { margin: 0; max-width: 100%; font-size: 14px; overflow-wrap: anywhere; }
+.reportLine { font-weight: 600; }
+.lastLine { color: var(--muted); }
+/* Un envío que no salió se ve sin abrir el panel; el texto dice «no salió», el color solo lo refuerza. */
+.lastBad { color: var(--err-text); font-weight: 500; }
+
+/* El panel abierto: igual de ancho que la tarjeta. Cerrado lleva `hidden`; sin la regla de abajo, el display de aquí lo mostraría igual. */
+.reportBody {
+  align-self: stretch; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: var(--r-lg);
+  background: var(--surface-2); display: flex; flex-direction: column; gap: 14px;
+}
+.reportBody[hidden] { display: none; }
+.reportForm { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+/* Dos campos lado a lado cuando caben; en un celular (unos 290 px de ancho útil) uno debajo del otro. Día y hora son más cortos. */
+.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 14px; }
+.pairShort { grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); }
+.fld { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.fld > .field { min-width: 0; }
+.sendRow { display: flex; flex-wrap: wrap; gap: 8px; }
+/* El resultado es un aviso que se anuncia al llegar: vacío sigue en la página, sin sumar otro espacio. */
+.reportStatus:empty { margin-top: -14px; }
