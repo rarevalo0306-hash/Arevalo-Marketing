@@ -35,6 +35,8 @@ const safe = !!url && process.env.DATABASE_URL === url && /^postgresql:\/\/[^@]+
 
 const ORG = "team-it-org";
 const OTHER = "team-it-other";
+const CORG = `${ORG}-corg`;
+const CORG_OTHER = `${OTHER}-corg`;
 const B1 = "team-it-b1";
 const B2 = "team-it-b2";
 const BX = "team-it-bx";
@@ -55,7 +57,14 @@ describe.skipIf(!safe)("team: invitations, roles and passwords on an isolated Po
     await db.business.deleteMany({ where: { id: { in: [B1, B2, BX] } } });
     await db.organization.deleteMany({ where: { id: { in: [ORG, OTHER] } } });
     await db.organization.createMany({ data: [{ id: ORG, name: "Equipo IT" }, { id: OTHER, name: "Otra IT" }] });
-    await db.business.createMany({ data: [{ id: B1, name: "Uno", organizationId: ORG }, { id: B2, name: "Dos", organizationId: ORG }, { id: BX, name: "Ajena", organizationId: OTHER }] });
+    await db.clientOrg.createMany({ data: [{ id: CORG, organizationId: ORG, name: "Mis compañías" }, { id: CORG_OTHER, organizationId: OTHER, name: "Mis compañías" }] });
+    await db.business.createMany({
+      data: [
+        { id: B1, name: "Uno", organizationId: ORG, clientOrgId: CORG },
+        { id: B2, name: "Dos", organizationId: ORG, clientOrgId: CORG },
+        { id: BX, name: "Ajena", organizationId: OTHER, clientOrgId: CORG_OTHER },
+      ],
+    });
     const u = await db.user.create({ data: { email: "boss@gmail.com", name: "Boss" } });
     boss = { id: u.id, name: u.name, email: u.email };
     bossMembership = (await db.membership.create({ data: { userId: u.id, organizationId: ORG, role: "admin" } })).id;

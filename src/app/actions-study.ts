@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { aiEnabled, interviewQuestions, profileFromWebsite, studyBusiness } from "@/lib/ai";
 import { newBusinessOrganizationId, requireBusiness } from "@/lib/auth";
+import { ensureDefaultClientOrg } from "@/lib/client-orgs-store";
 import { db } from "@/lib/db";
 import { ensure } from "@/lib/ensure";
 import { errorText } from "@/lib/i18n";
@@ -292,6 +293,7 @@ export async function createBusinessFromWeb(f: FormData) {
   const website = websiteUrl(str(f, "website")).slice(0, 300);
   const owner = ownerFields(f);
   if (owner.ownerEmail === null) throw new Error(t("El correo del dueño no es válido.", "The owner's email isn't valid."));
-  const b = await db.business.create({ data: { organizationId, name, color, website, ...owner, ownerEmail: owner.ownerEmail } });
+  const clientOrgId = await ensureDefaultClientOrg(organizationId);
+  const b = await db.business.create({ data: { organizationId, clientOrgId, name, color, website, ...owner, ownerEmail: owner.ownerEmail } });
   redirect(`/b/${b.id}/diagnostico`);
 }
