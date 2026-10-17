@@ -1,0 +1,52 @@
+/* «Organizaciones» (src/app/organizaciones/page.tsx y src/components/orgs). Solo usa las variables de color de la app
+   (globals.css), así que el tema Noche lo toma sin reglas aparte. Se acomoda al ancho que tiene, no al de la pantalla:
+   con la barra lateral, una pantalla mediana deja poco espacio. En el celular las tarjetas van una debajo de otra. */
+
+/* ---------- Encabezado ---------- */
+.tabs { width: fit-content; max-width: 100%; margin-bottom: 16px; }
+/* El título recibe el foco cuando desaparece una fila (no es un control: sin anillo). */
+.focusTarget:focus { outline: none; }
+
+/* ---------- Dos columnas (organizaciones | nueva) o una sola ---------- */
+.wrap { container: orgs / inline-size; display: flex; flex-direction: column; gap: 16px; }
+.board { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; align-items: start; }
+@container orgs (min-width: 860px) {
+  .board { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+}
+.list { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+/* Avisos vacíos (esperando un resultado): que no sumen otro espacio entre las partes de la tarjeta. */
+.notice:empty { margin-top: -16px; }
+.result:empty { margin-top: -16px; }
+
+/* ---------- Una organización ---------- */
+.head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.title { flex: 1 1 200px; min-width: 0; margin: 0; font-size: var(--fs-card); overflow-wrap: anywhere; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.act.act { min-height: 36px; padding: 0 14px; font-size: 13px; }
+
+/* Editor del nombre */
+.panel {
+  padding: 16px; border: 1px solid var(--line); border-radius: var(--r-lg);
+  background: var(--surface-2); display: flex; flex-direction: column; gap: 14px;
+}
+
+/* ---------- Sus negocios ---------- */
+.bizList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.biz {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px;
+  padding: 12px 0; border-top: 1px solid var(--line);
+}
+.bizName { display: flex; align-items: center; gap: 10px; flex: 1 1 180px; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.dot { width: 10px; height: 10px; border-radius: 5px; flex-shrink: 0; }
+/* «Mover a…»: etiqueta, lista y botón en una fila; en una columna angosta pasan a la línea de abajo. */
+.move { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex: 1 1 280px; max-width: 440px; min-width: 0; }
+.moveLabel { font-size: 13px; font-weight: 600; color: var(--muted); }
+.moveSelect.moveSelect { flex: 1 1 140px; width: auto; min-width: 0; min-height: 40px; padding: 6px 38px 6px 12px; }
+/* El resultado de mover ocupa toda la fila, debajo del nombre y del formulario. */
+.biz > .result { flex-basis: 100%; }
+.biz > .result:empty { margin-top: -10px; }
+
+/* ---------- Nueva organización ---------- */
+.newForm { display: flex; flex-direction: column; gap: 16px; }
+.submit { width: 100%; }

@@ -34,6 +34,12 @@ export async function Sidebar({ activeId }: { activeId?: string }) {
       {t("Equipo y permisos", "Team & permissions")}
     </Link>
   );
+  const orgsLink = (className: string) => (
+    <Link href="/organizaciones" className={className}>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><path d="M14 17.5h7M17.5 14v7" /></svg>
+      {t("Organizaciones", "Organizations")}
+    </Link>
+  );
   return (
     <>
       <nav className="sidebar" aria-label={t("Menú principal", "Main menu")}>
@@ -41,6 +47,7 @@ export async function Sidebar({ activeId }: { activeId?: string }) {
 
         <MobileBizMenu businesses={list} activeId={activeId} canAdd={managesTeam}>
           {managesTeam && teamLink("biz")}
+          {managesTeam && orgsLink("biz")}
           <form action={logout}>
             <button type="submit" className="biz" style={{ width: "100%", background: "none", border: 0, cursor: "pointer", font: "inherit" }}>
               {t("Salir", "Log out")}
@@ -52,7 +59,7 @@ export async function Sidebar({ activeId }: { activeId?: string }) {
 
         {activeId && <NavLinks businessId={activeId} badges={waiting ? { inicio: waiting } : undefined} hide={hide} />}
 
-        {managesTeam && <div className={`desk-only ${navStyles.side}`} style={{ marginTop: "auto" }}>{teamLink(navStyles.row)}</div>}
+        {managesTeam && <div className={`desk-only ${navStyles.side}`} style={{ marginTop: "auto" }}>{teamLink(navStyles.row)}{orgsLink(navStyles.row)}</div>}
         <p className={`desk-only small muted ${navStyles.side}`} style={{ marginTop: managesTeam ? 0 : "auto", padding: "0 12px", overflowWrap: "anywhere" }}>
           {orgs && <span style={{ display: "block", fontWeight: 600 }}>{orgs}</span>}
           {user.email}
