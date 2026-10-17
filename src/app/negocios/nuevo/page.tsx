@@ -1,14 +1,15 @@
 import { redirect } from "next/navigation";
 import { createBusinessFromWeb } from "@/app/actions-study";
 import { Sidebar } from "@/components/Sidebar";
-import { myBusinessesWhere, requireUser } from "@/lib/auth";
+import { myBusinessesWhere, newBusinessOrganizationId, requireUser } from "@/lib/auth";
+import { listClientOrgs } from "@/lib/client-orgs-store";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
 import s from "./nuevo.module.css";
 
 export const dynamic = "force-dynamic";
 
-export default async function NewBusiness() {
+export default async function NewBusiness({ searchParams }: { searchParams: Promise<{ organizacion?: string | string[] }> }) {
   const user = await requireUser();
   const { t } = await getT();
   // Solo un Administrador crea negocios (src/lib/auth.ts); los demás esperan a que les den acceso.
@@ -31,6 +32,13 @@ export default async function NewBusiness() {
     );
   }
   const count = await db.business.count({ where: await myBusinessesWhere() });
+  // Las organizaciones de la cuenta donde se crea el negocio. Si todavía no hay ninguna no se muestra el selector:
+  // al guardar se crea «Mis compañías» (src/lib/client-orgs-store.ts), pero no al solo abrir esta página.
+  const orgs = await listClientOrgs(await newBusinessOrganizationId());
+  // «Agregar negocio» de una organización trae ?organizacion=<id>. Solo vale un texto que sea una organización de la
+  // cuenta; si no (otro id, una lista, vacío), queda la primera, que es la de por defecto.
+  const asked = (await searchParams).organizacion;
+  const clientOrgId = typeof asked === "string" && orgs.some((o) => o.id === asked) ? asked : orgs[0]?.id;
   return (
     <div className="shell">
       <Sidebar />
@@ -52,6 +60,16 @@ export default async function NewBusiness() {
               <label className="lbl" htmlFor="name">{t("Nombre del negocio", "Business name")}</label>
               <input id="name" name="name" className="field" required maxLength={120} autoComplete="organization" placeholder={t("Ej.: Ricardo Public Adjusters", "E.g.: Ricardo Public Adjusters")} />
             </div>
+            {orgs.length > 0 && (
+              <div className="stack">
+                <label className="lbl" htmlFor="clientOrgId">{t("Organización", "Organization")}</label>
+                <select id="clientOrgId" name="clientOrgId" className="field" defaultValue={clientOrgId}>
+                  {orgs.map((o) => (
+                    <option key={o.id} value={o.id}>{o.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="stack">
               <label className="lbl" htmlFor="website">{t("Tu página web", "Your website")} <span className="small muted">{t("(recomendado)", "(recommended)")}</span></label>
               <input id="website" name="website" type="text" inputMode="url" autoComplete="url" autoCapitalize="none" spellCheck={false} className="field" maxLength={300} placeholder={t("Ej.: ricardopa.com", "E.g.: ricardopa.com")} />

@@ -277,8 +277,9 @@ describe.skipIf(!safe)("the team end to end (local database, simulated AI)", () 
     vi.stubGlobal("fetch", vi.fn(provider));
     await db.business.deleteMany({ where: { id: A } });
     await db.organization.upsert({ where: { id: ORG }, create: { id: ORG, name: "MATYA e2e fixture" }, update: {} });
+    await db.clientOrg.upsert({ where: { id: `${ORG}-corg` }, create: { id: `${ORG}-corg`, organizationId: ORG, name: "Mis compañías" }, update: {} });
     await db.business.create({
-      data: { id: A, organizationId: ORG, name: "Techos e2e · fixture", timezone: "America/New_York", aiProfile: "Techos en Florida" },
+      data: { id: A, organizationId: ORG, clientOrgId: `${ORG}-corg`, name: "Techos e2e · fixture", timezone: "America/New_York", aiProfile: "Techos en Florida" },
     });
     // Other test files run the cron for every business at once: this business's morning plan is marked as already made, for a
     // day (9999-12-31) always after today, so `isDailyDue` never fires for it and no cycle elsewhere queues one mid-test. The mark

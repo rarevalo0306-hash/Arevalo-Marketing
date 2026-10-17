@@ -10,8 +10,8 @@ import { fmtDate } from "@/lib/time";
 export const dynamic = "force-dynamic";
 
 /**
- * «Equipo y permisos»: quién puede entrar a la organización, con qué papel y a qué empresas. Solo la ve su
- * Administrador; si administra varias organizaciones, ?org=<id> elige cuál (si no, la primera).
+ * «Equipo y permisos»: quién puede entrar a la cuenta, con qué papel y a qué empresas. Solo la ve su
+ * Administrador; si administra varias cuentas, ?org=<id> elige cuál (si no, la primera).
  */
 export default async function TeamPage({ searchParams }: { searchParams: Promise<{ org?: string | string[] }> }) {
   const user = await requireUser();
@@ -69,7 +69,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
         <header className="page-head">
           <div>
             {orgs.length > 1 && (
-              <nav className={`tabs ${s.orgs}`} aria-label={t("Organizaciones que administras", "Organizations you manage")}>
+              <nav className={`tabs ${s.orgs}`} aria-label={t("Cuentas que administras", "Accounts you manage")}>
                 {orgs.map((o) => (
                   <Link key={o.id} href={`/equipo?org=${encodeURIComponent(o.id)}`} className={`tab ${o.id === org.id ? "on" : ""}`} aria-current={o.id === org.id ? "page" : undefined}>
                     {o.name}

@@ -2,7 +2,8 @@
 //
 //   MATYA_LOCAL_PASSWORD='<10+ characters of your choice>' node scripts/agent-seed-local.mjs
 //
-// It makes two demo businesses and, for `matya-demo-fl` (Ricardo PA), a team-mode day to look at on the Centro MATYA screens:
+// It makes two demo businesses in two client organizations of the account (`matya-demo-ni` in «Mis compañías», `matya-demo-fl` in
+// «Ricardo PA (cliente)»; every run puts them back there) and, for `matya-demo-fl` (Ricardo PA), a team-mode day to look at on the Centro MATYA screens:
 // the morning plan of today (completed), three pieces (one writing, one waiting for the owner after a failed review with two
 // problems, one done) and a local Administrator (`admin@matya.local`) who logs in with MATYA_LOCAL_PASSWORD. Run it again to
 // start the demo day over (it replaces its own runs and the morning plans of that business, nothing of any other). It sends no email, calls no provider and publishes nothing:
@@ -26,11 +27,20 @@ const hashPassword = (password) =>
 
 const db = new PrismaClient();
 const org = await db.organization.upsert({ where: { id: 'matya-demo-org' }, create: { id: 'matya-demo-org', name: 'MATYA local fixture' }, update: {} });
-for (const [id, name, industry, timezone, aiProfile, color] of [
-  ['matya-demo-fl', 'Ricardo PA · prueba local', 'public-adjusting-fl', 'America/New_York', 'Ayudamos a propietarios de Florida con daños a su propiedad. Datos sintéticos para validar MATYA.', '#146d88'],
-  ['matya-demo-ni', 'Fameseg · prueba local', 'commercial-security-ni', 'America/Managua', 'Instalación y mantenimiento de cortinas metálicas en Nicaragua. Datos sintéticos para validar MATYA.', '#166d58'],
+// Two client organizations of the account. The migration's backfill makes its own «Mis compañías» (a `corg_…` id) when an account
+// already had businesses: it is left alone (it may end up empty), the demo businesses are moved into these two on every run.
+const CLIENT_ORGS = [
+  ['matya-demo-corg', 'Mis compañías'],
+  ['matya-demo-corg-rpa', 'Ricardo PA (cliente)'],
+];
+for (const [id, name] of CLIENT_ORGS) {
+  await db.clientOrg.upsert({ where: { id }, create: { id, organizationId: org.id, name }, update: { name } });
+}
+for (const [id, name, industry, timezone, aiProfile, color, clientOrgId] of [
+  ['matya-demo-fl', 'Ricardo PA · prueba local', 'public-adjusting-fl', 'America/New_York', 'Ayudamos a propietarios de Florida con daños a su propiedad. Datos sintéticos para validar MATYA.', '#146d88', 'matya-demo-corg-rpa'],
+  ['matya-demo-ni', 'Fameseg · prueba local', 'commercial-security-ni', 'America/Managua', 'Instalación y mantenimiento de cortinas metálicas en Nicaragua. Datos sintéticos para validar MATYA.', '#166d58', 'matya-demo-corg'],
 ]) {
-  await db.business.upsert({ where: { id }, create: { id, name, timezone, aiProfile, color, organizationId: org.id }, update: {} });
+  await db.business.upsert({ where: { id }, create: { id, name, timezone, aiProfile, color, organizationId: org.id, clientOrgId }, update: { clientOrgId } });
   await db.agentWorkspace.upsert({
     where: { businessId: id },
     create: { businessId: id, industry, enabled: true, allowPublish: false, objective: 'Educar a nuestros clientes con contenido útil y verificable.', memory: 'Español claro, tono profesional y cercano. No inventar promesas, cifras ni descuentos.', dailyBudgetCents: 0, runBudgetCents: 0 },
@@ -230,4 +240,4 @@ await db.agentBudget.upsert({
 });
 
 await db.$disconnect();
-console.log(`ready: two local fixture businesses, admin@matya.local, and the team day ${today} of ${BUSINESS}. No provider connections, no email, no paid calls.`);
+console.log(`ready: two local fixture businesses in two client organizations (Mis compañías, Ricardo PA (cliente)), admin@matya.local, and the team day ${today} of ${BUSINESS}. No provider connections, no email, no paid calls.`);

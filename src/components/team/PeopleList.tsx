@@ -4,11 +4,12 @@
 // pantalla ancha es una tabla; si no cabe (celular), cada persona es una tarjeta. Debajo de cada una van sus acciones.
 import { startTransition, useActionState, useEffect, useId, useRef, useState, useTransition, type FormEvent, type MouseEvent } from "react";
 import { cancelInviteAction, changeMemberAction, removeMemberAction, resendInviteAction, resetLinkAction, type TeamResult } from "@/app/actions-team";
+import { failed, focusLost } from "@/components/action-result";
 import { useT } from "@/components/I18n";
 import { roleLabel } from "@/lib/roles";
 import { AccessFields } from "./AccessFields";
 import { ShareLink } from "./ShareLink";
-import { failed, focusLost, missingBusiness, ROLE_TONE, scopeText, type LinkLife, type TeamBusiness, type TeamInvite, type TeamMember } from "./types";
+import { missingBusiness, ROLE_TONE, scopeText, type LinkLife, type TeamBusiness, type TeamInvite, type TeamMember } from "./types";
 import s from "./Team.module.css";
 
 type Common = { orgId: string; orgName: string; businesses: TeamBusiness[]; life: LinkLife; onNotice: (text: string) => void };
@@ -197,7 +198,7 @@ function MemberRow({ member: m, isMe, orgId, businesses, life, onNotice }: Commo
               <div className={`${s.panel} ${s.confirm}`} role="group" aria-labelledby={`${panelId}-q`}>
                 <p id={`${panelId}-q`}>
                   {isMe
-                    ? t("¿Quitarte el acceso a ti? Saldrás de Matya ahora mismo y no podrás volver a entrar a esta organización.", "Remove your own access? You'll be signed out of Matya right away and won't be able to get back into this organization.")
+                    ? t("¿Quitarte el acceso a ti? Saldrás de Matya ahora mismo y no podrás volver a entrar a esta cuenta.", "Remove your own access? You'll be signed out of Matya right away and won't be able to get back into this account.")
                     : t(`¿Quitarle el acceso a ${who}? Ya no podrá entrar y se cerrará su sesión en todos lados.`, `Remove ${who}'s access? They won't be able to get in, and they'll be signed out everywhere.`)}
                 </p>
                 <div className="row">

@@ -89,6 +89,10 @@ model Business {
   /// La organización dueña de este negocio en Matya. Solo sus miembros lo ven (src/lib/auth.ts).
   organizationId  String
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  /// La organización de cliente (ClientOrg) donde está este negocio. Siempre de la misma cuenta: la clave compuesta
+  /// (clientOrgId, organizationId) lo garantiza en la base.
+  clientOrgId     String
+  clientOrg       ClientOrg    @relation(fields: [clientOrgId, organizationId], references: [id, organizationId], onDelete: Restrict)
   createdAt   DateTime     @default(now())
   library     LibraryItem[]
   tasks       ActionTask[]
@@ -109,6 +113,7 @@ model Business {
   memberAccess MembershipBusiness[]
 
   @@index([organizationId])
+  @@index([clientOrgId])
 }
 
 /// Reportes de SEO de un negocio: auditoría del sitio, visibilidad en las IAs y Search Console.
@@ -600,6 +605,55 @@ model Organization {
   members     Membership[]
   businesses  Business[]
   invitations Invitation[]
+  clientOrgs  ClientOrg[]
+}
+
+/// Una organización de cliente dentro de una cuenta (Organization): agrupa sus negocios y lleva los datos de su reporte
+/// semanal. Los clientes no entran al app. Ver docs/superpowers/specs/2026-10-17-organizaciones-por-cliente-design.md.
+model ClientOrg {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  contactName    String       @default("")
+  /// Hasta 3 emails separados por comas.
+  reportEmail    String       @default("")
+  phone          String       @default("")
+  /// Idioma del reporte semanal: es | en.
+  reportLang     String       @default("es")
+  reportOn       Boolean      @default(false)
+  /// Día de envío: 0 = domingo … 6 = sábado.
+  reportDay      Int          @default(1)
+  /// Hora de envío, 0 a 23, en `timezone`.
+  reportHour     Int          @default(8)
+  /// IANA; "" = la de la app (BUSINESS_TZ).
+  timezone       String       @default("")
+  createdAt      DateTime     @default(now())
+  businesses     Business[]
+  reports        ClientOrgReport[]
+
+  @@unique([id, organizationId])
+  @@index([organizationId])
+}
+
+/// Registro de cada envío del reporte semanal de una organización de cliente.
+/// `trigger`: cron | manual | test. `state`: sending | sent | error | skipped.
+/// En SQL hay además un índice único parcial (clientOrgId, week) WHERE trigger = 'cron' que Prisma no expresa.
+model ClientOrgReport {
+  id          String    @id @default(cuid())
+  clientOrgId String
+  clientOrg   ClientOrg @relation(fields: [clientOrgId], references: [id], onDelete: Cascade)
+  /// El lunes de la semana reportada, YYYY-MM-DD, en la zona de la organización.
+  week        String
+  trigger     String
+  state       String
+  to          String[]  @default([])
+  attempts    Int       @default(1)
+  error       String    @default("")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+
+  @@index([clientOrgId, createdAt])
 }
 
 /// El papel de una persona en una organización: admin (Administrador), publisher (Puede publicar) o viewer (Solo ver).

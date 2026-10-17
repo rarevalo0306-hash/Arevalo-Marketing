@@ -55,7 +55,12 @@ export async function teamOf(organizationId: string) {
       orderBy: { createdAt: "desc" },
       select: { id: true, email: true, role: true, allBusinesses: true, businessIds: true, createdAt: true, expiresAt: true },
     }),
-    db.business.findMany({ where: { organizationId }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, color: true } }),
+    // Agrupadas por organización de cliente, como el selector del menú: la organización más antigua primero (el id desempata).
+    db.business.findMany({
+      where: { organizationId },
+      orderBy: [{ clientOrg: { createdAt: "asc" } }, { clientOrgId: "asc" }, { createdAt: "asc" }],
+      select: { id: true, name: true, color: true, clientOrg: { select: { id: true, name: true } } },
+    }),
     mainOrganizationId(),
   ]);
   return {
@@ -92,7 +97,7 @@ async function sendInvite(to: string, token: string, organizationId: string, acc
   return sendAuthEmail({
     to,
     subject: t(`${inviterName} te invitó a Matya`, `${inviterName} invited you to Matya`),
-    intro: [t(`Hola. ${inviterName} te invitó a trabajar en Matya, en la organización «${org.name}».`, `Hi. ${inviterName} invited you to work in Matya, in the organization "${org.name}".`)],
+    intro: [t(`Hola. ${inviterName} te invitó a trabajar en Matya, en la cuenta «${org.name}».`, `Hi. ${inviterName} invited you to work in Matya, in the account "${org.name}".`)],
     facts: [
       [t("Tu papel:", "Your role:"), roleLabel(access.role, t)],
       [t("Empresas:", "Businesses:"), names],
@@ -330,7 +335,7 @@ export async function adminResetLink(organizationId: string, membershipId: strin
   if (!m) throw bi("Esa persona ya no está en el equipo.", "That person is no longer on the team.");
   if (isOwnerEmail(m.user.email)) throw bi("Es dueño de Matya: elige su contraseña con «¿Olvidaste tu contraseña?».", "They're a Matya owner: they choose their password with \"Forgot your password?\".");
   const elsewhere = await db.membership.count({ where: { userId: m.userId, organizationId: { not: organizationId } } });
-  if (elsewhere) throw bi("Esa persona también está en otra organización: que use «¿Olvidaste tu contraseña?».", "That person is also in another organization: they should use \"Forgot your password?\".");
+  if (elsewhere) throw bi("Esa persona también está en otra cuenta: que use «¿Olvidaste tu contraseña?».", "That person is also in another account: they should use \"Forgot your password?\".");
   return resetLink(await newReset(m.userId, organizationId));
 }
 

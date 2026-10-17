@@ -4,10 +4,11 @@
 // para copiarlo o mandarlo por WhatsApp, y el formulario vuelve a quedar vacío para invitar a otra persona.
 import { startTransition, useActionState, useEffect, useRef, useState, type FormEvent } from "react";
 import { inviteMemberAction, type TeamResult } from "@/app/actions-team";
+import { failed, focusLost } from "@/components/action-result";
 import { useT } from "@/components/I18n";
 import { AccessFields } from "./AccessFields";
 import { ShareLink } from "./ShareLink";
-import { failed, focusLost, missingBusiness, type LinkLife, type TeamBusiness } from "./types";
+import { missingBusiness, type LinkLife, type TeamBusiness } from "./types";
 import s from "./Team.module.css";
 
 type Props = { orgId: string; orgName: string; businesses: TeamBusiness[]; life: LinkLife };

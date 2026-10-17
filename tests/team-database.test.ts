@@ -35,6 +35,8 @@ const safe = !!url && process.env.DATABASE_URL === url && /^postgresql:\/\/[^@]+
 
 const ORG = "team-it-org";
 const OTHER = "team-it-other";
+const CORG = `${ORG}-corg`;
+const CORG_OTHER = `${OTHER}-corg`;
 const B1 = "team-it-b1";
 const B2 = "team-it-b2";
 const BX = "team-it-bx";
@@ -55,7 +57,14 @@ describe.skipIf(!safe)("team: invitations, roles and passwords on an isolated Po
     await db.business.deleteMany({ where: { id: { in: [B1, B2, BX] } } });
     await db.organization.deleteMany({ where: { id: { in: [ORG, OTHER] } } });
     await db.organization.createMany({ data: [{ id: ORG, name: "Equipo IT" }, { id: OTHER, name: "Otra IT" }] });
-    await db.business.createMany({ data: [{ id: B1, name: "Uno", organizationId: ORG }, { id: B2, name: "Dos", organizationId: ORG }, { id: BX, name: "Ajena", organizationId: OTHER }] });
+    await db.clientOrg.createMany({ data: [{ id: CORG, organizationId: ORG, name: "Mis compañías" }, { id: CORG_OTHER, organizationId: OTHER, name: "Mis compañías" }] });
+    await db.business.createMany({
+      data: [
+        { id: B1, name: "Uno", organizationId: ORG, clientOrgId: CORG },
+        { id: B2, name: "Dos", organizationId: ORG, clientOrgId: CORG },
+        { id: BX, name: "Ajena", organizationId: OTHER, clientOrgId: CORG_OTHER },
+      ],
+    });
     const u = await db.user.create({ data: { email: "boss@gmail.com", name: "Boss" } });
     boss = { id: u.id, name: u.name, email: u.email };
     bossMembership = (await db.membership.create({ data: { userId: u.id, organizationId: ORG, role: "admin" } })).id;
@@ -359,7 +368,7 @@ describe.skipIf(!safe)("team: invitations, roles and passwords on an isolated Po
     expect(await readReset(tokenOf(second))).toBeNull();
     expect(await completeReset(tokenOf(second), "clave-del-admin-x")).toBeNull();
     expect((await db.user.findUniqueOrThrow({ where: { id: both.id } })).passwordHash).toBe("");
-    await expect(adminResetLink(ORG, inOrg.id)).rejects.toThrow(/otra organización/);
+    await expect(adminResetLink(ORG, inOrg.id)).rejects.toThrow(/otra cuenta/);
     // Solo en ORG otra vez: la contraseña que elige queda atada a ORG.
     await db.membership.delete({ where: { id: elsewhere.id } });
     const third = await adminResetLink(ORG, inOrg.id);
@@ -374,5 +383,24 @@ describe.skipIf(!safe)("team: invitations, roles and passwords on an isolated Po
     expect(team.members.map((m) => [m.email, m.role, m.allBusinesses])).toEqual([["boss@gmail.com", "admin", true]]);
     expect(team.invitations.map((i) => [i.email, i.role, i.businessIds])).toEqual([["ana@ejemplo.com", "viewer", [B1]]]);
     expect(team.businesses.map((b) => b.id)).toEqual([B1, B2]);
+  });
+
+  it("the team view lists each business with its client organization, the older organization first whatever the business dates", async () => {
+    const CORG_LATER = `${ORG}-corg-later`;
+    const B3 = "team-it-b3";
+    try {
+      // La organización nueva es más reciente; su negocio, en cambio, es el más antiguo de todos.
+      await db.clientOrg.create({ data: { id: CORG_LATER, organizationId: ORG, name: "Grupo Rivera", createdAt: new Date(Date.now() + 60_000) } });
+      await db.business.create({ data: { id: B3, name: "Tres", organizationId: ORG, clientOrgId: CORG_LATER, createdAt: new Date("2020-01-01T00:00:00Z") } });
+      const team = await teamOf(ORG);
+      expect(team.businesses.map((b) => [b.id, b.clientOrg])).toEqual([
+        [B1, { id: CORG, name: "Mis compañías" }],
+        [B2, { id: CORG, name: "Mis compañías" }],
+        [B3, { id: CORG_LATER, name: "Grupo Rivera" }],
+      ]);
+    } finally {
+      await db.business.deleteMany({ where: { id: B3 } });
+      await db.clientOrg.deleteMany({ where: { id: CORG_LATER } });
+    }
   });
 });

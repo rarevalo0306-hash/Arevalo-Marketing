@@ -261,11 +261,17 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
       create: { id: ORG, name: "MATYA fixture" },
       update: {},
     });
+    await db.clientOrg.upsert({
+      where: { id: `${ORG}-corg` },
+      create: { id: `${ORG}-corg`, organizationId: ORG, name: "Mis compañías" },
+      update: {},
+    });
     await db.business.createMany({
       data: [
         {
           id: A,
           organizationId: ORG,
+          clientOrgId: `${ORG}-corg`,
           name: "Ricardo PA · fixture",
           timezone: "America/New_York",
           aiProfile: "Solo propiedades Florida",
@@ -273,6 +279,7 @@ describe.skipIf(!safe)("MATYA isolated PostgreSQL integration", () => {
         {
           id: B,
           organizationId: ORG,
+          clientOrgId: `${ORG}-corg`,
           name: "Fameseg · fixture",
           timezone: "America/Managua",
           aiProfile: "Solo cortinas Nicaragua",
