@@ -11,17 +11,31 @@ type Biz = { id: string; name: string; color: string };
 /** Los negocios de una organización de cliente, en el orden en que se muestran. Nunca llega un grupo vacío. */
 export type BizGroup = { id: string; name: string; businesses: Biz[] };
 
+/** Una cuenta de la persona con sus organizaciones debajo. Puede no tener ninguna a la vista. */
+export type BizAccount = { id: string; name: string; groups: BizGroup[] };
+
+/** El negocio activo con su organización y su cuenta, o nada si no está entre los que se ven. */
+export function findActive(accounts: BizAccount[], activeId?: string) {
+  for (const account of accounts) {
+    for (const group of account.groups) {
+      const business = group.businesses.find((b) => b.id === activeId);
+      if (business) return { account, group, business };
+    }
+  }
+  return null;
+}
+
 /**
- * Computadora: el negocio activo en un control blanco redondeado (con línea fina), con el nombre de su organización arriba en letra chica.
- * Al tocarlo se abre la lista de negocios agrupada por organización y «Agregar negocio» debajo (solo para el Administrador), dentro de la barra.
- * Sin negocio activo la lista se ve abierta.
+ * Computadora: el negocio activo en un control blanco redondeado (con línea fina), con su cuenta y su organización arriba en letra chica.
+ * Al tocarlo se abre el árbol: cada cuenta, sus organizaciones un poco más adentro y los negocios de cada una más adentro todavía,
+ * y «Agregar negocio» debajo (solo para el Administrador), dentro de la barra. Sin negocio activo la lista se ve abierta.
  */
-export function BizSwitcher({ groups, activeId, canAdd }: { groups: BizGroup[]; activeId?: string; canAdd: boolean }) {
+export function BizSwitcher({ accounts, activeId, canAdd }: { accounts: BizAccount[]; activeId?: string; canAdd: boolean }) {
   const { t } = useT();
   const path = usePathname();
   const id = useId();
-  const activeGroup = groups.find((g) => g.businesses.some((b) => b.id === activeId));
-  const active = activeGroup?.businesses.find((b) => b.id === activeId);
+  const current = findActive(accounts, activeId);
+  const active = current?.business;
   const [open, setOpen] = useState(!active);
   useEffect(() => setOpen(!active), [path, active]);
   useEffect(() => {
@@ -40,15 +54,19 @@ export function BizSwitcher({ groups, activeId, canAdd }: { groups: BizGroup[]; 
           </span>
         )}
         <span className={s.switchName}>
-          {active && activeGroup ? (
+          {current ? (
             <>
+              <span className={s.switchAccount}>
+                <span className="sr-only">{t("Cuenta: ", "Account: ")}</span>
+                {current.account.name}
+              </span>
               <span className={s.switchOrg}>
                 <span className="sr-only">{t("Organización: ", "Organization: ")}</span>
-                {activeGroup.name}
+                {current.group.name}
               </span>
               <span className={s.switchBiz}>
                 <span className="sr-only">{t("Negocio: ", "Business: ")}</span>
-                {active.name}
+                {current.business.name}
               </span>
             </>
           ) : (
@@ -60,16 +78,24 @@ export function BizSwitcher({ groups, activeId, canAdd }: { groups: BizGroup[]; 
         </svg>
       </button>
       <div id={id} className={s.switchList} hidden={!open}>
-        {groups.map((g) => (
-          <div key={g.id} role="group" aria-label={g.name} className={s.switchGroup}>
-            <div className={s.switchOrgHead}>{g.name}</div>
-            {g.businesses.map((b) => (
-              <Link key={b.id} href={`/b/${b.id}/inicio`} className={`${s.row}${b.id === activeId ? ` ${s.on}` : ""}`} aria-current={b.id === activeId ? "true" : undefined}>
-                <span className={s.switchDot} style={{ background: b.color }} aria-hidden="true">
-                  {initial(b.name)}
-                </span>
-                <span className={s.text}>{b.name}</span>
-              </Link>
+        {accounts.map((a) => (
+          <div key={a.id} role="group" aria-label={a.name} className={s.switchAccountGroup}>
+            <div className={s.switchAccountHead}>
+              <span className="sr-only">{t("Cuenta: ", "Account: ")}</span>
+              {a.name}
+            </div>
+            {a.groups.map((g) => (
+              <div key={g.id} role="group" aria-label={g.name} className={s.switchGroup}>
+                <div className={s.switchOrgHead}>{g.name}</div>
+                {g.businesses.map((b) => (
+                  <Link key={b.id} href={`/b/${b.id}/inicio`} className={`${s.row}${b.id === activeId ? ` ${s.on}` : ""}`} aria-current={b.id === activeId ? "true" : undefined}>
+                    <span className={s.switchDot} style={{ background: b.color }} aria-hidden="true">
+                      {initial(b.name)}
+                    </span>
+                    <span className={s.text}>{b.name}</span>
+                  </Link>
+                ))}
+              </div>
             ))}
           </div>
         ))}

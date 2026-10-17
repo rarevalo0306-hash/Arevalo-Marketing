@@ -10,9 +10,10 @@
 // What it does, with a fresh login at 390 px, at 1280 px and at 390 px in the night theme: opens /organizaciones (a card per
 // organization with its business) and /b/matya-demo-fl/inicio with the company picker open (the desktop switcher in the sidebar, the
 // phone's menu from the top bar), saving a screenshot of each in <directory>, and fails if a page scrolls sideways
-// (document.documentElement.scrollWidth > window.innerWidth). In the open picker it checks that both organization names appear, each
-// one with its business under it and never an empty heading, and that nothing sticks out of the picker. It only reads: it submits no
-// form, so the database is as the seed left it. Exit code 0 only when every check passed.
+// (document.documentElement.scrollWidth > window.innerWidth). In the open picker it checks the tree: the account «MATYA local fixture»
+// once at the top, both organizations inside it, each one with its business under it and never an empty heading, and that nothing
+// sticks out of the picker; on the computer the closed button reads account / organization / business, in that order. It only reads:
+// apart from the login it submits no form, so the database is as the seed left it. Exit code 0 only when every check passed.
 import { mkdirSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
@@ -25,6 +26,8 @@ const base = (process.argv[3] ?? process.env.MATYA_UI_URL ?? 'http://localhost:3
 const email = process.env.MATYA_LOCAL_EMAIL ?? 'admin@matya.local';
 const password = process.env.MATYA_LOCAL_PASSWORD ?? '';
 const BUSINESS = 'matya-demo-fl';
+// The account of the seed (`matya-demo-org`): the top of the picker's tree, above its organizations.
+const ACCOUNT = 'MATYA local fixture';
 // Each organization of the seed with the business that must be under it.
 const ORGS = [
   { id: 'matya-demo-corg', name: 'Mis compañías', business: 'Fameseg · prueba local' },
@@ -171,13 +174,20 @@ async function picker(page, width, tag) {
   if (!opened) return;
   const { trigger, list } = opened;
   pass(`the company picker is open at ${tag}`);
-  // The active business shows its organization above its name.
+  // The active business shows its organization above its name, and on the computer its account above both.
   const triggerText = ((await trigger.textContent()) ?? '').replace(/\s+/g, ' ');
-  if (triggerText.includes('Ricardo PA (cliente)') && triggerText.includes('Ricardo PA · prueba local')) pass('the picker button shows the organization and the active business');
-  else fail(`the picker button reads "${triggerText}", expected the organization «Ricardo PA (cliente)» above «Ricardo PA · prueba local»`);
+  const lines = [...(width <= 900 ? [] : [ACCOUNT]), 'Ricardo PA (cliente)', 'Ricardo PA · prueba local'];
+  const at = lines.map((line) => triggerText.indexOf(line));
+  if (at.every((i, n) => i >= 0 && (n === 0 || i > at[n - 1]))) pass(`the picker button reads, in order: ${lines.join(' / ')}`);
+  else fail(`the picker button reads "${triggerText}", expected in order: ${lines.join(' / ')}`);
+  // The tree: the account once, with its name as the heading, and each organization inside it with its business.
+  const account = list.getByRole('group', { name: ACCOUNT, exact: true });
+  await expectCount(account, 1, `picker: groups named «${ACCOUNT}»`);
+  // The heading reads «Cuenta: » to a screen reader before the name (an sr-only span), so its whole text is matched.
+  await expectVisible(account.getByText(`Cuenta: ${ACCOUNT}`, { exact: true }), `picker: the account heading «${ACCOUNT}»`);
   for (const o of ORGS) {
-    const group = list.getByRole('group', { name: o.name, exact: true });
-    await expectCount(group, 1, `picker: groups named «${o.name}»`);
+    const group = account.getByRole('group', { name: o.name, exact: true });
+    await expectCount(group, 1, `picker: groups named «${o.name}» inside «${ACCOUNT}»`);
     await expectVisible(group.getByText(o.name, { exact: true }), `picker: the heading «${o.name}»`);
     await expectVisible(group.getByText(o.business, { exact: true }), `picker: «${o.business}» under «${o.name}»`);
   }
