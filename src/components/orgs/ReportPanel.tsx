@@ -78,7 +78,7 @@ type Props = {
   accountId: string;
   org: Org;
   /** La zona de la app, para mostrar la hora del último envío y decir cuál es «La de la app» (el navegador no la conoce). */
-  appTz?: string;
+  appTz: string;
 };
 
 export function ReportPanel({ accountId, org, appTz }: Props) {
@@ -183,7 +183,7 @@ export function ReportPanel({ accountId, org, appTz }: Props) {
                 {t("Zona horaria", "Time zone")}
               </label>
               <select id={id("tz")} name="timezone" className="field" defaultValue={report.timezone}>
-                <option value="">{appTz ? t(`La de la app (${tzName(appTz, "es")})`, `The app's (${tzName(appTz, "en")})`) : t("La de la app", "The app's")}</option>
+                <option value="">{t(`La de la app (${tzName(appTz, "es")})`, `The app's (${tzName(appTz, "en")})`)}</option>
                 {zones.map((z) => (
                   <option key={z.id} value={z.id}>
                     {z[lang]}

@@ -53,7 +53,7 @@ const ORGS: Org[] = [
 const withReport = (report: Partial<ReportSettings>, last: LastSend | null = SENT): Org[] => [{ ...ORGS[0], report: { ...ON, ...report }, last }, ORGS[1]];
 const withLast = (last: Partial<LastSend> | null): Org[] => withReport({}, last && { ...SENT, ...last });
 
-const render = (orgs: Org[] = ORGS, lang: "es" | "en" = "es", accountName = "Agencia Arévalo", appTz?: string) =>
+const render = (orgs: Org[] = ORGS, lang: "es" | "en" = "es", accountName = "Agencia Arévalo", appTz = "America/New_York") =>
   renderToStaticMarkup(
     <I18nProvider lang={lang}>
       <ClientOrgs accountId="acc1" accountName={accountName} orgs={orgs} appTz={appTz} />
@@ -289,7 +289,7 @@ describe("the weekly report panel: the form", () => {
   it("offers «La de la app» plus the common zones, and keeps a saved zone that isn't one of them", () => {
     const zones = select(card(render(), "c1"), "timezone");
     expect(optionValues(zones)[0]).toBe("");
-    expect(optionTexts(zones)[0]).toBe("La de la app");
+    expect(optionTexts(zones)[0]).toMatch(/^La de la app \(.+\)$/); // it says which zone the app has
     expect(optionValues(zones)).toEqual(expect.arrayContaining(["America/Managua", "America/New_York", "America/Costa_Rica"]));
     expect(optionTexts(zones)).toContain("Nicaragua (Managua)");
     const odd = select(card(render(withReport({ timezone: "Asia/Tokyo" })), "c1"), "timezone");
@@ -399,7 +399,7 @@ describe("the weekly report panel: the last send", () => {
 
   it("shows the moment in the organization's zone, or the app's when it has none", () => {
     const at = "2026-10-12T14:35:00.000Z";
-    const line = (timezone: string, appTz?: string) => card(render(withReport({ timezone }, { ...SENT, at }), "es", "Agencia", appTz), "c1").match(/Último envío: [^<]*/)?.[0] ?? "";
+    const line = (timezone: string, appTz = "America/New_York") => card(render(withReport({ timezone }, { ...SENT, at }), "es", "Agencia", appTz), "c1").match(/Último envío: [^<]*/)?.[0] ?? "";
     expect(line("America/Managua")).toContain("8:35"); // UTC-6
     expect(line("", "America/New_York")).toContain("10:35"); // UTC-4 in October
     expect(line("", "Asia/Tokyo")).toContain("11:35"); // UTC+9

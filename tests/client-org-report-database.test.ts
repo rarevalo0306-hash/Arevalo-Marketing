@@ -5,10 +5,16 @@ import { db } from "@/lib/db";
 import { BiError } from "@/lib/i18n";
 import { listClientOrgs, saveClientOrgReport } from "@/lib/client-orgs-store";
 import { claimCronWeek, runClientOrgReports, sendClientOrgReport } from "@/lib/client-org-report-run";
+import { reportHighlights } from "@/lib/daily-report";
 import { SenderConfigError, sendSeoEmail } from "@/lib/seo/alerts";
 
 // El envío de verdad (Brevo/Resend) se reemplaza; todo lo demás de seo/alerts (SenderConfigError, parseAlertEmails) es el real.
 vi.mock("@/lib/seo/alerts", async (orig) => ({ ...(await orig<typeof import("@/lib/seo/alerts")>()), sendSeoEmail: vi.fn() }));
+// reportHighlights llama a la real; un test la usa de gancho para mover la fila entre reservar la semana y mandar.
+vi.mock("@/lib/daily-report", async (orig) => {
+  const real = await orig<typeof import("@/lib/daily-report")>();
+  return { ...real, reportHighlights: vi.fn(real.reportHighlights) };
+});
 
 const url = process.env.MATYA_TEST_DATABASE_URL ?? "";
 const safe = !!url && process.env.DATABASE_URL === url && /^postgresql:\/\/[^@]+@127\.0\.0\.1:55439\/matya_agent$/.test(url);
@@ -24,6 +30,8 @@ const at = (minutes: number) => new Date(now.getTime() + minutes * 60_000);
 const WEEK = "2026-10-12";
 
 const send = vi.mocked(sendSeoEmail);
+const highlights = vi.mocked(reportHighlights);
+const GENERIC_ERROR = "No se pudo armar o mandar el reporte. / The report could not be built or sent.";
 
 /** Primero los negocios (su organización de cliente y su cuenta los protegen con Restrict), después las cuentas (borran sus organizaciones y sus envíos). */
 async function clean() {
@@ -50,6 +58,7 @@ describe.skipIf(!safe)("the weekly client report on an isolated PostgreSQL", () 
     await db.organization.createMany({ data: [{ id: A, name: "Agencia A IT" }, { id: B, name: "Agencia B IT" }] });
     send.mockReset();
     send.mockResolvedValue(SENDER);
+    highlights.mockReset();
   });
   afterAll(async () => {
     await clean();
@@ -251,7 +260,7 @@ describe.skipIf(!safe)("the weekly client report on an isolated PostgreSQL", () 
   it("records a failed send with its message cut to 300 characters and returns the outcome instead of throwing", async () => {
     const org = await makeOrg(A);
     await makeBusiness("corep-it-b1", org);
-    send.mockRejectedValueOnce(new Error("x".repeat(500)));
+    send.mockRejectedValueOnce(new BiError("x".repeat(500), "y".repeat(500)));
     const out = await sendClientOrgReport(org.id, { trigger: "manual", organizationId: A, now });
     expect(out).toMatchObject({ state: "error", week: { week: WEEK }, to: ["a@x.com", "b@y.com"], error: "x".repeat(300) });
     expect(await db.clientOrgReport.findMany({ where: { clientOrgId: org.id } })).toMatchObject([{ trigger: "manual", state: "error", attempts: 1, error: "x".repeat(300) }]);
@@ -316,7 +325,7 @@ describe.skipIf(!safe)("the weekly client report on an isolated PostgreSQL", () 
   it("saveClientOrgReport saves its own organization and validates before writing", async () => {
     const org = await makeOrg(A, { reportOn: false, reportEmail: "" });
     const raw = { contactName: " Juan Pérez ", reportEmail: "J@x.com, m@y.com", phone: "555-1234", reportLang: "en", reportDay: "5", reportHour: "17", timezone: "Europe/Madrid", reportOn: "on" };
-    await saveClientOrgReport(A, org.id, raw);
+    await saveClientOrgReport(A, org.id, raw, now);
     expect(await db.clientOrg.findUnique({ where: { id: org.id } })).toMatchObject({
       contactName: "Juan Pérez",
       reportEmail: "j@x.com, m@y.com",
@@ -327,16 +336,17 @@ describe.skipIf(!safe)("the weekly client report on an isolated PostgreSQL", () 
       reportHour: 17,
       timezone: "Europe/Madrid",
     });
-    await expect(saveClientOrgReport(A, org.id, { ...raw, reportHour: "99" })).rejects.toBeInstanceOf(BiError);
+    await expect(saveClientOrgReport(A, org.id, { ...raw, reportHour: "99" }, now)).rejects.toBeInstanceOf(BiError);
     expect(await db.clientOrg.findUnique({ where: { id: org.id } })).toMatchObject({ reportHour: 17 });
   });
 
   it("saveClientOrgReport writes only its own account's organization", async () => {
     const orgB = await makeOrg(B, { contactName: "Original", reportOn: false });
     const raw = { contactName: "Forjado", reportEmail: "f@x.com", phone: "", reportLang: "es", reportDay: "1", reportHour: "8", timezone: "", reportOn: "on" };
-    await expect(saveClientOrgReport(A, orgB.id, raw)).rejects.toThrow(NOT_IN_ACCOUNT);
-    await expect(saveClientOrgReport(A, "corep-it-nobody", raw)).rejects.toThrow(NOT_IN_ACCOUNT);
+    await expect(saveClientOrgReport(A, orgB.id, raw, now)).rejects.toThrow(NOT_IN_ACCOUNT);
+    await expect(saveClientOrgReport(A, "corep-it-nobody", raw, now)).rejects.toThrow(NOT_IN_ACCOUNT);
     expect(await db.clientOrg.findUnique({ where: { id: orgB.id } })).toMatchObject({ contactName: "Original", reportOn: false, reportEmail: "a@x.com, b@y.com" });
+    expect(await db.clientOrgReport.count({ where: { clientOrgId: orgB.id } })).toBe(0);
   });
 
   it("listClientOrgs returns the settings and the newest send", async () => {
@@ -361,5 +371,260 @@ describe.skipIf(!safe)("the weekly client report on an isolated PostgreSQL", () 
     expect(list[1].report).toEqual({ contactName: "", reportEmail: "", phone: "", reportLang: "en", reportOn: false, reportDay: 3, reportHour: 20, timezone: "" });
     expect(list[1].last).toBeNull();
     expect((await listClientOrgs(B))[0].last).toMatchObject({ trigger: "manual" });
+  });
+
+  // ---------- Un intento reemplazado ----------
+
+  /** El intento P1 se queda parado en el proveedor; 31 minutos después otra corrida reclama la semana (intento 2) y la manda. */
+  const RECLAIM_AT = 31;
+
+  it("a superseded automatic attempt that fails does not overwrite the newer outcome, and the week is delivered once", async () => {
+    const org = await makeOrg(A);
+    await makeBusiness("corep-it-b1", org);
+    let calls = 0;
+    let delivered = 0;
+    send.mockImplementation(async () => {
+      calls += 1;
+      if (calls === 1) {
+        // P1 está parado dentro de la llamada al proveedor: otra corrida reclama la semana, la manda, y después P1 falla.
+        await sendClientOrgReport(org.id, { trigger: "cron", organizationId: null, now: at(RECLAIM_AT) });
+        throw new Error("late failure of the first attempt");
+      }
+      delivered += 1;
+      return SENDER;
+    });
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const out = await sendClientOrgReport(org.id, { trigger: "cron", organizationId: null, now });
+    const logged = log.mock.calls.map((c) => c.join(" ")).join("\n");
+    log.mockRestore();
+
+    expect(out).toMatchObject({ state: "error" }); // su propio resultado se devuelve, pero no se escribe
+    expect(delivered).toBe(1);
+    const [row] = await cronRows(org.id);
+    expect(row).toMatchObject({ week: WEEK, state: "sent", attempts: 2, error: "" });
+    expect(row.updatedAt).toEqual(at(RECLAIM_AT));
+    expect(logged).toContain(`[reporte-semanal] ${org.id}: intento reemplazado`);
+    expect(logged).not.toContain("late failure"); // y nada del error
+
+    // La siguiente vuelta no la reintenta: la semana ya salió.
+    expect(await runClientOrgReports(at(RECLAIM_AT + 1))).toEqual({ checked: 0, sent: 0, errors: 0 });
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(delivered).toBe(1);
+  });
+
+  it("a superseded automatic attempt whose own send succeeds does not overwrite the newer row either", async () => {
+    const org = await makeOrg(A);
+    await makeBusiness("corep-it-b1", org);
+    let calls = 0;
+    send.mockImplementation(async () => {
+      calls += 1;
+      if (calls === 1) await sendClientOrgReport(org.id, { trigger: "cron", organizationId: null, now: at(RECLAIM_AT) });
+      return SENDER;
+    });
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const out = await sendClientOrgReport(org.id, { trigger: "cron", organizationId: null, now });
+    log.mockRestore();
+    expect(out).toMatchObject({ state: "sent" });
+    const [row] = await cronRows(org.id);
+    expect(row).toMatchObject({ state: "sent", attempts: 2 });
+    expect(row.updatedAt).toEqual(at(RECLAIM_AT)); // no se le puso la hora vieja del primer intento
+  });
+
+  it("a cron attempt whose claim was taken over before the provider call stops without sending", async () => {
+    const org = await makeOrg(A);
+    await makeBusiness("corep-it-b1", org);
+    const real = await vi.importActual<typeof import("@/lib/daily-report")>("@/lib/daily-report");
+    // Entre reservar la semana y mandar, otra corrida la reclama (intentos 2).
+    highlights.mockImplementationOnce(async (...args) => {
+      await db.clientOrgReport.updateMany({ where: { clientOrgId: org.id, trigger: "cron" }, data: { attempts: 2, updatedAt: at(RECLAIM_AT) } });
+      return real.reportHighlights(...args);
+    });
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const out = await sendClientOrgReport(org.id, { trigger: "cron", organizationId: null, now });
+    const logged = log.mock.calls.map((c) => c.join(" ")).join("\n");
+    log.mockRestore();
+    expect(out).toBeNull();
+    expect(send).not.toHaveBeenCalled();
+    expect(logged).toContain(`[reporte-semanal] ${org.id}: intento reemplazado`);
+    const [row] = await cronRows(org.id);
+    expect(row).toMatchObject({ state: "sending", attempts: 2 });
+    expect(row.updatedAt).toEqual(at(RECLAIM_AT));
+  });
+
+  it("manual and test sends still record their outcome through the fenced write", async () => {
+    const org = await makeOrg(A);
+    await makeBusiness("corep-it-b1", org);
+    send.mockRejectedValueOnce(new BiError("El proveedor no responde.", "The provider is not answering."));
+    expect(await sendClientOrgReport(org.id, { trigger: "manual", organizationId: A, now })).toMatchObject({ state: "error" });
+    expect(await sendClientOrgReport(org.id, { trigger: "test", organizationId: A, to: ["t@x.com"], now })).toMatchObject({ state: "sent" });
+    const rows = await db.clientOrgReport.findMany({ where: { clientOrgId: org.id }, orderBy: { trigger: "asc" } });
+    expect(rows).toMatchObject([
+      { trigger: "manual", state: "error", error: "El proveedor no responde." },
+      { trigger: "test", state: "sent", to: ["t@x.com"], error: "" },
+    ]);
+  });
+
+  // ---------- El texto de un error ----------
+
+  it("stores a generic text, not the message, for an error that is not a BiError, and logs only its name", async () => {
+    const org = await makeOrg(A);
+    await makeBusiness("corep-it-b1", org);
+    const prismaLike = Object.assign(new Error("Invalid `prisma.post.findMany()` invocation: Can't reach database server at `db.internal-host:5432`"), { name: "PrismaClientInitializationError" });
+    send.mockRejectedValueOnce(prismaLike);
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const out = await sendClientOrgReport(org.id, { trigger: "manual", organizationId: A, now });
+    const logged = log.mock.calls.map((c) => c.join(" ")).join("\n");
+    log.mockRestore();
+    expect(out).toMatchObject({ state: "error", error: GENERIC_ERROR });
+    const rows = await db.clientOrgReport.findMany({ where: { clientOrgId: org.id } });
+    expect(rows).toMatchObject([{ state: "error", error: GENERIC_ERROR }]);
+    expect(JSON.stringify(rows)).not.toContain("internal-host");
+    expect(logged).toContain("PrismaClientInitializationError");
+    expect(logged).not.toContain("internal-host");
+  });
+
+  it("keeps the message of a BiError as it was", async () => {
+    const org = await makeOrg(A);
+    await makeBusiness("corep-it-b1", org);
+    send.mockRejectedValueOnce(new BiError("Falta el email de envío.", "The sending email is missing."));
+    expect(await sendClientOrgReport(org.id, { trigger: "manual", organizationId: A, now })).toMatchObject({ state: "error", error: "Falta el email de envío." });
+  });
+
+  // ---------- La prueba sin a quién mandarla ----------
+
+  it("a test send with no valid recipient blames the Administrator's own email, not the report email", async () => {
+    const org = await makeOrg(A);
+    await makeBusiness("corep-it-b1", org);
+    for (const to of [undefined, [], ["no-es-un-email"]]) {
+      const err = await sendClientOrgReport(org.id, { trigger: "test", organizationId: A, ...(to ? { to } : {}), now }).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(BiError);
+      expect((err as BiError).message).toBe("Tu email de acceso no es válido: no se puede mandarte la prueba.");
+      expect((err as BiError).en).toBe("Your login email isn't valid: the test can't be sent to you.");
+    }
+    // Y un envío «ahora» con el email guardado roto sigue hablando del email del reporte.
+    await db.clientOrg.update({ where: { id: org.id }, data: { reportEmail: "no-es-un-email" } });
+    const manual = await sendClientOrgReport(org.id, { trigger: "manual", organizationId: A, now }).catch((e: unknown) => e);
+    expect((manual as BiError).message).toBe("Falta a quién mandarlo: escribe un email válido para el reporte.");
+    expect(send).not.toHaveBeenCalled();
+    expect(await db.clientOrgReport.count({ where: { clientOrgId: org.id } })).toBe(0);
+  });
+
+  // ---------- «Lo que viene» ----------
+
+  describe("«Lo que viene» only goes out close to the end of the week", () => {
+    /** Un negocio con una publicación programada para el lunes 19 a las 11:00 de Nueva York, o sea dentro de las 24 horas después de la semana. */
+    async function setUp() {
+      const org = await makeOrg(A);
+      await makeBusiness("corep-it-b1", org);
+      await db.post.create({ data: { businessId: "corep-it-b1", text: "Publicación del lunes", status: "scheduled", scheduledAt: new Date("2026-10-19T15:00:00Z") } });
+      return org;
+    }
+    const COMING = /Próximos pasos|próximas 24 horas|Lo que viene/;
+
+    it("a Monday 8:00 send keeps it", async () => {
+      const org = await setUp();
+      await sendClientOrgReport(org.id, { trigger: "manual", organizationId: A, now: new Date("2026-10-19T12:00:00Z") });
+      const { html, text } = send.mock.calls[0][0];
+      expect(html).toContain("próximas 24 horas");
+      expect(text).toContain("Próximos pasos");
+    });
+
+    it("a Tuesday send (more than 24 hours after the week ended) has no «Lo que viene», not even in the summary", async () => {
+      const org = await setUp();
+      const out = await sendClientOrgReport(org.id, { trigger: "manual", organizationId: A, now: new Date("2026-10-20T12:00:00Z") });
+      expect(out).toMatchObject({ state: "sent", week: { week: WEEK } }); // still the same week
+      const { html, text } = send.mock.calls[0][0];
+      expect(html).not.toMatch(COMING);
+      expect(text).not.toMatch(COMING);
+    });
+
+    it("exactly 24 hours after the end of the week still keeps it", async () => {
+      const org = await setUp();
+      await sendClientOrgReport(org.id, { trigger: "manual", organizationId: A, now: new Date("2026-10-20T04:00:00Z") });
+      expect(send.mock.calls[0][0].html).toContain("próximas 24 horas");
+    });
+  });
+
+  // ---------- Encender el reporte ----------
+
+  describe("switching the report on", () => {
+    const settings = (over: Record<string, string> = {}) => ({ contactName: "", reportEmail: "a@x.com", phone: "", reportLang: "es", reportDay: "1", reportHour: "8", timezone: "America/New_York", reportOn: "on", ...over });
+    /** Una organización apagada, con otro horario guardado: el de lo que se guarda es el que cuenta. */
+    const offOrg = (over: Partial<Prisma.ClientOrgUncheckedCreateInput> = {}) => makeOrg(A, { reportOn: false, reportDay: 5, reportHour: 17, ...over });
+
+    it("after this week's send moment it writes a skipped row, so nothing goes out this week and the next week sends", async () => {
+      const org = await offOrg();
+      await makeBusiness("corep-it-b1", org);
+      expect(await saveClientOrgReport(A, org.id, settings(), now)).toEqual({ skippedWeek: true });
+      expect(await cronRows(org.id)).toMatchObject([{ week: WEEK, trigger: "cron", state: "skipped", attempts: 3, to: [], error: "", createdAt: now, updatedAt: now }]);
+
+      expect(await runClientOrgReports(now)).toEqual({ checked: 0, sent: 0, errors: 0 });
+      expect(await runClientOrgReports(at(3 * 24 * 60))).toEqual({ checked: 0, sent: 0, errors: 0 });
+      expect(await runClientOrgReports(at(6 * 24 * 60 + 9 * 60))).toEqual({ checked: 0, sent: 0, errors: 0 }); // el domingo a las 6 p. m. en Nueva York
+      expect(send).not.toHaveBeenCalled();
+      expect(await sendClientOrgReport(org.id, { trigger: "cron", organizationId: null, now })).toBeNull(); // ni siquiera a la fuerza
+
+      // El lunes siguiente a las 8:00 sale la semana que acaba de terminar.
+      expect(await runClientOrgReports(at(7 * 24 * 60))).toEqual({ checked: 1, sent: 1, errors: 0 });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(await cronRows(org.id)).toMatchObject([
+        { week: WEEK, state: "skipped" },
+        { week: "2026-10-19", state: "sent", attempts: 1 },
+      ]);
+    });
+
+    it("before this week's send moment it writes nothing, and the first run at the moment sends", async () => {
+      const org = await offOrg();
+      await makeBusiness("corep-it-b1", org);
+      expect(await saveClientOrgReport(A, org.id, settings(), new Date("2026-10-19T11:59:00Z"))).toEqual({ skippedWeek: false });
+      expect(await cronRows(org.id)).toEqual([]);
+      expect(await runClientOrgReports(new Date("2026-10-19T12:00:00Z"))).toEqual({ checked: 1, sent: 1, errors: 0 });
+      expect(await cronRows(org.id)).toMatchObject([{ week: WEEK, state: "sent" }]);
+    });
+
+    it("saving again while the report is already on writes no row", async () => {
+      const org = await makeOrg(A); // encendida desde antes
+      expect(await saveClientOrgReport(A, org.id, settings(), now)).toEqual({ skippedWeek: false });
+      expect(await saveClientOrgReport(A, org.id, settings({ reportHour: "9" }), now)).toEqual({ skippedWeek: false });
+      expect(await cronRows(org.id)).toEqual([]);
+    });
+
+    it("saving it off, or off again, writes no row", async () => {
+      const org = await offOrg();
+      expect(await saveClientOrgReport(A, org.id, settings({ reportOn: "" }), now)).toEqual({ skippedWeek: false });
+      expect(await cronRows(org.id)).toEqual([]);
+    });
+
+    it("a week that already has its row is left as it is (nothing is overwritten and nothing throws)", async () => {
+      const org = await offOrg();
+      const sentRow = await db.clientOrgReport.create({ data: { clientOrgId: org.id, week: WEEK, trigger: "cron", state: "sent", attempts: 1, to: ["a@x.com"], createdAt: at(-60), updatedAt: at(-60) } });
+      expect(await saveClientOrgReport(A, org.id, settings(), now)).toEqual({ skippedWeek: false });
+      expect(await cronRows(org.id)).toMatchObject([{ id: sentRow.id, state: "sent", attempts: 1, to: ["a@x.com"] }]);
+      expect(await db.clientOrg.findUniqueOrThrow({ where: { id: org.id }, select: { reportOn: true } })).toEqual({ reportOn: true });
+    });
+
+    it("a refused or invalid save writes no row and leaves the organization off", async () => {
+      const mine = await offOrg();
+      const foreign = await makeOrg(B, { reportOn: false });
+      await expect(saveClientOrgReport(A, foreign.id, settings(), now)).rejects.toThrow(NOT_IN_ACCOUNT);
+      await expect(saveClientOrgReport(A, mine.id, settings({ reportHour: "99" }), now)).rejects.toBeInstanceOf(BiError);
+      expect(await db.clientOrgReport.count({ where: { clientOrgId: { in: [mine.id, foreign.id] } } })).toBe(0);
+      expect(await db.clientOrg.findMany({ where: { id: { in: [mine.id, foreign.id] } }, select: { reportOn: true } })).toEqual([{ reportOn: false }, { reportOn: false }]);
+    });
+
+    it("the schedule that counts is the one being saved, in the zone being saved", async () => {
+      // Guardado para los viernes a las 17:00 en Madrid: en Madrid el lunes 19 a las 14:00 UTC todavía no llegó el viernes.
+      const org = await offOrg({ timezone: "America/New_York", reportDay: 1, reportHour: 8 });
+      expect(await saveClientOrgReport(A, org.id, settings({ timezone: "Europe/Madrid", reportDay: "5", reportHour: "17" }), now)).toEqual({ skippedWeek: false });
+      expect(await cronRows(org.id)).toEqual([]);
+    });
+
+    it("listClientOrgs ignores a skipped row: «last» stays null, and a real send still shows", async () => {
+      const org = await offOrg();
+      await db.clientOrgReport.create({ data: { clientOrgId: org.id, week: WEEK, trigger: "cron", state: "skipped", attempts: 3, to: [], createdAt: now, updatedAt: now } });
+      expect((await listClientOrgs(A))[0].last).toBeNull();
+      await db.clientOrgReport.create({ data: { clientOrgId: org.id, week: WEEK, trigger: "manual", state: "sent", to: ["a@x.com"], createdAt: at(-5), updatedAt: at(-5) } });
+      expect((await listClientOrgs(A))[0].last).toMatchObject({ trigger: "manual", state: "sent" });
+    });
   });
 });

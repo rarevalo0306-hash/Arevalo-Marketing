@@ -1,7 +1,7 @@
 /** Solo contra la base local aislada (127.0.0.1:55439/matya_agent), nunca contra una base configurada de verdad. */
 // Las acciones de «Organizaciones» con el almacén de verdad: un Administrador de dos cuentas no puede tocar, desde una,
 // las organizaciones ni los negocios de la otra, ni con ids forjados en el formulario. Solo la sesión está simulada.
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ requireOrgAdmin: vi.fn(async () => ({ id: "usr_both" })), requireUser: vi.fn() }));
@@ -39,6 +39,9 @@ describe.skipIf(!safe)("the Organizaciones actions on an isolated PostgreSQL, fo
     orgB1 = (await db.clientOrg.create({ data: { organizationId: B, name: "B uno" } })).id;
     await db.business.create({ data: { id: "corg-act-biz-a", name: "Negocio A", organizationId: A, clientOrgId: orgA1 } });
     await db.business.create({ data: { id: "corg-act-biz-b", name: "Negocio B", organizationId: B, clientOrgId: orgB1 } });
+  });
+  afterEach(() => {
+    vi.useRealTimers(); // some tests set the clock
   });
   afterAll(async () => {
     await clean();
@@ -90,6 +93,7 @@ describe.skipIf(!safe)("the Organizaciones actions on an isolated PostgreSQL, fo
 
   it("saves the report settings of an organization of the account, and refuses one of the other account without writing anything", async () => {
     const settings = { contactName: "Ana", reportEmail: "ana@x.com", phone: "555", reportLang: "en", timezone: "America/Mexico_City", reportOn: "on", reportDay: "2", reportHour: "9" };
+    vi.setSystemTime(new Date("2026-10-19T12:00:00Z")); // a Monday: Tuesday 9:00 in Mexico City has not come, so nothing is skipped
     expect(await saveClientOrgReportAction(A, orgA1, null, form(settings))).toEqual({ ok: true, message: "Guardado." });
     expect(await db.clientOrg.findUniqueOrThrow({ where: { id: orgA1 }, select: { contactName: true, reportEmail: true, phone: true, reportLang: true, timezone: true, reportOn: true, reportDay: true, reportHour: true } })).toEqual({
       contactName: "Ana",
@@ -107,6 +111,23 @@ describe.skipIf(!safe)("the Organizaciones actions on an isolated PostgreSQL, fo
     expect(await saveClientOrgReportAction(A, orgB1, null, form({ ...settings, reportEmail: "robado@x.com", organizationId: B, accountId: B }))).toEqual(NOT_IN_ACCOUNT);
     expect(await db.clientOrg.findUniqueOrThrow({ where: { id: orgB1 } })).toEqual(before);
     expect(await db.clientOrg.count({ where: { reportEmail: "robado@x.com" } })).toBe(0);
+  });
+
+  it("switching the report on after this week's send time says the first report goes out next week, and only the first time", async () => {
+    const settings = { contactName: "Ana", reportEmail: "ana@x.com", phone: "", reportLang: "es", timezone: "America/Mexico_City", reportOn: "on", reportDay: "2", reportHour: "9" };
+    vi.setSystemTime(new Date("2026-10-21T12:00:00Z")); // Wednesday: Tuesday 9:00 in Mexico City already passed
+    expect(await saveClientOrgReportAction(A, orgA1, null, form(settings))).toEqual({
+      ok: true,
+      message: "Guardado. Esta semana ya pasó la hora de envío: el primer reporte sale la próxima semana.",
+    });
+    expect(await db.clientOrgReport.findMany({ where: { clientOrgId: orgA1 }, select: { week: true, trigger: true, state: true, attempts: true } })).toEqual([
+      { week: "2026-10-12", trigger: "cron", state: "skipped", attempts: 3 },
+    ]);
+    expect(await saveClientOrgReportAction(A, orgA1, null, form(settings))).toEqual({ ok: true, message: "Guardado." });
+    expect(await db.clientOrgReport.count({ where: { clientOrgId: orgA1 } })).toBe(1);
+    // Another account's organization: refused, and no skipped row appears for it.
+    expect(await saveClientOrgReportAction(A, orgB1, null, form(settings))).toEqual(NOT_IN_ACCOUNT);
+    expect(await db.clientOrgReport.count({ where: { clientOrgId: orgB1 } })).toBe(0);
   });
 
   it("explains a setting that does not work and keeps what was saved", async () => {

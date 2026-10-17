@@ -3,6 +3,7 @@ import {
   buildClientOrgEmail,
   CLIENT_SECTIONS,
   clientOnly,
+  clientSection,
   clientView,
   dueWeek,
   orgHighlights,
@@ -287,6 +288,20 @@ describe("the client hears only about what went out", () => {
       expect(i.meta).toMatch(/\d/); // the time stays
       expect(i.meta).not.toMatch(/respondida|sin responder|answered/i);
     }
+  });
+  it("a review keeps only the time part of its line, so a reworded answered marker still does not reach the client", () => {
+    const items = [
+      { text: "a", meta: "17 oct 2026, 3:00 p. m. · sin contestar" },
+      { text: "b", meta: "17 oct 2026, 3:00 p. m. · respondida" },
+      { text: "c", meta: "Oct 17, 2026, 3:00 PM · not replied yet · and another note" },
+      { text: "d", meta: "Oct 17, 2026, 3:00 PM" },
+      { text: "e", meta: " · lo que sea" },
+      { text: "f" },
+    ];
+    const metas = clientSection({ id: "reviews", title: "Reseñas", items }).items!.map((i) => i.meta);
+    expect(metas).toEqual(["17 oct 2026, 3:00 p. m.", "17 oct 2026, 3:00 p. m.", "Oct 17, 2026, 3:00 PM", "Oct 17, 2026, 3:00 PM", undefined, undefined]);
+    // the other sections keep their lines whole
+    expect(clientSection({ id: "posts", title: "Publicaciones", items: [{ text: "x", meta: "uno · dos" }] }).items![0].meta).toBe("uno · dos");
   });
   it.each(["es", "en"] as const)("the %s email and its summary have no failed or skipped post, no reason, no skipped note and no unanswered marker; the sent posts stay with their links", async (lang) => {
     const mail = await clientEmailOf(lang);

@@ -201,29 +201,24 @@ function publicLink(href: string | null | undefined): string | null {
   return v;
 }
 
-/** Lo que reportSections escribe al final de la línea de cada reseña según la hayan respondido o no (es y en). */
-const ANSWERED_MARKS = new Set(["respondida", "sin responder", "answered", "not answered yet"]);
-
-/** La línea de una reseña sin su «respondida / sin responder»: si la agencia la contestó o no es cosa de la agencia. */
-function withoutAnsweredMark(meta: string | undefined): string | undefined {
-  if (!meta) return meta;
-  const parts = meta.split(" · ");
-  if (ANSWERED_MARKS.has(parts[parts.length - 1])) parts.pop();
-  return parts.join(" · ") || undefined;
+/** De la línea de una reseña, solo la hora (lo que va antes del primer « · »): lo demás es de la agencia (si la contestó o no) y no se deja pasar. */
+function reviewMeta(meta: string | undefined): string | undefined {
+  return meta?.split(" · ")[0] || undefined;
 }
 
 /**
  * Una sección para el cliente, campo por campo (una lista blanca, no `...s`): sin `href`/`hrefText` (llevan a la app) ni
  * `more` («y 12 más en el historial» habla de la app), y con links solo si son públicos (la publicación o la reseña).
+ * De las reseñas solo queda la hora de cada una.
  */
-function clientSection(s: ViewSection): ViewSection {
+export function clientSection(s: ViewSection): ViewSection {
   const out: ViewSection = { id: s.id, title: s.title };
   if (s.note) out.note = s.note;
   if (s.stats) out.stats = s.stats.map((x) => ({ label: x.label, value: x.value, sub: x.sub, tone: x.tone }));
   if (s.items) {
     out.items = s.items.map((i) => {
       const href = publicLink(i.href);
-      const meta = s.id === "reviews" ? withoutAnsweredMark(i.meta) : i.meta;
+      const meta = s.id === "reviews" ? reviewMeta(i.meta) : i.meta;
       return href ? { text: i.text, tone: i.tone, meta, href, linkText: i.linkText } : { text: i.text, tone: i.tone, meta };
     });
   }

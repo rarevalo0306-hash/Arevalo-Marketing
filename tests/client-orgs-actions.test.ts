@@ -89,6 +89,7 @@ beforeEach(() => {
   m.revalidatePath.mockClear();
   for (const s of stores) s.mockReset().mockResolvedValue(undefined);
   m.createClientOrg.mockResolvedValue("corg_new");
+  m.saveClientOrgReport.mockResolvedValue({ skippedWeek: false });
   m.sendClientOrgReport.mockResolvedValue(sentOutcome());
 });
 
@@ -251,6 +252,21 @@ describe("save the weekly report settings", () => {
   it("says «Saved.» in English", async () => {
     m.lang = "en";
     expect(await saveClientOrgReportAction("acc1", "c1", null, form({ reportEmail: "ana@x.com" }))).toEqual({ ok: true, message: "Saved." });
+  });
+
+  it("when the report was switched on after this week's send time, it says the first report goes out next week", async () => {
+    m.saveClientOrgReport.mockResolvedValue({ skippedWeek: true });
+    expect(await saveClientOrgReportAction("acc1", "c1", null, form({ reportEmail: "ana@x.com", reportOn: "on" }))).toEqual({
+      ok: true,
+      message: "Guardado. Esta semana ya pasó la hora de envío: el primer reporte sale la próxima semana.",
+    });
+    m.lang = "en";
+    expect(await saveClientOrgReportAction("acc1", "c1", null, form({ reportEmail: "ana@x.com", reportOn: "on" }))).toEqual({
+      ok: true,
+      message: "Saved. This week's send time has passed: the first report goes out next week.",
+    });
+    expect(m.revalidatePath).toHaveBeenCalledWith("/organizaciones");
+    expect(m.revalidatePath).toHaveBeenCalledWith("/", "layout");
   });
 
   it("a refusal of the store (invalid field, organization of another account) comes back as a message and revalidates nothing", async () => {

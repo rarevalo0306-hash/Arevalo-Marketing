@@ -85,7 +85,7 @@ function MoveForm({ accountId, business, others, onMoved }: { accountId: string;
   );
 }
 
-function OrgCard({ accountId, org, others, appTz, onNotice }: { accountId: string; org: Org; others: Target[]; appTz?: string; onNotice: (text: string) => void }) {
+function OrgCard({ accountId, org, others, appTz, onNotice }: { accountId: string; org: Org; others: Target[]; appTz: string; onNotice: (text: string) => void }) {
   const { t } = useT();
   const titleId = useId();
   const nameId = useId();
@@ -275,7 +275,7 @@ type Props = {
   accountName: string;
   orgs: Org[];
   /** La zona de la app: la hora de los reportes de una organización sin zona propia se cuenta en ella. */
-  appTz?: string;
+  appTz: string;
   /** Arriba del título: las pestañas de las cuentas que administra la persona, si son varias. */
   children?: ReactNode;
 };

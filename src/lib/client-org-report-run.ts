@@ -6,9 +6,9 @@
 // carrera puede reclamar la misma fila solo si falló o quedó trabada (ver `retryable`), con un solo UPDATE condicionado.
 // Lo que sale al cliente pasa SIEMPRE por la lista blanca de client-org-report.ts (clientOnly / clientView): este archivo es
 // donde se aplica, porque buildClientOrgEmail dibuja lo que recibe.
-import { Prisma } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { buildClientOrgEmail, clientOnly, clientView, dueWeek, MAX_ATTEMPTS, orgHighlights, orgTz, reportWeek, retryable, RETRY_MS, type ReportWeek } from "@/lib/client-org-report";
-import { notInAccount } from "@/lib/client-orgs-store";
+import { isUniqueRefusal, notInAccount } from "@/lib/client-orgs-store";
 import { buildReportFor, reportHighlights } from "@/lib/daily-report";
 import { db } from "@/lib/db";
 import { bi, BiError } from "@/lib/i18n";
@@ -18,15 +18,22 @@ import { parseAlertEmails, SenderConfigError, sendSeoEmail, type Sender } from "
 /** Lo más que se guarda del texto de un error. */
 const ERROR_MAX = 300;
 
-const errText = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, ERROR_MAX);
+/** Lo que se guarda y se le muestra al Administrador cuando falla algo que no es un BiError (en los dos idiomas, porque es un solo texto). */
+const GENERIC_ERROR = "No se pudo armar o mandar el reporte. / The report could not be built or sent.";
+
+/**
+ * El texto de un error para guardarlo y mostrarlo: el mensaje de un BiError (escrito para quien lo lee) y, de cualquier otro
+ * error (Prisma, la red…), solo un texto genérico: su mensaje puede traer datos de la infraestructura y no es para la pantalla.
+ */
+const errText = (e: unknown) => (e instanceof BiError ? e.message.slice(0, ERROR_MAX) : GENERIC_ERROR);
+
+const DAY_MS = 86_400_000;
 
 /** Los emails de una lista guardada o pedida ("a@x.com, b@y.com"); vacía si alguno no es válido. */
 function emailsOf(raw: string): string[] {
   const r = parseAlertEmails(raw);
   return r.ok ? r.emails : [];
 }
-
-const isUniqueRefusal = (e: unknown) => e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
 
 // ---------- Reservar la semana ----------
 
@@ -71,10 +78,11 @@ export type ClientOrgSendOutcome = { state: "sent" | "error"; week: ReportWeek; 
  * automático, que recorre todas las cuentas): con una cuenta, una organización de otra cuenta se rechaza igual que una que
  * no existe, antes de escribir nada.
  *
- * `cron` reserva la semana con `claimCronWeek` y devuelve null si no le tocó; `manual` y `test` anotan su propia fila (se
- * pueden repetir y no estorban al automático). Sin negocios, o sin a quién mandarlo, lanza un BiError antes de reservar.
- * Un fallo al armar o mandar queda anotado como `error` y se devuelve (no se lanza); un SenderConfigError (falta o falla
- * la configuración del email) se anota con todos los intentos gastados para que no se reintente.
+ * `cron` reserva la semana con `claimCronWeek` y devuelve null si no le tocó (o si, ya armado el email, otra corrida se la
+ * llevó); `manual` y `test` anotan su propia fila (se pueden repetir y no estorban al automático). Sin negocios, o sin a quién
+ * mandarlo, lanza un BiError antes de reservar. Un fallo al armar o mandar queda anotado como `error` y se devuelve (no se
+ * lanza); un SenderConfigError (falta o falla la configuración del email) se anota con todos los intentos gastados para que no
+ * se reintente. Un intento reemplazado (otra corrida reclamó su fila) devuelve su resultado pero no escribe nada.
  */
 export async function sendClientOrgReport(
   clientOrgId: string,
@@ -99,31 +107,46 @@ export async function sendClientOrgReport(
   }
   const to = opts.trigger === "test" ? emailsOf((opts.to ?? []).join(", ")) : emailsOf(org.reportEmail);
   if (!to.length) {
-    throw bi("Falta a quién mandarlo: escribe un email válido para el reporte.", "There's no one to send it to: enter a valid email for the report.");
+    // La prueba va al email de acceso de quien la pide: ese es el que no sirve, no el del reporte.
+    throw opts.trigger === "test"
+      ? bi("Tu email de acceso no es válido: no se puede mandarte la prueba.", "Your login email isn't valid: the test can't be sent to you.")
+      : bi("Falta a quién mandarlo: escribe un email válido para el reporte.", "There's no one to send it to: enter a valid email for the report.");
   }
 
   const tz = orgTz(org.timezone);
   const week = opts.week ?? reportWeek(now, tz);
-  let row: { id: string } | null;
+  let row: { id: string; attempts: number } | null;
   if (opts.trigger === "cron") {
     row = await claimCronWeek(org.id, week.week, now);
     if (!row) return null;
   } else {
     row = await db.clientOrgReport.create({
       data: { clientOrgId: org.id, week: week.week, trigger: opts.trigger, state: "sending", to: [], createdAt: now, updatedAt: now },
-      select: { id: true },
+      select: { id: true, attempts: true },
     });
   }
-  const rowId = row.id;
+  // Todo lo que este intento escribe en su fila pasa por aquí y solo vale mientras la fila siga siendo suya: en `sending` y con
+  // los intentos que este reservó. Si otra corrida la reclamó mientras este seguía trabajando (la PC se durmió, el proveedor se
+  // quedó colgado), esa corrida ya decidió el resultado de la semana y este no lo pisa. Devuelve si la fila seguía siendo suya.
+  const mine = { id: row.id, state: "sending", attempts: row.attempts };
+  const writeMine = async (data: Prisma.ClientOrgReportUpdateManyMutationInput): Promise<boolean> => {
+    const { count } = await db.clientOrgReport.updateMany({ where: mine, data });
+    if (count === 0) console.error(`[reporte-semanal] ${org.id}: intento reemplazado`);
+    return count > 0;
+  };
 
   let sent: { subject: string; sender: Sender };
   try {
     const lang = org.reportLang === "en" ? "en" : "es";
     const period = rangePeriod(week.fromDay, week.toDay, tz);
+    // «Lo que viene» habla de las 24 horas que siguen al cierre de la semana: pasado ese día (un envío del martes, o «ahora») lo
+    // que sigue «programado» ya no viene, quedó trabado, y el cliente no tiene por qué leerlo.
+    const staleNext = now.getTime() - period.to.getTime() > DAY_MS;
     const perBusiness: { name: string; items: string[] }[] = [];
     const businesses: { name: string; color: string; sections: ReturnType<typeof clientView> }[] = [];
     for (const b of org.businesses) {
-      const { report } = await buildReportFor(b.id, period, now);
+      const built = (await buildReportFor(b.id, period, now)).report;
+      const report = staleNext ? { ...built, next: null } : built;
       // Lo que ve el cliente: las frases del «Resumen» salen del reporte ya filtrado, nunca del completo.
       const safe = clientOnly(report);
       const highlights = await reportHighlights(safe, lang, { ai: false });
@@ -132,18 +155,23 @@ export async function sendClientOrgReport(
     }
     const accountName = org.organization.name;
     const email = buildClientOrgEmail({ orgName: org.name, accountName, week, tz, lang, test: opts.trigger === "test", businesses, highlights: orgHighlights(perBusiness) });
+    // Armar el email puede tardar: antes de mandar un automático se comprueba que la semana siga siendo de este intento. Si otra
+    // corrida ya la reclamó, este no manda (lo único que queda abierto es la propia llamada al proveedor).
+    if (opts.trigger === "cron" && !(await writeMine({ updatedAt: now }))) return null;
     const sender = await sendSeoEmail({ businessId: org.businesses[0].id, to, subject: email.subject, html: email.html, text: email.text, fromName: accountName });
     sent = { subject: email.subject, sender };
   } catch (e) {
     const error = errText(e);
-    await db.clientOrgReport.update({
-      where: { id: rowId },
-      data: { state: "error", to, error, updatedAt: now, ...(e instanceof SenderConfigError ? { attempts: MAX_ATTEMPTS } : {}) },
-    });
+    // De un error que no es de la app solo el nombre va al registro (su mensaje puede traer datos de la infraestructura).
+    if (!(e instanceof BiError)) console.error(`[reporte-semanal] ${org.id}: ${e instanceof Error ? e.name : "unknown"}`);
+    await writeMine({ state: "error", to, error, updatedAt: now, ...(e instanceof SenderConfigError ? { attempts: MAX_ATTEMPTS } : {}) });
     return { state: "error", week, to, subject: "", error };
   }
-  // Fuera del try: si anotar «sent» fallara, el email ya salió y no debe quedar como error (se reintentaría y se mandaría dos veces).
-  await db.clientOrgReport.update({ where: { id: rowId }, data: { state: "sent", to, error: "", updatedAt: now } });
+  // Fuera del try: el email ya salió, y si anotarlo fallara no debe pasar por el catch de arriba (que lo anotaría como «error»).
+  // Si esta anotación falla de todos modos, la excepción sube y la fila se queda en `sending`: pasados 30 minutos se reintenta
+  // como cualquier intento trabado, y el cliente podría recibir esa semana otra vez. Escribir fuera del try no evita eso; lo que
+  // evita que un intento viejo pise el resultado de uno más nuevo es que `writeMine` solo escribe mientras la fila sea suya.
+  await writeMine({ state: "sent", to, error: "", updatedAt: now });
   return { state: "sent", week, to, subject: sent.subject, sender: sent.sender };
 }
 

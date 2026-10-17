@@ -91,9 +91,15 @@ export async function saveClientOrgReportAction(accountId: string, clientOrgId: 
   await requireOrgAdmin(accountId);
   const { lang, t } = await getT();
   try {
-    await saveClientOrgReport(accountId, clientOrgId, Object.fromEntries(REPORT_FIELDS.map((k) => [k, field(f, k)])));
+    const { skippedWeek } = await saveClientOrgReport(accountId, clientOrgId, Object.fromEntries(REPORT_FIELDS.map((k) => [k, field(f, k)])));
     refresh();
-    return { ok: true, message: t("Guardado.", "Saved.") };
+    // Encendido después de la hora de envío de esta semana: el primer reporte sale la próxima (no se manda el de la semana pasada).
+    return {
+      ok: true,
+      message: skippedWeek
+        ? t("Guardado. Esta semana ya pasó la hora de envío: el primer reporte sale la próxima semana.", "Saved. This week's send time has passed: the first report goes out next week.")
+        : t("Guardado.", "Saved."),
+    };
   } catch (e) {
     return { ok: false, message: errorText(e, lang) };
   }
