@@ -4,11 +4,12 @@
 // pantalla ancha es una tabla; si no cabe (celular), cada persona es una tarjeta. Debajo de cada una van sus acciones.
 import { startTransition, useActionState, useEffect, useId, useRef, useState, useTransition, type FormEvent, type MouseEvent } from "react";
 import { cancelInviteAction, changeMemberAction, removeMemberAction, resendInviteAction, resetLinkAction, type TeamResult } from "@/app/actions-team";
+import { failed, focusLost } from "@/components/action-result";
 import { useT } from "@/components/I18n";
 import { roleLabel } from "@/lib/roles";
 import { AccessFields } from "./AccessFields";
 import { ShareLink } from "./ShareLink";
-import { failed, focusLost, missingBusiness, ROLE_TONE, scopeText, type LinkLife, type TeamBusiness, type TeamInvite, type TeamMember } from "./types";
+import { missingBusiness, ROLE_TONE, scopeText, type LinkLife, type TeamBusiness, type TeamInvite, type TeamMember } from "./types";
 import s from "./Team.module.css";
 
 type Common = { orgId: string; orgName: string; businesses: TeamBusiness[]; life: LinkLife; onNotice: (text: string) => void };

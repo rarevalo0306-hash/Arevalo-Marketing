@@ -4,9 +4,9 @@
 // negocio nuevo o (si está vacía) borrar; cada negocio se puede pasar a otra organización. Abajo, «Nueva organización».
 // Los formularios se mandan a mano (no con action={…}) para que un error no borre lo que la persona escribió.
 import Link from "next/link";
-import { unstable_rethrow } from "next/navigation";
 import { startTransition, useActionState, useEffect, useId, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { createClientOrgAction, deleteClientOrgAction, moveBusinessAction, renameClientOrgAction, type OrgResult } from "@/app/actions-client-orgs";
+import { failed, focusLost } from "@/components/action-result";
 import { useT } from "@/components/I18n";
 import { ORG_NAME_MAX } from "@/lib/client-orgs";
 import type { T } from "@/lib/i18n";
@@ -20,18 +20,6 @@ type Target = { id: string; name: string };
 export const deleteQuestion = (name: string, t: T) => t(`¿Borrar «${name}»? No tiene negocios.`, `Delete "${name}"? It has no businesses.`);
 
 const countText = (n: number, t: T) => t(`${n} ${n === 1 ? "negocio" : "negocios"}`, `${n} ${n === 1 ? "business" : "businesses"}`);
-
-/**
- * Si la acción falló sin respuesta (sin conexión, ya no es Administrador…): un mensaje en vez de la pantalla de error.
- * Un redirect de Next (sesión vencida) se deja pasar para que la app vaya a /login.
- */
-function failed(e: unknown, t: T): OrgResult {
-  unstable_rethrow(e);
-  return { ok: false, message: t("No se pudo hacer. Revisa tu conexión, recarga la página y vuelve a intentarlo.", "Couldn't do it. Check your connection, reload the page and try again.") };
-}
-
-/** El foco se perdió (el botón se desactivó mientras esperaba): hay que devolverlo. */
-const focusLost = () => !document.activeElement || document.activeElement === document.body;
 
 /** El resultado junto al formulario que lo mandó. El aviso va en un lugar que ya existe, para que se anuncie al llegar. */
 function Status({ result, busy }: { result: OrgResult; busy?: boolean }) {
