@@ -3,7 +3,7 @@ import { logout } from "@/app/actions";
 import { loadApprovals } from "@/lib/approvals";
 import { businessAccess, myBusinessesWhere, requireUser } from "@/lib/auth";
 import { approvalTotal } from "@/lib/approvals-shape";
-import { groupByClientOrg } from "@/lib/client-orgs";
+import { groupByAccount } from "@/lib/client-orgs";
 import { db } from "@/lib/db";
 import { getT } from "@/lib/i18n-server";
 import { AppPreferences } from "./AppPreferences";
@@ -19,17 +19,20 @@ export async function Sidebar({ activeId }: { activeId?: string }) {
     db.business.findMany({
       where: await myBusinessesWhere(),
       orderBy: [{ clientOrg: { createdAt: "asc" } }, { clientOrgId: "asc" }, { createdAt: "asc" }],
-      select: { id: true, name: true, color: true, clientOrg: { select: { id: true, name: true } } },
+      select: { id: true, name: true, color: true, organizationId: true, clientOrg: { select: { id: true, name: true } } },
     }),
     activeId ? loadApprovals(activeId).catch(() => []) : Promise.resolve([]),
     activeId ? businessAccess(activeId) : Promise.resolve(null),
   ]);
   const { t } = await getT();
-  // Agrupados por organización de cliente; a los componentes solo llega lo que pintan.
-  const groups = groupByClientOrg(businesses).map((g) => ({
-    id: g.id,
-    name: g.name,
-    businesses: g.businesses.map((b) => ({ id: b.id, name: b.name, color: b.color })),
+  // En orden: cada cuenta de la persona, sus organizaciones de cliente y los negocios de cada una; a los componentes solo llega lo que pintan.
+  const accounts = groupByAccount(
+    user.memberships.map((m) => ({ id: m.organizationId, name: m.organization.name })),
+    businesses,
+  ).map((a) => ({
+    id: a.id,
+    name: a.name,
+    groups: a.groups.map((g) => ({ id: g.id, name: g.name, businesses: g.businesses.map((b) => ({ id: b.id, name: b.name, color: b.color })) })),
   }));
   // Lo que espera la aprobación del dueño: numerito turquesa en «Inicio».
   const waiting = approvalTotal(approvals);
@@ -54,7 +57,7 @@ export async function Sidebar({ activeId }: { activeId?: string }) {
       <nav className="sidebar" aria-label={t("Menú principal", "Main menu")}>
         <Link href="/" className="brandmark">Matya</Link>
 
-        <MobileBizMenu groups={groups} activeId={activeId} canAdd={managesTeam}>
+        <MobileBizMenu accounts={accounts} activeId={activeId} canAdd={managesTeam}>
           {managesTeam && teamLink("biz")}
           {managesTeam && orgsLink("biz")}
           <form action={logout}>
@@ -64,17 +67,13 @@ export async function Sidebar({ activeId }: { activeId?: string }) {
           </form>
         </MobileBizMenu>
 
-        <BizSwitcher groups={groups} activeId={activeId} canAdd={managesTeam} />
+        <BizSwitcher accounts={accounts} activeId={activeId} canAdd={managesTeam} />
 
         {activeId && <NavLinks businessId={activeId} badges={waiting ? { inicio: waiting } : undefined} hide={hide} />}
 
         {managesTeam && <div className={`desk-only ${navStyles.side}`} style={{ marginTop: "auto" }}>{teamLink(navStyles.row)}{orgsLink(navStyles.row)}</div>}
+        {/* La cuenta ya va arriba, en el selector: aquí solo el correo de quien entró. */}
         <p className={`desk-only small muted ${navStyles.side}`} style={{ marginTop: managesTeam ? 0 : "auto", padding: "0 12px", overflowWrap: "anywhere" }}>
-          {user.memberships.map((m) => (
-            <span key={m.organizationId} style={{ display: "block", fontWeight: 600 }}>
-              {t(`Cuenta: ${m.organization.name}`, `Account: ${m.organization.name}`)}
-            </span>
-          ))}
           {user.email}
         </p>
         <form action={logout} className={`desk-only ${navStyles.side}`}>

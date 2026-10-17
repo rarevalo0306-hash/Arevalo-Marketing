@@ -1,8 +1,8 @@
 // «Cuenta»: la pantalla le dice «cuenta» a lo que el código llama Organization, para que «organización» solo signifique un
-// cliente (ClientOrg). Aquí: los campos de acceso agrupados por organización, el pie del menú y el correo de la invitación.
+// cliente (ClientOrg). Aquí: los campos de acceso agrupados por organización, la cuenta arriba del selector y el correo de la invitación.
 // Se pinta con `renderToStaticMarkup` (sin DOM) y los CSS Modules simulados, como tests/biz-picker.test.tsx.
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@/components/I18n";
 import { AccessFields } from "@/components/team/AccessFields";
 import type { TeamBusiness } from "@/components/team/types";
@@ -26,12 +26,18 @@ vi.mock("@/lib/db", () => ({
       update: async () => ({}),
     },
     organization: { findUniqueOrThrow: async () => ({ name: stored.orgName }) },
-    business: { findMany: async () => [] },
+    business: { findMany: async () => side.businesses },
   },
 }));
 
-// El pie del menú lateral (Sidebar es un componente de servidor: se llama como función y se pinta lo que devuelve).
-const side = vi.hoisted(() => ({ lang: "es" as "es" | "en", memberships: [] as { organizationId: string; role: string; organization: { name: string } }[] }));
+// El menú lateral (Sidebar es un componente de servidor: se llama como función y se pinta lo que devuelve).
+const side = vi.hoisted(() => ({
+  lang: "es" as "es" | "en",
+  memberships: [] as { organizationId: string; role: string; organization: { name: string } }[],
+  businesses: [] as { id: string; name: string; color: string; organizationId: string; clientOrg: { id: string; name: string } }[],
+  /** Las cuentas que el menú le pasa al selector de la computadora. */
+  accounts: null as unknown,
+}));
 vi.mock("next/link", () => ({ default: ({ href, children, className }: { href: string; children: React.ReactNode; className?: string }) => <a href={href} className={className}>{children}</a> }));
 vi.mock("@/app/actions", () => ({ logout: async () => {} }));
 vi.mock("@/lib/approvals", () => ({ loadApprovals: async () => [] }));
@@ -44,7 +50,12 @@ vi.mock("@/lib/i18n-server", () => ({ getT: async () => ({ t: (es: string, en: s
 vi.mock("@/components/AppPreferences", () => ({ AppPreferences: () => null }));
 vi.mock("@/components/MobileBizMenu", () => ({ MobileBizMenu: () => null }));
 vi.mock("@/components/NavLinks", () => ({ NavLinks: () => null }));
-vi.mock("@/components/nav/BizSwitcher", () => ({ BizSwitcher: () => null }));
+vi.mock("@/components/nav/BizSwitcher", () => ({
+  BizSwitcher: ({ accounts }: { accounts: unknown }) => {
+    side.accounts = accounts;
+    return null;
+  },
+}));
 
 import { Sidebar } from "@/components/Sidebar";
 import { resendInvite } from "@/lib/team";
@@ -108,9 +119,10 @@ describe("campos de acceso agrupados por organización", () => {
   });
 });
 
-describe("el pie del menú lateral dice «Cuenta»", () => {
-  const footer = async (lang: "es" | "en") => {
+describe("la cuenta va arriba, en el selector, y ya no en el pie del menú", () => {
+  const sidebar = async (lang: "es" | "en") => {
     side.lang = lang;
+    side.accounts = null;
     return renderToStaticMarkup(await Sidebar({}));
   };
 
@@ -119,28 +131,51 @@ describe("el pie del menú lateral dice «Cuenta»", () => {
       { organizationId: "a1", role: "admin", organization: { name: "Agencia Arévalo" } },
       { organizationId: "a2", role: "viewer", organization: { name: "Estudio Luna" } },
     ];
+    side.businesses = [
+      { id: "b1", name: "Techos Pérez", color: "#0a7", organizationId: "a1", clientOrg: { id: "o1", name: "Familia Pérez" } },
+      { id: "b3", name: "Café Luna", color: "#07a", organizationId: "a2", clientOrg: { id: "o3", name: "Mis compañías" } },
+      { id: "b2", name: "Pisos Pérez", color: "#a07", organizationId: "a1", clientOrg: { id: "o1", name: "Familia Pérez" } },
+    ];
+  });
+  afterEach(() => {
+    side.businesses = [];
   });
 
-  it("una línea por cuenta: «Cuenta: nombre» (es) y «Account: name» (en), sin juntarlas con « · »", async () => {
-    const es = await footer("es");
-    expect(es).toContain("Cuenta: Agencia Arévalo");
-    expect(es).toContain("Cuenta: Estudio Luna");
-    expect(count(es, "Cuenta: ")).toBe(2);
-    expect(es).not.toContain(" · ");
+  it("el selector recibe cada cuenta, en el orden de la persona, con sus organizaciones y sus negocios debajo", async () => {
+    await sidebar("es");
+    expect(side.accounts).toEqual([
+      {
+        id: "a1",
+        name: "Agencia Arévalo",
+        groups: [
+          {
+            id: "o1",
+            name: "Familia Pérez",
+            businesses: [
+              { id: "b1", name: "Techos Pérez", color: "#0a7" },
+              { id: "b2", name: "Pisos Pérez", color: "#a07" },
+            ],
+          },
+        ],
+      },
+      { id: "a2", name: "Estudio Luna", groups: [{ id: "o3", name: "Mis compañías", businesses: [{ id: "b3", name: "Café Luna", color: "#07a" }] }] },
+    ]);
+  });
+
+  it("el pie ya no repite «Cuenta: …» (es) ni «Account: …» (en); el correo sigue ahí", async () => {
+    const es = await sidebar("es");
+    expect(es).not.toContain("Cuenta: ");
+    expect(es).not.toContain("Agencia Arévalo");
     expect(es).toContain("yo@ejemplo.com");
-    // Cada una en su propia línea (su propio bloque).
-    expect(es).toMatch(/<span[^>]*>Cuenta: Agencia Arévalo<\/span><span[^>]*>Cuenta: Estudio Luna<\/span>/);
-
-    const en = await footer("en");
-    expect(en).toContain("Account: Agencia Arévalo");
-    expect(en).toContain("Account: Estudio Luna");
-    expect(en).not.toContain("Cuenta: ");
+    const en = await sidebar("en");
+    expect(en).not.toContain("Account: ");
+    expect(en).toContain("yo@ejemplo.com");
   });
 
-  it("sin ninguna cuenta no pinta la línea", async () => {
+  it("sin ninguna cuenta el selector no recibe ninguna", async () => {
     side.memberships = [];
-    const html = await footer("es");
-    expect(html).not.toContain("Cuenta: ");
+    const html = await sidebar("es");
+    expect(side.accounts).toEqual([]);
     expect(html).toContain("yo@ejemplo.com");
   });
 });

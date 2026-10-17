@@ -33,3 +33,14 @@ export function groupByClientOrg<B extends { clientOrg: { id: string; name: stri
   }
   return [...groups.values()];
 }
+
+/**
+ * El árbol del selector de negocios: cada cuenta de la persona (en su orden) con sus organizaciones y los negocios de cada una.
+ * Una cuenta sin negocios a la vista sale igual, con su nombre y sin grupos; un negocio de una cuenta que no está en la lista no sale.
+ */
+export function groupByAccount<B extends { organizationId: string; clientOrg: { id: string; name: string } }>(
+  accounts: { id: string; name: string }[],
+  businesses: B[],
+): { id: string; name: string; groups: { id: string; name: string; businesses: B[] }[] }[] {
+  return accounts.map(({ id, name }) => ({ id, name, groups: groupByClientOrg(businesses.filter((b) => b.organizationId === id)) }));
+}

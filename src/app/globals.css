@@ -824,11 +824,14 @@ textarea.field.gbp-reply { min-height: 120px; width: 100%; }
   .mbiz-menu .biz.on { background: var(--nav-active-bg); color: var(--nav-active-ink); box-shadow: none; }
   .mbiz-menu .theme-pick { flex: none; }
   .mbiz-menu .theme-pick button { padding: 9px 8px; font-size: 13px; }
-  .mbiz-label { font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--nav-muted); padding: 8px 8px 2px; }
-  /* Un grupo por organización de cliente: su nombre como encabezado y sus negocios debajo */
+  /* El árbol: la cuenta arriba, sus organizaciones un poco más adentro y los negocios de cada una más adentro todavía */
+  .mbiz-account { display: flex; flex-direction: column; gap: 4px; }
+  .mbiz-account + .mbiz-account { margin-top: 10px; }
+  .mbiz-account-head { font-size: 14px; font-weight: 700; letter-spacing: 0; color: var(--nav-strong); padding: 8px 8px 2px; overflow-wrap: anywhere; }
   .mbiz-group { display: flex; flex-direction: column; gap: 4px; }
   .mbiz-group + .mbiz-group { margin-top: 4px; }
-  .mbiz-org-head { font-size: 12px; font-weight: 600; letter-spacing: 0; color: var(--nav-muted); padding: 6px 8px 0; overflow-wrap: anywhere; }
+  .mbiz-org-head { font-size: 12px; font-weight: 600; letter-spacing: 0; color: var(--nav-muted); padding: 6px 8px 0 18px; overflow-wrap: anywhere; }
+  .mbiz-group .biz { padding-left: 26px; }
   .mbiz-sep { height: 1px; background: var(--line); margin: 6px 0; }
 }
 
