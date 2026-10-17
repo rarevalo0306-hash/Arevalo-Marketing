@@ -8,7 +8,8 @@
 // problems, one done) and a local Administrator (`admin@matya.local`) who logs in with MATYA_LOCAL_PASSWORD. Run it again to
 // start the demo day over (it replaces its own runs and the morning plans of that business, nothing of any other). It sends no email, calls no provider and publishes nothing:
 // no provider key is read, the business has no owner or report email and the pieces are plain rows. (The organization «Ricardo PA (cliente)» does
-// have a weekly report set to the fake address cliente@example.com, so the panel on /organizaciones has something to show; nothing is sent.)
+// have a weekly report set to the fake address cliente@example.com, so the panel on /organizaciones has something to show; nothing is sent,
+// and the send log of the two demo organizations is emptied on every run.)
 import { randomBytes, scrypt } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 
@@ -33,7 +34,9 @@ const org = await db.organization.upsert({ where: { id: 'matya-demo-org' }, crea
 // «Ricardo PA (cliente)» also gets a weekly report to look at on /organizaciones (Monday 8:00 a. m. New York time to a fake address);
 // «Mis compañías» keeps the report off. Both are set on every run, in the update too, so a run puts them back. The seed writes no
 // `ClientOrgReport` row (nothing has been sent) and sends nothing: the report only goes out when someone presses a button or the
-// scheduler ticks, and the check below never does either.
+// scheduler ticks, and the check below never does either. It also DELETES the `ClientOrgReport` rows of these two organizations on
+// every run (a test run, a «Mandar ahora» or a scheduler tick against this database leaves some), so the cards always start at
+// «Todavía no se ha mandado.», which scripts/orgs-ui-check.mjs expects.
 const CLIENT_ORGS = [
   ['matya-demo-corg', 'Mis compañías', { reportOn: false }],
   [
@@ -45,6 +48,7 @@ const CLIENT_ORGS = [
 for (const [id, name, report] of CLIENT_ORGS) {
   await db.clientOrg.upsert({ where: { id }, create: { id, organizationId: org.id, name, ...report }, update: { name, ...report } });
 }
+await db.clientOrgReport.deleteMany({ where: { clientOrgId: { in: CLIENT_ORGS.map(([id]) => id) } } });
 for (const [id, name, industry, timezone, aiProfile, color, clientOrgId] of [
   ['matya-demo-fl', 'Ricardo PA · prueba local', 'public-adjusting-fl', 'America/New_York', 'Ayudamos a propietarios de Florida con daños a su propiedad. Datos sintéticos para validar MATYA.', '#146d88', 'matya-demo-corg-rpa'],
   ['matya-demo-ni', 'Fameseg · prueba local', 'commercial-security-ni', 'America/Managua', 'Instalación y mantenimiento de cortinas metálicas en Nicaragua. Datos sintéticos para validar MATYA.', '#166d58', 'matya-demo-corg'],

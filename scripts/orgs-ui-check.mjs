@@ -16,7 +16,7 @@
 //
 // The weekly report of each card (the seed sets «Ricardo PA (cliente)» to Monday 8:00 a. m. to cliente@example.com and leaves «Mis compañías»
 // with the report off): on /organizaciones the card of «Ricardo PA (cliente)» reads «Reporte: lunes 8:00 a. m. a cliente@example.com» and the one
-// of «Mis compañías» «Reporte apagado», each with its last-send line, and the form and the send buttons are closed (hidden) until «Reporte
+// of «Mis compañías» «Reporte apagado», each followed by «Todavía no se ha mandado.» (the seed empties their send log), and the form and the send buttons are closed (hidden) until «Reporte
 // semanal» is pressed. The script presses that toggle on «Ricardo PA (cliente)» (aria-expanded turns true), reads the open panel (the email field
 // holds cliente@example.com, the form holds the seed's settings, «Mandarme una prueba» and «Mandar ahora» are visible and enabled, nothing sticks
 // out of the panel) and saves `reporte-<tag>.png` with it open. It NEVER presses «Guardar», «Mandarme una prueba» or «Mandar ahora»: it fails if
@@ -45,6 +45,8 @@ const ORGS = [
 // The organization whose panel is opened, and what the seed saved in it (the form must hold exactly this).
 const REPORT_ORG = ORGS[1];
 const REPORT_EMAIL = 'cliente@example.com';
+// The last-send line of a card with no rows in ClientOrgReport (the seed leaves none for these two organizations).
+const NEVER_SENT = 'Todavía no se ha mandado.';
 const REPORT_FORM = { contactName: 'Ricardo (prueba)', reportEmail: REPORT_EMAIL, reportDay: '1', reportHour: '8', timezone: 'America/New_York', reportOn: true };
 if (!dir) throw new Error('Usage: node scripts/orgs-ui-check.mjs <directory for the screenshots> [url]');
 if (!password) throw new Error('Set MATYA_LOCAL_PASSWORD to the password you seeded admin@matya.local with');
@@ -247,9 +249,10 @@ async function organizations(page, tag) {
     const card = page.locator(`section[data-org="${o.id}"]`);
     await expectVisible(card.getByRole('heading', { level: 2, name: o.name, exact: true }), `Organizaciones: the card «${o.name}»`);
     await expectVisible(card.getByText(o.business, { exact: true }), `Organizaciones: «${o.business}» is in «${o.name}»`);
-    // The schedule and the last send are on the card without opening anything. The seed writes no send, but a person may have sent one.
+    // The schedule and the last send are on the card without opening anything. The seed deletes the send log of both organizations
+    // on every run, so each card must say that nothing has been sent (a «Último envío: …» line means the seed was not run right before).
     await expectVisible(card.getByText(o.report, { exact: true }), `Organizaciones: «${o.name}» shows «${o.report}»`);
-    await expectVisible(card.getByText(/^(Todavía no se ha mandado\.|Último envío: )/), `Organizaciones: «${o.name}» shows its last-send line`);
+    await expectVisible(card.getByText(NEVER_SENT, { exact: true }), `Organizaciones: «${o.name}» shows «${NEVER_SENT}»`);
   }
   await expectVisible(page.getByRole('heading', { level: 2, name: 'Nueva organización' }), 'Organizaciones: the Nueva organización block');
   await shot(page, 'organizaciones', tag);
