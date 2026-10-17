@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { localDay } from "@/lib/business-tz";
+import { runClientOrgReports } from "@/lib/client-org-report-run";
 import { runDailyReports } from "@/lib/daily-report";
 import { publishPost } from "@/lib/publish";
 import { AgentError } from "./access";
@@ -396,6 +397,14 @@ export async function runAgentCycle(businessId?: string) {
       await runDailyReports(new Date(), { max: 2, budgetMs: 15000, teamOnly: true });
     } catch (error) {
       console.error("MATYA daily reports did not complete", error instanceof Error ? error.name : "unknown");
+    }
+  // The weekly report of each client organization goes out from here too (the cron of the platform may run only once a day):
+  // it only sends the ones whose day and hour have come and whose week was not sent yet, a couple per tick. Its own try/catch.
+  if (businessId === undefined)
+    try {
+      await runClientOrgReports(new Date(), { max: 2, budgetMs: 15_000 });
+    } catch (error) {
+      console.error("MATYA weekly client reports did not complete", error instanceof Error ? error.name : "unknown");
     }
   return { steps, published };
 }

@@ -7,7 +7,7 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ requireOrgAdmin: vi.fn(async () => ({ id: "usr_both" })), requireUser: vi.fn() }));
 vi.mock("@/lib/i18n-server", () => ({ getT: async () => ({ lang: "es", t: (es: string) => es }) }));
 
-import { createClientOrgAction, deleteClientOrgAction, moveBusinessAction, renameClientOrgAction } from "@/app/actions-client-orgs";
+import { createClientOrgAction, deleteClientOrgAction, moveBusinessAction, renameClientOrgAction, saveClientOrgReportAction } from "@/app/actions-client-orgs";
 import { db } from "@/lib/db";
 
 const url = process.env.MATYA_TEST_DATABASE_URL ?? "";
@@ -86,5 +86,35 @@ describe.skipIf(!safe)("the Organizaciones actions on an isolated PostgreSQL, fo
     expect(await deleteClientOrgAction(A, orgA1)).toEqual({ ok: false, message: "Esta organización todavía tiene negocios: muévelos antes de borrarla." });
     expect(await db.clientOrg.count({ where: { id: orgA1 } })).toBe(1);
     expect((await db.clientOrg.findUniqueOrThrow({ where: { id: orgA1 } })).name).toBe("A uno");
+  });
+
+  it("saves the report settings of an organization of the account, and refuses one of the other account without writing anything", async () => {
+    const settings = { contactName: "Ana", reportEmail: "ana@x.com", phone: "555", reportLang: "en", timezone: "America/Mexico_City", reportOn: "on", reportDay: "2", reportHour: "9" };
+    expect(await saveClientOrgReportAction(A, orgA1, null, form(settings))).toEqual({ ok: true, message: "Guardado." });
+    expect(await db.clientOrg.findUniqueOrThrow({ where: { id: orgA1 }, select: { contactName: true, reportEmail: true, phone: true, reportLang: true, timezone: true, reportOn: true, reportDay: true, reportHour: true } })).toEqual({
+      contactName: "Ana",
+      reportEmail: "ana@x.com",
+      phone: "555",
+      reportLang: "en",
+      timezone: "America/Mexico_City",
+      reportOn: true,
+      reportDay: 2,
+      reportHour: 9,
+    });
+
+    // La organización de la cuenta B, desde la cuenta A, con ids forjados: se rechaza y la fila de B queda como estaba.
+    const before = await db.clientOrg.findUniqueOrThrow({ where: { id: orgB1 } });
+    expect(await saveClientOrgReportAction(A, orgB1, null, form({ ...settings, reportEmail: "robado@x.com", organizationId: B, accountId: B }))).toEqual(NOT_IN_ACCOUNT);
+    expect(await db.clientOrg.findUniqueOrThrow({ where: { id: orgB1 } })).toEqual(before);
+    expect(await db.clientOrg.count({ where: { reportEmail: "robado@x.com" } })).toBe(0);
+  });
+
+  it("explains a setting that does not work and keeps what was saved", async () => {
+    await saveClientOrgReportAction(A, orgA1, null, form({ contactName: "Ana", reportEmail: "ana@x.com", reportLang: "es", reportDay: "1", reportHour: "8" }));
+    expect(await saveClientOrgReportAction(A, orgA1, null, form({ reportEmail: "no-es-un-email", reportLang: "es", reportDay: "1", reportHour: "8" }))).toEqual({
+      ok: false,
+      message: "Escribe hasta 3 emails válidos para el reporte.",
+    });
+    expect(await db.clientOrg.findUniqueOrThrow({ where: { id: orgA1 }, select: { reportEmail: true } })).toEqual({ reportEmail: "ana@x.com" });
   });
 });

@@ -1,6 +1,7 @@
 import { after } from "next/server";
 import { syncAds } from "@/lib/ads";
 import { runCampaigns } from "@/lib/campaign-engine";
+import { runClientOrgReports } from "@/lib/client-org-report-run";
 import { runDailyReports } from "@/lib/daily-report";
 import { runGoogleDataMaintenance } from "@/lib/google-data";
 import { getT } from "@/lib/i18n-server";
@@ -111,6 +112,14 @@ export async function GET(req: Request) {
       if (daily.checked) console.log("[reporte-diario]", JSON.stringify(daily));
     } catch (e) {
       console.error("[reporte-diario] error:", e instanceof Error ? e.message : e);
+    }
+    // Reporte semanal por email de cada organización de cliente: el día y la hora que eligió, en su zona. Como mucho 5 por
+    // llamada y solo mientras no se pasen los primeros 120 s; una semana ya mandada no se manda otra vez (aunque el worker de la PC dispare a la vez).
+    try {
+      const weekly = await runClientOrgReports(new Date(), { max: 5, budgetMs: Math.max(10_000, 120_000 - (Date.now() - started)) });
+      if (weekly.checked) console.log("[reporte-semanal]", JSON.stringify(weekly));
+    } catch (e) {
+      console.error("[reporte-semanal] error:", e instanceof Error ? e.message : e);
     }
     // Carpeta de fotos de Google Drive: como mucho UN negocio por llamada (cada 24 h, o antes si quedaron fotos por revisar).
     try {
