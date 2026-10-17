@@ -262,6 +262,7 @@ git commit -m "feat(orgs): the weekly client email, whitelist only, no app links
     - Inserts `{ trigger: "cron", state: "sending", to: [] }`.
     - On P2002 (the partial unique index; check `e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002"`) it reclaims the existing row with one `updateMany` matching `retryable` (state `error` or `sending`, `attempts < 3`, `updatedAt <= now - 30 min`), setting `state: "sending"` and `attempts: { increment: 1 }`.
     - It returns the row, or `null` when the update matched nothing.
+    - Every write to `ClientOrgReport` in this module sets `createdAt`/`updatedAt` explicitly from the injected `now` (Prisma accepts an explicit value for an `@updatedAt` field), so the 30-minute rule and the tests follow the caller's clock, not the database's.
   - `export type ClientOrgSendOutcome = { state: "sent" | "error"; week: ReportWeek; to: string[]; subject: string; sender?: Sender; error?: string }`
   - `sendClientOrgReport(clientOrgId: string, opts: { trigger: "cron" | "manual" | "test"; organizationId: string | null; to?: string[]; now?: Date; week?: ReportWeek }): Promise<ClientOrgSendOutcome | null>`:
     - Loads the org filtered by `organizationId` when given. When it is not found it throws the store's «Esa organización no es de esta cuenta.».
