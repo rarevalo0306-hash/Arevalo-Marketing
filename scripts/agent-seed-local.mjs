@@ -7,7 +7,8 @@
 // the morning plan of today (completed), three pieces (one writing, one waiting for the owner after a failed review with two
 // problems, one done) and a local Administrator (`admin@matya.local`) who logs in with MATYA_LOCAL_PASSWORD. Run it again to
 // start the demo day over (it replaces its own runs and the morning plans of that business, nothing of any other). It sends no email, calls no provider and publishes nothing:
-// no provider key is read, the business has no owner or report email and the pieces are plain rows.
+// no provider key is read, the business has no owner or report email and the pieces are plain rows. (The organization «Ricardo PA (cliente)» does
+// have a weekly report set to the fake address cliente@example.com, so the panel on /organizaciones has something to show; nothing is sent.)
 import { randomBytes, scrypt } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 
@@ -29,12 +30,20 @@ const db = new PrismaClient();
 const org = await db.organization.upsert({ where: { id: 'matya-demo-org' }, create: { id: 'matya-demo-org', name: 'MATYA local fixture' }, update: {} });
 // Two client organizations of the account. The migration's backfill makes its own «Mis compañías» (a `corg_…` id) when an account
 // already had businesses: it is left alone (it may end up empty), the demo businesses are moved into these two on every run.
+// «Ricardo PA (cliente)» also gets a weekly report to look at on /organizaciones (Monday 8:00 a. m. New York time to a fake address);
+// «Mis compañías» keeps the report off. Both are set on every run, in the update too, so a run puts them back. The seed writes no
+// `ClientOrgReport` row (nothing has been sent) and sends nothing: the report only goes out when someone presses a button or the
+// scheduler ticks, and the check below never does either.
 const CLIENT_ORGS = [
-  ['matya-demo-corg', 'Mis compañías'],
-  ['matya-demo-corg-rpa', 'Ricardo PA (cliente)'],
+  ['matya-demo-corg', 'Mis compañías', { reportOn: false }],
+  [
+    'matya-demo-corg-rpa',
+    'Ricardo PA (cliente)',
+    { contactName: 'Ricardo (prueba)', reportEmail: 'cliente@example.com', reportOn: true, reportDay: 1, reportHour: 8, timezone: 'America/New_York' },
+  ],
 ];
-for (const [id, name] of CLIENT_ORGS) {
-  await db.clientOrg.upsert({ where: { id }, create: { id, organizationId: org.id, name }, update: { name } });
+for (const [id, name, report] of CLIENT_ORGS) {
+  await db.clientOrg.upsert({ where: { id }, create: { id, organizationId: org.id, name, ...report }, update: { name, ...report } });
 }
 for (const [id, name, industry, timezone, aiProfile, color, clientOrgId] of [
   ['matya-demo-fl', 'Ricardo PA · prueba local', 'public-adjusting-fl', 'America/New_York', 'Ayudamos a propietarios de Florida con daños a su propiedad. Datos sintéticos para validar MATYA.', '#146d88', 'matya-demo-corg-rpa'],

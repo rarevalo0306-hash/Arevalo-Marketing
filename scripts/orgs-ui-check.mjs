@@ -12,8 +12,16 @@
 // phone's menu from the top bar), saving a screenshot of each in <directory>, and fails if a page scrolls sideways
 // (document.documentElement.scrollWidth > window.innerWidth). In the open picker it checks the tree: the account «MATYA local fixture»
 // once at the top, both organizations inside it, each one with its business under it and never an empty heading, and that nothing
-// sticks out of the picker; on the computer the closed button reads account / organization / business, in that order. It only reads:
-// apart from the login it submits no form, so the database is as the seed left it. Exit code 0 only when every check passed.
+// sticks out of the picker; on the computer the closed button reads account / organization / business, in that order.
+//
+// The weekly report of each card (the seed sets «Ricardo PA (cliente)» to Monday 8:00 a. m. to cliente@example.com and leaves «Mis compañías»
+// with the report off): on /organizaciones the card of «Ricardo PA (cliente)» reads «Reporte: lunes 8:00 a. m. a cliente@example.com» and the one
+// of «Mis compañías» «Reporte apagado», each with its last-send line, and the form and the send buttons are closed (hidden) until «Reporte
+// semanal» is pressed. The script presses that toggle on «Ricardo PA (cliente)» (aria-expanded turns true), reads the open panel (the email field
+// holds cliente@example.com, the form holds the seed's settings, «Mandarme una prueba» and «Mandar ahora» are visible and enabled, nothing sticks
+// out of the panel) and saves `reporte-<tag>.png` with it open. It NEVER presses «Guardar», «Mandarme una prueba» or «Mandar ahora»: it fails if
+// a dialog opens or a POST goes out while the panel is open. It only reads: apart from the login it submits no form, so the database is as the
+// seed left it. Exit code 0 only when every check passed.
 import { mkdirSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
@@ -29,10 +37,15 @@ const BUSINESS = 'matya-demo-fl';
 // The account of the seed (`matya-demo-org`): the top of the picker's tree, above its organizations.
 const ACCOUNT = 'MATYA local fixture';
 // Each organization of the seed with the business that must be under it.
+// `report` is the line under the title that the seed's report settings make (see scripts/agent-seed-local.mjs).
 const ORGS = [
-  { id: 'matya-demo-corg', name: 'Mis compañías', business: 'Fameseg · prueba local' },
-  { id: 'matya-demo-corg-rpa', name: 'Ricardo PA (cliente)', business: 'Ricardo PA · prueba local' },
+  { id: 'matya-demo-corg', name: 'Mis compañías', business: 'Fameseg · prueba local', report: 'Reporte apagado' },
+  { id: 'matya-demo-corg-rpa', name: 'Ricardo PA (cliente)', business: 'Ricardo PA · prueba local', report: 'Reporte: lunes 8:00 a. m. a cliente@example.com' },
 ];
+// The organization whose panel is opened, and what the seed saved in it (the form must hold exactly this).
+const REPORT_ORG = ORGS[1];
+const REPORT_EMAIL = 'cliente@example.com';
+const REPORT_FORM = { contactName: 'Ricardo (prueba)', reportEmail: REPORT_EMAIL, reportDay: '1', reportHour: '8', timezone: 'America/New_York', reportOn: true };
 if (!dir) throw new Error('Usage: node scripts/orgs-ui-check.mjs <directory for the screenshots> [url]');
 if (!password) throw new Error('Set MATYA_LOCAL_PASSWORD to the password you seeded admin@matya.local with');
 if (!['localhost', '127.0.0.1'].includes(new URL(base).hostname)) throw new Error('Only a local dev server is allowed: this script types a password');
@@ -129,36 +142,131 @@ async function open(page, path, what) {
   if (await page.getByText('Application error').count()) fail(`${what} shows an application error`);
 }
 
-/** «Organizaciones»: a card per organization of the seed, with its business inside. */
+/**
+ * Waits until React has hydrated the page (the dev server compiles it on first use, so that can take seconds): a hydrated element
+ * carries React's `__reactProps$…` key. A screenshot taken before that makes Playwright add `style=""` to the form fields, which
+ * React then reports as a hydration mismatch (and the dev overlay's own request for stack frames is a POST that is not the app's).
+ */
+async function hydrated(page, selector) {
+  try {
+    await page.waitForFunction((sel) => [...document.querySelectorAll(sel)].some((el) => Object.keys(el).some((k) => k.startsWith('__reactProps$'))), selector, { timeout: 60000 });
+  } catch {
+    fail(`the page never hydrated (no React props on ${selector})`);
+  }
+}
+
+/**
+ * Presses a toggle until its aria-expanded is "true". A click before the page has hydrated (the dev server compiles it on first use)
+ * is lost, so it clicks again until it is open. Returns whether it ended open. Only for toggles that are safe to press.
+ */
+async function expand(trigger) {
+  let opened = false;
+  for (let attempt = 0; attempt < 20 && !opened; attempt++) {
+    if ((await trigger.getAttribute('aria-expanded')) === 'true') break;
+    await trigger.click();
+    try {
+      await trigger.page().waitForFunction((el) => el.getAttribute('aria-expanded') === 'true', await trigger.elementHandle(), { timeout: 1500 });
+      opened = true;
+    } catch {
+      /* not hydrated yet: click again */
+    }
+  }
+  return (await trigger.getAttribute('aria-expanded')) === 'true';
+}
+
+/**
+ * The weekly report of one card: closed until the toggle is pressed, then the form and the two send buttons. Opens the toggle only:
+ * «Guardar», «Mandarme una prueba» and «Mandar ahora» are never pressed (a dialog or a POST while it is open fails the check).
+ */
+async function reportPanel(page, o, tag) {
+  const group = page.locator(`section[data-org="${o.id}"]`).getByRole('group', { name: `Reporte semanal de «${o.name}»`, exact: true });
+  const toggle = group.getByRole('button', { name: 'Reporte semanal', exact: true });
+  const emailField = group.getByRole('textbox', { name: /^Emails para el reporte/ });
+  const testButton = group.getByRole('button', { name: 'Mandarme una prueba', exact: true });
+  const nowButton = group.getByRole('button', { name: 'Mandar ahora', exact: true });
+  await expectVisible(toggle, `Reporte: the «Reporte semanal» toggle of «${o.name}»`);
+  if ((await toggle.getAttribute('aria-expanded')) === 'false') pass(`Reporte: the panel of «${o.name}» starts closed (aria-expanded="false")`);
+  else fail(`Reporte: the panel of «${o.name}» does not start closed (aria-expanded="${await toggle.getAttribute('aria-expanded')}")`);
+  if (!(await emailField.isVisible()) && !(await testButton.isVisible()) && !(await nowButton.isVisible())) pass(`Reporte: the form and the send buttons of «${o.name}» are hidden while it is closed`);
+  else fail(`Reporte: the form or a send button of «${o.name}» is visible while the panel is closed`);
+
+  const posts = [];
+  // The dev server's own POSTs (/__nextjs_…: the error overlay asking for stack frames) are not the app's; any other POST is.
+  const onRequest = (r) => r.method() === 'POST' && !new URL(r.url()).pathname.startsWith('/__nextjs') && posts.push(r.url());
+  page.on('request', onRequest);
+  try {
+    if (await expand(toggle)) pass(`Reporte: «Reporte semanal» of «${o.name}» opens (aria-expanded="true")`);
+    else {
+      fail(`Reporte: «Reporte semanal» of «${o.name}» never opened`);
+      return;
+    }
+    await expectVisible(emailField, `Reporte: the email field of «${o.name}» is visible`);
+    const value = await emailField.inputValue();
+    if (value === REPORT_EMAIL) pass(`Reporte: the email field holds ${REPORT_EMAIL}`);
+    else fail(`Reporte: the email field holds "${value}", expected ${REPORT_EMAIL}`);
+    await expectVisible(testButton, 'Reporte: «Mandarme una prueba» is visible');
+    await expectVisible(nowButton, 'Reporte: «Mandar ahora» is visible');
+    for (const [name, button] of [['Mandarme una prueba', testButton], ['Mandar ahora', nowButton]]) {
+      if (await button.isEnabled()) pass(`Reporte: «${name}» is enabled`);
+      else fail(`Reporte: «${name}» is disabled (the seed gives the organization an email and a business)`);
+    }
+    // The form shows what the seed saved.
+    const form = await group.evaluate((el) => {
+      const get = (name) => el.querySelector(`[name="${name}"]`);
+      return { contactName: get('contactName')?.value, reportEmail: get('reportEmail')?.value, reportDay: get('reportDay')?.value, reportHour: get('reportHour')?.value, timezone: get('timezone')?.value, reportOn: get('reportOn')?.checked };
+    });
+    const wrong = Object.keys(REPORT_FORM).filter((k) => form[k] !== REPORT_FORM[k]);
+    if (wrong.length === 0) pass('Reporte: the form holds the seed\'s settings (contact, email, Monday, 8, America/New_York, on)');
+    else fail(`Reporte: the form differs from the seed in ${wrong.map((k) => `${k}="${form[k]}"`).join(', ')}`);
+    // Every control of the open panel is inside it and inside the window (so a button can be reached on a phone).
+    const outside = await group.evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      const stray = [...el.querySelectorAll('input, select, button, label, p')].filter((c) => {
+        const r = c.getBoundingClientRect();
+        return r.width > 0 && (r.right > box.right + 1 || r.left < box.left - 1 || r.right > window.innerWidth + 1 || r.left < -1);
+      });
+      return { stray: stray.slice(0, 4).map((c) => `${c.tagName.toLowerCase()} "${(c.textContent ?? c.getAttribute('name') ?? '').trim().slice(0, 30)}"`), sideScroll: el.scrollWidth > el.clientWidth + 1 };
+    });
+    if (outside.stray.length || outside.sideScroll) fail(`Reporte at ${tag}: the open panel's contents stick out (${outside.stray.join(', ') || 'none'}; scrolls sideways: ${outside.sideScroll})`);
+    else pass(`Reporte at ${tag}: everything in the open panel fits inside it`);
+    await group.scrollIntoViewIfNeeded();
+    await shot(page, 'reporte', tag);
+  } finally {
+    page.off('request', onRequest);
+  }
+  if (posts.length === 0) pass('Reporte: opening the panel sent nothing to the server');
+  else fail(`Reporte: opening the panel sent ${posts.length} POST(s): ${posts.join(', ')}`);
+}
+
+/** «Organizaciones»: a card per organization of the seed, with its business and its weekly report line inside. */
 async function organizations(page, tag) {
   await open(page, '/organizaciones', '/organizaciones');
   await expectVisible(page.getByRole('heading', { level: 1, name: 'Organizaciones' }), 'Organizaciones: the title');
+  await hydrated(page, 'section[data-org] button[aria-expanded]');
   for (const o of ORGS) {
     const card = page.locator(`section[data-org="${o.id}"]`);
     await expectVisible(card.getByRole('heading', { level: 2, name: o.name, exact: true }), `Organizaciones: the card «${o.name}»`);
     await expectVisible(card.getByText(o.business, { exact: true }), `Organizaciones: «${o.business}» is in «${o.name}»`);
+    // The schedule and the last send are on the card without opening anything. The seed writes no send, but a person may have sent one.
+    await expectVisible(card.getByText(o.report, { exact: true }), `Organizaciones: «${o.name}» shows «${o.report}»`);
+    await expectVisible(card.getByText(/^(Todavía no se ha mandado\.|Último envío: )/), `Organizaciones: «${o.name}» shows its last-send line`);
   }
   await expectVisible(page.getByRole('heading', { level: 2, name: 'Nueva organización' }), 'Organizaciones: the Nueva organización block');
   await shot(page, 'organizaciones', tag);
+  // «Mis compañías» has the report off and its panel stays closed; the one of «Ricardo PA (cliente)» is opened and read.
+  const quiet = ORGS[0];
+  const quietToggle = page.locator(`section[data-org="${quiet.id}"]`).getByRole('button', { name: 'Reporte semanal', exact: true });
+  const expanded = await quietToggle.getAttribute('aria-expanded');
+  if (expanded === 'false') pass(`Reporte: the panel of «${quiet.name}» starts closed (aria-expanded="false")`);
+  else fail(`Reporte: the panel of «${quiet.name}» does not start closed (aria-expanded="${expanded}")`);
+  await reportPanel(page, REPORT_ORG, tag);
 }
 
 /** Opens the company picker of a business page: the phone's menu from the top bar, or the switcher of the sidebar. Returns the open list. */
 async function openPicker(page, width) {
   const trigger = width <= 900 ? page.locator('.mbiz-trigger') : page.locator('nav.sidebar div.desk-only > button[aria-expanded]');
   await trigger.waitFor({ state: 'visible', timeout: 30000 });
-  // A click before the page has hydrated (the dev server compiles it on first use) is lost: click again until it is open.
-  let opened = false;
-  for (let attempt = 0; attempt < 20 && !opened; attempt++) {
-    if ((await trigger.getAttribute('aria-expanded')) === 'true') break;
-    await trigger.click();
-    try {
-      await page.waitForFunction((el) => el.getAttribute('aria-expanded') === 'true', await trigger.elementHandle(), { timeout: 1500 });
-      opened = true;
-    } catch {
-      /* not hydrated yet: click again */
-    }
-  }
-  if ((await trigger.getAttribute('aria-expanded')) !== 'true') {
+  if (!(await expand(trigger))) {
     fail('the company picker never opened');
     return null;
   }
@@ -226,6 +334,11 @@ try {
     if (night) await context.addInitScript(() => localStorage.setItem('am-theme', 'noche'));
     const page = await context.newPage();
     page.on('pageerror', (e) => fail(`page error at ${tag}: ${e.message}`));
+    // The send buttons ask for a confirmation before they send: a dialog means one of them was pressed, which this check never does.
+    page.on('dialog', (d) => {
+      fail(`a dialog opened at ${tag} ("${d.message().slice(0, 60)}"): a send button was pressed`);
+      d.dismiss().catch(() => {});
+    });
     page.on('response', (r) => {
       if (r.status() >= 500 && new URL(r.url()).origin === new URL(base).origin) fail(`${r.status()} from ${r.url()}`);
     });
